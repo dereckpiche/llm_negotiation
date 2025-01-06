@@ -5,7 +5,7 @@ hydra:
 experiment:
   method: dond_run_train
   description: "Easy. They should be learning."
-  nb_iterations: 400
+  nb_iterations: 50
   nb_matches_per_iteration: 30
   reinit_matches_each_it: true
 
@@ -32,7 +32,7 @@ matches:
       items: ['coins']
       quantities: [10]
       val_starting_negotiator: [1]
-      val_responding_negotiator: [1]
+      val_responding_negotiator: [-1]
     role_assignator_func: fixed_role_assignator
     role_assignator_func_kwargs: {}
     finalization_visibility: True

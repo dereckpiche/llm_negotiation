@@ -32,7 +32,7 @@ matches:
       items: ['coins']
       quantities: [10]
       val_starting_negotiator: [1]
-      val_responding_negotiator: [1]
+      val_responding_negotiator: [-1]
     role_assignator_func: fixed_role_assignator
     role_assignator_func_kwargs: {}
     finalization_visibility: True
