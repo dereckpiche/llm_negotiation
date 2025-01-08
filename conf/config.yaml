@@ -5,8 +5,8 @@ hydra:
 experiment:
   method: dond_run_train
   description: "Easy. They should be learning."
-  nb_iterations: 50
-  nb_matches_per_iteration: 20
+  nb_epochs: 128
+  nb_matches_per_iteration: 5
   reinit_matches_each_it: true
 
 matches:
@@ -24,7 +24,7 @@ matches:
       training_data_func_args: {}
 
   dond_game_args:
-    rounds_per_game: 1
+    rounds_per_game: 3
     max_turns: 1
     mode: basic
     random_setup_func: fixed_manual
@@ -32,7 +32,7 @@ matches:
       items: ['coins']
       quantities: [10]
       val_starting_negotiator: [1]
-      val_responding_negotiator: [-1]
+      val_responding_negotiator: [1]
     role_assignator_func: fixed_role_assignator
     role_assignator_func_kwargs: {}
     finalization_visibility: True
@@ -45,29 +45,27 @@ matches:
       dond_player_args:
         mod_adpt_id: 'llama/ad_alice'
         allow_reasoning: false
-        max_retries: 0
-
+        max_retries: 1
     bob:
 
       dond_player_args:
         mod_adpt_id: 'llama/ad_bob'
         allow_reasoning: false
-        max_retries: 0
+        max_retries: 1
 
 
 training:
   llama:
     adapters:
       ad_alice:
-        train_func: train_reinforce_main
+        train_func: train_ppo_main
         train_func_args: {}
-              #learning_rate: 1e10
 
 
       ad_bob:
-        train_func: train_reinforce_main
+        train_func: train_ppo_main
         train_func_args: {}
-              learning_rate: 1e10
+
 
 models: 
 
@@ -88,10 +86,10 @@ models:
         #load_in_4bit: true
       lora_args:
         task_type: TaskType.CAUSAL_LM
-        r: 32
-        lora_alpha: 16
+        r: 64
+        lora_alpha: 32
         lora_dropout: 0.0
-        target_modules: ["q_proj", "k_proj"]
+        target_modules: "all-linear"
 
       generation_args:
         max_new_tokens: 200

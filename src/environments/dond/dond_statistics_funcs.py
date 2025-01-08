@@ -1,4 +1,5 @@
 import json
+import numpy as np
 
 def gather_dond_statistics(player_info, info):
     """
@@ -11,8 +12,9 @@ def gather_dond_statistics(player_info, info):
     Returns:
         str: A JSONL string containing the game statistics.
     """
-    statistics = []
+    statistics = {}
     player_name = player_info['player_name']
+
 
     for i, state in enumerate(info['round_player_roles']):
         player_role = state.get(player_name)
@@ -36,7 +38,7 @@ def gather_dond_statistics(player_info, info):
             "quantities": info['round_quantities'][i],
             "values": info['round_values'][i][player_role],
         }
-        statistics.append(round_info)
+        statistics[f"round_{i}"] = round_info
 
     return statistics
 

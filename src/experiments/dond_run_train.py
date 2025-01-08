@@ -14,9 +14,9 @@ from models.dummy_hf_agent import DummyHfAgent
 from models.oai_agent import OaiAgent
 from utils.export_ppo_training_set import export_ppo_training_set
 from utils.plot_curves import plot_curves
-from utils.dond_statistics import *
+from utils.log_statistics import *
 from utils.parallel_shuffle import parallel_shuffle
-from utils.dond_statistics import update_player_statistics, generate_player_statistics_plots
+from utils.log_statistics import update_player_statistics, generate_player_stats_plots
 from training.train_main import *
 from generation.run_games import run_matches
 
@@ -70,7 +70,7 @@ def dond_run_train(cfg):
     Executes a negotiation cycle for the Deal or No Deal (DoND) game.
 
     This function initializes models, players, and the game environment based on the provided configuration.
-    It then runs multiple iterations where games are generated, statistics are computed, and models are trained
+    It then runs multiple epochs where games are generated, statistics are computed, and models are trained
     using either Proximal Policy Optimization (PPO) or Supervised Fine-Tuning (SFT) based on their default training mode.
 
     Args:
@@ -89,7 +89,7 @@ def dond_run_train(cfg):
 
     matches = None
 
-    for iteration in range(cfg["experiment"]["nb_iterations"]):
+    for iteration in range(cfg["experiment"]["nb_epochs"]):
         iteration_start_time = time.time()
 
         it_folder = os.path.join(output_directory, f"iteration_{iteration:03}")
@@ -115,13 +115,15 @@ def dond_run_train(cfg):
             
             update_player_statistics(
                 input_path=os.path.join(it_folder, player_name, "statistics"),
-                output_file=player_stats_file,
-                iteration=iteration
+                output_file=player_stats_file
             )
-            generate_player_statistics_plots(
-                input_file=player_stats_file,
-                output_folder=player_plots_folder
+
+            generate_player_stats_plots(
+                global_stats_path=player_stats_file,
+                plot_folder=os.path.join(player_stats_folder, "mpl"),
+                tensorboard_log_dir=os.path.join(player_stats_folder, "tb"),
             )
+            
         generation_end_time = time.time()
 
         # Train models
@@ -165,7 +167,7 @@ def dond_run_train(cfg):
 
         # Estimate remaining time
         elapsed_time = iteration_end_time - total_start_time
-        estimated_total_time = iteration_duration * cfg["experiment"]["nb_iterations"]
+        estimated_total_time = iteration_duration * cfg["experiment"]["nb_epochs"]
         estimated_remaining_time = estimated_total_time - elapsed_time # TODO: fix
 
         # Format time for logging

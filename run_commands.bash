@@ -1,1 +1,0 @@
-source /home/mila/d/dereck.piche/negenv/bin/activate & nohup /home/mila/d/dereck.piche/negenv/bin/python3.10 /home/mila/d/dereck.piche/llm-Nego/src/run.py > log.log
