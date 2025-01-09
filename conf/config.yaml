@@ -2,11 +2,12 @@ hydra:
   job:
     chdir: false
 
+
 experiment:
   method: dond_run_train
   description: "Easy. They should be learning."
   nb_epochs: 128
-  nb_matches_per_iteration: 5
+  nb_matches_per_iteration: 16
   reinit_matches_each_it: true
 
 matches:
@@ -46,6 +47,7 @@ matches:
         mod_adpt_id: 'llama/ad_alice'
         allow_reasoning: false
         max_retries: 1
+        
     bob:
 
       dond_player_args:

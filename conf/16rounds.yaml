@@ -1,0 +1,5 @@
+matches:
+  dond_game_args:
+    max_turns: 1
+    rounds_per_game: 16
+    

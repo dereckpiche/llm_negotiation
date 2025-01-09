@@ -20,6 +20,8 @@ from utils.log_statistics import update_player_statistics, generate_player_stats
 from training.train_main import *
 from generation.run_games import run_matches
 
+compute__logger = logging.getLogger("compute__logger")
+
 def init_models(cfg):
     hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
     output_directory = hydra_cfg["runtime"]["output_dir"]
@@ -29,7 +31,7 @@ def init_models(cfg):
     for model_name in cfg["models"].keys():
         if cfg["models"][model_name]["class"] == "hf":
             models[model_name] = HfAgent(**cfg["models"][model_name]["init_args"],
-            output_directory=output_directory)
+                                         output_directory=output_directory)
         elif cfg["models"][model_name]["class"] == "dummy_hf":
             models[model_name] = DummyHfAgent(**cfg["models"][model_name]["init_args"])
         elif cfg["models"][model_name]["class"] == "oai":
@@ -37,9 +39,7 @@ def init_models(cfg):
     return models
 
 
-def create_blank_match(
-    cfg    
-):
+def create_blank_match(cfg):
     """
     Initializes the matches for the game.
 
@@ -52,7 +52,7 @@ def create_blank_match(
     players = {}
     for player_name in cfg["matches"]["players"].keys():
         players[player_name] = DondPlayerHandler(player_name, 
-        **cfg["matches"]["players"][player_name]["dond_player_args"])
+                                                 **cfg["matches"]["players"][player_name]["dond_player_args"])
     blank_match = {
         "players": players,
         "game": DondGame(players=list(players.keys()), **cfg["matches"]["dond_game_args"]),
@@ -63,18 +63,9 @@ def create_blank_match(
     return blank_match
 
 
-
-
 def dond_run_train(cfg):
     """
     Executes a negotiation cycle for the Deal or No Deal (DoND) game.
-
-    This function initializes models, players, and the game environment based on the provided configuration.
-    It then runs multiple epochs where games are generated, statistics are computed, and models are trained
-    using either Proximal Policy Optimization (PPO) or Supervised Fine-Tuning (SFT) based on their default training mode.
-
-    Args:
-        cfg (omegaconf.DictConfig): Configuration object containing all necessary parameters for the negotiation cycle.
     """
     total_start_time = time.time()
 
@@ -82,12 +73,10 @@ def dond_run_train(cfg):
     output_directory = hydra_cfg["runtime"]["output_dir"]
     os.makedirs(output_directory, exist_ok=True)
 
-    cfg = OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict")
+    cfg = OmegaConf.to_container(cfg, resolve=False, structured_config_mode="dict")
 
     # Initialize models
     models = init_models(cfg)
-
-    matches = None
 
     for iteration in range(cfg["experiment"]["nb_epochs"]):
         iteration_start_time = time.time()
@@ -95,8 +84,8 @@ def dond_run_train(cfg):
         it_folder = os.path.join(output_directory, f"iteration_{iteration:03}")
         os.makedirs(it_folder, exist_ok=True)
 
-
         generation_start_time = time.time()
+
         matches = [create_blank_match(cfg) for _ in range(cfg["experiment"]["nb_matches_per_iteration"])]
         players = copy.deepcopy(matches[0]["players"])
 
@@ -107,12 +96,17 @@ def dond_run_train(cfg):
             **cfg['matches']['run_matches_args']
         )
 
+        generation_end_time = time.time()
+
+
+        logging_start_time = time.time()
+
         for player_name in players.keys():
             player_stats_folder = os.path.join(output_directory, "statistics", player_name)
             os.makedirs(player_stats_folder, exist_ok=True)
             player_stats_file = os.path.join(player_stats_folder, f"{player_name}_stats.jsonl")
             player_plots_folder = os.path.join(player_stats_folder, "plots")
-            
+
             update_player_statistics(
                 input_path=os.path.join(it_folder, player_name, "statistics"),
                 output_file=player_stats_file
@@ -123,27 +117,24 @@ def dond_run_train(cfg):
                 plot_folder=os.path.join(player_stats_folder, "mpl"),
                 tensorboard_log_dir=os.path.join(player_stats_folder, "tb"),
             )
-            
-        generation_end_time = time.time()
+
+        logging_end_time = time.time()
 
         # Train models
         training_start_time = time.time()
-
 
         for model_name, model in models.items():
             for adapter_name in model.adapters.keys():
                 mod_adpt_id = f"{model_name}/{adapter_name}"
                 model.prepare_adapter_train(adapter_name)
 
-                # Find paths of all player data for this adapter
                 data_paths = []
                 for player in players.values():
                     if player.mod_adpt_id == mod_adpt_id:
                         player_export_path = os.path.join(it_folder, player.player_name, "training")
                         data_paths.append(player_export_path)
 
-                # Train the adapter by calling train_main with the correct settings
-                if data_paths != []:    
+                if data_paths:
                     train_func_args = cfg["training"][model_name]["adapters"][adapter_name]["train_func_args"]
                     train_main(
                         hf_model=model,
@@ -154,23 +145,31 @@ def dond_run_train(cfg):
                     )
 
         training_end_time = time.time()
+
         iteration_end_time = time.time()
 
         # Calculate times
         iteration_duration = iteration_end_time - iteration_start_time
         generation_duration = generation_end_time - generation_start_time
+        logging_duration = logging_end_time - logging_start_time
         training_duration = training_end_time - training_start_time
 
-        # Calculate percentages
+        # Percentages of time
         generation_percentage = (generation_duration / iteration_duration) * 100
+        logging_percentage = (logging_duration / iteration_duration) * 100
         training_percentage = (training_duration / iteration_duration) * 100
 
         # Estimate remaining time
         elapsed_time = iteration_end_time - total_start_time
         estimated_total_time = iteration_duration * cfg["experiment"]["nb_epochs"]
-        estimated_remaining_time = estimated_total_time - elapsed_time # TODO: fix
+        estimated_remaining_time = estimated_total_time - elapsed_time
 
-        # Format time for logging
+        # Time estimates for future iterations
+        time_per_iteration = iteration_duration
+        time_est_10 = time_per_iteration * 10
+        time_est_100 = time_per_iteration * 100
+        time_est_500 = time_per_iteration * 500
+
         def format_time(seconds):
             if seconds >= 3600:
                 return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m {int(seconds % 60)}s"
@@ -179,17 +178,20 @@ def dond_run_train(cfg):
             else:
                 return f"{int(seconds)}s"
 
-        logging.info(
-            f"Iteration {iteration + 1} took {format_time(iteration_duration)}. "
-            f"Generation: {generation_percentage:.2f}%, Training: {training_percentage:.2f}%. "
-            f"Estimated time remaining: {format_time(estimated_remaining_time)}. "
-            f"Estimated total time for complete run: {format_time(estimated_total_time)}."
+        compute__logger.info(
+            f"Iteration {iteration + 1} took {format_time(iteration_duration)} "
+            f"({generation_percentage:.2f}% Gen, {logging_percentage:.2f}% Log, {training_percentage:.2f}% Train). "
+            f"Generation: {format_time(generation_duration)}, "
+            f"Logging: {format_time(logging_duration)}, "
+            f"Training: {format_time(training_duration)}. "
+            f"Estimated remaining time: {format_time(estimated_remaining_time)}. "
+            f"Estimated total time: {format_time(estimated_total_time)}. "
+            f"Time estimates for 10 more iterations: {format_time(time_est_10)}, "
+            f"100 more iterations: {format_time(time_est_100)}, "
+            f"500 more iterations: {format_time(time_est_500)}."
         )
 
-    # Calculate and log total duration
+    # Log total time
     total_end_time = time.time()
     total_duration = total_end_time - total_start_time
-    logging.info(f"Total time taken for the entire run: {format_time(total_duration)}")
-
-
-
+    compute__logger.info(f"Total time taken for the entire run: {format_time(total_duration)}")

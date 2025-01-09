@@ -23,7 +23,7 @@ if __name__ == "__main__":
     # Example usage
     command_list = [
         "source /home/mila/d/dereck.piche/negenv/bin/activate", 
-        "/home/mila/d/dereck.piche/negenv/bin/python3.10 /home/mila/d/dereck.piche/llm_negotiation/src/run.py",
-        "/home/mila/d/dereck.piche/negenv/bin/python3.10 /home/mila/d/dereck.piche/llm_negotiation/src/run.py --config-name config +longconv"
+        "/home/mila/d/dereck.piche/negenv/bin/python3.10 /home/mila/d/dereck.piche/llm_negotiation/src/run.py --config-name config +messages",
+        "/home/mila/d/dereck.piche/negenv/bin/python3.10 /home/mila/d/dereck.piche/llm_negotiation/src/run.py --config-name config +16rounds"
     ]
     run_commands_with_nohup(command_list)

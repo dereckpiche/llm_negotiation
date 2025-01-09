@@ -48,6 +48,11 @@ import hydra
 from transformers import Trainer
 import json
 
+compute__logger = logging.getLogger("compute__logger")
+memory_logger = logging.getLogger("memory_logger")
+model_logger = logging.getLogger("model_logger")
+
+
 class HfAgent:
     """
     HfAgent is an agent that utilizes HuggingFace models for causal language modeling.
@@ -117,9 +122,11 @@ class HfAgent:
         """
         Prepares the agent for training with the specified adapter.
         """
+        model_logger.info(f"Preparing adapter {adapter_name} for training.")
+
+        start_time = time.time()
         self.destroy_hf()
 
-        # Set the adapter
         self.current_adapter_name = adapter_name
         adapter_path = self.adapters[self.current_adapter_name]
         if self.train_with == "hf":
@@ -130,7 +137,7 @@ class HfAgent:
                 )
                 self.hf_model = get_peft_model(self.hf_model, self.lora_config)
                 self.hf_model.train()
-                logging.info(f"Adapter '{self.current_adapter_name}' added to HF.")
+                model_logger.info(f"Adapter '{self.current_adapter_name}' added to HF.")
             else:
                 self.hf_model = AutoModelForCausalLM.from_pretrained(
                     **self.pretrained_args, 
@@ -142,26 +149,41 @@ class HfAgent:
                     is_trainable=True
                 )
                 self.hf_model.train()
-                logging.info(f"Adapter '{self.current_adapter_name}' loaded to HF from {adapter_path}.")
+                model_logger.info(f"Adapter '{self.current_adapter_name}' loaded to HF from {adapter_path}.")
 
-        # Proceed with training setup
+            # Log trainable parameters
+            total_params = sum(p.numel() for p in self.hf_model.parameters())
+            trainable_params = sum(p.numel() for p in self.hf_model.parameters() if p.requires_grad)
+            model_logger.info(f"Total Parameters: {total_params}")
+            model_logger.info(f"Trainable Parameters: {trainable_params} ({trainable_params/total_params:.2%})")
+
+
+
         if not self.keep_vllm_during_training:
             self.destroy_vllm()
         if not self.keep_hf_during_training:
             self.destroy_hf()
 
+        end_time = time.time()
+        compute__logger.info(f"HF model loading time: {end_time - start_time:.2f} seconds.")
+
     def prepare_adapter_eval(self, adapter_name: str):
         """
         Prepares the agent for evaluation with the specified adapter.
         """
+        model_logger.info(f"Preparing adapter {adapter_name} for evaluation.")
+
         self.current_adapter_name = adapter_name
 
         if self.eval_with == "vllm":
             if self.vllm_model is None:
+                start_time = time.time()
                 gc.collect()
                 torch.cuda.empty_cache()
-                logging.info(f"Loading VLLM model.")
                 self.vllm_model = LLM(self.model_name, enable_lora=True, max_lora_rank=256)
+                end_time = time.time()
+                compute__logger.info(f"VLLM model loading time: {end_time - start_time:.2f} seconds.")
+                self.log_gpu_usage("After loading VLLM model.")
             
         # Proceed with evaluation setup
         if not self.keep_hf_during_eval:
@@ -174,12 +196,21 @@ class HfAgent:
         """
         Destroys the Hugging Face model to free up memory.
         """
+        model_logger.info("Destroying HF model.")
+
         if self.hf_model is not None:
             self.log_gpu_usage("Before destroying HF.")
+
+            start_time = time.time()
+            
             del self.hf_model
             gc.collect()
-            torch.cuda.empty_cache()    
+            torch.cuda.empty_cache()
             self.hf_model = None
+
+            end_time = time.time()
+            compute__logger.info(f"HF model unloading time: {end_time - start_time:.2f} seconds.")
+
             self.log_gpu_usage("After destroying HF.")
 
 
@@ -187,13 +218,19 @@ class HfAgent:
         """
         Destroys the VLLM model to free up memory.
         """
+        start_time = time.time()
+        self.log_gpu_usage("Before destroying VLLM")
+
         if self.vllm_model is not None:
-            self.log_gpu_usage("Before destroying VLLM")
+
             del self.vllm_model
             gc.collect()
             torch.cuda.empty_cache()
             self.vllm_model = None
-            self.log_gpu_usage("After destroying VLLM.")
+
+        self.log_gpu_usage("After destroying VLLM.")
+        end_time = time.time()
+        compute__logger.info(f"VLLM model unloading time: {end_time - start_time:.2f} seconds.")
 
     def log_gpu_usage(self, message: str) -> None:
         """
@@ -203,7 +240,7 @@ class HfAgent:
             message (str): A message to include in the log.
         """
         gpu_memory = torch.cuda.memory_allocated() / (1024 ** 3)
-        logging.info(f"{message}: GPU memory allocated: {gpu_memory:.2f} GB")
+        memory_logger.info(f"{message}: GPU memory allocated: {gpu_memory:.2f} GB")
 
 
 
@@ -218,45 +255,44 @@ class HfAgent:
             str: The generated response from the model.
         """
         adapter_path = self.adapters[self.current_adapter_name]
-
-        if len(contexts) == 0: return []
+        if len(contexts) == 0:
+            return []
 
         texts = self.tokenizer.apply_chat_template(
             contexts, tokenize=False, add_generation_prompt=True
         )
 
+        start_time = time.time()
         if self.eval_with == "vllm":
-            # TODO: remove. Check if VLLM creates lora problems.
-            # self.destroy_vllm()
-            # self.use_vllm_model()
-
             with torch.no_grad():
                 if adapter_path is not None:
-                    logging.info(f"Generating using VLLM (with LoRA at {adapter_path})")
-                    self.vllm_id +=1 
+                    model_logger.info(f"Generating using VLLM with LoRA at {adapter_path}")
+                    self.vllm_id += 1
                     decoded = self.vllm_model.generate(
                         texts,
                         sampling_params=self.vllm_sampling_params,
-                        # lora_request=LoRARequest(f"dond_lora_{self.vllm_id}", self.vllm_id, "/home/mila/d/dereck.piche/llm-Nego/outputs/2024-11-24/22-19-06/ad_alice_1"),
                         lora_request=LoRARequest(f"dond_lora_{self.vllm_id}", self.vllm_id, adapter_path),
                     )
                     gc.collect()
                     torch.cuda.empty_cache()
                 else:
-                    logging.info("Generating using VLLM (without LoRA)")
+                    model_logger.info("Generating using VLLM without LoRA")
                     decoded = self.vllm_model.generate(
                         texts, sampling_params=self.vllm_sampling_params
                     )
-
             responses = [d.outputs[0].text for d in decoded]
-
             del decoded
-            gc.collect()
-            torch.cuda.empty_cache()
+
+            # Log tokens/sec for generation
+            # total_tokens = sum(len(resp.split()) for resp in responses)
+            # end_time = time.time()
+            # tokens_per_sec = total_tokens / (end_time - start_time)
+            # compute__logger.info(f"VLLM generated {total_tokens} tokens at {tokens_per_sec:.2f} tokens/sec.")
+
 
         elif self.generate_with == "hf":
 
-            logging.info("Generating using Hugging Face")
+            model_logger.info("Generating using Hugging Face")
             model_inputs = self.tokenizer(texts, padding=True, return_tensors="pt").to(
                 self.device
             )
@@ -275,7 +311,7 @@ class HfAgent:
             )
 
         else:
-            logging.warning("No model in hf agent!")
+            model_logger.warning("No model in hf agent!")
 
         return responses
     
@@ -297,9 +333,9 @@ class HfAgent:
         # Save only the LoRA weights
         if isinstance(self.hf_model, PeftModel) or isinstance(self.hf_model, AutoModelForCausalLMWithValueHead):
             self.hf_model.save_pretrained(adapter_path) 
-            logging.info(f"LoRA weights saved to {adapter_path}")
+            model_logger.info(f"LoRA weights saved to {adapter_path}")
         else:
-            logging.warning("Model is not a LoraModel or ValueHead, skipping LoRA weights saving.")
+            model_logger.warning("Model is not a LoraModel or ValueHead, skipping LoRA weights saving.")
 
         # For vllm
         with open(os.path.join(adapter_path, "config.json"), "w") as f:
