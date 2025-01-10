@@ -184,13 +184,45 @@ class HfAgent:
                 end_time = time.time()
                 compute__logger.info(f"VLLM model loading time: {end_time - start_time:.2f} seconds.")
                 self.log_gpu_usage("After loading VLLM model.")
-            
+                
+        elif self.eval_with == "hf":
+            if self.hf_model is None:
+                start_time = time.time()
+                gc.collect()
+                torch.cuda.empty_cache()
+                model_logger.info("Loading HF model for evaluation.")
+
+                adapter_path = self.adapters[self.current_adapter_name]
+
+                if adapter_path is None:
+                    self.hf_model = AutoModelForCausalLM.from_pretrained(
+                        **self.pretrained_args,
+                        quantization_config=self.bits_and_bytes_configs
+                    )
+                    self.hf_model = get_peft_model(self.hf_model, self.lora_config)
+                    model_logger.info(f"HF model prepared with new LoRA configuration.")
+                else:
+                    self.hf_model = AutoModelForCausalLM.from_pretrained(
+                        **self.pretrained_args,
+                        quantization_config=self.bits_and_bytes_configs
+                    )
+                    self.hf_model = PeftModel.from_pretrained(
+                        model=self.hf_model,
+                        model_id=adapter_path
+                    )
+                    model_logger.info(f"HF model loaded with LoRA weights from {adapter_path}.")
+
+                self.hf_model.eval()
+
+                end_time = time.time()
+                compute__logger.info(f"HF model loading time: {end_time - start_time:.2f} seconds.")
+                self.log_gpu_usage("After loading HF model.")
+
         # Proceed with evaluation setup
         if not self.keep_hf_during_eval:
             self.destroy_hf()
         if not self.keep_vllm_during_eval:
             self.destroy_vllm()
-
         
     def destroy_hf(self):
         """
@@ -263,6 +295,7 @@ class HfAgent:
         )
 
         start_time = time.time()
+
         if self.eval_with == "vllm":
             with torch.no_grad():
                 if adapter_path is not None:
@@ -283,37 +316,46 @@ class HfAgent:
             responses = [d.outputs[0].text for d in decoded]
             del decoded
 
-            # Log tokens/sec for generation
-            # total_tokens = sum(len(resp.split()) for resp in responses)
-            # end_time = time.time()
-            # tokens_per_sec = total_tokens / (end_time - start_time)
-            # compute__logger.info(f"VLLM generated {total_tokens} tokens at {tokens_per_sec:.2f} tokens/sec.")
+        elif self.eval_with == "hf":
+            if self.hf_model is None:
+                model_logger.error("HF model is not loaded. Cannot proceed with generation.")
+                return []
 
-
-        elif self.generate_with == "hf":
-
-            model_logger.info("Generating using Hugging Face")
-            model_inputs = self.tokenizer(texts, padding=True, return_tensors="pt").to(
-                self.device
-            )
             with torch.no_grad():
-                generated_ids = self.hf_model.generate(
-                    **model_inputs, **self.hf_sampling_params
+                model_logger.info("Generating using HF.")
+                self.log_gpu_usage("Before HF generation")
+
+                encoded_inputs = self.tokenizer(
+                    texts, return_tensors="pt", padding=True, truncation=True
+                ).to(self.device)
+
+                output_tokens = self.hf_model.generate(
+                    **encoded_inputs,
+                    max_new_tokens=self.hf_sampling_params["max_new_tokens"],
+                    temperature=self.hf_sampling_params["temperature"],
+                    top_k=self.hf_sampling_params["top_k"],
+                    top_p=self.hf_sampling_params["top_p"],
                 )
-            generated_ids = [
-                output_ids[len(input_ids) :]
-                for input_ids, output_ids in zip(
-                    model_inputs["input_ids"], generated_ids
+
+                responses = self.tokenizer.batch_decode(
+                    output_tokens, skip_special_tokens=True
                 )
-            ]
-            responses = self.tokenizer.batch_decode(
-                generated_ids, skip_special_tokens=True
-            )
+
+                gc.collect()
+                torch.cuda.empty_cache()
+                self.log_gpu_usage("After HF generation")
 
         else:
-            model_logger.warning("No model in hf agent!")
+            model_logger.error(f"Unsupported generation method: {self.eval_with}")
+            return []
+
+        end_time = time.time()
+        compute__logger.info(
+            f"Generation completed in {end_time - start_time:.2f} seconds using {self.eval_with}."
+        )
 
         return responses
+
     
 
     def export_current_adapter(self) -> None:
