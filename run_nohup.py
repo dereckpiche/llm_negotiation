@@ -19,12 +19,24 @@ def run_commands_with_nohup(commands, output_file="nohup.out"):
     except Exception as ex:
         print(f"An unexpected error occurred: {ex}")
 
+
+
+pyenv = "source /home/mila/d/dereck.piche/negenv/bin/activate"
+
+six_messages = "/home/mila/d/dereck.piche/negenv/bin/python3.10 /home/mila/d/dereck.piche/llm_negotiation/src/run.py matches.dond_game_args.max_turns=6"
+
+sixteen_rounds = "/home/mila/d/dereck.piche/negenv/bin/python3.10 /home/mila/d/dereck.piche/llm_negotiation/src/run.py matches.dond_game_args.rounds_per_game=16"
+
+hf_inference = "/home/mila/d/dereck.piche/negenv/bin/python3.10 /home/mila/d/dereck.piche/llm_negotiation/src/run.py models.llama.init_args.eval_with=hf models.llama.init_args.keep_hf_during_eval=True"
+
+adv_align_test = "/home/mila/d/dereck.piche/negenv/bin/python3.10 /home/mila/d/dereck.piche/llm_negotiation/src/run.py matches.dond_game_args.rounds_per_game=3 matches.run_matches_args.log_func_args.training_data_func=set_discounted_advalign_returns"
+
 if __name__ == "__main__":
     # Example usage
     command_list = [
-        "source /home/mila/d/dereck.piche/negenv/bin/activate", 
-        # "/home/mila/d/dereck.piche/negenv/bin/python3.10 /home/mila/d/dereck.piche/llm_negotiation/src/run.py matches.dond_game_args.max_turns=6",
-        # "/home/mila/d/dereck.piche/negenv/bin/python3.10 /home/mila/d/dereck.piche/llm_negotiation/src/run.py matches.dond_game_args.rounds_per_game=16",
-        "/home/mila/d/dereck.piche/negenv/bin/python3.10 /home/mila/d/dereck.piche/llm_negotiation/src/run.py models.llama.init_args.eval_with=hf models.llama.init_args.keep_hf_during_eval=True"
+
     ]
     run_commands_with_nohup(command_list)
+
+
+# Command list archive
