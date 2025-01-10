@@ -1,7 +1,7 @@
 import os
 import json
-from .dond_statistics_funcs import gather_dond_statistics
-from .dond_return_funcs import set_discounted_returns
+from .dond_statistics_funcs import *
+from .dond_return_funcs import *
 
 def independant_players_logging(
         path,

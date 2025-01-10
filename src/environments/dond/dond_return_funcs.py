@@ -35,7 +35,6 @@ def set_discounted_returns(player_info, info, discount_factor=0.99):
 import numpy as np
 
 
-
 def set_discounted_advalign_returns(player_info, info, discount_factor=0.99, beta=1):
     """
     Sets the discounted advantage alignment returns for each message in the conversation.
