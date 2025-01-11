@@ -131,12 +131,6 @@ def ppo_train(
                 loss += vf_coef * value_loss
             model_accelerator.backward(loss)
 
-            # Test reinforce loss
-            # rewarded_action_log_probs = action_log_probs * (return_batch * mask_batch)
-            # reinforce_loss = -rewarded_action_log_probs.mean()
-            # # Accumulate gradients
-            # model_accelerator.backward(reinforce_loss)
-
             if mb_per_step == -1:
                 if i + mb_size >= len(contexts_list):
                     optimizer.step()
