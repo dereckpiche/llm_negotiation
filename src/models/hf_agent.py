@@ -122,10 +122,18 @@ class HfAgent:
         """
         Prepares the agent for training with the specified adapter.
         """
+        self.destroy_hf()
+        if not self.keep_vllm_during_training:
+            self.destroy_vllm()
+        if not self.keep_hf_during_training:
+            self.destroy_hf()
+
+        self.log_gpu_usage(f"Before loading HF model with adapter {adapter_name} for training.")
+
         model_logger.info(f"Preparing adapter {adapter_name} for training.")
 
         start_time = time.time()
-        self.destroy_hf()
+        
 
         self.current_adapter_name = adapter_name
         adapter_path = self.adapters[self.current_adapter_name]
@@ -158,32 +166,35 @@ class HfAgent:
             model_logger.info(f"Trainable Parameters: {trainable_params} ({trainable_params/total_params:.2%})")
 
 
-
-        if not self.keep_vllm_during_training:
-            self.destroy_vllm()
-        if not self.keep_hf_during_training:
-            self.destroy_hf()
-
         end_time = time.time()
         compute__logger.info(f"HF model loading time: {end_time - start_time:.2f} seconds.")
+
+        self.log_gpu_usage(f"After loading HF model with adapter {adapter_name} for training.")
+
 
     def prepare_adapter_eval(self, adapter_name: str):
         """
         Prepares the agent for evaluation with the specified adapter.
         """
+        if not self.keep_hf_during_eval:
+            self.destroy_hf()
+        if not self.keep_vllm_during_eval:
+            self.destroy_vllm()
+
         model_logger.info(f"Preparing adapter {adapter_name} for evaluation.")
 
         self.current_adapter_name = adapter_name
 
         if self.eval_with == "vllm":
             if self.vllm_model is None:
+                self.log_gpu_usage(f"Before loading VLLM model with {adapter_name}.")
                 start_time = time.time()
                 gc.collect()
                 torch.cuda.empty_cache()
                 self.vllm_model = LLM(self.model_name, enable_lora=True, max_lora_rank=256)
                 end_time = time.time()
                 compute__logger.info(f"VLLM model loading time: {end_time - start_time:.2f} seconds.")
-                self.log_gpu_usage("After loading VLLM model.")
+                self.log_gpu_usage(f"After loading VLLM model with {adapter_name}.")
                 
         elif self.eval_with == "hf":
             if self.hf_model is None:
@@ -218,11 +229,7 @@ class HfAgent:
                 compute__logger.info(f"HF model loading time: {end_time - start_time:.2f} seconds.")
                 self.log_gpu_usage("After loading HF model.")
 
-        # Proceed with evaluation setup
-        if not self.keep_hf_during_eval:
-            self.destroy_hf()
-        if not self.keep_vllm_during_eval:
-            self.destroy_vllm()
+
         
     def destroy_hf(self):
         """
@@ -251,16 +258,26 @@ class HfAgent:
         Destroys the VLLM model to free up memory.
         """
         start_time = time.time()
-        self.log_gpu_usage("Before destroying VLLM")
 
         if self.vllm_model is not None:
+
+            self.log_gpu_usage("Before destroying VLLM")
 
             del self.vllm_model
             gc.collect()
             torch.cuda.empty_cache()
             self.vllm_model = None
 
-        self.log_gpu_usage("After destroying VLLM.")
+            torch.cuda.reset_peak_memory_stats()
+            torch.cuda.synchronize()
+
+            torch.cuda.device(0)
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+
+
+            self.log_gpu_usage("After destroying VLLM.")
+
         end_time = time.time()
         compute__logger.info(f"VLLM model unloading time: {end_time - start_time:.2f} seconds.")
 
@@ -350,9 +367,9 @@ class HfAgent:
             return []
 
         end_time = time.time()
-        compute__logger.info(
-            f"Generation completed in {end_time - start_time:.2f} seconds using {self.eval_with}."
-        )
+        # compute__logger.info(
+        #     f"Generation completed in {end_time - start_time:.2f} seconds using {self.eval_with}."
+        # )
 
         return responses
 
