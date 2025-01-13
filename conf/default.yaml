@@ -60,12 +60,12 @@ training:
   llama:
     adapters:
       ad_alice:
-        train_func: train_ppo_main
+        train_func: train_reinforce_main
         train_func_args: {}
 
 
       ad_bob:
-        train_func: train_ppo_main
+        train_func: train_reinforce_main
         train_func_args: {}
 
 
@@ -96,7 +96,7 @@ models:
       generation_args:
         max_new_tokens: 200
         do_sample: True
-        temperature: 1.
+        temperature: 1.0
         
         top_k: 0.0
         top_p: 1.0
