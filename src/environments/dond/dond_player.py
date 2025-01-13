@@ -6,6 +6,8 @@ from environments.dond.dond_game import DondGame
 import math
 from statistics import mean
 import numpy as np
+import re
+import json
 
 class DondPlayerHandler:
     def __init__(
@@ -145,9 +147,9 @@ class DondPlayerHandler:
             user_message += create_game_intro_prompt(state)
 
         if state["is_new_round"]:
-            self.new_round()
-            user_message += create_new_round_prompt(state)
-
+            if not( state["round_number"] == 0 and len(self.chat_history ) == 2): # temp fix of annoying bug
+                self.new_round()
+                user_message += create_new_round_prompt(state)
 
         user_message += create_play_prompt(state)
 
@@ -158,6 +160,8 @@ class DondPlayerHandler:
             "round_nb": state["round_number"],
         }
         self.add_to_chat_history(user_message)
+
+
 
     def process_response(self, response, state):
         """
@@ -176,93 +180,74 @@ class DondPlayerHandler:
         """
         errors = []
 
-        # Check for presence of <reason> tag if allow_reasoning is not None
+        # 1) Validate presence of <reason> tags (if reasoning is allowed)
         if self.allow_reasoning is not False:
             if "<reason>" not in response or "</reason>" not in response:
                 errors.append("Missing <reason>...</reason> tag.")
 
-        # Check if either <message> or <finalize> tag is present, but not both
+        # 2) Check if exactly one of <message>...</message> or <finalize>...</finalize> is present, 
+        #    and ensure finalization rules are followed
         has_message = "<message>" in response and "</message>" in response
         has_finalize = "<finalize>" in response and "</finalize>" in response
 
-        if (state["turn"] > state["max_turns"]-2) and not has_finalize:
+        if (state["turn"] > state["max_turns"] - 2) and not has_finalize:
             errors.append("You must finalize before the turn limit!")
-
         if has_message and has_finalize:
-            errors.append(
-                "Response contains both <message>...</message> and <finalize>...</finalize> tags. Only one is allowed."
-            )
+            errors.append("Response contains both <message> and <finalize>; only one is allowed.")
         elif not has_message and not has_finalize:
-            errors.append(
-                "Response must contain either <message>...</message> or <finalize>...</finalize> tag."
-            )
-
-        # Ensure the player finalizes if the other player has already finalized
+            errors.append("Response must contain either <message> or <finalize>.")
         if state["has_finalized"] and not has_finalize:
-            errors.append(
-                "The other player has made a finalization. You must finalize as well."
-            )
+            errors.append("The other player has finalized; you must finalize as well.")
 
-        # Process finalization content if present
+        # 3) Check for excessive content outside valid tags (<reason>, <message>, <finalize>)
+        total_length = len(response)
+        valid_tags = ["reason", "message", "finalize"]
+        total_tag_content_length = 0
+        for tag in valid_tags:
+            pattern = rf"<{tag}>.*?</{tag}>"
+            matches = re.findall(pattern, response, flags=re.S)
+            for match in matches:
+                total_tag_content_length += len(match)
+        outside_length = total_length - total_tag_content_length
+        if outside_length > 5:
+            errors.append("Excessive content outside of valid tags.")
+
+        # 4) Process finalization if present
         if has_finalize:
-            finalize_content = (
-                response.split("<finalize>")[1].split("</finalize>")[0].strip()
-            )
-
+            finalize_content = response.split("<finalize>", 1)[1].split("</finalize>", 1)[0].strip()
             try:
                 finalize_json = json.loads(finalize_content)
-                if not isinstance(finalize_json, dict): 
-                    errors.append("The content within <finalize>...</finalize> is not a valid dictionary.")
+                if not isinstance(finalize_json, dict):
+                    errors.append("The content within <finalize> is not a valid dictionary.")
                     i_take = None
                     other_player_gets = None
                 else:
                     i_take = finalize_json.get("i_take", {})
                     other_player_gets = finalize_json.get("other_player_gets", {})
-
-                # Validate that the keys "i_take" and "other_player_gets" exist and have correct formats
-                if not isinstance(i_take, dict) or not isinstance(
-                    other_player_gets, dict
-                ):
-                    errors.append(
-                        'The "i_take" and "other_player_gets" must be dictionaries.'
-                    )
-                elif not all(
-                    isinstance(i_take.get(item), int) for item in state["items"]
-                ) or not all(
-                    isinstance(other_player_gets.get(item), int)
-                    for item in state["items"]
-                ):
-                    errors.append(
-                        'Each item in "i_take" and "other_player_gets" must be integers for game items.'
-                    )
-
+                if not isinstance(i_take, dict) or not isinstance(other_player_gets, dict):
+                    errors.append('"i_take" and "other_player_gets" must be dictionaries.')
+                else:
+                    for item in state["items"]:
+                        if not isinstance(i_take.get(item), int):
+                            errors.append(f'Value of "{item}" in "i_take" must be an integer.')
+                        if not isinstance(other_player_gets.get(item), int):
+                            errors.append(f'Value of "{item}" in "other_player_gets" must be an integer.')
             except json.JSONDecodeError:
-                errors.append(
-                    "The content within <finalize>...</finalize> is not valid JSON."
-                )
+                errors.append("The content within <finalize> is not valid JSON.")
 
-        # If there are errors, return with error message
+        # 5) Return results: check for errors, otherwise return parsed content
         if errors:
             return True, "Errors: " + "; ".join(errors), False, None
 
-        # If it's a valid finalization, return the parsed finalization data
         if has_finalize:
-            return (
-                False,
-                "",
-                True,
-                {"i_take": i_take, "other_player_gets": other_player_gets},
-            )
+            return False, "", True, {"i_take": i_take, "other_player_gets": other_player_gets}
 
-        # Extract and return message content if present
         if has_message:
-            message_content = (
-                response.split("<message>")[1].split("</message>")[0].strip()
-            )
+            message_content = response.split("<message>", 1)[1].split("</message>", 1)[0].strip()
             return False, "", False, message_content
 
-        # If neither valid message nor finalization is found
         return True, "Unknown error: Invalid response format.", False, None
+
 
 
     def new_round(self):
@@ -438,6 +423,8 @@ def create_finalization_prompt(state):
     - The total number of items in 'i_take' and 'other_player_gets' should match the available quantities: {quantities}.
     - 0 points to each player if the division is not matching
     """
+
+    prompt = "The other player has finalized."
 
     if state.get("finalization_visibility", False) and other_player_finalization:
         prompt += (

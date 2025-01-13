@@ -50,11 +50,16 @@ def ppo_train(
 
     # Initialize the accelerators
     model_accelerator = Accelerator()
-    ref_model_accelerator = Accelerator()
     model, optimizer = model_accelerator.prepare(model, optimizer)
-    ref_model = ref_model_accelerator.prepare(ref_model)
 
+    # No need for two models on GPU for single epoch: reduces to reinforce with entropy loss
+    if nb_epochs > 1:
+        ref_model_accelerator = Accelerator()
+        ref_model = ref_model_accelerator.prepare(ref_model)
+    else:
+        ref_model = model
 
+    
     for epoch in range(nb_epochs):
         for i in range(0, len(contexts_list), mb_size):
             
