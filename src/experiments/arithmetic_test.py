@@ -4,7 +4,6 @@ import logging
 import re
 from statistics import mean
 from models.hf_agent import HfAgent  # Assuming the class is in the same folder
-from utils.plot_curves import plot_curves
 from omegaconf import OmegaConf
 import json
 import os

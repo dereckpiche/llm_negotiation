@@ -13,7 +13,6 @@ from environments.dond.dond_game import DondGame
 from models.dummy_hf_agent import DummyHfAgent
 from models.oai_agent import OaiAgent
 from utils.export_ppo_training_set import export_ppo_training_set
-from utils.plot_curves import plot_curves
 from utils.log_statistics import *
 from utils.parallel_shuffle import parallel_shuffle
 from utils.log_statistics import update_player_statistics, generate_player_stats_plots
@@ -114,8 +113,9 @@ def dond_run_train(cfg):
 
             generate_player_stats_plots(
                 global_stats_path=player_stats_file,
-                plot_folder=os.path.join(player_stats_folder, "mpl"),
-                tensorboard_log_dir=os.path.join(player_stats_folder, "tb"),
+                matplotlib_log_dir=os.path.join(player_stats_folder, "matplotlib"),
+                tensorboard_log_dir=os.path.join(player_stats_folder, "tensorboard"),
+                wandb_log_dir=os.path.join(player_stats_folder, "wandb"),
             )
 
         logging_end_time = time.time()
