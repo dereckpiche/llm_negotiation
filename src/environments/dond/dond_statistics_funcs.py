@@ -1,20 +1,20 @@
 import json
 import numpy as np
 
-def gather_dond_statistics(player_info, info):
+def gather_dond_statistics(player_info, info, stats_to_log):
     """
-    Gathers all statistics of a game for a single player and outputs them in JSONL format.
+    Gathers specified statistics of a game for a single player and outputs them in JSONL format.
 
     Args:
         player_info (dict): A dictionary containing player information.
         info (dict): A dictionary containing game information.
+        stats_to_log (list): A list of statistics names to log.
 
     Returns:
-        str: A JSONL string containing the game statistics.
+        str: A JSONL string containing the specified game statistics.
     """
     statistics = {}
     player_name = player_info['player_name']
-
 
     for i, state in enumerate(info['round_player_roles']):
         player_role = state.get(player_name)
@@ -24,20 +24,42 @@ def gather_dond_statistics(player_info, info):
 
         other_role = next(role for role in state.values() if role != player_role)
 
-        round_info = {
-            "agreement_reached": info['round_agreements_reached'][i],
-            "agreement_percentage": 100 if info['round_agreements_reached'][i] else 0,
-            "self_points": info['round_points'][i][player_role],
-            "other_points": info['round_points'][i][other_role],
-            "points_difference": info['round_points'][i][player_role] - info['round_points'][i][other_role],
-            "imbalance": calculate_imbalance(info['round_points'][i], player_role, other_role),
-            "items_given_to_self": calculate_items_given_to_self(info['round_finalizations'][i][player_role]),
-            "self_points_on_agreement": info['round_points'][i][player_role] if info['round_agreements_reached'][i] else None,
-            "other_points_on_agreement": info['round_points'][i][other_role] if info['round_agreements_reached'][i] else None,
-            "points_diff_on_agreement": (info['round_points'][i][player_role] - info['round_points'][i][other_role]) if info['round_agreements_reached'][i] else None,
-            "quantities": info['round_quantities'][i],
-            "values": info['round_values'][i][player_role],
-        }
+        round_info = {}
+
+
+        if "agreement_percentage" in stats_to_log:
+            round_info["agreement_percentage"] = 100 if info['round_agreements_reached'][i] else 0
+
+        if "points" in stats_to_log:
+            round_info["points"] = info['round_points'][i][player_role]
+
+        if "other_points" in stats_to_log:
+            round_info["other_points"] = info['round_points'][i][other_role]
+
+        if "points_difference" in stats_to_log:
+            round_info["points_difference"] = info['round_points'][i][player_role] - info['round_points'][i][other_role]
+
+        if "imbalance" in stats_to_log:
+            round_info["imbalance"] = calculate_imbalance(info['round_points'][i], player_role, other_role)
+
+        if "items_given_to_self" in stats_to_log:
+            round_info["items_given_to_self"] = calculate_items_given_to_self(info['round_finalizations'][i][player_role])
+
+        if "points_on_agreement" in stats_to_log:
+            round_info["points_on_agreement"] = info['round_points'][i][player_role] if info['round_agreements_reached'][i] else None
+
+        if "other_points_on_agreement" in stats_to_log:
+            round_info["other_points_on_agreement"] = info['round_points'][i][other_role] if info['round_agreements_reached'][i] else None
+
+        if "points_diff_on_agreement" in stats_to_log:
+            round_info["points_diff_on_agreement"] = (info['round_points'][i][player_role] - info['round_points'][i][other_role]) if info['round_agreements_reached'][i] else None
+
+        if "quantities" in stats_to_log:
+            round_info["quantities"] = info['round_quantities'][i]
+
+        if "values" in stats_to_log:
+            round_info["values"] = info['round_values'][i][player_role]
+
         statistics[f"round_{i}"] = round_info
 
     return statistics

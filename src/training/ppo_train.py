@@ -19,7 +19,7 @@ def ppo_train(
         learning_rate=1e-5,
         clip_param=0.2, 
         vf_coef=0.0,
-        entropy_coef=0.05):
+        entropy_coef=0.0):
     """
     Perform a single PPO training step.
 
@@ -61,6 +61,7 @@ def ppo_train(
 
     
     for epoch in range(nb_epochs):
+        
         for i in range(0, len(contexts_list), mb_size):
             
             context_batch = contexts_list[i:i+mb_size]

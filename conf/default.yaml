@@ -6,7 +6,7 @@ hydra:
 experiment:
   method: dond_run_train
   description: "Easy. They should be learning."
-  nb_epochs: 128
+  nb_epochs: 500
   nb_matches_per_iteration: 32
   reinit_matches_each_it: true
 
@@ -20,12 +20,18 @@ matches:
     log_func: independant_players_logging
     log_func_args: 
       metrics_func: gather_dond_statistics
-      metrics_func_args: {} 
+      metrics_func_args: 
+        stats_to_log: [
+        "agreement_percentage", 
+        "points", 
+        "points_on_agreement",
+        "items_given_to_self"
+        ]
       training_data_func: set_discounted_returns
       training_data_func_args: {}
 
   dond_game_args:
-    rounds_per_game: 1
+    rounds_per_game: 10
     max_turns: 1
     mode: basic
     random_setup_func: fixed_manual
@@ -57,6 +63,7 @@ matches:
 
 
 training:
+  keep_error_messages: False
   llama:
     adapters:
       ad_alice:
@@ -76,6 +83,7 @@ models:
     init_args:
       name: 'llama'
       adapter_names: ['ad_alice', 'ad_bob']
+      max_model_length: 5000
       include_value_head: false
       device: "cuda"
       pretrained_args: 
@@ -94,13 +102,12 @@ models:
         target_modules: "all-linear"
 
       generation_args:
-        max_new_tokens: 200
+        max_new_tokens: 100
         do_sample: True
         temperature: 1.0
-        
         top_k: 0.0
         top_p: 1.0
-        repetition_penalty: 1.0
+        repetition_penalty: 0.0
       keep_vllm_during_training: False
       keep_hf_during_training: True
       keep_hf_during_eval: False

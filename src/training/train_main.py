@@ -1,4 +1,3 @@
-from utils.get_conversations import get_conversations
 from training.rl_convs_processing import paths_to_rl_data
 from training.reinforce_training import reinforce_train
 from trl import (

@@ -11,6 +11,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 from typing import Dict, Union, List
+import wandb
+from comet_ml import Experiment
+
+experiment = Experiment(
+    api_key="IvI06nn59lLap4y0JRrwlTViy",
+    project_name="llm_negotiation",
+    log_env_gpu=True,
+    log_env_cpu=True
+)
 
 def append_statree(tree1: Dict, tree2: Dict):
     """
@@ -91,6 +100,8 @@ def tb_statree(tree: Dict, writer, path: str = ""):
                 if v is not None:
                     writer.add_scalar(new_path, v, i)
 
+
+
 def update_player_statistics(input_path, output_file):
     """
     Computes statistics for the current iteration and updates the global statistics file.
@@ -123,25 +134,33 @@ def update_player_statistics(input_path, output_file):
         json.dump(global_stats, f, indent=4)
 
     
-def generate_player_stats_plots(global_stats_path, plot_folder, tensorboard_log_dir):
+
+def generate_player_stats_plots(global_stats_path, matplotlib_log_dir, tensorboard_log_dir, wandb_log_dir):
     """
-    Visualizes the global statistics by generating plots and logging to TensorBoard.
+    Visualizes the global statistics by logging them to TensorBoard and Weights & Biases.
 
     Args:
         global_stats_path (str): Path to the global statistics JSON file.
-        plot_folder (str): Folder to save the plots.
         tensorboard_log_dir (str): Directory to save TensorBoard logs.
+        wandb_log_dir (str): Directory for Weights & Biases run metadata.
     """
+    os.makedirs(matplotlib_log_dir, exist_ok=True)
+    os.makedirs(tensorboard_log_dir, exist_ok=True)
+    os.makedirs(wandb_log_dir, exist_ok=True)
+
+
+
     with open(global_stats_path, 'r') as f:
         global_stats = json.load(f)
 
-    # Plot statistics and save to folder
-    plot_statree(global_stats, plot_folder)
+    plot_statree(global_stats, folder=matplotlib_log_dir)
 
     # Log statistics to TensorBoard
     writer = SummaryWriter(tensorboard_log_dir)
     tb_statree(global_stats, writer)
     writer.close()
+
+    #wb_statree(global_stats)
 
 def plot_cumulative_points(json_path):
     """

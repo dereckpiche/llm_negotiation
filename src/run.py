@@ -1,9 +1,5 @@
-import json
-import numpy as np
 import hydra
-from datetime import datetime
 from hydra.core.hydra_config import HydraConfig
-from omegaconf import OmegaConf
 import logging
 import os
 import sys
@@ -13,11 +9,13 @@ from experiments.arithmetic_test import arithmetic_test
 
 @hydra.main(config_path="../conf", config_name="default")
 def main(cfg):
+
+
     # Get Hydra's runtime directory
     hydra_run_dir = HydraConfig.get().run.dir
 
     # Define specific loggers to configure
-    specific_loggers = [
+    specific_loggers =[ 
         "model_logger",
         "compute__logger",
         "memory_logger",

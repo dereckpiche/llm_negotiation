@@ -65,6 +65,7 @@ class HfAgent:
         model_name: str = "meta-llama/Meta-Llama-3.1-8B-Instruct",
         device: str = "cuda",
         pretrained_args=None,
+        max_model_length=6000,
         bits_and_bytes_args=None,
         lora_args=None,
         adapter_names=None,
@@ -87,6 +88,7 @@ class HfAgent:
         self.model_name = model_name
         self.include_value_head = include_value_head
         self.pretrained_args = pretrained_args
+        self.max_model_length = max_model_length
         self.tokenizer = AutoTokenizer.from_pretrained(
             pretrained_args["pretrained_model_name_or_path"]
         )
@@ -191,7 +193,7 @@ class HfAgent:
                 start_time = time.time()
                 gc.collect()
                 torch.cuda.empty_cache()
-                self.vllm_model = LLM(self.model_name, enable_lora=True, max_lora_rank=256)
+                self.vllm_model = LLM(self.model_name, enable_lora=True, max_lora_rank=256, max_model_len=self.max_model_length)
                 end_time = time.time()
                 compute__logger.info(f"VLLM model loading time: {end_time - start_time:.2f} seconds.")
                 self.log_gpu_usage(f"After loading VLLM model with {adapter_name}.")
