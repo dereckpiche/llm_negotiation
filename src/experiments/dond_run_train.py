@@ -12,11 +12,9 @@ from environments.dond.dond_player import DondPlayerHandler
 from environments.dond.dond_game import DondGame
 from models.dummy_hf_agent import DummyHfAgent
 from models.oai_agent import OaiAgent
-from utils.export_ppo_training_set import export_ppo_training_set
-from utils.plot_curves import plot_curves
-from utils.log_statistics import *
+from src.utils.main_stats_utils import *
 from utils.parallel_shuffle import parallel_shuffle
-from utils.log_statistics import update_player_statistics, generate_player_stats_plots
+from src.utils.main_stats_utils import update_player_statistics, generate_player_stats_plots
 from training.train_main import *
 from generation.run_games import run_matches
 

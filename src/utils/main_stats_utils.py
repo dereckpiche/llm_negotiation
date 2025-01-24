@@ -143,47 +143,5 @@ def generate_player_stats_plots(global_stats_path, plot_folder, tensorboard_log_
     tb_statree(global_stats, writer)
     writer.close()
 
-def plot_cumulative_points(json_path):
-    """
-    Generates a plot of cumulative points for Alice and Bob over iterations 
-    from a JSON file and saves it in the same directory as the input JSON.
 
-    Args:
-        json_path (str): Path to the JSON file containing the statistics.
-    """
-    try:
-        with open(json_path, 'r') as file:
-            statistics = json.load(file)
-    except FileNotFoundError:
-        print(f"Error: File not found at {json_path}. Please check the file path and try again.")
-        return
 
-    nb_epochs = len(statistics["round_0"]["self_points"])
-    alice_cumu_points = np.zeros(nb_epochs)
-    bob_cumu_points = np.zeros(nb_epochs)
-
-    for round_key in statistics.keys():
-        alice_cumu_points += np.array(statistics[round_key]["self_points"])
-        bob_cumu_points += np.array(statistics[round_key]["other_points"])
-
-    iterations = np.arange(1, nb_epochs + 1)
-    output_dir = os.path.dirname(json_path)
-    plot_filename = "average_cumulative_points_plot.png"
-    output_path = os.path.join(output_dir, plot_filename)
-
-    os.makedirs(output_dir, exist_ok=True)
-
-    plt.figure(figsize=(10, 6))
-    plt.plot(iterations, alice_cumu_points, label="Alice's Avg Cumulative Points")
-    plt.plot(iterations, bob_cumu_points, label="Bob's Avg Cumulative Points")
-    plt.xlabel("Iterations")
-    plt.ylabel("Average Cumulative Points")
-    plt.title("Average Cumulative Points Over Iterations")
-    plt.legend()
-    plt.grid()
-    plt.savefig(output_path)
-
-    print(f"Plot saved successfully at: {output_path}")
-
-if __name__ == "__main__": 
-    plot_cumulative_points("/home/mila/d/dereck.piche/llm_negotiation/important_outputs/2025-01-12 naive RL with 12 rounds/statistics/alice/alice_stats.jsonl")
