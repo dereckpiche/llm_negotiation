@@ -16,6 +16,7 @@ class DondPlayerHandler:
         allow_reasoning,
         max_retries,
         mod_adpt_id,
+        player_bias=""
     ):
         """
         Initializes the DondPlayerHandler.
@@ -31,6 +32,7 @@ class DondPlayerHandler:
         """
         self.allow_reasoning = allow_reasoning
         self.player_name = player_name
+        self.player_bias = player_bias
         self.max_retries = max_retries
         self.mod_adpt_id = mod_adpt_id
         self.game_id = None  # ID of player in game
@@ -145,6 +147,8 @@ class DondPlayerHandler:
         
         if state["is_new_game"]:
             user_message += create_game_intro_prompt(state)
+            user_message += "/n"
+            user_message += self.player_bias 
 
         if state["is_new_round"]:
             if not( state["round_number"] == 0 and len(self.chat_history ) == 2): # temp fix of annoying bug
@@ -247,7 +251,6 @@ class DondPlayerHandler:
             return False, "", False, message_content
 
         return True, "Unknown error: Invalid response format.", False, None
-
 
 
     def new_round(self):
