@@ -14,12 +14,12 @@ from typing import Dict, Union, List
 import wandb
 from comet_ml import Experiment
 
-experiment = Experiment(
-    api_key="IvI06nn59lLap4y0JRrwlTViy",
-    project_name="llm_negotiation",
-    log_env_gpu=True,
-    log_env_cpu=True
-)
+# experiment = Experiment(
+#     api_key="IvI06nn59lLap4y0JRrwlTViy",
+#     project_name="llm_negotiation",
+#     log_env_gpu=True,
+#     log_env_cpu=True
+# )
 
 def append_statree(tree1: Dict, tree2: Dict):
     """
@@ -148,8 +148,6 @@ def generate_player_stats_plots(global_stats_path, matplotlib_log_dir, tensorboa
     os.makedirs(tensorboard_log_dir, exist_ok=True)
     os.makedirs(wandb_log_dir, exist_ok=True)
 
-
-
     with open(global_stats_path, 'r') as f:
         global_stats = json.load(f)
 
@@ -160,7 +158,6 @@ def generate_player_stats_plots(global_stats_path, matplotlib_log_dir, tensorboa
     tb_statree(global_stats, writer)
     writer.close()
 
-    #wb_statree(global_stats)
 
 def plot_cumulative_points(json_path):
     """

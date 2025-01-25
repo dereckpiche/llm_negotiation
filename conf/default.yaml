@@ -6,7 +6,7 @@ hydra:
 experiment:
   method: dond_run_train
   description: "Easy. They should be learning."
-  nb_epochs: 500
+  nb_epochs: 10
   nb_matches_per_iteration: 32
   reinit_matches_each_it: true
 
@@ -31,7 +31,9 @@ matches:
       training_data_func_args: {}
 
   dond_game_args:
-    rounds_per_game: 10
+    nb_rounds_func: geometric_round_number
+    nb_rounds_kwargs:
+        p: 0.6
     max_turns: 1
     mode: basic
     random_setup_func: fixed_manual
@@ -79,7 +81,7 @@ training:
 models: 
 
   llama:
-    class: hf
+    class: dummy_hf
     init_args:
       name: 'llama'
       adapter_names: ['ad_alice', 'ad_bob']
@@ -95,7 +97,7 @@ models:
         #load_in_8bit: False
         #load_in_4bit: true
       lora_args:
-        task_type: TaskType.CAUSAL_LM
+        task_type: CAUSAL_LM
         r: 64
         lora_alpha: 32
         lora_dropout: 0.0

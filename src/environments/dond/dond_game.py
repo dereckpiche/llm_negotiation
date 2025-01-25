@@ -4,6 +4,7 @@ import random
 import os
 from collections import deque
 import copy
+import random
 
 class DondGame:
     def __init__(
@@ -11,7 +12,8 @@ class DondGame:
         players,
         mode="coop",
         max_turns=None,
-        rounds_per_game=1,
+        nb_rounds_func="fixed_number",
+        nb_rounds_kwargs={"rounds": 1},
         random_setup_func=None,
         random_setup_kwargs=None,
         role_assignator_func=None,
@@ -29,7 +31,8 @@ class DondGame:
             player_order (str): The order of players, either 'deterministic' or 'stochastic'.
             setup (str): The setup type, either 'random_read' or 'manual'.
             setups_file (str): The file containing game setups.
-            rounds_per_game (int): The number of rounds per game.
+            nb_rounds_func (str): The function to determine the number of rounds per game.
+            nb_rounds_kwargs (dict): The arguments for the rounds per game function.
             items (list): The list of items in the game.
             quantities (list): The quantities of items.
             finalization_visibility (bool): Visibility of finalization.
@@ -43,7 +46,8 @@ class DondGame:
         self.random_setup_func = globals()[random_setup_func]
         self.random_setup_kwargs = random_setup_kwargs
         self.finalization_visibility = finalization_visibility
-        self.rounds_per_game = rounds_per_game
+        self.nb_rounds_func = globals()[nb_rounds_func]
+        self.nb_rounds_kwargs = nb_rounds_kwargs
         self.role_assignator_func = globals()[role_assignator_func]
         self.role_assignator_func_kwargs = role_assignator_func_kwargs
         self.other_values_visibility = other_values_visibility
@@ -105,7 +109,7 @@ class DondGame:
         self.role_deque.rotate(-1)
         if round_over: 
             self.new_round()
-        if self.round_nb > self.rounds_per_game-1:
+        if self.round_nb > self.nb_rounds-1:
             self.game_over = True
 
         
@@ -187,7 +191,7 @@ class DondGame:
             "max_turns": self.max_turns,
             "current_player": self.get_current_player(),
             "round_number": self.round_nb,
-            "nb_rounds": self.rounds_per_game,
+            "nb_rounds": self.nb_rounds,
             "quantities": self.quantities,
             "has_finalized": self.has_finalized,
             "last_message": self.last_message,
@@ -280,6 +284,7 @@ class DondGame:
             self.round_finalizations = [] 
             self.round_agreements_reached = [] 
             self.round_points = []
+            self.nb_rounds = self.nb_rounds_func(**self.nb_rounds_kwargs)
             self.set_new_setup()
             self.assign_roles()
 
@@ -390,3 +395,28 @@ def fixed_role_assignator(state, **kwargs):
     player_to_role = {players[0]: roles[0], players[1]: roles[1]}
 
     return player_to_role
+
+def fixed_number(rounds=1):
+    """
+    Returns a fixed number of rounds.
+
+    Args:
+        rounds (int): The fixed number of rounds to return.
+
+    Returns:
+        int: The fixed number of rounds.
+    """
+    return rounds
+
+def geometric_round_number(p=0.6, min=2, max=20):
+    n = min
+    while n < max:
+        if random.random() < p: n+=1
+        else: break
+    return n
+
+        
+if __name__ == "__main__":
+    for i in range(10000):
+        nb = geometric_round_number(p=0.7)
+        if nb == 20: print("over")
