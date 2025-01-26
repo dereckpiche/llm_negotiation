@@ -78,6 +78,7 @@ class HfAgent:
         eval_with="vllm",
         train_with="hf",
         output_directory=None,
+        random_seed: int = 42,
     ) -> None:
         """
         Initializes the HfAgent.
@@ -119,6 +120,11 @@ class HfAgent:
         self.adapters_active = False
         self.vllm_id = 0
         self.hf_id = 0
+
+        # set random seeds
+        self.random_seed = random_seed
+        torch.manual_seed(self.random_seed)
+        np.random.seed(self.random_seed)
 
     def prepare_adapter_train(self, adapter_name: str):
         """

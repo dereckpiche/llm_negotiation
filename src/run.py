@@ -10,7 +10,6 @@ from experiments.arithmetic_test import arithmetic_test
 @hydra.main(config_path="../conf", config_name="default")
 def main(cfg):
 
-
     # Get Hydra's runtime directory
     hydra_run_dir = HydraConfig.get().run.dir
 

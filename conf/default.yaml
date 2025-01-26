@@ -6,7 +6,7 @@ hydra:
 experiment:
   method: dond_run_train
   description: "Easy. They should be learning."
-  nb_epochs: 500
+  nb_epochs: 5
   nb_matches_per_iteration: 32
   reinit_matches_each_it: true
 
@@ -31,7 +31,7 @@ matches:
       training_data_func_args: {}
 
   dond_game_args:
-    rounds_per_game: 10
+    rounds_per_game: 3
     max_turns: 1
     mode: basic
     random_setup_func: fixed_manual
