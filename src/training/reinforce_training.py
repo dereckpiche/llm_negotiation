@@ -5,6 +5,8 @@ import torch.nn.functional as F
 from torch.nn.utils.rnn import pad_sequence
 import os
 import random
+import matplotlib.pyplot as plt
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 def reinforce_train( 
         model, 
@@ -155,4 +157,4 @@ def output_train_data_debug(path, contexts_list, returns_list, output_masks_list
             for token, ret, msk in triplets:
                 f.write(f"{token}\t{ret}\t{msk}\n")
         
-        
+
