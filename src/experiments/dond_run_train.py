@@ -50,7 +50,7 @@ def create_blank_match(cfg):
     """
     players = {}
     for player_name in cfg["matches"]["players"].keys():
-        players[player_name] = DondPlayerHandler(player_name, 
+        players[player_name] = DondPlayerHandler(player_name,
                                                  **cfg["matches"]["players"][player_name]["dond_player_args"])
     blank_match = {
         "players": players,
@@ -124,25 +124,26 @@ def dond_run_train(cfg):
         training_start_time = time.time()
 
         for model_name, model in models.items():
-            for adapter_name in model.adapters.keys():
-                mod_adpt_id = f"{model_name}/{adapter_name}"
-                model.prepare_adapter_train(adapter_name)
+            if hasattr(model, 'adapters'):
+                for adapter_name in model.adapters.keys():
+                    mod_adpt_id = f"{model_name}/{adapter_name}"
+                    model.prepare_adapter_train(adapter_name)
 
-                data_paths = []
-                for player in players.values():
-                    if player.mod_adpt_id == mod_adpt_id:
-                        player_export_path = os.path.join(it_folder, player.player_name, "training")
-                        data_paths.append(player_export_path)
+                    data_paths = []
+                    for player in players.values():
+                        if player.mod_adpt_id == mod_adpt_id:
+                            player_export_path = os.path.join(it_folder, player.player_name, "training")
+                            data_paths.append(player_export_path)
 
-                if data_paths:
-                    train_func_args = cfg["training"][model_name]["adapters"][adapter_name]["train_func_args"]
-                    train_main(
-                        hf_model=model,
-                        paths=data_paths,
-                        train_func=cfg["training"][model_name]["adapters"][adapter_name]["train_func"],
-                        train_func_args=train_func_args,
-                        output_path=it_folder
-                    )
+                    if data_paths:
+                        train_func_args = cfg["training"][model_name]["adapters"][adapter_name]["train_func_args"]
+                        train_main(
+                            hf_model=model,
+                            paths=data_paths,
+                            train_func=cfg["training"][model_name]["adapters"][adapter_name]["train_func"],
+                            train_func_args=train_func_args,
+                            output_path=it_folder
+                        )
 
         training_end_time = time.time()
 

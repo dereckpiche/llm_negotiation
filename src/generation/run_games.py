@@ -15,11 +15,11 @@ from environments.dond.dond_log_funcs import *
 
 
 def run_matches(
-              matches, 
-              models, 
+              matches,
+              models,
               log_func,
               log_func_args,
-              export_path,  
+              export_path,
               nb_parallel_matches):
     """
     Runs multiple games in parallel and logs the results.
@@ -42,7 +42,7 @@ def run_matches(
     parallel_matches = [all_matches.pop(0) for _ in range(min(nb_parallel_matches, len(all_matches)))]
 
     # Get all the adapter names of the models
-    mod_adpt_ids = [] # get unique adapter names from players 
+    mod_adpt_ids = [] # get unique adapter names from players
     for match in parallel_matches:
         for player in match["players"].values():
             if player.mod_adpt_id not in mod_adpt_ids:
@@ -67,17 +67,18 @@ def run_matches(
             adapter_name = mod_adpt_id.split("/")[1]
             model = models[model_name]
             if prompt_batches[mod_adpt_id]!=[]:
-                model.prepare_adapter_eval(adapter_name)
+                if hasattr(model, 'adapters'):
+                    model.prepare_adapter_eval(adapter_name)
                 response_batches[mod_adpt_id] = model.prompt(prompt_batches[mod_adpt_id])
             prompt_batches[mod_adpt_id] = []
 
         # Play moves for each player by using the model outputs
-        for match in parallel_matches[:]:  
+        for match in parallel_matches[:]:
 
             match["game_state"] = match["game"].get_state()
             current_player = match["players"][match["game"].get_current_player()]
             response = response_batches[current_player.mod_adpt_id].pop(0)
-            
+
             action, player_state, send_to_game, player_info = current_player.step(
                 input=(match["game_state"], match["game"].get_info(), response)
             )
@@ -88,7 +89,7 @@ def run_matches(
 
                 if done:
 
-                    # Log game 
+                    # Log game
                     player_infos = []
                     for player in match["players"].values():
                         player_infos.append(player.get_info())
