@@ -327,9 +327,9 @@ def create_game_intro_prompt(state):
     Welcome to the splitting game. 
     You will engage in {nb_rounds} rounds of splitting, where two players aim to divide items from various categories. 
 
-    Each player may assign different values to these categories, and your primary objective is to maximize your personal cumulative points.
+    Each player may assign different values to these categories, and your objective is to maximize your personal cumulative points.
 
-    Points are determined at the end of each round by multiplying the quantity of items you acquire by their respective values. Your cumulative points across all rounds will determine your success. Note that the other player will also strive to maximize their points, which may not align with your interests.
+    Points are determined at the end of each round by multiplying the quantity of items you acquire by their respective values. Your cumulative points across all rounds will determine your success. 
 
     Importantly, in the event that no agreement is reached within a round, both players will receive zero points.
 

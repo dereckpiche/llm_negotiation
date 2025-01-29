@@ -28,10 +28,10 @@ matches:
         "items_given_to_self"
         ]
       training_data_func: set_discounted_returns
-      training_data_func_args: {}
-
+      training_data_func_args: 
+        discount_factor: 0.9
   dond_game_args:
-    rounds_per_game: 3
+    rounds_per_game: 16
     max_turns: 1
     mode: basic
     random_setup_func: fixed_manual
@@ -83,7 +83,7 @@ models:
     init_args:
       name: 'llama'
       adapter_names: ['ad_alice', 'ad_bob']
-      max_model_length: 5000
+      max_model_length: 3500
       include_value_head: false
       device: "cuda"
       pretrained_args: 
@@ -114,6 +114,7 @@ models:
       keep_vllm_during_eval: True
       eval_with: "vllm"
       train_with: "hf"
+      random_seed: 50
 
   
 

@@ -7,6 +7,11 @@ import os
 import random
 import matplotlib.pyplot as plt
 from transformers import AutoTokenizer, AutoModelForCausalLM
+import logging
+
+compute__logger = logging.getLogger("compute__logger")
+memory_logger = logging.getLogger("memory_logger")
+model_logger = logging.getLogger("model_logger")
 
 def reinforce_train( 
         model, 
@@ -58,6 +63,11 @@ def reinforce_train(
     model_accelerator = Accelerator()
     model, optimizer = model_accelerator.prepare(model, optimizer)
 
+    # Calculate the maximum context length in terms of number of tokens
+    max_context_length = max(context.size(0) for context in contexts_list)
+    model_logger.info(f"Max context length (in tokens): {max_context_length}")
+
+    max_memory_usage = 0  # Initialize max memory usage
 
     for epoch in range(nb_epochs):
         for i in range(0, len(contexts_list), mb_size):
@@ -102,6 +112,11 @@ def reinforce_train(
             # Accumulate gradients
             model_accelerator.backward(loss)
 
+            # Update max GPU memory usage
+            current_memory_usage = torch.cuda.max_memory_allocated(model_accelerator.device)
+            if current_memory_usage > max_memory_usage:
+                max_memory_usage = current_memory_usage
+
             # Determine when to perform optimizer step
             if mb_per_step == -1:
                 # Perform optimizer step at the end of the epoch
@@ -113,6 +128,9 @@ def reinforce_train(
                 if (i // mb_size + 1) % mb_per_step == 0:
                     optimizer.step()
                     optimizer.zero_grad()
+
+    # Log max GPU memory usage after training
+    memory_logger.info(f"Max GPU memory usage during training: {max_memory_usage / (1024 ** 2):.2f} MB")
 
     return loss.item()
 
