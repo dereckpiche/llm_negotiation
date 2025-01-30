@@ -13,9 +13,10 @@ class DondPlayerHandler:
     def __init__(
         self,
         player_name,
+        prompts,
         allow_reasoning,
         max_retries,
-        mod_adpt_id,
+        mod_adpt_id
     ):
         """
         Initializes the DondPlayerHandler.
@@ -31,6 +32,7 @@ class DondPlayerHandler:
         """
         self.allow_reasoning = allow_reasoning
         self.player_name = player_name
+        self.prompts = prompts
         self.max_retries = max_retries
         self.mod_adpt_id = mod_adpt_id
         self.game_id = None  # ID of player in game
@@ -93,7 +95,7 @@ class DondPlayerHandler:
         }
 
         self.add_to_chat_history(model_response)
-        
+
         action = (is_finalization, processed_response)
         player_state = None
         player_info = {"player_name": self.player_name, "chat_history": self.chat_history}
@@ -101,7 +103,7 @@ class DondPlayerHandler:
         return action, player_state, send_to_game, player_info
     def get_info(self):
         return {"player_name": self.player_name, "chat_history": self.chat_history}
-    
+
     # Optional render method
     def render(self, mode='human'):
         """
@@ -142,16 +144,16 @@ class DondPlayerHandler:
             self.add_to_chat_history(usr_prompt)
             self.error_message = None
             return
-        
+
         if state["is_new_game"]:
-            user_message += create_game_intro_prompt(state)
+            user_message += self.prompts["game_intro_prompt"]
 
         if state["is_new_round"]:
             if not( state["round_number"] == 0 and len(self.chat_history ) == 2): # temp fix of annoying bug
                 self.new_round()
                 user_message += create_new_round_prompt(state)
 
-        user_message += create_play_prompt(state)
+        user_message += create_play_prompt(state, self.prompts["finalization"])
 
         user_message = {
             "role": "user",
@@ -185,7 +187,7 @@ class DondPlayerHandler:
             if "<reason>" not in response or "</reason>" not in response:
                 errors.append("Missing <reason>...</reason> tag.")
 
-        # 2) Check if exactly one of <message>...</message> or <finalize>...</finalize> is present, 
+        # 2) Check if exactly one of <message>...</message> or <finalize>...</finalize> is present,
         #    and ensure finalization rules are followed
         has_message = "<message>" in response and "</message>" in response
         has_finalize = "<finalize>" in response and "</finalize>" in response
@@ -291,7 +293,7 @@ class DondPlayerHandler:
             json.dump(self.conversation_history, f)
 
 
-def create_play_prompt(state):
+def create_play_prompt(state, finalization_prompt):
     """
     Creates a play prompt based on the current game state.
 
@@ -302,103 +304,14 @@ def create_play_prompt(state):
         str: The constructed play prompt or finalization prompt.
     """
     if state["has_finalized"]:
-        return create_finalization_prompt(state)
+        return create_finalization_prompt(state, finalization_prompt)
     elif state["last_message"] is None:
         return "You are the first to play:\n"
     else:
-        return f"The other player said: <QUOTE> {state['last_message']} </QUOTE>\n" 
+        return f"The other player said: <QUOTE> {state['last_message']} </QUOTE>\n"
 
 
-def create_game_intro_prompt(state):
-    """
-    Constructs a game introduction prompt.
-
-    Args:
-        state (dict): The current state of the game.
-
-    Returns:
-        str: The formatted game introduction prompt.
-    """
-    nb_rounds = state.get("nb_rounds", 1)
-    max_turns = state.get("max_turns", 1)
-    game_mode_specificities = "Specific rules or conditions for the game mode."
-
-    common_intro = f"""
-    Welcome to the splitting game. 
-    You will engage in {nb_rounds} rounds of splitting, where two players aim to divide items from various categories. 
-
-    Each player may assign different values to these categories, and your primary objective is to maximize your personal cumulative points.
-
-    Points are determined at the end of each round by multiplying the quantity of items you acquire by their respective values. Your cumulative points across all rounds will determine your success. Note that the other player will also strive to maximize their points, which may not align with your interests.
-
-    Importantly, in the event that no agreement is reached within a round, both players will receive zero points.
-
-    {game_mode_specificities}
-    """
-
-    if max_turns == 1:
-        # Special prompt for when max_turns is 1, without mentioning the turn limit
-        prompt = f"""
-        {common_intro}
-
-        Game Mechanics:
-        
-        You are required to submit a final division of items. This division should clearly specify the quantity of each item category you wish to claim, with the remainder allocated to the other player. The division must be in a JSON-parsable format.
-        
-        Matching Divisions: If the combined division does not correspond to the total number of available items, both players will score zero points.
-
-        Formatting:
-        
-        Final division: <finalize>{{ "i_take": {{"item_category1": x, "item_category2": y}}, "other_player_gets": {{"item_category1": y, "item_category2": x}} }}</finalize>, where 'i_take' represents your share and 'other_player_gets' represents the other player's share of the item categories.
-
-        Example:
-        
-        1. You submit:
-        <finalize>{{ "i_take": {{"item_category1": x, "item_category2": y}}, "other_player_gets": {{"item_category1": y, "item_category2": x}} }}</finalize>
-
-        2. The other player submits:
-        <finalize>{{ "i_take": {{"item_category1": y, "item_category2": x}}, "other_player_gets": {{"item_category1": x, "item_category2": y}} }}</finalize>
-        """
-    else:
-        # Standard prompt for when max_turns is greater than 1
-        prompt = f"""
-        {common_intro}
-
-        Game Mechanics:
-        
-        Turn-taking: You and the other player will alternate turns, exchanging one message at a time. When you are ready, you may finalize the negotiation by submitting your division. Once a player decides to finalize, the other player must also submit their final division, concluding the game.
-        
-        Action: At the start of your turn, you will be prompted to take an action, either by messaging the other player or finalizing the negotiation.
-        
-        Final Division: The final division should specify the quantity of each item category you wish to claim, with the remainder allocated to the other player. The division must be in a JSON-parsable format.
-        
-        Matching Divisions: If the combined division does not correspond to the total number of available items, both players will score zero points.
-        
-        There is a limit of 40 characters per message.
-
-        Formatting:
-        
-        Messages: <message> [Your message here.] </message>
-        
-        Final division: <finalize>{{ "i_take": {{"item_category1": 0, "item_category2": 0}}, "other_player_gets": {{"item_category1": 0, "item_category2": 0}} }}</finalize>, where 'i_take' represents your share and 'other_player_gets' represents the other player's share of the item categories.
-
-        Only one action is permitted per turn.
-
-        Examples of turn progression:
-        
-        1. [Initial state is provided]
-        <message> [Your message to the other player here.] </message>
-
-        2. [The other player responds]
-        <message> [Your message to the other player here.] </message>
-
-        3. [The other player agrees]
-        <finalize>{{ "i_take": {{"item_category1": 0, "item_category2": 0}}, "other_player_gets": {{"item_category1": 0, "item_category2": 0}} }}</finalize>
-        """
-    return prompt.strip()
-
-
-def create_finalization_prompt(state):
+def create_finalization_prompt(state, prompt):
     """
     Creates a finalization prompt for the Deal-or-No-Deal game.
 
@@ -408,23 +321,7 @@ def create_finalization_prompt(state):
     Returns:
         str: The formatted finalization prompt.
     """
-    quantities = state.get("quantities", {})
     other_player_finalization = state.get("last_message", "")
-
-    prompt = f"""
-    A finalization has been made by the other player. It's your turn to finalize the division of items.
-
-    Your finalization should be formatted as follows:
-    <finalize>{{ "i_take": {{"item_category_1": x, "item_category_2": y}}, "other_player_gets": {{"item_category_1": y, "item_category_2": x}} }}</finalize>
-
-    Here, 'i_take' represents your share of the items, and 'other_player_gets' represents the other player's share.
-
-    Remember:
-    - The total number of items in 'i_take' and 'other_player_gets' should match the available quantities: {quantities}.
-    - 0 points to each player if the division is not matching
-    """
-
-    prompt = "The other player has finalized."
 
     if state.get("finalization_visibility", False) and other_player_finalization:
         prompt += (
@@ -434,7 +331,7 @@ def create_finalization_prompt(state):
         )
 
     prompt += "\nPlease make your finalization decision now."
-    
+
     return prompt.strip()
 
 

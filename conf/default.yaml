@@ -18,12 +18,12 @@ matches:
   run_matches_args:
     nb_parallel_matches: -1
     log_func: independant_players_logging
-    log_func_args: 
+    log_func_args:
       metrics_func: gather_dond_statistics
-      metrics_func_args: 
+      metrics_func_args:
         stats_to_log: [
-        "agreement_percentage", 
-        "points", 
+        "agreement_percentage",
+        "points",
         "points_on_agreement",
         "items_given_to_self"
         ]
@@ -35,7 +35,7 @@ matches:
     max_turns: 1
     mode: basic
     random_setup_func: fixed_manual
-    random_setup_kwargs: 
+    random_setup_kwargs:
       items: ['coins']
       quantities: [10]
       val_starting_negotiator: [1]
@@ -45,7 +45,7 @@ matches:
     finalization_visibility: True
     other_values_visibility: True
 
-  players: 
+  players:
 
     alice:
 
@@ -53,7 +53,7 @@ matches:
         mod_adpt_id: 'llama/ad_alice'
         allow_reasoning: false
         max_retries: 1
-        
+
     bob:
 
       dond_player_args:
@@ -76,7 +76,7 @@ training:
         train_func_args: {}
 
 
-models: 
+models:
 
   llama:
     class: hf
@@ -86,7 +86,7 @@ models:
       max_model_length: 5000
       include_value_head: false
       device: "cuda"
-      pretrained_args: 
+      pretrained_args:
         pretrained_model_name_or_path: "meta-llama/Llama-3.1-8B-Instruct"
         torch_dtype: "bfloat16"
         device_map: "auto"
@@ -115,7 +115,77 @@ models:
       eval_with: "vllm"
       train_with: "hf"
 
-  
+prompt:
+  intro_prompt: |
+    Welcome to the splitting game.
+        You will engage in ${matches.dond_game_args.rounds_per_game} rounds of splitting, where two players aim to divide items from various categories.
+
+        Each player may assign different values to these categories, and your primary objective is to maximize your personal cumulative points.
+
+        Points are determined at the end of each round by multiplying the quantity of items you acquire by their respective values. Your cumulative points across all rounds will determine your success. Note that the other player will also strive to maximize their points, which may not align with your interests.
+
+        Importantly, in the event that no agreement is reached within a round, both players will receive zero points.
+
+        Specific rules or conditions for the game mode.
+
+  1_turn_prompt: |
+    ${prompt.intro_prompt}
+
+            Game Mechanics:
+
+            You are required to submit a final division of items. This division should clearly specify the quantity of each item category you wish to claim, with the remainder allocated to the other player. The division must be in a JSON-parsable format.
+
+            Matching Divisions: If the combined division does not correspond to the total number of available items, both players will score zero points.
+
+            Formatting:
+
+            Final division: <finalize>{ "i_take": {"item_category1": x, "item_category2": y}, "other_player_gets": {"item_category1": y, "item_category2": x} }</finalize>, where 'i_take' represents your share and 'other_player_gets' represents the other player's share of the item categories.
+
+            Example:
+
+            1. You submit:
+            <finalize>{ "i_take": {"item_category1": x, "item_category2": y}, "other_player_gets": {"item_category1": y, "item_category2": x} }</finalize>
+
+            2. The other player submits:
+            <finalize>{ "i_take": {"item_category1": y, "item_category2": x}, "other_player_gets": {"item_category1": x, "item_category2": y} }</finalize>
+
+  multi_turn_prompt: |
+    ${prompt.intro_prompt}
+
+            Game Mechanics:
+
+            Turn-taking: You and the other player will alternate turns, exchanging one message at a time. When you are ready, you may finalize the negotiation by submitting your division. Once a player decides to finalize, the other player must also submit their final division, concluding the game.
+
+            Action: At the start of your turn, you will be prompted to take an action, either by messaging the other player or finalizing the negotiation.
+
+            Final Division: The final division should specify the quantity of each item category you wish to claim, with the remainder allocated to the other player. The division must be in a JSON-parsable format.
+
+            Matching Divisions: If the combined division does not correspond to the total number of available items, both players will score zero points.
+
+            There is a limit of 40 characters per message.
+
+            Formatting:
+
+            Messages: <message> [Your message here.] </message>
+
+            Final division: <finalize>{ "i_take": {"item_category1": 0, "item_category2": 0}, "other_player_gets": {"item_category1": 0, "item_category2": 0} }</finalize>, where 'i_take' represents your share and 'other_player_gets' represents the other player's share of the item categories.
+
+            Only one action is permitted per turn.
+
+            Examples of turn progression:
+
+            1. [Initial state is provided]
+            <message> [Your message to the other player here.] </message>
+
+            2. [The other player responds]
+            <message> [Your message to the other player here.] </message>
+
+            3. [The other player agrees]
+            <finalize>{ "i_take": {"item_category1": 0, "item_category2": 0}, "other_player_gets": {"item_category1": 0, "item_category2": 0} }</finalize>
+
+  game_intro_prompt: null # Set in `run.py`
+
+  finalization: The other player has finalized.
 
 
 

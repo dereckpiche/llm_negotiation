@@ -50,7 +50,7 @@ def create_blank_match(cfg):
     """
     players = {}
     for player_name in cfg["matches"]["players"].keys():
-        players[player_name] = DondPlayerHandler(player_name,
+        players[player_name] = DondPlayerHandler(player_name, prompts=cfg["prompt"],
                                                  **cfg["matches"]["players"][player_name]["dond_player_args"])
     blank_match = {
         "players": players,
