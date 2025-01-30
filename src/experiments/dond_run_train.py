@@ -16,6 +16,7 @@ from utils.export_ppo_training_set import export_ppo_training_set
 from utils.log_statistics import *
 from utils.parallel_shuffle import parallel_shuffle
 from utils.log_statistics import update_player_statistics, generate_player_stats_plots
+from utils.update_start_epoch import update_start_epoch
 from training.train_main import *
 from generation.run_games import run_matches
 
@@ -77,7 +78,9 @@ def dond_run_train(cfg):
     # Initialize models
     models = init_models(cfg)
 
-    for iteration in range(cfg["experiment"]["nb_epochs"]):
+    update_start_epoch(cfg=cfg, output_directory=output_directory)
+
+    for iteration in range(cfg["experiment"]["start_epoch"], cfg["experiment"]["nb_epochs"]):
         iteration_start_time = time.time()
 
         it_folder = os.path.join(output_directory, f"iteration_{iteration:03}")
