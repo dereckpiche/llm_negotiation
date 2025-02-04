@@ -78,6 +78,7 @@ class HfAgent:
         eval_with="vllm",
         train_with="hf",
         output_directory=None,
+        random_seed: int = 42,
     ) -> None:
         """
         Initializes the HfAgent.
@@ -119,6 +120,11 @@ class HfAgent:
         self.adapters_active = False
         self.vllm_id = 0
         self.hf_id = 0
+
+        # set random seeds
+        self.random_seed = random_seed
+        torch.manual_seed(self.random_seed)
+        np.random.seed(self.random_seed)
 
     def prepare_adapter_train(self, adapter_name: str):
         """
@@ -191,9 +197,13 @@ class HfAgent:
             if self.vllm_model is None:
                 self.log_gpu_usage(f"Before loading VLLM model with {adapter_name}.")
                 start_time = time.time()
-                gc.collect()
-                torch.cuda.empty_cache()
-                self.vllm_model = LLM(self.model_name, enable_lora=True, max_lora_rank=256, max_model_len=self.max_model_length)
+                self.vllm_model = LLM(self.model_name, 
+                                      enable_lora=True, 
+                                      max_lora_rank=256, 
+                                      seed=self.random_seed,
+                                      max_model_len=self.max_model_length,
+                                      dtype=self.pretrained_args["torch_dtype"]
+                                      )
                 end_time = time.time()
                 compute__logger.info(f"VLLM model loading time: {end_time - start_time:.2f} seconds.")
                 self.log_gpu_usage(f"After loading VLLM model with {adapter_name}.")
@@ -201,8 +211,6 @@ class HfAgent:
         elif self.eval_with == "hf":
             if self.hf_model is None:
                 start_time = time.time()
-                gc.collect()
-                torch.cuda.empty_cache()
                 model_logger.info("Loading HF model for evaluation.")
 
                 adapter_path = self.adapters[self.current_adapter_name]
@@ -325,8 +333,6 @@ class HfAgent:
                         sampling_params=self.vllm_sampling_params,
                         lora_request=LoRARequest(f"dond_lora_{self.vllm_id}", self.vllm_id, adapter_path),
                     )
-                    gc.collect()
-                    torch.cuda.empty_cache()
                 else:
                     model_logger.info("Generating using VLLM without LoRA")
                     decoded = self.vllm_model.generate(

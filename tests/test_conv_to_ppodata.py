@@ -18,7 +18,6 @@ conversation = [
 context_tensor, return_tensor, output_mask = conversation_to_rl_data(tokenizer, conversation)
 assert context_tensor.shape[0] == return_tensor.shape[0], f"the shapes are not the same: {context_tensor.shape} and {return_tensor.shape}"
 
-
 # Detokenize the tokens to verify
 detokenized_texts = tokenizer.batch_decode(context_tensor, skip_special_tokens=False)
 
