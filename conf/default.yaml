@@ -6,7 +6,7 @@ hydra:
 experiment:
   method: dond_run_train
   description: "Easy. They should be learning."
-  nb_epochs: 5
+  nb_epochs: 1000
   nb_matches_per_iteration: 32
   reinit_matches_each_it: true
 
@@ -29,7 +29,7 @@ matches:
         ]
       training_data_func: set_discounted_returns
       training_data_func_args: 
-        discount_factor: 0.9
+        discount_factor: 0.96
   dond_game_args:
     rounds_per_game: 16
     max_turns: 1
@@ -83,9 +83,10 @@ models:
     init_args:
       name: 'llama'
       adapter_names: ['ad_alice', 'ad_bob']
-      max_model_length: 3500
+      max_model_length: 8000
       include_value_head: false
       device: "cuda"
+      model_name: "meta-llama/Llama-3.1-8B-Instruct"
       pretrained_args: 
         pretrained_model_name_or_path: "meta-llama/Llama-3.1-8B-Instruct"
         torch_dtype: "bfloat16"
@@ -108,13 +109,14 @@ models:
         top_k: 0.0
         top_p: 1.0
         repetition_penalty: 0.0
+
       keep_vllm_during_training: False
       keep_hf_during_training: True
       keep_hf_during_eval: False
       keep_vllm_during_eval: True
       eval_with: "vllm"
       train_with: "hf"
-      random_seed: 50
+      random_seed: 200
 
   
 
