@@ -45,26 +45,27 @@ class OaiAgent:
         if not contexts:
             return ""
 
-        # Assuming contexts is a list of dictionaries with a 'content' key
-        prompt_text = " ".join(context["content"] for context in contexts)
-
         # Call the OpenAI API to generate a response
-        response = self.client.Completion.create(
-            model=self.model,
-            prompt=prompt_text,
-            max_tokens=150  # Adjust as needed
-        )
+        responses = []
+        for prompt in contexts:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=prompt,
+                max_tokens=150  # Adjust as needed
+            )
+
+            responses.append(response.choices[0].message.content.strip())
 
         # Extract and return the generated text
-        return response.choices[0].text.strip()
+        return responses
 
     def set_adapter(self, name: str) -> None:
         """
         Dummy method for setting an adapter. Does nothing.
-        
+
         Args:
             name (str): The name of the adapter to switch to.
         """
         pass
 
-    
+
