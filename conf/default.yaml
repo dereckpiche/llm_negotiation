@@ -6,8 +6,8 @@ hydra:
 experiment:
   method: dond_run_train
   description: "Easy. They should be learning."
-  nb_epochs: 1000
-  nb_matches_per_iteration: 32
+  nb_epochs: 20
+  nb_matches_per_iteration: 30
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: true
@@ -32,8 +32,9 @@ matches:
       training_data_func: set_discounted_returns
       training_data_func_args:
         discount_factor: 0.96
+        
   dond_game_args:
-    rounds_per_game: 16
+    rounds_per_game: 6
     max_turns: 1
     mode: basic
     random_setup_func: fixed_manual
@@ -88,10 +89,10 @@ models:
       max_model_length: 8000
       include_value_head: false
       device: "cuda"
-      model_name: "meta-llama/Llama-3.1-8B-Instruct"
+      model_name: "mistralai/Mistral-7B-Instruct-v0.3"
       pretrained_args:
-        pretrained_model_name_or_path: "meta-llama/Llama-3.1-8B-Instruct"
-        torch_dtype: "bfloat16"
+        pretrained_model_name_or_path: "mistralai/Mistral-7B-Instruct-v0.3"
+        torch_dtype: "float16"
         device_map: "auto"
         attn_implementation: "flash_attention_2"
       bits_and_bytes_args: null
@@ -155,6 +156,7 @@ prompt:
             <finalize>{ "i_take": {"item_category1": y, "item_category2": x}, "other_player_gets": {"item_category1": x, "item_category2": y} }</finalize>
 
   multi_turn_prompt: |
+
     ${prompt.intro_prompt}
 
             Game Mechanics:

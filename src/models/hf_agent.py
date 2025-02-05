@@ -93,6 +93,7 @@ class HfAgent:
         self.tokenizer = AutoTokenizer.from_pretrained(
             pretrained_args["pretrained_model_name_or_path"]
         )
+        
         self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.bits_and_bytes_configs = BitsAndBytesConfig(**bits_and_bytes_args) if bits_and_bytes_args else None
