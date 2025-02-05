@@ -43,7 +43,7 @@ def gather_dond_statistics(player_info, info, stats_to_log):
             round_info["imbalance"] = calculate_imbalance(info['round_points'][i], player_role, other_role)
 
         if "items_given_to_self" in stats_to_log:
-            round_info["items_given_to_self"] = calculate_items_given_to_self(info['round_finalizations'][i][player_role])
+            round_info["items_given_to_self"] = calculate_items_given_to_self(info['round_proposals'][i][player_role])
 
         if "points_on_agreement" in stats_to_log:
             round_info["points_on_agreement"] = info['round_points'][i][player_role] if info['round_agreements_reached'][i] else None
@@ -81,7 +81,7 @@ def calculate_imbalance(points, player_role, other_role):
         return 0
     return abs((points[player_role] - points[other_role]) / total_points)
 
-def calculate_items_given_to_self(finalization):
-    if all(isinstance(x, (int, float)) for x in finalization.values()):
-        return sum(finalization.values())
+def calculate_items_given_to_self(proposal):
+    if all(isinstance(x, (int, float)) for x in proposal.values()):
+        return sum(proposal.values())
     return None

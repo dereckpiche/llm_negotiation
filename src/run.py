@@ -3,7 +3,7 @@ from hydra.core.hydra_config import HydraConfig
 import logging
 import os
 import sys
-
+from omegaconf import OmegaConf
 from experiments.dond_run_train import dond_run_train
 from experiments.arithmetic_test import arithmetic_test
 
@@ -35,14 +35,9 @@ def main(cfg):
     sys.stdout = LoggerStream(root_logger.info)
     sys.stderr = LoggerStream(root_logger.error)
 
-    # Set the variable 'game_intro_prompt' according to 'max_turns'
-    if cfg["matches"]["dond_game_args"]["max_turns"] == 1:
-        cfg["prompt"]["game_intro_prompt"] = cfg["prompt"]["1_turn_prompt"]
-    else:
-        cfg["prompt"]["game_intro_prompt"] = cfg["prompt"]["multi_turn_prompt"]
-
     # Run the experiment specified in the configuration
-    globals()[cfg.experiment.method](cfg)
+
+    globals()[cfg.experiment.method](OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict"))
 
 
 class LoggerStream:

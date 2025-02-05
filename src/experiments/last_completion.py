@@ -21,7 +21,7 @@ import copy
 
 def get_data(game, player, agent, n_samples):
     state = game.get_state()
-    assert state['has_finalized']
+    assert state['has_proposed']
     player.set_usr_message(state)
     context = player.get_context()
 
@@ -30,13 +30,13 @@ def get_data(game, player, agent, n_samples):
 
     scores = []
     for i in range(n_samples):
-        send_to_game, is_finalization, processed_response = player.process_model_response(responses[i], state)
+        send_to_game, is_proposal, processed_response = player.process_model_response(responses[i], state)
         if not send_to_game: 
             scores.append(0)
             continue
         else:
             game_copy = copy.deepcopy(game)
-            game_copy.step(processed_response, is_finalization)
+            game_copy.step(processed_response, is_proposal)
             state_ = game_copy.get_state()
             if state_['agreement_reached_history'][-1]: scores.append(10)
             else: scores.append(0)
@@ -58,11 +58,11 @@ def run_partial_game(game, player_0, player_1, agent):
             context = current_player.get_context()
             # Generate response using the agent
             response = agent.prompt([context])[0]
-            send_to_game, is_finalization, processed_response = current_player.process_model_response(response, state)
+            send_to_game, is_proposal, processed_response = current_player.process_model_response(response, state)
         
-        game.step(processed_response, is_finalization)
+        game.step(processed_response, is_proposal)
 
-        if is_finalization:
+        if is_proposal:
             return game, other_player  # Game ends, return the game state and the other player
 
         # Swap players for the next turn

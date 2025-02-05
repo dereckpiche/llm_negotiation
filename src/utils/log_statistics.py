@@ -12,14 +12,14 @@ import matplotlib.pyplot as plt
 import os
 from typing import Dict, Union, List
 import wandb
-from comet_ml import Experiment
+# from comet_ml import Experiment
 
-experiment = Experiment(
-    api_key="IvI06nn59lLap4y0JRrwlTViy",
-    project_name="llm_negotiation",
-    log_env_gpu=True,
-    log_env_cpu=True
-)
+# experiment = Experiment(
+#     api_key="IvI06nn59lLap4y0JRrwlTViy",
+#     project_name="llm_negotiation",
+#     log_env_gpu=True,
+#     log_env_cpu=True
+# )
 
 def append_statree(tree1: Dict, tree2: Dict):
     """

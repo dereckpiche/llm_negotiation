@@ -12,57 +12,7 @@ experiment:
   start_epoch: 0
   resume_experiment: true
 
-matches:
 
-  stop_condition: game_over_condition
-  stop_condition_kwargs: {}
-
-  run_matches_args:
-    nb_parallel_matches: -1
-    log_func: independant_players_logging
-    log_func_args:
-      metrics_func: gather_dond_statistics
-      metrics_func_args:
-        stats_to_log: [
-        "agreement_percentage",
-        "points",
-        "points_on_agreement",
-        "items_given_to_self"
-        ]
-      training_data_func: set_discounted_returns
-      training_data_func_args:
-        discount_factor: 0.96
-        
-  dond_game_args:
-    rounds_per_game: 6
-    max_turns: 1
-    mode: basic
-    random_setup_func: fixed_manual
-    random_setup_kwargs:
-      items: ['coins']
-      quantities: [10]
-      val_starting_negotiator: [1]
-      val_responding_negotiator: [1]
-    role_assignator_func: fixed_role_assignator
-    role_assignator_func_kwargs: {}
-    finalization_visibility: True
-    other_values_visibility: True
-
-  players:
-
-    alice:
-
-      dond_player_args:
-        mod_adpt_id: 'llama/ad_alice'
-        allow_reasoning: false
-        max_retries: 1
-
-    bob:
-
-      dond_player_args:
-        mod_adpt_id: 'llama/ad_bob'
-        allow_reasoning: false
-        max_retries: 1
 
 
 training:
@@ -89,9 +39,9 @@ models:
       max_model_length: 8000
       include_value_head: false
       device: "cuda"
-      model_name: "mistralai/Mistral-7B-Instruct-v0.3"
+      model_name: "meta-llama/Llama-3.1-8B-Instruct"
       pretrained_args:
-        pretrained_model_name_or_path: "mistralai/Mistral-7B-Instruct-v0.3"
+        pretrained_model_name_or_path: "meta-llama/Llama-3.1-8B-Instruct"
         torch_dtype: "float16"
         device_map: "auto"
         attn_implementation: "flash_attention_2"
@@ -121,83 +71,125 @@ models:
       train_with: "hf"
       random_seed: 200
 
-prompt:
-  intro_prompt: |
-    Welcome to the splitting game.
-        You will engage in ${matches.dond_game_args.rounds_per_game} rounds of splitting, where two players aim to divide items from various categories.
 
-        Each player may assign different values to these categories, and your primary objective is to maximize your personal cumulative points.
+matches:
 
-        Points are determined at the end of each round by multiplying the quantity of items you acquire by their respective values. Your cumulative points across all rounds will determine your success. Note that the other player will also strive to maximize their points, which may not align with your interests.
+  stop_condition: game_over_condition
+  stop_condition_kwargs: {}
 
-        Importantly, in the event that no agreement is reached within a round, both players will receive zero points.
+  run_matches_args:
+    nb_parallel_matches: -1
+    log_func: independant_players_logging
+    log_func_args:
+      metrics_func: gather_dond_statistics
+      metrics_func_args:
+        stats_to_log: [
+        "agreement_percentage",
+        "points",
+        "points_on_agreement",
+        "items_given_to_self"
+        ]
+      training_data_func: set_discounted_returns
+      training_data_func_args:
+        discount_factor: 0.96
+        
+  dond_game_args:
+    rounds_per_game: 1
+    max_turns: 1
+    mode: basic
+    random_setup_func: fixed_manual
+    random_setup_kwargs:
+      items: ['coins']
+      quantities: [10]
+      val_starting_negotiator: [1]
+      val_responding_negotiator: [1]
+    role_assignator_func: fixed_role_assignator
+    role_assignator_func_kwargs: {}
 
-        Specific rules or conditions for the game mode.
+  players:
 
-  1_turn_prompt: |
-    ${prompt.intro_prompt}
+    alice:
 
-            Game Mechanics:
+      dond_player_args:
+        mod_adpt_id: 'llama/ad_alice'
+        allow_reasoning: false
+        max_retries: 1
+        max_reasoning_chars: 0
+        max_messages: 0
+        max_chars_per_message: 0
+        intro_prompt: ${prompt_blocks.dond_game_intro_prompt}
+        goal_prompt: ${prompt_blocks.normal_goal}
+        new_round_prompt: ${prompt_blocks.new_round_prompt}
+        initial_move_prompt: ${prompt_blocks.initial_play_prompt}
+        ongoing_moves_prompt: ${prompt_blocks.ongoing_play_prompt}
+        proposal_prompt: ${prompt_blocks.see_through_glass_proposal_prompt}
 
-            You are required to submit a final division of items. This division should clearly specify the quantity of each item category you wish to claim, with the remainder allocated to the other player. The division must be in a JSON-parsable format.
+    bob:
 
-            Matching Divisions: If the combined division does not correspond to the total number of available items, both players will score zero points.
-
-            Formatting:
-
-            Final division: <finalize>{ "i_take": {"item_category1": x, "item_category2": y}, "other_player_gets": {"item_category1": y, "item_category2": x} }</finalize>, where 'i_take' represents your share and 'other_player_gets' represents the other player's share of the item categories.
-
-            Example:
-
-            1. You submit:
-            <finalize>{ "i_take": {"item_category1": x, "item_category2": y}, "other_player_gets": {"item_category1": y, "item_category2": x} }</finalize>
-
-            2. The other player submits:
-            <finalize>{ "i_take": {"item_category1": y, "item_category2": x}, "other_player_gets": {"item_category1": x, "item_category2": y} }</finalize>
-
-  multi_turn_prompt: |
-
-    ${prompt.intro_prompt}
-
-            Game Mechanics:
-
-            Turn-taking: You and the other player will alternate turns, exchanging one message at a time. When you are ready, you may finalize the negotiation by submitting your division. Once a player decides to finalize, the other player must also submit their final division, concluding the game.
-
-            Action: At the start of your turn, you will be prompted to take an action, either by messaging the other player or finalizing the negotiation.
-
-            Final Division: The final division should specify the quantity of each item category you wish to claim, with the remainder allocated to the other player. The division must be in a JSON-parsable format.
-
-            Matching Divisions: If the combined division does not correspond to the total number of available items, both players will score zero points.
-
-            There is a limit of 40 characters per message.
-
-            Formatting:
-
-            Messages: <message> [Your message here.] </message>
-
-            Final division: <finalize>{ "i_take": {"item_category1": 0, "item_category2": 0}, "other_player_gets": {"item_category1": 0, "item_category2": 0} }</finalize>, where 'i_take' represents your share and 'other_player_gets' represents the other player's share of the item categories.
-
-            Only one action is permitted per turn.
-
-            Examples of turn progression:
-
-            1. [Initial state is provided]
-            <message> [Your message to the other player here.] </message>
-
-            2. [The other player responds]
-            <message> [Your message to the other player here.] </message>
-
-            3. [The other player agrees]
-            <finalize>{ "i_take": {"item_category1": 0, "item_category2": 0}, "other_player_gets": {"item_category1": 0, "item_category2": 0} }</finalize>
-
-  game_intro_prompt: null # Set in `run.py`
-
-  finalization: The other player has finalized.
+      dond_player_args:
+        mod_adpt_id: 'llama/ad_bob'
+        allow_reasoning: false
+        max_retries: 1
+        max_reasoning_chars: 100
+        max_messages: 5
+        max_chars_per_message: 50
+        intro_prompt: ${prompt_blocks.dond_game_intro_prompt}
+        goal_prompt: ${prompt_blocks.normal_goal}     
+        new_round_prompt: ${prompt_blocks.new_round_prompt}
+        initial_move_prompt: ${prompt_blocks.initial_play_prompt}
+        ongoing_moves_prompt: ${prompt_blocks.ongoing_play_prompt}
+        proposal_prompt: ${prompt_blocks.see_through_glass_proposal_prompt}
 
 
+prompt_blocks:
+
+  dond_game_intro_prompt: |
+
+    Welcome the game. 
+    In this game, two players divide items from one or more categories.
+    Each categories might have different values for each player.
+
+    Game Rules:
+    - Points are obtained by multiplying the quantity of items you acquire by their respective values.
+    - If the proposals of both players do not match exactly, both players will receive zero points.
+
+    Player Mechanics:
+      A valid proposal is of the form:
+      <propose>{ "i_take": {"item_category1": x, "item_category2": y}, "other_player_gets": {"item_category1": y, "item_category2": x} }</propose>
+      All of your responses must be within <think></think>, <message></message>, or <propose></propose> tags.
 
 
+  new_round_prompt: |
+    Last round info: {last_round_info}
+    You are now playing round {current_round}/{nb_rounds}.
+    For this round, the quantities are {quantities}.
+    To you, the items are worth {values}.
 
+  initial_play_prompt: |
+    You are the first to play:
 
+  ongoing_play_prompt: |
+    The other player sent you this message: <message>{last_message}</message>
+
+  see_through_glass_proposal_prompt: |
+    You have reached the proposal stage. 
+    The other player's proposal was for you to take: {other_player_gets} and for them to take: {i_take}.
+    Please make your proposal decision now. 
+
+  second_player_proposal_prompt: |
+    The other player's proposal was for you to take: {other_player_gets} and for them to take: {i_take}.
+    Please make your proposal decision now.
+
+  unformatted_goal: |
+    ""
+
+  normal_goal: |
+    Goal: Maximize your points by strategic negotiation.
+
+  agressive_goal: |
+    Goal: Maximize your points by strategic negotiation.
+
+  fair_goal: |
+    Goal: Aim to reach a fair agreement quickly.
 
 
