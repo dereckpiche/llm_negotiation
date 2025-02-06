@@ -16,7 +16,7 @@ class DondGame:
         random_setup_kwargs=None,
         role_assignator_func=None,
         role_assignator_func_kwargs=None,
-        proposal_visibility=False,
+        finalization_visibility=False,
         other_values_visibility=False,
     ):
         """
@@ -32,7 +32,7 @@ class DondGame:
             rounds_per_game (int): The number of rounds per game.
             items (list): The list of items in the game.
             quantities (list): The quantities of items.
-            proposal_visibility (bool): Visibility of proposal.
+            finalization_visibility (bool): Visibility of finalization.
             other_values_visibility (bool): Visibility of other player's values.
         """
 
@@ -42,7 +42,7 @@ class DondGame:
         self.max_turns = max_turns
         self.random_setup_func = globals()[random_setup_func]
         self.random_setup_kwargs = random_setup_kwargs
-        self.proposal_visibility = proposal_visibility
+        self.finalization_visibility = finalization_visibility
         self.rounds_per_game = rounds_per_game
         self.role_assignator_func = globals()[role_assignator_func]
         self.role_assignator_func_kwargs = role_assignator_func_kwargs
@@ -66,12 +66,12 @@ class DondGame:
         Advances the game by one step.
 
         Args:
-            action (tuple): A tuple containing is_proposal and output.
+            action (tuple): A tuple containing is_finalization and output.
 
         Returns:
             tuple: (observation, reward, done, info)
         """
-        is_proposal, output = action
+        is_finalization, output = action
         self.turn += 1
         self.last_message = output
         self.round_ended = False
@@ -80,13 +80,13 @@ class DondGame:
         self.game_over = False
         round_over = False
 
-        if self.has_proposed:
-            if not is_proposal:
+        if self.has_finalized:
+            if not is_finalization:
                 self.points = {player: 0 for player in self.players}
                 self.agreement_reached = False
             else:
                 self.finalize(output)
-                if self.verify_proposals_match():
+                if self.verify_finalizations_match():
                     self.set_points()
                     self.agreement_reached = True
                 else:
@@ -95,8 +95,8 @@ class DondGame:
             round_over = True
 
         else:
-            if is_proposal:
-                self.has_proposed = True
+            if is_finalization:
+                self.has_finalized = True
                 self.finalize(output)
 
             if self.turn > self.max_turns:
@@ -128,12 +128,12 @@ class DondGame:
         """
         pass
 
-    def verify_proposals_match(self):
+    def verify_finalizations_match(self):
         """
-        Verifies if the proposals from both players match the total quantities.
+        Verifies if the finalizations from both players match the total quantities.
 
         Returns:
-            bool: True if the proposals match, False otherwise.
+            bool: True if the finalizations match, False otherwise.
         """
         for item in self.items:
             total = sum(self.role_props[role][item] for role in self.roles)
@@ -143,7 +143,7 @@ class DondGame:
 
     def set_points(self):
         """
-        Sets the points for each role based on their proposals.
+        Sets the points for each role based on their finalizations.
         """
         utilities = {
             role: sum(self.role_values[role][item] * self.role_props[role][item] for item in self.items)
@@ -157,15 +157,15 @@ class DondGame:
         elif self.mode == "basic":
             self.points = {role: utilities[role] for role in self.roles}
 
-    def finalize(self, proposal: list):
+    def finalize(self, finalization: list):
         """
-        Records the proposal from the current player.
+        Records the finalization from the current player.
 
         Args:
-            proposal (list): The list of proposed quantities for each item.
+            finalization (list): The list of finalized quantities for each item.
         """
         current_role = self.current_turn()
-        self.role_props[current_role] = proposal["i_take"]
+        self.role_props[current_role] = finalization["i_take"]
 
     def get_state(self):
         """
@@ -189,16 +189,16 @@ class DondGame:
             "round_number": self.round_nb,
             "nb_rounds": self.rounds_per_game,
             "quantities": self.quantities,
-            "has_proposed": self.has_proposed,
+            "has_finalized": self.has_finalized,
             "last_message": self.last_message,
             "players" : self.players,
-            "proposal_visibility": self.proposal_visibility,
+            "finalization_visibility": self.finalization_visibility,
             "other_values_visibility": self.other_values_visibility,
             # rounds history
             "round_player_roles": self.round_player_roles,
             "round_quantities": self.round_quantities,
             "round_values": self.round_values,
-            "round_proposals": self.round_proposals,
+            "round_finalizations": self.round_finalizations,
             "round_agreements_reached": self.round_agreements_reached,
             "round_points": self.round_points,
         }
@@ -208,12 +208,12 @@ class DondGame:
         return {
             "mode": self.mode,
             "players" : self.players,
-            "proposal_visibility": self.proposal_visibility,
+            "finalization_visibility": self.finalization_visibility,
             "other_values_visibility": self.other_values_visibility,
             "round_player_roles": self.round_player_roles,
             "round_quantities": self.round_quantities,
             "round_values": self.round_values,
-            "round_proposals": self.round_proposals,
+            "round_finalizations": self.round_finalizations,
             "round_agreements_reached": self.round_agreements_reached,
             "round_points": self.round_points,
         }
@@ -229,7 +229,7 @@ class DondGame:
         self.round_player_roles.append(self.player_to_role.copy())
         self.round_quantities.append(self.quantities)
         self.round_values.append({role: self.role_values[role] for role in self.roles})
-        self.round_proposals.append({role: self.role_props[role] for role in self.roles})
+        self.round_finalizations.append({role: self.role_props[role] for role in self.roles})
         self.round_agreements_reached.append(self.agreement_reached)
         self.round_points.append({role: self.points[role] for role in self.roles})
 
@@ -239,7 +239,7 @@ class DondGame:
         """
         self.archive_player_states()
         self.round_nb += 1
-        self.has_proposed = False
+        self.has_finalized = False
         self.role_props = {role: {} for role in self.roles}
         self.points = {role: 0 for role in self.roles}  # Ensure points are reset
         self.agreement_reached = False
@@ -261,7 +261,7 @@ class DondGame:
         if checkpoint:
             self.load_checkpoint(checkpoint)
         else:
-            self.has_proposed = False
+            self.has_finalized = False
             self.role_props = {role: {} for role in self.roles}
             self.points = {role: 0 for role in self.roles}  # Ensure points are initialized
             self.agreement_reached = False
@@ -277,7 +277,7 @@ class DondGame:
             self.round_player_roles = [] 
             self.round_quantities = []
             self.round_values = []        
-            self.round_proposals = [] 
+            self.round_finalizations = [] 
             self.round_agreements_reached = [] 
             self.round_points = []
             self.set_new_setup()

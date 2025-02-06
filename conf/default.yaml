@@ -7,13 +7,10 @@ experiment:
   method: dond_run_train
   description: "Easy. They should be learning."
   nb_epochs: 20
-  nb_matches_per_iteration: 30
+  nb_matches_per_iteration: 32
   reinit_matches_each_it: true
   start_epoch: 0
-  resume_experiment: true
-
-
-
+  resume_experiment: false
 
 training:
   keep_error_messages: False
@@ -42,7 +39,7 @@ models:
       model_name: "meta-llama/Llama-3.1-8B-Instruct"
       pretrained_args:
         pretrained_model_name_or_path: "meta-llama/Llama-3.1-8B-Instruct"
-        torch_dtype: "float16"
+        torch_dtype: "bfloat16"
         device_map: "auto"
         attn_implementation: "flash_attention_2"
       bits_and_bytes_args: null
@@ -69,8 +66,7 @@ models:
       keep_vllm_during_eval: True
       eval_with: "vllm"
       train_with: "hf"
-      random_seed: 200
-
+      random_seed: 40
 
 matches:
 
@@ -118,12 +114,12 @@ matches:
         max_reasoning_chars: 0
         max_messages: 0
         max_chars_per_message: 0
-        intro_prompt: ${prompt_blocks.dond_game_intro_prompt}
-        goal_prompt: ${prompt_blocks.normal_goal}
+        intro_prompt: ${prompt_blocks.barebone_ultimatum}
+        goal_prompt: ${prompt_blocks.unformatted_goal}
         new_round_prompt: ${prompt_blocks.new_round_prompt}
         initial_move_prompt: ${prompt_blocks.initial_play_prompt}
         ongoing_moves_prompt: ${prompt_blocks.ongoing_play_prompt}
-        proposal_prompt: ${prompt_blocks.see_through_glass_proposal_prompt}
+        finalization_prompt: ${prompt_blocks.see_through_glass_finalization_prompt}
 
     bob:
 
@@ -135,31 +131,40 @@ matches:
         max_reasoning_chars: 100
         max_messages: 5
         max_chars_per_message: 50
-        intro_prompt: ${prompt_blocks.dond_game_intro_prompt}
-        goal_prompt: ${prompt_blocks.normal_goal}     
+        intro_prompt: ${prompt_blocks.barebone_ultimatum}
+        goal_prompt: ${prompt_blocks.unformatted_goal}     
         new_round_prompt: ${prompt_blocks.new_round_prompt}
         initial_move_prompt: ${prompt_blocks.initial_play_prompt}
         ongoing_moves_prompt: ${prompt_blocks.ongoing_play_prompt}
-        proposal_prompt: ${prompt_blocks.see_through_glass_proposal_prompt}
+        finalization_prompt: ${prompt_blocks.see_through_glass_finalization_prompt}
 
 
 prompt_blocks:
 
-  dond_game_intro_prompt: |
+  barebone_ultimatum: |
 
-    Welcome the game. 
-    In this game, two players divide items from one or more categories.
-    Each categories might have different values for each player.
+    Welcome to the splitting game. 
 
-    Game Rules:
-    - Points are obtained by multiplying the quantity of items you acquire by their respective values.
-    - If the proposals of both players do not match exactly, both players will receive zero points.
+    Game Description:
 
-    Player Mechanics:
-      A valid proposal is of the form:
-      <propose>{ "i_take": {"item_category1": x, "item_category2": y}, "other_player_gets": {"item_category1": y, "item_category2": x} }</propose>
-      All of your responses must be within <think></think>, <message></message>, or <propose></propose> tags.
+      1) In this game, two players divide {quantities} among themselves.
 
+      2) The points each player obtains is the number of items they get at the end of the game.
+
+      3) After the number of items and values have been shown, the first player will make a finalization. A finalization is proposed division of the items between the two players.
+
+      4) The second player must then make his finalization. 
+
+      5) Each player can make a single finalization for the entire game, hence the name.
+
+      6) In order for both players to agree, the finalizations must be complementary. If no agreement is reached between the two players with the two finalizations, both players will receive zero points.
+
+
+    Response Formatting:
+
+      1) All of your responses must be within <finalize></finalize> tags.
+
+      2) The division must be in a JSON-parsable format. Formatting: Final division: <finalize>{ "i_take": {"item_category1": x, "item_category2": y}, "other_player_gets": {"item_category1": y, "item_category2": x} }</finalize> where 'i_take' represents your share and 'other_player_gets' represents the other player's share of the item categories.
 
   new_round_prompt: |
     Last round info: {last_round_info}
@@ -173,25 +178,27 @@ prompt_blocks:
   ongoing_play_prompt: |
     The other player sent you this message: <message>{last_message}</message>
 
-  see_through_glass_proposal_prompt: |
-    You have reached the proposal stage. 
-    The other player's proposal was for you to take: {other_player_gets} and for them to take: {i_take}.
-    Please make your proposal decision now. 
+  see_through_glass_finalization_prompt: |
+    The other player's finalization was {other_player_finalization}.
+    Please make your finalization decision now. 
 
-  second_player_proposal_prompt: |
-    The other player's proposal was for you to take: {other_player_gets} and for them to take: {i_take}.
-    Please make your proposal decision now.
+  second_player_finalization_prompt: |
+    The other player's finalization was {other_player_finalization}.
+    Please make your finalization decision now.
 
   unformatted_goal: |
     ""
 
   normal_goal: |
-    Goal: Maximize your points by strategic negotiation.
+    Goal: Maximize your points.
 
   agressive_goal: |
     Goal: Maximize your points by strategic negotiation.
 
   fair_goal: |
     Goal: Aim to reach a fair agreement quickly.
+
+  submitted_goal: |
+    Goal: Your goal is to do exactly what the other player wants. You must make the other player happy. Your proposal should match the other player's proposal. Exactly please. Exactly please! 
 
 

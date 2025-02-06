@@ -24,7 +24,7 @@ class DondPlayerHandler:
         new_round_prompt,
         initial_move_prompt,
         ongoing_moves_prompt,
-        proposal_prompt
+        finalization_prompt
     ):
         """
         Initializes the DondPlayerHandler.
@@ -54,7 +54,7 @@ class DondPlayerHandler:
         self.new_round_prompt = new_round_prompt
         self.initial_move_prompt = initial_move_prompt
         self.ongoing_moves_prompt = ongoing_moves_prompt
-        self.proposal_prompt = proposal_prompt
+        self.finalization_prompt = finalization_prompt
         self.game_id = None  # ID of player in game
         self.reset()
 
@@ -92,8 +92,8 @@ class DondPlayerHandler:
 
                 user_message += self.format_prompt(self.new_round_prompt, state)
 
-        if state["has_proposed"]:
-            user_message += self.format_prompt(self.proposal_prompt, state)
+        if state["has_finalized"]:
+            user_message += self.format_prompt(self.finalization_prompt, state)
 
         elif state["last_message"] is None:
             user_message += self.initial_move_prompt
@@ -120,8 +120,8 @@ class DondPlayerHandler:
             tuple: A tuple containing:
                 - is_error (bool): Indicates if there is an error.
                 - error_message (str): The error message if there is an error, otherwise an empty string.
-                - is_proposal (bool): Indicates if the response is a proposal.
-                - processed_response (str or dict): The extracted message or proposal details.
+                - is_finalization (bool): Indicates if the response is a finalization.
+                - processed_response (str or dict): The extracted message or finalization details.
         """
         errors = []
 
@@ -130,23 +130,23 @@ class DondPlayerHandler:
             if "<think>" not in response or "</think>" not in response:
                 errors.append("Missing <think>...</think> tag.")
 
-        # 2) Check if exactly one of <message>...</message> or <propose>...</propose> is present,
-        #    and ensure proposal rules are followed
+        # 2) Check if exactly one of <message>...</message> or <finalize>...</finalize> is present,
+        #    and ensure finalization rules are followed
         has_message = "<message>" in response and "</message>" in response
-        has_proposal = "<propose>" in response and "</propose>" in response
+        has_finalization = "<finalize>" in response and "</finalize>" in response
 
-        if (state["turn"] > state["max_turns"] - 2) and not has_proposal:
-            errors.append("You must propose before the turn limit!")
-        if has_message and has_proposal:
-            errors.append("Response contains both <message> and <propose>; only one is allowed.")
-        elif not has_message and not has_proposal:
-            errors.append("Response must contain either <message> or <propose>.")
-        if state["has_proposed"] and not has_proposal:
-            errors.append("The other player has proposed; you must propose as well.")
+        if (state["turn"] > state["max_turns"] - 2) and not has_finalization:
+            errors.append("You must finalize before the turn limit!")
+        if has_message and has_finalization:
+            errors.append("Response contains both <message> and <finalize>; only one is allowed.")
+        elif not has_message and not has_finalization:
+            errors.append("Response must contain either <message> or <finalize>.")
+        if state["has_finalized"] and not has_finalization:
+            errors.append("The other player has finalized; you must finalize as well.")
 
-        # 3) Check for excessive content outside valid tags (<think>, <message>, <propose>)
+        # 3) Check for excessive content outside valid tags (<think>, <message>, <finalize>)
         total_length = len(response)
-        valid_tags = ["think", "message", "propose"]
+        valid_tags = ["think", "message", "finalize"]
         total_tag_content_length = 0
         for tag in valid_tags:
             pattern = rf"<{tag}>.*?</{tag}>"
@@ -157,18 +157,18 @@ class DondPlayerHandler:
         if outside_length > 5:
             errors.append("Excessive content outside of valid tags.")
 
-        # 4) Process proposal if present
-        if has_proposal:
-            proposal_content = response.split("<propose>", 1)[1].split("</propose>", 1)[0].strip()
+        # 4) Process finalization if present
+        if has_finalization:
+            finalization_content = response.split("<finalize>", 1)[1].split("</finalize>", 1)[0].strip()
             try:
-                proposal_json = json.loads(proposal_content)
-                if not isinstance(proposal_json, dict):
-                    errors.append("The content within <propose> is not a valid dictionary.")
+                finalization_json = json.loads(finalization_content)
+                if not isinstance(finalization_json, dict):
+                    errors.append("The content within <finalize> is not a valid dictionary.")
                     i_take = None
                     other_player_gets = None
                 else:
-                    i_take = proposal_json.get("i_take", {})
-                    other_player_gets = proposal_json.get("other_player_gets", {})
+                    i_take = finalization_json.get("i_take", {})
+                    other_player_gets = finalization_json.get("other_player_gets", {})
                 if not isinstance(i_take, dict) or not isinstance(other_player_gets, dict):
                     errors.append('"i_take" and "other_player_gets" must be dictionaries.')
                 else:
@@ -178,13 +178,13 @@ class DondPlayerHandler:
                         if not isinstance(other_player_gets.get(item), int):
                             errors.append(f'Value of "{item}" in "other_player_gets" must be an integer.')
             except json.JSONDecodeError:
-                errors.append("The content within <propose> is not valid JSON.")
+                errors.append("The content within <finalize> is not valid JSON.")
 
         # 5) Return results: check for errors, otherwise return parsed content
         if errors:
             return True, "Errors: " + "; ".join(errors), False, None
 
-        if has_proposal:
+        if has_finalization:
             return False, "", True, {"i_take": i_take, "other_player_gets": other_player_gets}
 
         if has_message:
@@ -222,69 +222,29 @@ class DondPlayerHandler:
         Returns:
             str: The formatted prompt.
         """
-        other_player_finalization = state.get("last_message", "")
-        other_player_gets = other_player_finalization.get("other_player_gets", "")
-        i_take = other_player_finalization.get("i_take", "")
+        if state.get("has_finalized"):
+            other_player_finalization = state.get("last_message", "")
+        #     other_player_gets = other_player_finalization.get("other_player_gets", "")
+        #     i_take = other_player_finalization.get("i_take", "")
+        else:
+            other_player_finalization = ""
+        #     other_player_gets = ""
+        #     i_take = "" 
 
-
+        values = state["role_values"][state["player_to_role"][state["current_player"]]]
 
         return prompt.replace("{rounds_per_game}", str(state.get("rounds_per_game", ""))) \
                      .replace("{last_round_info}", state.get("last_round_info", "")) \
                      .replace("{current_round}", str(state.get("current_round", ""))) \
-                     .replace("{nb_rounds}", str(state.get("nb_rounds", ""))) \
+                     .replace("{nb_rounds}", str(state["round_number"]+1)) \
                      .replace("{quantities}", str(state.get("quantities", ""))) \
-                     .replace("{values}", str(state.get("values", ""))) \
-                     .replace("{other_player_values}", state.get("other_player_values", "")) \
+                     .replace("{values}", str(values)) \
                      .replace("{max_reasoning_chars}", str(self.max_reasoning_chars)) \
                      .replace("{max_messages}", str(self.max_messages)) \
                      .replace("{max_chars_per_message}", str(self.max_chars_per_message)) \
                      .replace("{max_retries}", str(self.max_retries)) \
-                     .replace("{other_player_gets}", str(other_player_gets)) \
-                     .replace("{i_take}", str(i_take))
-
-    def format_prompt_list(self, prompt_list, state):
-        """
-        Formats a list of prompts into a single string using the game state.
-
-        Args:
-            prompt_list (list): List of prompt strings.
-            state (dict): The current state of the game.
-
-        Returns:
-            str: Concatenated and formatted prompt.
-        """
-        return "\n".join(self.format_prompt(prompt, state) for prompt in prompt_list)
-
-    def format_intro_prompt_appending(self, appending):
-        """
-        Replaces placeholders in the player intro prompt appending with actual values.
-
-        Args:
-            appending (str): The player intro prompt appending with placeholders.
-
-        Returns:
-            str: The formatted player intro prompt appending.
-        """
-        return appending.replace("${max_reasoning_chars}", str(self.max_reasoning_chars)) \
-                        .replace("${max_messages}", str(self.max_messages)) \
-                        .replace("${max_chars_per_message}", str(self.max_chars_per_message))
-
-    def format_intro_prompt(self, intro_prompt_list):
-        """
-        Concatenates and formats the intro prompt list into a single string.
-
-        Args:
-            intro_prompt_list (list): List of strings for the intro prompt.
-
-        Returns:
-            str: The concatenated and formatted intro prompt.
-        """
-        formatted_intro = ""
-        for prompt_key in intro_prompt_list:
-            prompt_value = self.prompts.get(prompt_key, "")
-            formatted_intro += prompt_value + "\n"
-        return formatted_intro
-
+                     .replace("{other_player_finalization}", str(other_player_finalization))
+    
     def get_chat_history(self):
         return self.chat_history
 
@@ -311,10 +271,10 @@ class DondPlayerHandler:
         # Initiate what will be returned
         processed_response = None
         send_to_game = False
-        is_proposal = False
+        is_finalization = False
 
         # Process response. Check for errors.
-        is_error, error_message, is_proposal, processed_response = self.process_response(
+        is_error, error_message, is_finalization, processed_response = self.process_response(
             llm_output, state
         )
 
@@ -337,13 +297,13 @@ class DondPlayerHandler:
             "role": "assistant",
             "content": llm_output,
             "is_error": is_error,
-            "is_proposal": is_proposal,
+            "is_finalization": is_finalization,
             "round_nb": state["round_number"],
         }
 
         self.add_to_chat_history(model_response)
 
-        action = (is_proposal, processed_response)
+        action = (is_finalization, processed_response)
         player_state = None
         player_info = {"player_name": self.player_name, "chat_history": self.chat_history}
 

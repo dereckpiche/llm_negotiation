@@ -47,3 +47,58 @@ def independant_players_logging(
         metrics = globals()[metrics_func](player_info, info, **metrics_func_args)
         with open(metrics_file, "w") as f:
             json.dump(metrics, f, indent=4)
+
+        # Create HTML representation of the game context
+        html_games_path = os.path.join(path, player_name, "html_games")
+        os.makedirs(html_games_path, exist_ok=True)
+        
+        # Determine the next available file number for HTML data
+        html_files = os.listdir(html_games_path)
+        html_numbers = [int(f.split('_')[-1].split('.')[0]) for f in html_files if f.startswith("game_context_")]
+        next_html_number = max(html_numbers, default=0) + 1
+        html_file = os.path.join(html_games_path, f"game_context_{next_html_number}.html")
+        
+        # Generate HTML content
+        html_content = """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Game Context</title>
+            <style>
+                body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
+                .message { margin-bottom: 20px; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); }
+                .user { background-color: rgba(0, 123, 255, 0.1); }
+                .assistant { background-color: rgba(40, 167, 69, 0.1); }
+                .role { font-weight: bold; margin-bottom: 5px; }
+                .game-info { margin-top: 30px; padding: 15px; border-radius: 10px; background-color: #ffffff; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); }
+            </style>
+        </head>
+        <body>
+        """
+
+        # Add each message in a sequence of <assistant> and <user> divs
+        for message in training_data:
+            role = "Intermediary ⚙️" if message["role"] == "user" else "LLM 🤖"
+            role_class = "user" if message["role"] == "user" else "assistant"
+            html_content += f"""
+            <div class="message {role_class}">
+                <div class="role">{role}</div>
+                <p>{message["content"]}</p>
+            </div>
+            """
+
+        # Add game information at the bottom
+        html_content += """
+        <div class="game-info">
+            <h3>Game Information</h3>
+            <p>Include relevant game details here...</p>
+        </div>
+        </body>
+        </html>
+        """
+        
+        # Write HTML content to file
+        with open(html_file, "w") as f:
+            f.write(html_content)

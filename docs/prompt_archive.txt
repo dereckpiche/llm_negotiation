@@ -1,7 +1,7 @@
 prompt = f"""
-    A proposal has been made by the other player. It's your turn to finalize the division of items.
+    A finalization has been made by the other player. It's your turn to finalize the division of items.
 
-    Your proposal should be formatted as follows:
+    Your finalization should be formatted as follows:
     <finalize>{{ "i_take": {{"item_category_1": x, "item_category_2": y}}, "other_player_gets": {{"item_category_1": y, "item_category_2": x}} }}</finalize>
 
     Here, 'i_take' represents your share of the items, and 'other_player_gets' represents the other player's share.
