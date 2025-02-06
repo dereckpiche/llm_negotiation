@@ -222,6 +222,12 @@ class DondPlayerHandler:
         Returns:
             str: The formatted prompt.
         """
+        other_player_finalization = state.get("last_message", "")
+        other_player_gets = other_player_finalization.get("other_player_gets", "")
+        i_take = other_player_finalization.get("i_take", "")
+
+
+
         return prompt.replace("{rounds_per_game}", str(state.get("rounds_per_game", ""))) \
                      .replace("{last_round_info}", state.get("last_round_info", "")) \
                      .replace("{current_round}", str(state.get("current_round", ""))) \
@@ -232,7 +238,9 @@ class DondPlayerHandler:
                      .replace("{max_reasoning_chars}", str(self.max_reasoning_chars)) \
                      .replace("{max_messages}", str(self.max_messages)) \
                      .replace("{max_chars_per_message}", str(self.max_chars_per_message)) \
-                     .replace("{max_retries}", str(self.max_retries))
+                     .replace("{max_retries}", str(self.max_retries)) \
+                     .replace("{other_player_gets}", str(other_player_gets)) \
+                     .replace("{i_take}", str(i_take))
 
     def format_prompt_list(self, prompt_list, state):
         """
