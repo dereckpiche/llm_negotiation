@@ -75,7 +75,7 @@ matches:
 
   run_matches_args:
     nb_parallel_matches: -1
-    log_func: independant_players_logging
+    log_func: players_logging_and_html
     log_func_args:
       metrics_func: gather_dond_statistics
       metrics_func_args:
