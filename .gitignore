@@ -3,3 +3,4 @@ important_outputs/
 run_commands.py
 important_outputs/
 *.mp4
+**/__pycache__/
