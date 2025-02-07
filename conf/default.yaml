@@ -6,7 +6,7 @@ hydra:
 experiment:
   method: dond_run_train
   description: "Easy. They should be learning."
-  nb_epochs: 100
+  nb_epochs: 100000
   nb_matches_per_iteration: 32
   reinit_matches_each_it: true
   start_epoch: 0
@@ -24,7 +24,6 @@ training:
       ad_bob:
         train_func: train_reinforce_main
         train_func_args: {}
-
 
 models:
 
@@ -87,7 +86,7 @@ matches:
         ]
       training_data_func: set_discounted_returns
       training_data_func_args:
-        discount_factor: 0.96
+        discount_factor: 1.0
         
   dond_game_args:
     rounds_per_game: 1
@@ -114,11 +113,11 @@ matches:
         max_reasoning_chars: 0
         max_messages: 0
         max_chars_per_message: 0
-        intro_prompt: ${prompt_blocks.barebone_ultimatum}
-        goal_prompt: ${prompt_blocks.unformatted_goal}
-        new_round_prompt: ""
-        initial_move_prompt: "You are the first to play:"
-        ongoing_moves_prompt: ""
+        intro_prompt: ${prompt_blocks.barebone_ultimatum2}
+        goal_prompt: null
+        new_round_prompt: null
+        initial_move_prompt: "You are the first player. It is your turn to play."
+        ongoing_moves_prompt: null
         finalization_prompt: ${prompt_blocks.visible_finalization_prompt}
 
     bob:
@@ -131,11 +130,11 @@ matches:
         max_reasoning_chars: 100
         max_messages: 5
         max_chars_per_message: 50
-        intro_prompt: ${prompt_blocks.barebone_ultimatum}
-        goal_prompt: ${prompt_blocks.unformatted_goal}     
-        new_round_prompt: ""
-        initial_move_prompt: ""
-        ongoing_moves_prompt: ""
+        intro_prompt: ${prompt_blocks.barebone_ultimatum2}
+        goal_prompt: null  
+        new_round_prompt: null
+        initial_move_prompt: null
+        ongoing_moves_prompt: null
         finalization_prompt: ${prompt_blocks.visible_finalization_prompt}
 
 
@@ -145,7 +144,7 @@ prompt_blocks:
 
     Welcome, you are playing the splitting game.
 
-    Game Description:
+    Game Description:x
 
       1) In this game, two players divide 10 coins among themselves.
 
@@ -164,55 +163,75 @@ prompt_blocks:
 
       2) The division must be in a JSON-parsable format. Formatting: Final division: <finalize> {"i_take": {"coins": x}, "other_player_gets": {"coins": y}} </finalize> where "i_take" represents your share and "other_player_gets" represents the other player's share of the coins.
 
-    dond_game: |
+  barebone_ultimatum2: |
 
-      Welcome to the splitting game. 
+    Welcome to the Splitting Game.
 
-      Game Description:
+    Game Overview:
 
-        1) In this game, two players divide {quantities} among themselves.
+      1) Two players divide 10 coins.
 
-        2) The points each player obtains is the number of items they get at the end of the game.
+      2) Each player proposes a division of the coins.
 
-        3) After the number of items and values have been shown, the first player will make a finalization. A finalization is proposed division of the items between the two players.
+      3) Both players must agree on a division to receive the coins. If not, both receive zero coins. 
 
-        4) The second player must then make his finalization.
+      4) The game is played only once.
 
-        5) Each player can make a single finalization for the entire game, hence the name.
+    Response Format:
 
-        6) In order for both players to agree, the finalizations must be complementary. If no agreement is reached between the two players with the two finalizations, both players will receive zero points.
+      1) Responses must be within <finalize> </finalize> tags.
 
-      Response Formatting:
+      2) Use JSON format: <finalize> {"i_take": {"coins": x}, "other_player_gets": {"coins": y}} </finalize>.
 
-        1) All of your responses must be within <finalize></finalize> tags.
+  dond_game: |
 
-        2) The division must be in a JSON-parsable format. Formatting: Final division: <finalize>{ "i_take": {"item_category1": x, "item_category2": y}, "other_player_gets": {"item_category1": y, "item_category2": x} }</finalize> where 'i_take' represents your share and 'other_player_gets' represents the other player's share of the item categories.
+    Welcome to the splitting game. 
+
+    Game Description:
+
+      1) In this game, two players divide {quantities} among themselves.
+
+      2) The points each player obtains is the number of items they get at the end of the game.
+
+      3) After the number of items and values have been shown, the first player will make a finalization. A finalization is proposed division of the items between the two players.
+
+      4) The second player must then make his finalization.
+
+      5) Each player can make a single finalization for the entire game, hence the name.
+
+      6) In order for both players to agree, the finalizations must be complementary. If no agreement is reached between the two players with the two finalizations, both players will receive zero points.
+
+    Response Formatting:
+
+      1) All of your responses must be within <finalize></finalize> tags.
+
+      2) The division must be in a JSON-parsable format. Formatting: Final division: <finalize>{ "i_take": {"item_category1": x, "item_category2": y}, "other_player_gets": {"item_category1": y, "item_category2": x} }</finalize> where 'i_take' represents your share and 'other_player_gets' represents the other player's share of the item categories.
 
   barebone_round_prompt: |
     ""
 
   initial_play_prompt: |
-    You are the first to play:
+    You are the first player. It is your turn to play.
 
   ongoing_play_prompt: |
     The other player sent you this message: <message>{last_message}</message>
 
   visible_finalization_prompt: |
     The other player's finalization was {other_player_finalization}.
-    Please make your finalization decision now. 
+    You are the second player. It is your turn to play.
 
   second_player_finalization_prompt: |
     The other player's finalization was {other_player_finalization}.
-    Please make your finalization decision now.
+    It is your turn to play.
 
   unformatted_goal: |
     ""
 
   normal_goal: |
-    Goal: Maximize your points.
+    Your points will be the number of coins you get at the end of the game.
 
   agressive_goal: |
-    Goal: Maximize your points by strategic negotiation.
+    Your goal is to get as many coins as possible.
 
   fair_goal: |
     Goal: Aim to reach a fair agreement quickly.

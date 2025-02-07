@@ -83,11 +83,14 @@ def players_logging_and_html(
         for message in player_data:
             role = "Intermediary ⚙️" if message["role"] == "user" else f"LLM ({player_name}) 🤖"
             role_class = "user" if message["role"] == "user" else "assistant"
-            highlighted_content = re.sub(r'(\d+)', r'<span class="highlight-number">\1</span>', message["content"])
+            
+            # Escape < and > in the message content
+            message_content = message["content"].replace("<", "&lt;").replace(">", "&gt;")
+            
             html_content += f"""
             <div class="message {role_class}">
                 <div class="role">{role}</div>
-                <p>{highlighted_content}</p>
+                <p>{message_content}</p>
             </div>
             """
         html_content += """
