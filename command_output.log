@@ -1,0 +1,11 @@
+/home/mila/d/dereck.piche/llm_negotiation/src/run.py:10: UserWarning: 
+The version_base parameter is not specified.
+Please specify a compatability version level, or None.
+Will assume defaults for version 1.1
+  @hydra.main(config_path="../conf", config_name="default")
+Traceback (most recent call last):
+  File "/cvmfs/ai.mila.quebec/apps/arch/distro/python/3.10/lib/python3.10/pathlib.py", line 1175, in mkdir
+    self._accessor.mkdir(self, mode)
+OSError: [Errno 122] Disk quota exceeded: 'outputs/2025-02-09/15-47-33'
+
+Set the environment variable HYDRA_FULL_ERROR=1 for a complete stack trace.

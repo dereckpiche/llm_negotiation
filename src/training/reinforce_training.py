@@ -24,10 +24,10 @@ def reinforce_train(
         mb_per_step=-1,
         learning_rate=1e-5,
         output_path=None,
-        tokenizer=None
+        tokenizer=None,
+        temperature=1.0  # new hyperparameter to control softmax temperature during training
         ):
     """
-
     Args:
         model (torch.nn.Module): The language model with a value head to be optimized.
         ref_model (torch.nn.Module): Reference model used for KL penalty.
@@ -41,6 +41,7 @@ def reinforce_train(
         clip_param (float, optional): Clipping parameter epsilon for PPO, default is 0.2.
         vf_coef (float, optional): Coefficient for value loss, default is 0.5.
         entropy_coef (float, optional): Coefficient for entropy bonus, default is 0.01.
+        temperature (float): Hyperparameter to control the softmax temperature. Must be > 0 (default: 1.0).
 
     Returns:
         float: The total loss value for the training step.
@@ -69,8 +70,12 @@ def reinforce_train(
 
     max_memory_usage = 0  # Initialize max memory usage
 
+    nb_trajectories_we_train_on = len(contexts_list) - len(contexts_list) % mb_size
+
     for epoch in range(nb_epochs):
+
         for i in range(0, len(contexts_list), mb_size):
+
             # Get the minibatch
             context_batch = contexts_list[i:i + mb_size]
             return_batch = returns_list[i:i + mb_size]
@@ -80,7 +85,6 @@ def reinforce_train(
             return_batch = [r[1:] for r in return_batch]
             mask_batch = [m[1:] for m in mask_batch]
             context_batch = [c[:-1] for c in context_batch]
-
 
             # Pad sequences
             action_batch = pad_sequence(action_batch, batch_first=True).long()
@@ -101,13 +105,17 @@ def reinforce_train(
             # Forward pass
             outputs = model(input_ids=context_batch, attention_mask=attention_mask)
             logits = outputs[0]
+            # Apply temperature scaling before computing log probabilities
+            assert temperature > 0, "Temperature must be greater than 0."
+            scaled_logits = logits / temperature
             # Compute new log probabilities            
-            log_probs = F.log_softmax(logits, dim=-1)
+            log_probs = F.log_softmax(scaled_logits, dim=-1)
             action_log_probs = log_probs.gather(dim=-1, index=action_batch.unsqueeze(-1)).squeeze(-1)
 
             # Apply mask to log probabilities and values
             rewarded_action_log_probs = action_log_probs * (return_batch * mask_batch)
-            loss = -rewarded_action_log_probs.mean()
+            loss = -rewarded_action_log_probs.sum()
+            loss = loss / nb_trajectories_we_train_on # we mean contributions across trajectories
 
             # Accumulate gradients
             model_accelerator.backward(loss)
@@ -115,7 +123,7 @@ def reinforce_train(
             # Update max GPU memory usage
             current_memory_usage = torch.cuda.max_memory_allocated(model_accelerator.device)
             if current_memory_usage > max_memory_usage:
-                max_memory_usage = current_memory_usage
+                max_memory_usage = current_memory_usage 
 
             # Determine when to perform optimizer step
             if mb_per_step == -1:
@@ -131,7 +139,6 @@ def reinforce_train(
 
     # Log max GPU memory usage after training
     memory_logger.info(f"Max GPU memory usage during training: {max_memory_usage / (1024 ** 2):.2f} MB")
-
     return loss.item()
 
 
