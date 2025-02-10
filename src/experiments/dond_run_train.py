@@ -51,7 +51,7 @@ def create_blank_match(cfg):
     """
     players = {}
     for player_name in cfg["matches"]["players"].keys():
-        players[player_name] = DondPlayerHandler(player_name, 
+        players[player_name] = DondPlayerHandler(player_name,
                                                  **cfg["matches"]["players"][player_name]["dond_player_args"])
     blank_match = {
         "players": players,
@@ -120,6 +120,8 @@ def dond_run_train(cfg):
                 tensorboard_log_dir=os.path.join(player_stats_folder, "tensorboard"),
                 wandb_log_dir=os.path.join(player_stats_folder, "wandb"),
             )
+
+            generate_frequency_counts(os.path.join(it_folder, player_name, 'statistics'))
 
         logging_end_time = time.time()
 
