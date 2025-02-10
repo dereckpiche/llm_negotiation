@@ -2,3 +2,4 @@ outputs/
 important_outputs/
 important_outputs/
 *.mp4
+**/__pycache__/
