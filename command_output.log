@@ -705,3 +705,7 @@ WARNING 02-10 15:00:24 tokenizer.py:174] No tokenizer found in /home/mila/d/dere
 [2025-02-10 15:00:28,983][accelerate.utils.modeling][INFO] - We will use 90% of the memory on device 0 for storing the model, and 10% for the buffer to avoid OOM. You can set `max_memory` in to a higher value to use more memory (at your own risk).
 [2025-02-10 15:00:29,036][root][ERROR] - Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]
 [2025-02-10 15:00:31,595][root][ERROR] - Loading checkpoint shards:  25%|##5       | 1/4 [00:02<00:07,  2.56s/it]
+[2025-02-10 15:00:33,269][root][ERROR] - Loading checkpoint shards:  50%|#####     | 2/4 [00:04<00:04,  2.04s/it]
+[2025-02-10 15:00:34,872][root][ERROR] - Loading checkpoint shards:  75%|#######5  | 3/4 [00:05<00:01,  1.84s/it]
+[2025-02-10 15:00:35,407][root][ERROR] - Loading checkpoint shards: 100%|##########| 4/4 [00:06<00:00,  1.32s/it]
+[2025-02-10 15:00:35,407][root][ERROR] - Loading checkpoint shards: 100%|##########| 4/4 [00:06<00:00,  1.59s/it]
