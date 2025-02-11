@@ -6,7 +6,7 @@ hydra:
 experiment:
   method: dond_run_train
   description: "Easy. They should be learning."
-  nb_epochs: 100000
+  nb_epochs: 40
   nb_matches_per_iteration: 32
   reinit_matches_each_it: true
   start_epoch: 0
@@ -16,14 +16,19 @@ training:
   keep_error_messages: False
   llama:
     adapters:
+    
       ad_alice:
         train_func: train_reinforce_main
-        train_func_args: {}
+        train_func_args: 
+          temperature: 1
+          learning_rate: 1e-4
 
 
       ad_bob:
         train_func: train_reinforce_main
-        train_func_args: {}
+        train_func_args: 
+          temperature: 1
+          learning_rate: 1e-4
 
 models:
 
@@ -37,7 +42,7 @@ models:
       device: "cuda"
       model_name: "meta-llama/Llama-3.1-8B-Instruct"
       pretrained_args:
-        pretrained_model_name_or_path: "meta-llama/Llama-3.1-8B-Instruct"
+        pretrained_model_name_or_path: ${models.llama.init_args.model_name}
         torch_dtype: "bfloat16"
         device_map: "auto"
         attn_implementation: "flash_attention_2"
@@ -65,7 +70,7 @@ models:
       keep_vllm_during_eval: True
       eval_with: "vllm"
       train_with: "hf"
-      random_seed: 40
+      random_seed: 500
 
 matches:
 
@@ -114,7 +119,7 @@ matches:
         max_messages: 0
         max_chars_per_message: 0
         intro_prompt: ${prompt_blocks.barebone_ultimatum2}
-        goal_prompt: null
+        goal_prompt: ${prompt_blocks.agressive_goal}
         new_round_prompt: null
         initial_move_prompt: "You are the first player. It is your turn to play."
         ongoing_moves_prompt: null
@@ -131,7 +136,7 @@ matches:
         max_messages: 5
         max_chars_per_message: 50
         intro_prompt: ${prompt_blocks.barebone_ultimatum2}
-        goal_prompt: null  
+        goal_prompt: ${prompt_blocks.agressive_goal}
         new_round_prompt: null
         initial_move_prompt: null
         ongoing_moves_prompt: null
@@ -144,7 +149,7 @@ prompt_blocks:
 
     Welcome, you are playing the splitting game.
 
-    Game Description:x
+    Game Description:
 
       1) In this game, two players divide 10 coins among themselves.
 
@@ -224,8 +229,7 @@ prompt_blocks:
     The other player's finalization was {other_player_finalization}.
     It is your turn to play.
 
-  unformatted_goal: |
-    ""
+  unbiased_goal: null
 
   normal_goal: |
     Your points will be the number of coins you get at the end of the game.
@@ -233,10 +237,14 @@ prompt_blocks:
   agressive_goal: |
     Your goal is to get as many coins as possible.
 
+  agressive_pair_goal: |
+    Your goal is to get as many coins as possible.
+    This is also the goal of the other player.
+
   fair_goal: |
-    Goal: Aim to reach a fair agreement quickly.
+    Goal: Aim to be fair with both the other player and yourself.
 
   submitted_goal: |
-    Goal: Your goal is to do exactly what the other player wants. You must make the other player happy. Your proposal should match the other player's proposal. Exactly please. Exactly please! 
+    Goal: Your goal is to do exactly what the other player wants. You must make the other player happy. 
 
 
