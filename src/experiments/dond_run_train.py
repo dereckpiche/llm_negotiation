@@ -20,13 +20,9 @@ from utils.update_start_epoch import update_start_epoch
 from training.train_main import *
 from generation.run_games import run_matches
 
-compute__logger = logging.getLogger("compute__logger")
+compute_logger = logging.getLogger("compute_logger")
 
-def init_models(cfg):
-    hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
-    output_directory = hydra_cfg["runtime"]["output_dir"]
-    os.makedirs(output_directory, exist_ok=True)
-
+def init_models(cfg, output_directory):
     models = {}
     for model_name in cfg["models"].keys():
         if cfg["models"][model_name]["class"] == "hf":
@@ -76,7 +72,7 @@ def dond_run_train(cfg):
     # cfg = OmegaConf.to_container(cfg, resolve=False, structured_config_mode="dict")
 
     # Initialize models
-    models = init_models(cfg)
+    models = init_models(cfg, output_directory=output_directory)
 
     update_start_epoch(cfg=cfg, output_directory=output_directory)
 
@@ -184,7 +180,7 @@ def dond_run_train(cfg):
             else:
                 return f"{int(seconds)}s"
 
-        compute__logger.info(
+        compute_logger.info(
             f"Iteration {iteration + 1} took {format_time(iteration_duration)} "
             f"({generation_percentage:.2f}% Gen, {logging_percentage:.2f}% Log, {training_percentage:.2f}% Train). "
             f"Generation: {format_time(generation_duration)}, "
@@ -200,4 +196,4 @@ def dond_run_train(cfg):
     # Log total time
     total_end_time = time.time()
     total_duration = total_end_time - total_start_time
-    compute__logger.info(f"Total time taken for the entire run: {format_time(total_duration)}")
+    compute_logger.info(f"Total time taken for the entire run: {format_time(total_duration)}")

@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import logging
 
-compute__logger = logging.getLogger("compute__logger")
+compute_logger = logging.getLogger("compute_logger")
 memory_logger = logging.getLogger("memory_logger")
 model_logger = logging.getLogger("model_logger")
 

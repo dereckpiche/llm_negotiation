@@ -11,7 +11,6 @@ from transformers import (
     TextIteratorStreamer,
 )
 import os
-os.environ["WANDB_DISABLED"] = "True"
 import shutil
 from trl import (
     SFTTrainer,
@@ -48,7 +47,7 @@ import hydra
 from transformers import Trainer
 import json
 
-compute__logger = logging.getLogger("compute__logger")
+compute_logger = logging.getLogger("compute_logger")
 memory_logger = logging.getLogger("memory_logger")
 model_logger = logging.getLogger("model_logger")
 
@@ -176,7 +175,7 @@ class HfAgent:
 
 
         end_time = time.time()
-        compute__logger.info(f"HF model loading time: {end_time - start_time:.2f} seconds.")
+        compute_logger.info(f"HF model loading time: {end_time - start_time:.2f} seconds.")
 
         self.log_gpu_usage(f"After loading HF model with adapter {adapter_name} for training.")
 
@@ -206,7 +205,7 @@ class HfAgent:
                                       dtype=self.pretrained_args["torch_dtype"]
                                       )
                 end_time = time.time()
-                compute__logger.info(f"VLLM model loading time: {end_time - start_time:.2f} seconds.")
+                compute_logger.info(f"VLLM model loading time: {end_time - start_time:.2f} seconds.")
                 self.log_gpu_usage(f"After loading VLLM model with {adapter_name}.")
                 
         elif self.eval_with == "hf":
@@ -237,7 +236,7 @@ class HfAgent:
                 self.hf_model.eval()
 
                 end_time = time.time()
-                compute__logger.info(f"HF model loading time: {end_time - start_time:.2f} seconds.")
+                compute_logger.info(f"HF model loading time: {end_time - start_time:.2f} seconds.")
                 self.log_gpu_usage("After loading HF model.")
 
 
@@ -259,7 +258,7 @@ class HfAgent:
             self.hf_model = None
 
             end_time = time.time()
-            compute__logger.info(f"HF model unloading time: {end_time - start_time:.2f} seconds.")
+            compute_logger.info(f"HF model unloading time: {end_time - start_time:.2f} seconds.")
 
             self.log_gpu_usage("After destroying HF.")
 
@@ -290,7 +289,7 @@ class HfAgent:
             self.log_gpu_usage("After destroying VLLM.")
 
         end_time = time.time()
-        compute__logger.info(f"VLLM model unloading time: {end_time - start_time:.2f} seconds.")
+        compute_logger.info(f"VLLM model unloading time: {end_time - start_time:.2f} seconds.")
 
     def log_gpu_usage(self, message: str) -> None:
         """
@@ -376,7 +375,7 @@ class HfAgent:
             return []
 
         end_time = time.time()
-        # compute__logger.info(
+        # compute_logger.info(
         #     f"Generation completed in {end_time - start_time:.2f} seconds using {self.eval_with}."
         # )
 

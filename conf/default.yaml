@@ -1,7 +1,9 @@
 hydra:
   job:
     chdir: false
-
+    name: default
+  run:
+    dir: ${oc.env:EXP_OUT}/${hydra.job.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
 
 experiment:
   method: dond_run_train
@@ -31,7 +33,6 @@ training:
           learning_rate: 1e-4
 
 models:
-
   llama:
     class: hf
     init_args:
@@ -40,7 +41,7 @@ models:
       max_model_length: 8000
       include_value_head: false
       device: "cuda"
-      model_name: "meta-llama/Llama-3.1-8B-Instruct"
+      model_name: "/network/weights/llama.var/llama_3.1/Meta-Llama-3.1-8B-Instruct"
       pretrained_args:
         pretrained_model_name_or_path: ${models.llama.init_args.model_name}
         torch_dtype: "bfloat16"
@@ -50,7 +51,7 @@ models:
         #load_in_8bit: False
         #load_in_4bit: true
       lora_args:
-        task_type: TaskType.CAUSAL_LM
+        task_type: CAUSAL_LM
         r: 64
         lora_alpha: 32
         lora_dropout: 0.0
