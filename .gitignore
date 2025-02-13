@@ -2,11 +2,5 @@ outputs/
 important_outputs/
 important_outputs/
 *.mp4
-*.pyc
-*.pyo
-*.pyd
-*.pyw
-*.pyz
-*.pywz
-*.pyzw
-*.log
+**/__pycache__/
+**/**/__pycache__/

@@ -6,12 +6,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.ticker as ticker
 from torch.utils.tensorboard import SummaryWriter
+from collections import Counter
 
 import numpy as np
 import matplotlib.pyplot as plt
 import os
 from typing import Dict, Union, List
-import wandb
+# import wandb
 # from comet_ml import Experiment
 
 # experiment = Experiment(
@@ -105,7 +106,7 @@ def tb_statree(tree: Dict, writer, path: str = ""):
 def update_player_statistics(input_path, output_file):
     """
     Computes statistics for the current iteration and updates the global statistics file.
-    
+
     Args:
         input_path (str): Path to the folder containing player JSON files for the current iteration.
         output_file (str): Path to the JSON file where statistics are stored.
@@ -133,7 +134,7 @@ def update_player_statistics(input_path, output_file):
     with open(output_file, 'w') as f:
         json.dump(global_stats, f, indent=4)
 
-    
+
 
 def generate_player_stats_plots(global_stats_path, matplotlib_log_dir, tensorboard_log_dir, wandb_log_dir):
     """
@@ -162,7 +163,37 @@ def generate_player_stats_plots(global_stats_path, matplotlib_log_dir, tensorboa
 
     #wb_statree(global_stats)
 
+def generate_frequency_counts(input_path):
+    agreement_percent_values = []
+    items_given_to_self_values = []
+
+    for filename in os.listdir(input_path):
+        if filename.endswith('.json'):
+            file_path = os.path.join(input_path, filename)
+            with open(file_path, 'r') as f:
+                data = json.load(f)
+
+            for rounds, values in data.items():
+
+                agreement_percent_values.append(values['agreement_percentage'])
+                items_given_to_self_values.append(values['items_given_to_self'])
+
+    # Convert lists to frequency counts
+    agreement_percent_freq_counts = dict(Counter(agreement_percent_values))
+    items_given_to_self_freq_counts = dict(Counter(items_given_to_self_values))
+
+    # Combine into a final dictionary
+    freq_stats = {
+        "agreement_percent_freq": agreement_percent_freq_counts,
+        "items_given_to_self_freq": items_given_to_self_freq_counts
+    }
+
+    output_path = os.path.join(input_path, 'frequency_stats.json')
+    # Save to JSON
+    with open(output_path, 'w') as f:
+        json.dump(freq_stats, f, indent=4)
 
 
-if __name__ == "__main__": 
+
+if __name__ == "__main__":
     plot_cumulative_points("/home/mila/d/dereck.piche/llm_negotiation/important_outputs/2025-01-12 naive RL with 12 rounds/statistics/alice/alice_stats.jsonl")
