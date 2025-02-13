@@ -1,5 +1,5 @@
 import hydra
-import os
+import os, sys
 import logging
 import time
 import copy
@@ -17,15 +17,11 @@ from generation.run_games import run_matches
 
 compute__logger = logging.getLogger("compute__logger")
 
-def init_models(cfg):
-    hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
-    output_directory = hydra_cfg["runtime"]["output_dir"]
-    os.makedirs(output_directory, exist_ok=True)
-
+def init_models(cfg, random_seed, output_directory):
     models = {}
     for model_name in cfg["models"].keys():
         if cfg["models"][model_name]["class"] == "hf":
-            models[model_name] = HfAgent(**cfg["models"][model_name]["init_args"],
+            models[model_name] = HfAgent(**cfg["models"][model_name]["init_args"], random_seed=random_seed,
                                          output_directory=output_directory)
         elif cfg["models"][model_name]["class"] == "dummy_hf":
             models[model_name] = DummyHfAgent(**cfg["models"][model_name]["init_args"])
@@ -58,20 +54,18 @@ def create_blank_match(cfg):
     return blank_match
 
 
-def dond_run_train(cfg):
+def dond_run_train(cfg, random_seed):
     """
     Executes a negotiation cycle for the Deal or No Deal (DoND) game.
     """
     total_start_time = time.time()
 
     hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
-    output_directory = hydra_cfg["runtime"]["output_dir"]
+    output_directory = f"{hydra_cfg['runtime']['output_dir']}/seed_{random_seed}"
     os.makedirs(output_directory, exist_ok=True)
 
-    # cfg = OmegaConf.to_container(cfg, resolve=False, structured_config_mode="dict")
-
     # Initialize models
-    models = init_models(cfg)
+    models = init_models(cfg, random_seed=random_seed, output_directory=output_directory)
 
     update_start_epoch(cfg=cfg, output_directory=output_directory)
 

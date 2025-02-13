@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 from collections import Counter
+import pprint
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -191,7 +192,28 @@ def generate_frequency_counts(input_path):
     with open(output_path, 'w') as f:
         json.dump(freq_stats, f, indent=4)
 
+def plot_seed_averaged_stats(path, player_names):
+    # Metrics to extract
+    data = {player: {} for player in player_names}
 
+    files = [file for file in os.listdir(path) if file.startswith("seed")]
+
+    for player in player_names:
+        for file in files:
+            with open(f"{path}/{file}/statistics/{player}/{player}_stats.jsonl", "r") as f:
+                json_data = json.load(f)
+                round_data = json_data["round_0"]
+
+                for metric, values in round_data.items():
+                    data[player].setdefault(metric, []).append({
+                        'data': [val if val is not None else 0 for val in values],
+                        'file': file
+                    })
+    data = [i['data'] for i in data['alice']['agreement_percentage']]
+    data = np.array(data)
+    pprint.pp(np.mean(data, axis=0))
 
 if __name__ == "__main__":
-    plot_cumulative_points("/home/mila/d/dereck.piche/llm_negotiation/important_outputs/2025-01-12 naive RL with 12 rounds/statistics/alice/alice_stats.jsonl")
+    # plot_cumulative_points("/home/mila/d/dereck.piche/llm_negotiation/important_outputs/2025-01-12 naive RL with 12 rounds/statistics/alice/alice_stats.jsonl")
+    folder = "outputs/2025-02-13/15-32-27"
+    plot_seed_averaged_stats(folder, ["alice", "bob"])
