@@ -196,4 +196,5 @@ def generate_frequency_counts(input_path):
 
 
 if __name__ == "__main__":
-    plot_cumulative_points("/home/mila/d/dereck.piche/llm_negotiation/important_outputs/2025-01-12 naive RL with 12 rounds/statistics/alice/alice_stats.jsonl")
+    # plot_cumulative_points("/home/mila/d/dereck.piche/llm_negotiation/important_outputs/2025-01-12 naive RL with 12 rounds/statistics/alice/alice_stats.jsonl")
+    generate_frequency_counts("/home/mila/d/dereck.piche/llm_negotiation/outputs/2025-02-10/13-57-29/iteration_000/alice/statistics")
