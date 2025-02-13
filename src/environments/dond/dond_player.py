@@ -88,7 +88,9 @@ class DondPlayerHandler:
             self.error_message = None
             return
 
-        if state["is_new_game"]:
+        is_new_game = (state["round_number"] == 0 and not self.chat_history)
+        
+        if is_new_game:
             # Add introductory and goal prompts.
             user_message += self.format_prompt(self.intro_prompt, state)
             # Add message mechanics instructions if provided.

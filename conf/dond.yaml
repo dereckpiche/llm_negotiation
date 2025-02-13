@@ -37,9 +37,9 @@ matches:
         discount_factor: 1.0
         
   dond_game_args:
-    rounds_per_game: 5
-    max_messages: 5
-    max_chars_per_message: 50
+    rounds_per_game: 4
+    max_messages: 1
+    max_chars_per_message: 100
     mode: basic
     random_setup_func: uniform_quant_random_vals
     random_setup_kwargs:
@@ -272,10 +272,12 @@ prompt_blocks:
 
   dond_message_mechanics: |
     In order to communicate with the other player, you are allowed to send messages back and forth.
+    Messages are distinct from finalizations. You cannot send a message and a finalization in a single response.
     When sending a message, please follow these rules:
       1) Enclose your entire message within <message> and </message> tags.
       2) Do not include any extra text outside of these tags.
       3) You are limited to {max_messages} messages per round; ensure you use your messages wisely.
+      4) You are not obligated to send a message at each round.
 
   dond_reasoning_mechanics: |
     In order to think before you act, you are allowed to use {max_reasoning_chars} characters per round.
@@ -283,7 +285,7 @@ prompt_blocks:
       1) Enclose your thought process within <think> and </think> tags.
       2) Do not include extraneous content outside these tags.
       3) Your reasoning is limited to {max_reasoning_chars} characters.
-
+      4) You are not obligated to reason at each round.
 
 
 
