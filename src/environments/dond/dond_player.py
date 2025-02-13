@@ -21,28 +21,33 @@ class DondPlayerHandler:
         max_chars_per_message,
         intro_prompt,
         goal_prompt,
+        first_round_prompt,
         new_round_prompt,
-        initial_move_prompt,
-        ongoing_moves_prompt,
-        finalization_prompt
+        player_with_first_move_prompt,
+        received_message_prompt,
+        other_player_finalized_prompt
     ):
         """
         Initializes the DondPlayerHandler.
 
         Args:
             player_name (str): The name of the player.
-            prompts (dict): Dictionary containing various prompts.
             allow_reasoning (bool): Whether reasoning is allowed.
             max_retries (int): Maximum number of retries allowed.
-            mod_adpt_id (str): The name of the model used.
-            max_reasoning_chars (int): Max number of reasoning characters.
-            max_messages (int): Max number of messages.
-            max_chars_per_message (int): Max number of characters per message.
-            player_intro_prompt_appending (str): Additional intro prompt for the player.
-            intro_prompt (list): List of strings for the game introduction prompt.
+            mod_adpt_id (str): The model adapter id to use.
+            max_reasoning_chars (int): Maximum reasoning characters allowed.
+            max_messages (int): Maximum number of messages allowed.
+            max_chars_per_message (int): Maximum characters per message.
+            intro_prompt (str): Prompt for the game introduction.
+            goal_prompt (str): Prompt for the player's goal.
+            first_round_prompt (str): Prompt for the first round.
+            new_round_prompt (str): Prompt for the new round.
+            player_with_first_move_prompt (str): Prompt when the player is assigned the first move in a round.
+            received_message_prompt (str): Prompt when a message is received from the other player.
+            other_player_finalized_prompt (str): Prompt to indicate that the other player has finalized.
         """
-        self.allow_reasoning = allow_reasoning
         self.player_name = player_name
+        self.allow_reasoning = allow_reasoning
         self.max_retries = max_retries
         self.mod_adpt_id = mod_adpt_id
         self.max_reasoning_chars = max_reasoning_chars
@@ -51,11 +56,13 @@ class DondPlayerHandler:
 
         self.intro_prompt = intro_prompt
         self.goal_prompt = goal_prompt
+        self.first_round_prompt = first_round_prompt
         self.new_round_prompt = new_round_prompt
-        self.initial_move_prompt = initial_move_prompt
-        self.ongoing_moves_prompt = ongoing_moves_prompt
-        self.finalization_prompt = finalization_prompt
-        self.game_id = None  # ID of player in game
+        self.player_with_first_move_prompt = player_with_first_move_prompt
+        self.received_message_prompt = received_message_prompt
+        self.other_player_finalized_prompt = other_player_finalized_prompt
+
+        self.game_id = None  # ID of the player in the game
         self.reset()
 
     def set_usr_message(self, state):
@@ -64,9 +71,6 @@ class DondPlayerHandler:
 
         Args:
             state (dict): The current state of the game.
-
-        Returns:
-            str: The constructed user message.
         """
         user_message = ""
 
@@ -87,26 +91,27 @@ class DondPlayerHandler:
             user_message += self.format_prompt(self.goal_prompt, state)
 
         if state["is_new_round"]:
-            if not (state["round_number"] == 0 and len(self.chat_history) == 2):
-                self.new_round()
-
+            self.new_round()
+            # Use the first round prompt if round_number == 0; otherwise use the new round prompt.
+            if state["round_number"] == 0:
+                user_message += self.format_prompt(self.first_round_prompt, state)
+            else:
                 user_message += self.format_prompt(self.new_round_prompt, state)
 
         if state["has_finalized"]:
-            user_message += self.format_prompt(self.finalization_prompt, state)
-
+            user_message += self.format_prompt(self.other_player_finalized_prompt, state)
         elif state["last_message"] is None:
-            user_message += self.initial_move_prompt
+            user_message += self.player_with_first_move_prompt
         else:
-            user_message += self.format_prompt(self.ongoing_moves_prompt, state)
+            user_message += self.format_prompt(self.received_message_prompt, state)
 
-        user_message = {
+        usr_prompt = {
             "role": "user",
             "content": user_message,
             "is_error": False,
             "round_nb": state["round_number"],
         }
-        self.add_to_chat_history(user_message)
+        self.add_to_chat_history(usr_prompt)
 
     def process_response(self, response, state):
         """
@@ -172,7 +177,28 @@ class DondPlayerHandler:
                 if not isinstance(i_take, dict) or not isinstance(other_player_gets, dict):
                     errors.append('"i_take" and "other_player_gets" must be dictionaries.')
                 else:
-                    for item in state["items"]:
+                    # Validate that the keys exactly match the expected items.
+                    expected_items = set(state.get("items", []))
+                    if set(i_take.keys()) != expected_items:
+                        missing = expected_items - set(i_take.keys())
+                        extra = set(i_take.keys()) - expected_items
+                        error_str = "Invalid keys in 'i_take':"
+                        if missing:
+                            error_str += f" Missing keys: {', '.join(missing)}."
+                        if extra:
+                            error_str += f" Unexpected keys: {', '.join(extra)}."
+                        errors.append(error_str)
+                    if set(other_player_gets.keys()) != expected_items:
+                        missing = expected_items - set(other_player_gets.keys())
+                        extra = set(other_player_gets.keys()) - expected_items
+                        error_str = "Invalid keys in 'other_player_gets':"
+                        if missing:
+                            error_str += f" Missing keys: {', '.join(missing)}."
+                        if extra:
+                            error_str += f" Unexpected keys: {', '.join(extra)}."
+                        errors.append(error_str)
+                    # Verify that every value for each key is an integer.
+                    for item in expected_items:
                         if not isinstance(i_take.get(item), int):
                             errors.append(f'Value of "{item}" in "i_take" must be an integer.')
                         if not isinstance(other_player_gets.get(item), int):
@@ -222,26 +248,29 @@ class DondPlayerHandler:
         Returns:
             str: The formatted prompt.
         """
-
         if prompt: 
-
             if state.get("has_finalized"):
                 other_player_finalization = state.get("last_message", "")
-            #     other_player_gets = other_player_finalization.get("other_player_gets", "")
-            #     i_take = other_player_finalization.get("i_take", "")
             else:
                 other_player_finalization = ""
-            #     other_player_gets = ""
-            #     i_take = "" 
-
+            
+            # Get the values for the current player based on their role.
             values = state["role_values"][state["player_to_role"][state["current_player"]]]
+            
+            # Build a summary from the last round (if available)
+            last_round_info = ""
+            if state.get("round_number", 0) > 0:
+                last_points = state["round_points"][-1] if state.get("round_points") else "N/A"
+                last_finalizations = state["round_finalizations"][-1] if state.get("round_finalizations") else "N/A"
+                last_round_info = f"Points: {last_points}, Finalizations: {last_finalizations}"
 
             return prompt.replace("{rounds_per_game}", str(state.get("rounds_per_game", ""))) \
-                        .replace("{last_round_info}", state.get("last_round_info", "")) \
+                        .replace("{last_round_info}", last_round_info) \
                         .replace("{current_round}", str(state.get("current_round", ""))) \
-                        .replace("{nb_rounds}", str(state["round_number"]+1)) \
+                        .replace("{nb_rounds}", str(state["round_number"] + 1)) \
                         .replace("{quantities}", str(state.get("quantities", ""))) \
                         .replace("{values}", str(values)) \
+                        .replace("{items}", str(state.get("items", ""))) \
                         .replace("{max_reasoning_chars}", str(self.max_reasoning_chars)) \
                         .replace("{max_messages}", str(self.max_messages)) \
                         .replace("{max_chars_per_message}", str(self.max_chars_per_message)) \

@@ -165,7 +165,11 @@ class DondGame:
             finalization (list): The list of finalized quantities for each item.
         """
         current_role = self.current_turn()
-        self.role_props[current_role] = finalization["i_take"]
+        finalization_dict = finalization["i_take"]
+        # Ensure every item is present in the finalization, defaulting to 0 if missing
+        for item in self.items:
+            finalization_dict.setdefault(item, 0)
+        self.role_props[current_role] = finalization_dict
 
     def get_state(self):
         """
@@ -319,13 +323,15 @@ class DondGame:
         self.__dict__.update(checkpoint)
 
 def uniform_quant_random_vals(items, min_quant, max_quant, min_val, max_val):
-    quant = random.randint(min_quant, max_quant)
-    val_starting_negotiator = [random.randint(min_val, max_val) for _ in range(quant)]
-    val_responding_negotiator = copy.deepcopy(val_starting_negotiator)
-    random.shuffle(val_responding_negotiator)
-    val_starting_negotiator = {item: val for item, val in zip(items, val_starting_negotiator)}
-    val_responding_negotiator = {item: val for item, val in zip(items, val_responding_negotiator)}
-    quantities = {item:q for item,q in zip(items, [quant]*len(items))}
+    # For each item, sample a quantity and a value.
+    quantities = {item: random.randint(min_quant, max_quant) for item in items}
+    val_starting_negotiator = {item: random.randint(min_val, max_val) for item in items}
+    # For the responding negotiator, you can copy and then shuffle the values
+    # if that is desired behavior.
+    values = list(val_starting_negotiator.values())
+    random.shuffle(values)
+    val_responding_negotiator = {item: values[i] for i, item in enumerate(items)}
+  
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
 def independent_random_vals(items, min_quant, max_quant, min_val, max_val):
