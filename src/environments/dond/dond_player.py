@@ -14,18 +14,18 @@ class DondPlayerHandler:
         self,
         player_name,
         allow_reasoning,
-        max_retries,
+        max_errors,
         mod_adpt_id,
         max_reasoning_chars,
-        max_messages,
-        max_chars_per_message,
         intro_prompt,
         goal_prompt,
         first_round_prompt,
         new_round_prompt,
         player_with_first_move_prompt,
         received_message_prompt,
-        other_player_finalized_prompt
+        other_player_finalized_prompt,
+        message_mechanics_prompt=None,     # New parameter for message mechanics
+        reasoning_mechanics_prompt=None    # New parameter for reasoning mechanics
     ):
         """
         Initializes the DondPlayerHandler.
@@ -33,26 +33,24 @@ class DondPlayerHandler:
         Args:
             player_name (str): The name of the player.
             allow_reasoning (bool): Whether reasoning is allowed.
-            max_retries (int): Maximum number of retries allowed.
+            max_errors (int): Maximum number of retries allowed.
             mod_adpt_id (str): The model adapter id to use.
             max_reasoning_chars (int): Maximum reasoning characters allowed.
-            max_messages (int): Maximum number of messages allowed.
-            max_chars_per_message (int): Maximum characters per message.
             intro_prompt (str): Prompt for the game introduction.
             goal_prompt (str): Prompt for the player's goal.
             first_round_prompt (str): Prompt for the first round.
             new_round_prompt (str): Prompt for the new round.
-            player_with_first_move_prompt (str): Prompt when the player is assigned the first move in a round.
+            player_with_first_move_prompt (str): Prompt when the player is assigned the first move.
             received_message_prompt (str): Prompt when a message is received from the other player.
             other_player_finalized_prompt (str): Prompt to indicate that the other player has finalized.
+            message_mechanics_prompt (str, optional): Instructions for message mechanics.
+            reasoning_mechanics_prompt (str, optional): Instructions for reasoning mechanics.
         """
         self.player_name = player_name
         self.allow_reasoning = allow_reasoning
-        self.max_retries = max_retries
+        self.max_errors = max_errors
         self.mod_adpt_id = mod_adpt_id
         self.max_reasoning_chars = max_reasoning_chars
-        self.max_messages = max_messages
-        self.max_chars_per_message = max_chars_per_message
 
         self.intro_prompt = intro_prompt
         self.goal_prompt = goal_prompt
@@ -61,6 +59,10 @@ class DondPlayerHandler:
         self.player_with_first_move_prompt = player_with_first_move_prompt
         self.received_message_prompt = received_message_prompt
         self.other_player_finalized_prompt = other_player_finalized_prompt
+
+        # Set the new mechanics prompts.
+        self.message_mechanics_prompt = message_mechanics_prompt
+        self.reasoning_mechanics_prompt = reasoning_mechanics_prompt
 
         self.game_id = None  # ID of the player in the game
         self.reset()
@@ -87,7 +89,15 @@ class DondPlayerHandler:
             return
 
         if state["is_new_game"]:
+            # Add introductory and goal prompts.
             user_message += self.format_prompt(self.intro_prompt, state)
+            # Add message mechanics instructions if provided.
+            if self.message_mechanics_prompt:
+                user_message += "\n" + self.format_prompt(self.message_mechanics_prompt, state)
+            # Add reasoning mechanics instructions if allowed and provided.
+            if self.allow_reasoning and self.reasoning_mechanics_prompt:
+                user_message += "\n" + self.format_prompt(self.reasoning_mechanics_prompt, state)
+            # Add goal prompt.
             user_message += self.format_prompt(self.goal_prompt, state)
 
         if state["is_new_round"]:
@@ -122,11 +132,7 @@ class DondPlayerHandler:
             state (dict): The current state of the game.
 
         Returns:
-            tuple: A tuple containing:
-                - is_error (bool): Indicates if there is an error.
-                - error_message (str): The error message if there is an error, otherwise an empty string.
-                - is_finalization (bool): Indicates if the response is a finalization.
-                - processed_response (str or dict): The extracted message or finalization details.
+            tuple: (is_error, error_message, is_finalization, processed_response)
         """
         errors = []
 
@@ -140,14 +146,13 @@ class DondPlayerHandler:
         has_message = "<message>" in response and "</message>" in response
         has_finalization = "<finalize>" in response and "</finalize>" in response
 
-        if (state["turn"] > state["max_turns"] - 2) and not has_finalization:
-            errors.append("You must finalize before the turn limit!")
-        if has_message and has_finalization:
-            errors.append("Response contains both <message> and <finalize>; only one is allowed.")
-        elif not has_message and not has_finalization:
-            errors.append("Response must contain either <message> or <finalize>.")
-        if state["has_finalized"] and not has_finalization:
-            errors.append("The other player has finalized; you must finalize as well.")
+        # Adjusted check: if the conversation messages already reached max_messages and the
+        # response is not a finalization, then force finalization.
+        if (state.get("message_count", 0) >= state.get("max_messages", 0)) and not has_finalization:
+            errors.append("You must finalize because you reached the maximum number of messages!")
+            
+        if (state.get("message_count", 0) > state.get("max_messages", 0) - 2) and not has_finalization:
+            errors.append("You must finalize before reaching the message limit!")
 
         # 3) Check for excessive content outside valid tags (<think>, <message>, <finalize>)
         total_length = len(response)
@@ -161,6 +166,11 @@ class DondPlayerHandler:
         outside_length = total_length - total_tag_content_length
         if outside_length > 5:
             errors.append("Excessive content outside of valid tags.")
+
+        # 3.5) Check if the response exceeds the maximum allowed characters per message.
+        max_chars = state.get("max_chars_per_message", None)
+        if max_chars is not None and len(response) > max_chars:
+            errors.append("Response exceeds the maximum allowed characters per message.")
 
         # 4) Process finalization if present
         if has_finalization:
@@ -272,9 +282,9 @@ class DondPlayerHandler:
                         .replace("{values}", str(values)) \
                         .replace("{items}", str(state.get("items", ""))) \
                         .replace("{max_reasoning_chars}", str(self.max_reasoning_chars)) \
-                        .replace("{max_messages}", str(self.max_messages)) \
-                        .replace("{max_chars_per_message}", str(self.max_chars_per_message)) \
-                        .replace("{max_retries}", str(self.max_retries)) \
+                        .replace("{max_messages}", str(state.get("max_messages", ""))) \
+                        .replace("{max_chars_per_message}", str(state.get("max_chars_per_message", ""))) \
+                        .replace("{max_errors}", str(self.max_errors)) \
                         .replace("{other_player_finalization}", str(other_player_finalization))
         return ""
 
@@ -315,7 +325,7 @@ class DondPlayerHandler:
             self.retries += 1
             self.error_message = error_message
             # Too many mistakes were made
-            if self.retries > self.max_retries:
+            if self.retries > self.max_errors:
                 self.error_message = False
                 processed_response = "-------"
                 send_to_game = True

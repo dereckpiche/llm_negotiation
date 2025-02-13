@@ -37,8 +37,9 @@ matches:
         discount_factor: 1.0
         
   dond_game_args:
-    rounds_per_game: 3
-    max_turns: 1
+    rounds_per_game: 5
+    max_messages: 5
+    max_chars_per_message: 50
     mode: basic
     random_setup_func: uniform_quant_random_vals
     random_setup_kwargs:
@@ -55,14 +56,13 @@ matches:
     alice:
 
       dond_player_args:
-      
         mod_adpt_id: 'llama/ad_alice'
         allow_reasoning: false
-        max_retries: 1
-        max_reasoning_chars: 0
-        max_messages: 0
-        max_chars_per_message: 0
+        max_errors: 1
+        max_reasoning_chars: 50
         intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
+        message_mechanics_prompt: ${prompt_blocks.dond_message_mechanics}
+        reasoning_mechanics_prompt: ${prompt_blocks.dond_reasoning_mechanics}
         goal_prompt: ${prompt_blocks.dond_agressive_goal}
         first_round_prompt: ${prompt_blocks.first_round_prompt}
         new_round_prompt: ${prompt_blocks.new_round_prompt}
@@ -70,23 +70,24 @@ matches:
         received_message_prompt: ${prompt_blocks.message_prompt}
         other_player_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
 
+
     bob:
 
       dond_player_args:
-
         mod_adpt_id: 'llama/ad_bob'
         allow_reasoning: false
-        max_retries: 1
-        max_reasoning_chars: 100
-        max_messages: 5
-        max_chars_per_message: 50
+        max_errors: 1
+        max_reasoning_chars: 50
         intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
+        message_mechanics_prompt: ${prompt_blocks.dond_message_mechanics}
+        reasoning_mechanics_prompt: ${prompt_blocks.dond_reasoning_mechanics}
         goal_prompt: ${prompt_blocks.dond_agressive_goal}
         first_round_prompt: ${prompt_blocks.first_round_prompt}
         new_round_prompt: ${prompt_blocks.new_round_prompt}
         player_with_first_move_prompt: "You are the first player to make a move."
         received_message_prompt: ${prompt_blocks.message_prompt}
         other_player_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
+
 
 models:
 
@@ -269,10 +270,19 @@ prompt_blocks:
     For this new round, the items available are {quantities} and your assigned values are {values}.
     
 
+  dond_message_mechanics: |
+    In order to communicate with the other player, you are allowed to send messages back and forth.
+    When sending a message, please follow these rules:
+      1) Enclose your entire message within <message> and </message> tags.
+      2) Do not include any extra text outside of these tags.
+      3) You are limited to {max_messages} messages per round; ensure you use your messages wisely.
 
-    
-
-  
+  dond_reasoning_mechanics: |
+    In order to think before you act, you are allowed to use {max_reasoning_chars} characters per round.
+    When reasoning, please follow these rules:
+      1) Enclose your thought process within <think> and </think> tags.
+      2) Do not include extraneous content outside these tags.
+      3) Your reasoning is limited to {max_reasoning_chars} characters.
 
 
 
