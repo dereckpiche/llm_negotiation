@@ -1,11 +1,5 @@
 import json
 import regex as re
-import copy
-# local imports
-from environments.dond.dond_game import DondGame
-import math
-from statistics import mean
-import numpy as np
 import re
 import json
 
@@ -223,7 +217,7 @@ class DondPlayerHandler:
             str: The formatted prompt.
         """
 
-        if prompt: 
+        if prompt:
 
             if state.get("has_finalized"):
                 other_player_finalization = state.get("last_message", "")
@@ -232,7 +226,7 @@ class DondPlayerHandler:
             else:
                 other_player_finalization = ""
             #     other_player_gets = ""
-            #     i_take = "" 
+            #     i_take = ""
 
             values = state["role_values"][state["player_to_role"][state["current_player"]]]
 
@@ -312,7 +306,7 @@ class DondPlayerHandler:
         player_info = {"player_name": self.player_name, "chat_history": self.chat_history}
 
         return action, player_state, send_to_game, player_info
-    
+
     def get_info(self):
         return {"player_name": self.player_name, "chat_history": self.chat_history}
 
@@ -332,7 +326,7 @@ class DondPlayerHandler:
         # Implement cleanup logic if needed
         pass
 
-   
+
 
     def new_round(self):
         """

@@ -1,6 +1,3 @@
-import json
-import numpy as np
-
 def gather_dond_statistics(player_info, info, stats_to_log):
     """
     Gathers specified statistics of a game for a single player and outputs them in JSONL format.

@@ -1,17 +1,15 @@
 
 import json
 import os
-from statistics import mean
 import matplotlib.pyplot as plt
 import numpy as np
-import matplotlib.ticker as ticker
 from torch.utils.tensorboard import SummaryWriter
 from collections import Counter
 
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-from typing import Dict, Union, List
+from typing import Dict
 # import wandb
 # from comet_ml import Experiment
 

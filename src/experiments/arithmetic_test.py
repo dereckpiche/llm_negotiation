@@ -1,5 +1,3 @@
-import torch
-import random
 import logging
 import re
 from statistics import mean
@@ -21,7 +19,7 @@ CORRECT_ANSWER = 9
 
 def generate_queries(num_samples):
     q_content = f"Give me a random number between 0 and 100."
-    q = [{'role': 'user', 'content': 'Hey!'}, 
+    q = [{'role': 'user', 'content': 'Hey!'},
          {'role': 'assistant', 'content': 'Hey, how can I help you?'},
          {'role': 'user', 'content': q_content}
          ]
@@ -42,19 +40,19 @@ def train_agent(agent, num_steps, training_mode="ppo"):
 
     for step in range(num_steps):
         logging.info(f"Step {step + 1}/{num_steps}: Generating queries and responses...")
-        
+
         queries, correct_answers = generate_queries(N_SAMPLES)
-        
+
         responses = [[{'role': 'assistant', 'content': r}] for r in agent.prompt(queries)]
         logging.info(responses)
         rewards = calculate_rewards(responses, correct_answers)
-        
+
         mean_scores.append(mean(rewards))
         plot_curves(y_list=[mean_scores], plot_name='mean_scores')
 
         if training_mode == "ppo":
             agent.train_ppo(queries, responses, rewards)
-            
+
         elif training_mode == "sft":
             sft_data = [{'query': q, 'response': r} for q, r in zip(queries, responses)]
             sft_data_path = f"sft_training_step_{step}.jsonl"

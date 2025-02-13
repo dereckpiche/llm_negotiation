@@ -2,9 +2,6 @@ import hydra
 import os
 import logging
 import time
-from omegaconf import OmegaConf
-import random
-import json
 import copy
 # Local imports
 from models.hf_agent import HfAgent
@@ -12,9 +9,7 @@ from environments.dond.dond_player import DondPlayerHandler
 from environments.dond.dond_game import DondGame
 from models.dummy_hf_agent import DummyHfAgent
 from models.oai_agent import OaiAgent
-from utils.export_ppo_training_set import export_ppo_training_set
 from utils.log_statistics import *
-from utils.parallel_shuffle import parallel_shuffle
 from utils.log_statistics import update_player_statistics, generate_player_stats_plots
 from utils.update_start_epoch import update_start_epoch
 from training.train_main import *
