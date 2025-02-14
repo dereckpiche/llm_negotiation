@@ -60,8 +60,8 @@ def players_logging_and_html(
             .container { display: flex; }
             .column { flex: 1; padding: 10px; border-left: 2px solid #ccc; }
             .message { margin-bottom: 20px; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); }
-            .user { background-color: rgba(0, 123, 255, 0.1); }
-            .assistant { background-color: rgba(255, 193, 7, 0.1); }
+            .user { background-color: #f0f7ff; }
+            .assistant { background-color: #faf9f7; }
             .role { font-weight: bold; margin-bottom: 5px; }
             .game-info { margin-top: 30px; padding: 15px; border-radius: 10px; background-color: #ffffff; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); }
             .player-name { text-align: center; font-size: 1.5em; margin-bottom: 20px; }
@@ -86,6 +86,7 @@ def players_logging_and_html(
             
             # Escape < and > in the message content
             message_content = message["content"].replace("<", "&lt;").replace(">", "&gt;")
+            message_content = message_content.replace("\n", "<br>")
             
             html_content += f"""
             <div class="message {role_class}">

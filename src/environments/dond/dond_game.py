@@ -10,7 +10,8 @@ class DondGame:
         self,
         players,
         mode="coop",
-        max_turns=None,
+        max_messages=None,
+        max_chars_per_message=None,
         rounds_per_game=1,
         random_setup_func=None,
         random_setup_kwargs=None,
@@ -25,13 +26,14 @@ class DondGame:
         Args:
             players (list): List of player names.
             mode (str): The mode of the game, either 'coop' or 'basic'.
-            max_turns (int): The maximum number of turns allowed in the game.
-            player_order (str): The order of players, either 'deterministic' or 'stochastic'.
-            setup (str): The setup type, either 'random_read' or 'manual'.
-            setups_file (str): The file containing game setups.
+            max_messages (int): Maximum number of conversation (non-finalization) messages per player
+                                allowed before finalization is forced.
+            max_chars_per_message (int): Maximum number of characters allowed per message.
             rounds_per_game (int): The number of rounds per game.
-            items (list): The list of items in the game.
-            quantities (list): The quantities of items.
+            random_setup_func (str): The name of the function to use for random setup.
+            random_setup_kwargs (dict): Keyword arguments for the random setup function.
+            role_assignator_func (str): The name of the function to use for role assignment.
+            role_assignator_func_kwargs (dict): Keyword arguments for the role assignment function.
             finalization_visibility (bool): Visibility of finalization.
             other_values_visibility (bool): Visibility of other player's values.
         """
@@ -39,7 +41,8 @@ class DondGame:
         self.players = players
         self.roles = ["starting_negotiator", "responding_negotiator"]
         self.mode = mode
-        self.max_turns = max_turns
+        self.max_messages = max_messages
+        self.max_chars_per_message = max_chars_per_message
         self.random_setup_func = globals()[random_setup_func]
         self.random_setup_kwargs = random_setup_kwargs
         self.finalization_visibility = finalization_visibility
@@ -47,6 +50,11 @@ class DondGame:
         self.role_assignator_func = globals()[role_assignator_func]
         self.role_assignator_func_kwargs = role_assignator_func_kwargs
         self.other_values_visibility = other_values_visibility
+
+        # Initialize move tracking dictionaries.
+        self.game_moves = {player: 0 for player in players}
+        self.round_moves = {player: 0 for player in players}
+        self.round_messages = {player: 0 for player in players}
 
         self.reset()
 
@@ -66,21 +74,33 @@ class DondGame:
         Advances the game by one step.
 
         Args:
-            action (tuple): A tuple containing is_finalization and output.
+            action (tuple): A tuple containing (is_finalization, output).
 
         Returns:
             tuple: (observation, reward, done, info)
         """
         is_finalization, output = action
-        self.turn += 1
+        current_player = self.get_current_player()  # Current player's name
+
+        # Count this move for the current player (finalization or conversation).
+        self.game_moves[current_player] += 1
+        self.round_moves[current_player] += 1
+
+        # Only conversation messages (non-finalization) increment the message counter.
+        if not is_finalization:
+            self.round_messages[current_player] += 1
+            self.message_turn += 1
+
+        # Update state flags.
         self.last_message = output
         self.round_ended = False
-        self.is_new_round = True if self.turn <= 2 else False
-        self.is_new_game = True if (self.turn <= 1 and self.round_nb == 0) else False
+        self.is_new_round = (self.message_turn == 1)
+        self.is_new_game = (self.round_nb == 0 and self.message_turn == 1)
         self.game_over = False
         round_over = False
 
         if self.has_finalized:
+            # We are in the second finalization phase.
             if not is_finalization:
                 self.points = {player: 0 for player in self.players}
                 self.agreement_reached = False
@@ -95,20 +115,21 @@ class DondGame:
             round_over = True
 
         else:
+            # If a player sends a finalization, record it.
             if is_finalization:
                 self.has_finalized = True
                 self.finalize(output)
-
-            if self.turn > self.max_turns:
+            # Instead of using the global message_turn, check if every player
+            # has reached their personal message limit.
+            elif any(count > self.max_messages for count in self.round_messages.values()):
                 round_over = True
 
         self.role_deque.rotate(-1)
         if round_over: 
             self.new_round()
-        if self.round_nb > self.rounds_per_game-1:
+        if self.round_nb > self.rounds_per_game - 1:
             self.game_over = True
 
-        
         state = self.get_state()
         reward = None
         done = self.game_over
@@ -165,7 +186,11 @@ class DondGame:
             finalization (list): The list of finalized quantities for each item.
         """
         current_role = self.current_turn()
-        self.role_props[current_role] = finalization["i_take"]
+        finalization_dict = finalization["i_take"]
+        # Ensure every item is present in the finalization, defaulting to 0 if missing
+        for item in self.items:
+            finalization_dict.setdefault(item, 0)
+        self.role_props[current_role] = finalization_dict
 
     def get_state(self):
         """
@@ -183,15 +208,15 @@ class DondGame:
             "is_new_game": self.is_new_game,
             "game_over": self.game_over,
             "items": self.items,
-            "turn": self.turn,
-            "max_turns": self.max_turns,
+            "message_count": self.message_turn,
+            "max_messages": self.max_messages,
             "current_player": self.get_current_player(),
             "round_number": self.round_nb,
             "nb_rounds": self.rounds_per_game,
             "quantities": self.quantities,
             "has_finalized": self.has_finalized,
             "last_message": self.last_message,
-            "players" : self.players,
+            "players": self.players,
             "finalization_visibility": self.finalization_visibility,
             "other_values_visibility": self.other_values_visibility,
             # rounds history
@@ -201,6 +226,11 @@ class DondGame:
             "round_finalizations": self.round_finalizations,
             "round_agreements_reached": self.round_agreements_reached,
             "round_points": self.round_points,
+            # New tracking information added:
+            "game_moves": self.game_moves,
+            "round_moves": self.round_moves,
+            "messages_remaining": {player: self.max_messages - self.round_messages.get(player, 0)
+                                   for player in self.players},
         }
         return state
     
@@ -244,8 +274,11 @@ class DondGame:
         self.points = {role: 0 for role in self.roles}  # Ensure points are reset
         self.agreement_reached = False
         self.last_message = None
-        self.turn = 0
-        self.last_message = None
+        # Reset the conversation message counter for the new round.
+        self.message_turn = 0
+        # Reset per-round move tracking for every player.
+        self.round_moves = {player: 0 for player in self.players}
+        self.round_messages = {player: 0 for player in self.players}
         self.set_new_setup()
         self.assign_roles()
         self.role_deque = deque(self.roles)
@@ -267,7 +300,8 @@ class DondGame:
             self.agreement_reached = False
             self.last_message = None
             self.round_nb = 0
-            self.turn = 0
+            # Remove the old turn counter and use message_turn for conversation messages.
+            self.message_turn = 0
             self.is_new_round = True
             self.is_new_game = True
             self.game_over = False
@@ -282,6 +316,10 @@ class DondGame:
             self.round_points = []
             self.set_new_setup()
             self.assign_roles()
+            # Initialize move tracking dictionaries for a fresh game.
+            self.game_moves = {player: 0 for player in self.players}
+            self.round_moves = {player: 0 for player in self.players}
+            self.round_messages = {player: 0 for player in self.players}
 
     def get_current_player(self):
         """
@@ -319,13 +357,15 @@ class DondGame:
         self.__dict__.update(checkpoint)
 
 def uniform_quant_random_vals(items, min_quant, max_quant, min_val, max_val):
-    quant = random.randint(min_quant, max_quant)
-    val_starting_negotiator = [random.randint(min_val, max_val) for _ in range(quant)]
-    val_responding_negotiator = copy.deepcopy(val_starting_negotiator)
-    random.shuffle(val_responding_negotiator)
-    val_starting_negotiator = {item: val for item, val in zip(items, val_starting_negotiator)}
-    val_responding_negotiator = {item: val for item, val in zip(items, val_responding_negotiator)}
-    quantities = {item:q for item,q in zip(items, [quant]*len(items))}
+    # For each item, sample a quantity and a value.
+    quantities = {item: random.randint(min_quant, max_quant) for item in items}
+    val_starting_negotiator = {item: random.randint(min_val, max_val) for item in items}
+    # For the responding negotiator, you can copy and then shuffle the values
+    # if that is desired behavior.
+    values = list(val_starting_negotiator.values())
+    random.shuffle(values)
+    val_responding_negotiator = {item: values[i] for i, item in enumerate(items)}
+  
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
 def independent_random_vals(items, min_quant, max_quant, min_val, max_val):

@@ -1,0 +1,283 @@
+hydra:
+  job:
+    chdir: false
+
+experiment:
+  method: dond_run_train
+  description: "Easy. They should be learning."
+  nb_epochs: 1000
+  nb_matches_per_iteration: 32
+  reinit_matches_each_it: true
+  start_epoch: 0
+  resume_experiment: false
+
+####################################################################################################
+#                                            GENERATION                                               
+####################################################################################################
+
+matches:
+
+  stop_condition: game_over_condition
+  stop_condition_kwargs: {}
+
+  run_matches_args:
+    nb_parallel_matches: -1
+    log_func: players_logging_and_html
+    log_func_args:
+      metrics_func: gather_dond_statistics
+      metrics_func_args:
+        stats_to_log: [
+        "agreement_percentage",
+        "points",
+        "points_on_agreement",
+        "items_given_to_self"
+        ]
+      training_data_func: set_discounted_returns
+      training_data_func_args:
+        discount_factor: 0.6
+        
+  dond_game_args:
+    rounds_per_game: 4
+    max_messages: 2
+    max_chars_per_message: 300
+    mode: basic
+    random_setup_func: uniform_quant_random_vals
+    random_setup_kwargs:
+      items: ['hats', 'balls', 'books']
+      min_quant: 1
+      max_quant: 10
+      min_val: 1
+      max_val: 10
+    role_assignator_func: alternating_role_assignator
+    role_assignator_func_kwargs: {}
+
+  players:
+
+    alice:
+
+      dond_player_args:
+        mod_adpt_id: 'llama/ad_alice'
+        max_errors: 1
+        allow_reasoning: true
+        max_reasoning_chars: 200
+        intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
+        message_mechanics_prompt: ${prompt_blocks.dond_message_mechanics}
+        dond_version_specificities: ${prompt_blocks.dond_hidden_alternating_starting_player}
+        reasoning_mechanics_prompt: ${prompt_blocks.dond_reasoning_mechanics}
+        goal_prompt: ${prompt_blocks.dond_agressive_goal}
+        first_round_prompt: ${prompt_blocks.first_round_prompt}
+        new_round_prompt: ${prompt_blocks.new_round_prompt}
+        player_with_first_move_prompt: "You are the first player. It is your turn to play."
+        received_message_prompt: ${prompt_blocks.message_prompt}
+        other_player_finalized_prompt: ${prompt_blocks.hidden_finalization_prompt}
+
+
+    bob:
+
+      dond_player_args:
+        mod_adpt_id: 'llama/ad_bob'
+        max_errors: 1
+        allow_reasoning: true
+        max_reasoning_chars: 200
+        intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
+        message_mechanics_prompt: ${prompt_blocks.dond_message_mechanics}
+        dond_version_specificities: ${prompt_blocks.dond_hidden_alternating_starting_player}
+        reasoning_mechanics_prompt: ${prompt_blocks.dond_reasoning_mechanics}
+        goal_prompt: ${prompt_blocks.dond_agressive_goal}
+        first_round_prompt: ${prompt_blocks.first_round_prompt}
+        new_round_prompt: ${prompt_blocks.new_round_prompt}
+        player_with_first_move_prompt: "You are the first player to make a move."
+        received_message_prompt: ${prompt_blocks.message_prompt}
+        other_player_finalized_prompt: ${prompt_blocks.hidden_finalization_prompt}
+
+
+models:
+
+  llama:
+    class: hf
+    init_args:
+      name: 'llama'
+      adapter_names: ['ad_alice', 'ad_bob']
+      max_model_length: 8000
+      include_value_head: false
+      device: "cuda"
+      model_name: "meta-llama/Llama-3.1-8B-Instruct"
+      pretrained_args:
+        pretrained_model_name_or_path: ${models.llama.init_args.model_name}
+        torch_dtype: "bfloat16"
+        device_map: "auto"
+        attn_implementation: "flash_attention_2"
+      bits_and_bytes_args: null
+        #load_in_8bit: False
+        #load_in_4bit: true
+      lora_args:
+        task_type: TaskType.CAUSAL_LM
+        r: 64
+        lora_alpha: 32
+        lora_dropout: 0.0
+        target_modules: "all-linear"
+
+      generation_args:
+        max_new_tokens: 100
+        do_sample: True
+        temperature: 1.0
+        top_k: 1
+        top_p: 1.0
+        repetition_penalty: 0.0
+
+      keep_vllm_during_training: False
+      keep_hf_during_training: True
+      keep_hf_during_eval: False
+      keep_vllm_during_eval: True
+      eval_with: "vllm"
+      train_with: "hf"
+      random_seed: 500
+
+
+####################################################################################################
+#                                            TRAINING                                             
+####################################################################################################
+
+
+training:
+  keep_error_messages: False
+  llama:
+    adapters:
+    
+      ad_alice:
+        train_func: train_reinforce_main
+        train_func_args: 
+          temperature: 1
+          learning_rate: 1e-6 
+
+
+      ad_bob:
+        train_func: train_reinforce_main
+        train_func_args: 
+          temperature: 1
+          learning_rate: 1e-6
+
+
+####################################################################################################
+#                                            PROMPT DEFINITIONS                                          
+####################################################################################################
+
+prompt_blocks:
+
+  initial_play_prompt: |
+    You are the first player. It is your turn to play.
+
+  message_prompt: |
+    Other player's message: <message>{last_message}</message> | {remaining_messages}
+
+  visible_finalization_prompt: |
+    Other Player's Finalization: {other_player_finalization} | {remaining_messages}
+
+  hidden_finalization_prompt: |
+    The other player has made his finalization. 
+    You must make now make yours. | {remaining_messages}
+
+
+############################################################
+#                                                          #
+#                      Ultimatum Game Prompts              #
+#                                                          #
+############################################################
+
+  barebone_ultimatum: |
+
+    Welcome, you are playing the splitting game.
+
+    Game Description:
+
+      1) In this game, two players divide 10 coins among themselves.
+
+      2) A finalization is a proposed division of the coins between the two players. 
+
+      3) The first player will make a finalization. 
+      The second player must then make his finalization. 
+      Each player can make a single finalization for the entire game, hence the name.
+
+      4) In order for both players to agree, the finalizations must be complementary. If no agreement is reached between the two players with the two finalizations, both players will receive zero points. If agreement is reached, the players will receive the coins corresponding to the finalizations.
+
+
+    Response Formatting:
+
+      1) All of your responses must be within <finalize></finalize> tags.
+
+      2) The division must be in a JSON-parsable format. Formatting: Final division: <finalize> {"i_take": {"coins": x}, "other_player_gets": {"coins": y}} </finalize> where "i_take" represents your share and "other_player_gets" represents the other player's share of the coins.
+
+    unbiased_goal: null
+
+  normal_goal: |
+    Your points will be the number of coins you get at the end of the game.
+
+  agressive_goal: |
+    Your goal is to get as many coins as possible.
+
+  agressive_pair_goal: |
+    Your goal is to get as many coins as possible.
+    This is also the goal of the other player.
+
+  fair_goal: |
+    Goal: Aim to be fair with both the other player and yourself.
+
+  submitted_goal: |
+    Goal: Your goal is to do exactly what the other player wants. You must make the other player happy. 
+
+############################################################
+#                                                          #
+#                      DOND Game Prompts                   #
+#                                                          #
+############################################################
+
+
+  dond_game_multiple_rounds: |
+
+    Welcome, you are playing a multi-round splitting game.
+    Game Description:
+      1) In this game, two players will divide a collection of objects over multiple rounds.
+      2) In each round, the available items—such as books, hats, and balls—must be divided between both players.
+      3) In every round, both players submit a finalization proposal outlining how the objects are split.
+      4) If the two players do not propose the same split, both players receive zero points for that round.
+      5) Once a player has proposed a split, the other player must also propose a split.
+    Response Formatting:
+      1) All your responses in each round must be enclosed within <finalize></finalize> tags.
+      2) Specify the division in a JSON-parsable format. For example: <finalize> {"i_take": {"books": x, "hats": y, "balls": z}, "other_player_gets": {"books": a, "hats": b, "balls": c}} </finalize> where the numbers represent the counts of each object allocated to you and to your opponent.
+
+
+  dond_normal_goal: |
+    Your points will be computed as the cumulative sum over rounds, where each round's score is determined by multiplying the quantity of each item you receive by its corresponding value. 
+
+  dond_agressive_goal: |
+    Your goal is to maximize your cumulative points, which are derived by summing, across rounds, the products of the quantities of items you receive and the items' values. Aim for the highest possible total!
+
+  dond_agressive_pair_goal: |
+    Your goal is to maximize your cumulative points, calculated by adding up, over rounds, the products of each item's quantity and its value. This is also the goal of your opponent.
+
+  dond_fair_goal: |
+    Goal: Aim to be fair with both the other player and yourself. Remember, your points are awarded as the cumulative sum over rounds, with each round's score computed by multiplying the number of items received by their respective values.
+
+  dond_submitted_goal: |
+    Goal: Your objective is to exactly follow the other player's preferences to ensure their satisfaction. Note that your points accumulate over rounds as the product of the number of each item received and its corresponding value. 
+
+  first_round_prompt: |
+    For this new round, the items available are {quantities} and your assigned values are {values}.
+
+  new_round_prompt: |
+    The previous round has ended. In the last round, you earned {last_round_points} points. For this new round, the items available are {quantities} and your assigned values are {values}.
+    
+
+  dond_message_mechanics: |
+    In order to communicate with the other player, you are allowed to send messages back and forth. Messages are distinct from finalizations. You cannot send a message and a finalization in a single response. When sending a message, please follow these rules: 1) Enclose your entire message within <message> and </message> tags. 2) Do not include any extra text outside of these tags. 3) You are limited to {max_messages} messages per round, with a maximum of {max_chars_per_message} characters per message; ensure you use your messages wisely. 4) Always a maximum of 1 message per response. 5) You are not obligated to send a message in each round.
+
+  dond_reasoning_mechanics: |
+    In order to think before you act, you are allowed to use {max_reasoning_chars} characters per round. When reasoning, please follow these rules; 1) Enclose your thought process within <think> and </think> tags. 2) Do not include extraneous content outside these tags. 3) Your reasoning is limited to {max_reasoning_chars} characters per response. 4) You are not obligated to reason at each response.
+
+  dond_hidden_alternating_starting_player: |
+    In this specific version of the game, the proposals (content of the <finalize> tags) are  NOT shown to the other player. If players want to agree (have the same proposal), they must use messages to communicate BEFORE making their finalization. Furthermore, in this version, players take turns (each round) to make the first move.
+
+
+
+
+
