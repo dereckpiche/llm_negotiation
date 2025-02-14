@@ -86,6 +86,7 @@ def players_logging_and_html(
             
             # Escape < and > in the message content
             message_content = message["content"].replace("<", "&lt;").replace(">", "&gt;")
+            message_content = message_content.replace("\n", "<br>")
             
             html_content += f"""
             <div class="message {role_class}">

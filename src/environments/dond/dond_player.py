@@ -24,8 +24,9 @@ class DondPlayerHandler:
         player_with_first_move_prompt,
         received_message_prompt,
         other_player_finalized_prompt,
-        message_mechanics_prompt=None,     # New parameter for message mechanics
-        reasoning_mechanics_prompt=None    # New parameter for reasoning mechanics
+        message_mechanics_prompt=None,     # Existing parameter for message mechanics
+        dond_version_specificities=None,    # New parameter for DOND-specific instructions
+        reasoning_mechanics_prompt=None     # Existing parameter for reasoning mechanics
     ):
         """
         Initializes the DondPlayerHandler.
@@ -44,6 +45,7 @@ class DondPlayerHandler:
             received_message_prompt (str): Prompt when a message is received from the other player.
             other_player_finalized_prompt (str): Prompt to indicate that the other player has finalized.
             message_mechanics_prompt (str, optional): Instructions for message mechanics.
+            dond_version_specificities (str, optional): DOND-specific game instructions.
             reasoning_mechanics_prompt (str, optional): Instructions for reasoning mechanics.
         """
         self.player_name = player_name
@@ -62,6 +64,7 @@ class DondPlayerHandler:
 
         # Set the new mechanics prompts.
         self.message_mechanics_prompt = message_mechanics_prompt
+        self.dond_version_specificities = dond_version_specificities  # New prompt for version specificities
         self.reasoning_mechanics_prompt = reasoning_mechanics_prompt
 
         self.game_id = None  # ID of the player in the game
@@ -93,15 +96,17 @@ class DondPlayerHandler:
         if state["game_moves"].get(self.player_name, 0) == 0:
             user_message += self.format_prompt(self.intro_prompt, state)
             if self.message_mechanics_prompt:
-                user_message += "\n" + self.format_prompt(self.message_mechanics_prompt, state)
+                user_message += "\n\n" + self.format_prompt(self.message_mechanics_prompt, state)
+            if self.dond_version_specificities:
+                user_message += "\n\n" + self.format_prompt(self.dond_version_specificities, state)
             if self.allow_reasoning and self.reasoning_mechanics_prompt:
-                user_message += "\n" + self.format_prompt(self.reasoning_mechanics_prompt, state)
-            user_message += self.format_prompt(self.goal_prompt, state)
+                user_message += "\n\n" + self.format_prompt(self.reasoning_mechanics_prompt, state)
+            user_message += "\n\n" + self.format_prompt(self.goal_prompt, state)
         
         # If the current player has not yet made any move in this round, add round instructions.
         if state["round_moves"].get(self.player_name, 0) == 0:
             if state["round_number"] == 0:
-                user_message += self.format_prompt(self.first_round_prompt, state)
+                user_message += "\n\n" + self.format_prompt(self.first_round_prompt, state)
             else:
                 user_message += self.format_prompt(self.new_round_prompt, state)
 
@@ -140,11 +145,6 @@ class DondPlayerHandler:
         finalize_tags = re.findall(r"<finalize>.*?</finalize>", response, flags=re.S)
         num_finalize_tags = len(finalize_tags)
 
-        # 1) If reasoning is allowed, ensure that a <think> block is present.
-        if self.allow_reasoning is not False:
-            if "<think>" not in response or "</think>" not in response:
-                errors.append("Missing <think>...</think> tag.")
-
         # 2) Check that exactly one of <message>...</message> or <finalize>...</finalize> is present.
         has_message = num_message_tags == 1
         has_finalization = num_finalize_tags == 1
@@ -180,6 +180,16 @@ class DondPlayerHandler:
         outside_length = total_length - total_tag_content_length
         if outside_length > 5:
             errors.append("Excessive content outside of valid tags.")
+
+        # 3.6) Check if the content inside <think> tags exceeds the allowed reasoning characters.
+        think_blocks = re.findall(r"<think>(.*?)</think>", response, flags=re.S)
+        if think_blocks:
+            total_thinking_chars = sum(len(block.strip()) for block in think_blocks)
+            if self.max_reasoning_chars is not None and total_thinking_chars > self.max_reasoning_chars:
+                errors.append(
+                    f"The reasoning section exceeds the maximum allowed reasoning characters "
+                    f"({total_thinking_chars} > {self.max_reasoning_chars})."
+                )
 
         # 3.5) Check if the response exceeds the maximum allowed characters per message.
         max_chars = state.get("max_chars_per_message", None)

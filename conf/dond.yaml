@@ -37,9 +37,9 @@ matches:
         discount_factor: 0.6
         
   dond_game_args:
-    rounds_per_game: 2
+    rounds_per_game: 4
     max_messages: 2
-    max_chars_per_message: 100
+    max_chars_per_message: 300
     mode: basic
     random_setup_func: uniform_quant_random_vals
     random_setup_kwargs:
@@ -57,36 +57,38 @@ matches:
 
       dond_player_args:
         mod_adpt_id: 'llama/ad_alice'
-        allow_reasoning: false
         max_errors: 1
-        max_reasoning_chars: 50
+        allow_reasoning: true
+        max_reasoning_chars: 200
         intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
         message_mechanics_prompt: ${prompt_blocks.dond_message_mechanics}
+        dond_version_specificities: ${prompt_blocks.dond_hidden_alternating_starting_player}
         reasoning_mechanics_prompt: ${prompt_blocks.dond_reasoning_mechanics}
         goal_prompt: ${prompt_blocks.dond_agressive_goal}
         first_round_prompt: ${prompt_blocks.first_round_prompt}
         new_round_prompt: ${prompt_blocks.new_round_prompt}
         player_with_first_move_prompt: "You are the first player. It is your turn to play."
         received_message_prompt: ${prompt_blocks.message_prompt}
-        other_player_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
+        other_player_finalized_prompt: ${prompt_blocks.hidden_finalization_prompt}
 
 
     bob:
 
       dond_player_args:
         mod_adpt_id: 'llama/ad_bob'
-        allow_reasoning: false
         max_errors: 1
-        max_reasoning_chars: 50
+        allow_reasoning: true
+        max_reasoning_chars: 200
         intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
         message_mechanics_prompt: ${prompt_blocks.dond_message_mechanics}
+        dond_version_specificities: ${prompt_blocks.dond_hidden_alternating_starting_player}
         reasoning_mechanics_prompt: ${prompt_blocks.dond_reasoning_mechanics}
         goal_prompt: ${prompt_blocks.dond_agressive_goal}
         first_round_prompt: ${prompt_blocks.first_round_prompt}
         new_round_prompt: ${prompt_blocks.new_round_prompt}
         player_with_first_move_prompt: "You are the first player to make a move."
         received_message_prompt: ${prompt_blocks.message_prompt}
-        other_player_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
+        other_player_finalized_prompt: ${prompt_blocks.hidden_finalization_prompt}
 
 
 models:
@@ -169,11 +171,12 @@ prompt_blocks:
     Other player's message: <message>{last_message}</message> | {remaining_messages}
 
   visible_finalization_prompt: |
-    Other Player's Message: <message>{last_message}</message> | Other Player's Finalization: {other_player_finalization} | {remaining_messages}
+    Other Player's Finalization: {other_player_finalization} | {remaining_messages}
 
   hidden_finalization_prompt: |
-    The other player has made his finalization.
-    You must make now make yours. 
+    The other player has made his finalization. 
+    You must make now make yours. | {remaining_messages}
+
 
 ############################################################
 #                                                          #
@@ -240,9 +243,7 @@ prompt_blocks:
       5) Once a player has proposed a split, the other player must also propose a split.
     Response Formatting:
       1) All your responses in each round must be enclosed within <finalize></finalize> tags.
-      2) Specify the division in a JSON-parsable format. For example:
-        <finalize> {"i_take": {"books": x, "hats": y, "balls": z}, "other_player_gets": {"books": a, "hats": b, "balls": c}} </finalize>
-        where the numbers represent the counts of each object allocated to you and to your opponent.
+      2) Specify the division in a JSON-parsable format. For example: <finalize> {"i_take": {"books": x, "hats": y, "balls": z}, "other_player_gets": {"books": a, "hats": b, "balls": c}} </finalize> where the numbers represent the counts of each object allocated to you and to your opponent.
 
 
   dond_normal_goal: |
@@ -264,28 +265,17 @@ prompt_blocks:
     For this new round, the items available are {quantities} and your assigned values are {values}.
 
   new_round_prompt: |
-    The previous round has ended.
-    In the last round, you earned {last_round_points} points.
-    For this new round, the items available are {quantities} and your assigned values are {values}.
+    The previous round has ended. In the last round, you earned {last_round_points} points. For this new round, the items available are {quantities} and your assigned values are {values}.
     
 
   dond_message_mechanics: |
-    In order to communicate with the other player, you are allowed to send messages back and forth.
-    Messages are distinct from finalizations. You cannot send a message and a finalization in a single response.
-    When sending a message, please follow these rules:
-      1) Enclose your entire message within <message> and </message> tags.
-      2) Do not include any extra text outside of these tags.
-      3) You are limited to {max_messages} messages per round, with a maximum of {max_chars_per_message} characters per message; ensure you use your messages wisely.
-      4) Always a maximum of 1 message per round.
-      5) You are not obligated to send a message at each round.
+    In order to communicate with the other player, you are allowed to send messages back and forth. Messages are distinct from finalizations. You cannot send a message and a finalization in a single response. When sending a message, please follow these rules: 1) Enclose your entire message within <message> and </message> tags. 2) Do not include any extra text outside of these tags. 3) You are limited to {max_messages} messages per round, with a maximum of {max_chars_per_message} characters per message; ensure you use your messages wisely. 4) Always a maximum of 1 message per response. 5) You are not obligated to send a message in each round.
 
   dond_reasoning_mechanics: |
-    In order to think before you act, you are allowed to use {max_reasoning_chars} characters per round.
-    When reasoning, please follow these rules:
-      1) Enclose your thought process within <think> and </think> tags.
-      2) Do not include extraneous content outside these tags.
-      3) Your reasoning is limited to {max_reasoning_chars} characters.
-      4) You are not obligated to reason at each round.
+    In order to think before you act, you are allowed to use {max_reasoning_chars} characters per round. When reasoning, please follow these rules; 1) Enclose your thought process within <think> and </think> tags. 2) Do not include extraneous content outside these tags. 3) Your reasoning is limited to {max_reasoning_chars} characters per response. 4) You are not obligated to reason at each response.
+
+  dond_hidden_alternating_starting_player: |
+    In this specific version of the game, the proposals (content of the <finalize> tags) are  NOT shown to the other player. If players want to agree (have the same proposal), they must use messages to communicate BEFORE making their finalization. Furthermore, in this version, players take turns (each round) to make the first move.
 
 
 
