@@ -26,7 +26,7 @@ class DondGame:
         Args:
             players (list): List of player names.
             mode (str): The mode of the game, either 'coop' or 'basic'.
-            max_messages (int): Maximum number of conversation (non-finalization) messages
+            max_messages (int): Maximum number of conversation (non-finalization) messages per player
                                 allowed before finalization is forced.
             max_chars_per_message (int): Maximum number of characters allowed per message.
             rounds_per_game (int): The number of rounds per game.
@@ -119,8 +119,9 @@ class DondGame:
             if is_finalization:
                 self.has_finalized = True
                 self.finalize(output)
-            # If the number of conversation messages exceeds allowed max, end the round.
-            elif self.message_turn > self.max_messages:
+            # Instead of using the global message_turn, check if every player
+            # has reached their personal message limit.
+            elif any(count > self.max_messages for count in self.round_messages.values()):
                 round_over = True
 
         self.role_deque.rotate(-1)

@@ -37,7 +37,7 @@ matches:
         discount_factor: 0.6
         
   dond_game_args:
-    rounds_per_game: 4
+    rounds_per_game: 2
     max_messages: 2
     max_chars_per_message: 100
     mode: basic
@@ -166,12 +166,10 @@ prompt_blocks:
     You are the first player. It is your turn to play.
 
   message_prompt: |
-    The other player sent you this message: <message>{last_message}</message>
+    Other player's message: <message>{last_message}</message> | {remaining_messages}
 
   visible_finalization_prompt: |
-    The other player sent you this message: <message>{last_message}</message>
-    The other player's finalization was {other_player_finalization}.
-    You are the second player. It is your turn to play.
+    Other Player's Message: <message>{last_message}</message> | Other Player's Finalization: {other_player_finalization} | {remaining_messages}
 
   hidden_finalization_prompt: |
     The other player has made his finalization.

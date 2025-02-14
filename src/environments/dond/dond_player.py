@@ -134,25 +134,41 @@ class DondPlayerHandler:
         """
         errors = []
 
-        # 1) Validate presence of <think> tags (if reasoning is allowed)
+        # Count the occurrences of valid tag blocks.
+        message_tags = re.findall(r"<message>.*?</message>", response, flags=re.S)
+        num_message_tags = len(message_tags)
+        finalize_tags = re.findall(r"<finalize>.*?</finalize>", response, flags=re.S)
+        num_finalize_tags = len(finalize_tags)
+
+        # 1) If reasoning is allowed, ensure that a <think> block is present.
         if self.allow_reasoning is not False:
             if "<think>" not in response or "</think>" not in response:
                 errors.append("Missing <think>...</think> tag.")
 
-        # 2) Check if exactly one of <message>...</message> or <finalize>...</finalize> is present,
-        #    and ensure finalization rules are followed
-        has_message = "<message>" in response and "</message>" in response
-        has_finalization = "<finalize>" in response and "</finalize>" in response
+        # 2) Check that exactly one of <message>...</message> or <finalize>...</finalize> is present.
+        has_message = num_message_tags == 1
+        has_finalization = num_finalize_tags == 1
 
-        # Adjusted check: if the conversation messages already reached max_messages and the
-        # response is not a finalization, then force finalization.
-        if (state.get("message_count", 0) >= state.get("max_messages", 0)) and not has_finalization:
-            errors.append("You must finalize because you reached the maximum number of messages!")
-            
-        if (state.get("message_count", 0) > state.get("max_messages", 0) - 2) and not has_finalization:
-            errors.append("You must finalize before reaching the message limit!")
+        if num_message_tags > 1:
+            errors.append("Multiple <message> blocks detected. Please send only one message block.")
+        if num_finalize_tags > 1:
+            errors.append("Multiple <finalize> blocks detected. Please send only one finalization block.")
 
-        # 3) Check for excessive content outside valid tags (<think>, <message>, <finalize>)
+        if has_message and has_finalization:
+            errors.append("You cannot send both a message and a finalization in one response.")
+
+        if not has_message and not has_finalization:
+            errors.append("Response must contain either a <message> block or a <finalize> block.")
+
+        # 2.5) Check if this response is a message and would exceed per-player allowed messages.
+        max_msgs = state.get("max_messages", None)
+        player_messages = state.get("round_messages", {}).get(self.player_name, 0)
+        # In the game step, a non‐finalization move increases the count by 1 — so simulate that here.
+        if max_msgs is not None and has_message:
+            if player_messages == max_msgs:
+                errors.append("You must finalize because you reached the maximum number of messages!")
+        
+        # 3) Check for excessive content outside valid tags (<think>, <message>, <finalize>).
         total_length = len(response)
         valid_tags = ["think", "message", "finalize"]
         total_tag_content_length = 0
@@ -170,7 +186,7 @@ class DondPlayerHandler:
         if max_chars is not None and len(response) > max_chars:
             errors.append("Response exceeds the maximum allowed characters per message.")
 
-        # 4) Process finalization if present
+        # 4) Process finalization if present.
         if has_finalization:
             finalization_content = response.split("<finalize>", 1)[1].split("</finalize>", 1)[0].strip()
             try:
@@ -214,15 +230,19 @@ class DondPlayerHandler:
             except json.JSONDecodeError:
                 errors.append("The content within <finalize> is not valid JSON.")
 
-        # 5) Return results: check for errors, otherwise return parsed content
+        # 5) Return results: if errors exist, return an error message.
         if errors:
-            return True, "Errors: " + "; ".join(errors), False, None
+            if len(errors) == 1:
+                error_message = errors[0]
+            else:
+                error_message = "Errors:\n" + "\n".join(f"{i+1}) {err}" for i, err in enumerate(errors))
+            return True, error_message, False, None
 
         if has_finalization:
             return False, "", True, {"i_take": i_take, "other_player_gets": other_player_gets}
-
         if has_message:
-            message_content = response.split("<message>", 1)[1].split("</message>", 1)[0].strip()
+            # Extract using our earlier found list.
+            message_content = message_tags[0].split("<message>", 1)[1].split("</message>", 1)[0].strip()
             return False, "", False, message_content
 
         return True, "Unknown error: Invalid response format.", False, None
@@ -270,6 +290,9 @@ class DondPlayerHandler:
             else:
                 last_round_points = 0
 
+            # Compute remaining messages for the current player.
+            remaining_msgs = state['messages_remaining'][self.player_name]
+            
             # Build a summary from the last round (if available)
             last_round_info = ""
             if state.get("round_number", 0) > 0:
@@ -288,7 +311,9 @@ class DondPlayerHandler:
                         .replace("{max_messages}", str(state.get("max_messages", ""))) \
                         .replace("{max_chars_per_message}", str(state.get("max_chars_per_message", ""))) \
                         .replace("{max_errors}", str(self.max_errors)) \
-                        .replace("{other_player_finalization}", str(other_player_finalization))
+                        .replace("{last_message}", str(state.get("last_message", ""))) \
+                        .replace("{other_player_finalization}", str(other_player_finalization)) \
+                        .replace("{remaining_messages}", f"Msgs left: {remaining_msgs} (max)")
         return ""
 
     def get_chat_history(self):
