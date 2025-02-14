@@ -34,11 +34,11 @@ matches:
         ]
       training_data_func: set_discounted_returns
       training_data_func_args:
-        discount_factor: 1.0
+        discount_factor: 0.6
         
   dond_game_args:
     rounds_per_game: 4
-    max_messages: 1
+    max_messages: 2
     max_chars_per_message: 100
     mode: basic
     random_setup_func: uniform_quant_random_vals
@@ -146,7 +146,7 @@ training:
         train_func: train_reinforce_main
         train_func_args: 
           temperature: 1
-          learning_rate: 1e-6
+          learning_rate: 1e-6 
 
 
       ad_bob:
@@ -169,6 +169,7 @@ prompt_blocks:
     The other player sent you this message: <message>{last_message}</message>
 
   visible_finalization_prompt: |
+    The other player sent you this message: <message>{last_message}</message>
     The other player's finalization was {other_player_finalization}.
     You are the second player. It is your turn to play.
 
@@ -266,7 +267,7 @@ prompt_blocks:
 
   new_round_prompt: |
     The previous round has ended.
-    In the last round, you earned {round_points} points and the finalizations were {round_finalizations}.
+    In the last round, you earned {last_round_points} points.
     For this new round, the items available are {quantities} and your assigned values are {values}.
     
 
@@ -276,8 +277,9 @@ prompt_blocks:
     When sending a message, please follow these rules:
       1) Enclose your entire message within <message> and </message> tags.
       2) Do not include any extra text outside of these tags.
-      3) You are limited to {max_messages} messages per round; ensure you use your messages wisely.
-      4) You are not obligated to send a message at each round.
+      3) You are limited to {max_messages} messages per round, with a maximum of {max_chars_per_message} characters per message; ensure you use your messages wisely.
+      4) Always a maximum of 1 message per round.
+      5) You are not obligated to send a message at each round.
 
   dond_reasoning_mechanics: |
     In order to think before you act, you are allowed to use {max_reasoning_chars} characters per round.

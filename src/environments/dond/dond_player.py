@@ -88,28 +88,24 @@ class DondPlayerHandler:
             self.error_message = None
             return
 
-        is_new_game = (state["round_number"] == 0 and not self.chat_history)
-        
-        if is_new_game:
-            # Add introductory and goal prompts.
+        # Use the new move information to decide on the prompts.
+        # If the current player has not yet made any move in the game, prepend the introductory prompts.
+        if state["game_moves"].get(self.player_name, 0) == 0:
             user_message += self.format_prompt(self.intro_prompt, state)
-            # Add message mechanics instructions if provided.
             if self.message_mechanics_prompt:
                 user_message += "\n" + self.format_prompt(self.message_mechanics_prompt, state)
-            # Add reasoning mechanics instructions if allowed and provided.
             if self.allow_reasoning and self.reasoning_mechanics_prompt:
                 user_message += "\n" + self.format_prompt(self.reasoning_mechanics_prompt, state)
-            # Add goal prompt.
             user_message += self.format_prompt(self.goal_prompt, state)
-
-        if state["is_new_round"]:
-            self.new_round()
-            # Use the first round prompt if round_number == 0; otherwise use the new round prompt.
+        
+        # If the current player has not yet made any move in this round, add round instructions.
+        if state["round_moves"].get(self.player_name, 0) == 0:
             if state["round_number"] == 0:
                 user_message += self.format_prompt(self.first_round_prompt, state)
             else:
                 user_message += self.format_prompt(self.new_round_prompt, state)
 
+        # Then add the appropriate message based on the finalization state.
         if state["has_finalized"]:
             user_message += self.format_prompt(self.other_player_finalized_prompt, state)
         elif state["last_message"] is None:
@@ -269,6 +265,11 @@ class DondPlayerHandler:
             # Get the values for the current player based on their role.
             values = state["role_values"][state["player_to_role"][state["current_player"]]]
             
+            if state.get("round_points") != []:
+                last_round_points = state['round_points'][-1][state["player_to_role"][state["current_player"]]]
+            else:
+                last_round_points = 0
+
             # Build a summary from the last round (if available)
             last_round_info = ""
             if state.get("round_number", 0) > 0:
@@ -277,7 +278,7 @@ class DondPlayerHandler:
                 last_round_info = f"Points: {last_points}, Finalizations: {last_finalizations}"
 
             return prompt.replace("{rounds_per_game}", str(state.get("rounds_per_game", ""))) \
-                        .replace("{last_round_info}", last_round_info) \
+                        .replace("{last_round_points}", str(last_round_points)) \
                         .replace("{current_round}", str(state.get("current_round", ""))) \
                         .replace("{nb_rounds}", str(state["round_number"] + 1)) \
                         .replace("{quantities}", str(state.get("quantities", ""))) \

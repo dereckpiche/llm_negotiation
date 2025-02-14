@@ -51,6 +51,11 @@ class DondGame:
         self.role_assignator_func_kwargs = role_assignator_func_kwargs
         self.other_values_visibility = other_values_visibility
 
+        # Initialize move tracking dictionaries.
+        self.game_moves = {player: 0 for player in players}
+        self.round_moves = {player: 0 for player in players}
+        self.round_messages = {player: 0 for player in players}
+
         self.reset()
 
     def set_new_setup(self):
@@ -75,13 +80,18 @@ class DondGame:
             tuple: (observation, reward, done, info)
         """
         is_finalization, output = action
+        current_player = self.get_current_player()  # Current player's name
+
+        # Count this move for the current player (finalization or conversation).
+        self.game_moves[current_player] += 1
+        self.round_moves[current_player] += 1
 
         # Only conversation messages (non-finalization) increment the message counter.
         if not is_finalization:
+            self.round_messages[current_player] += 1
             self.message_turn += 1
 
         # Update state flags.
-        # Here we consider the very first conversation message as marking a new round/game.
         self.last_message = output
         self.round_ended = False
         self.is_new_round = (self.message_turn == 1)
@@ -215,6 +225,11 @@ class DondGame:
             "round_finalizations": self.round_finalizations,
             "round_agreements_reached": self.round_agreements_reached,
             "round_points": self.round_points,
+            # New tracking information added:
+            "game_moves": self.game_moves,
+            "round_moves": self.round_moves,
+            "messages_remaining": {player: self.max_messages - self.round_messages.get(player, 0)
+                                   for player in self.players},
         }
         return state
     
@@ -260,7 +275,9 @@ class DondGame:
         self.last_message = None
         # Reset the conversation message counter for the new round.
         self.message_turn = 0
-        self.last_message = None
+        # Reset per-round move tracking for every player.
+        self.round_moves = {player: 0 for player in self.players}
+        self.round_messages = {player: 0 for player in self.players}
         self.set_new_setup()
         self.assign_roles()
         self.role_deque = deque(self.roles)
@@ -298,6 +315,10 @@ class DondGame:
             self.round_points = []
             self.set_new_setup()
             self.assign_roles()
+            # Initialize move tracking dictionaries for a fresh game.
+            self.game_moves = {player: 0 for player in self.players}
+            self.round_moves = {player: 0 for player in self.players}
+            self.round_messages = {player: 0 for player in self.players}
 
     def get_current_player(self):
         """
