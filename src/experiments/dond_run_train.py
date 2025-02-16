@@ -73,14 +73,16 @@ def dond_run_train(cfg):
     output_directory = hydra_cfg["runtime"]["output_dir"]
     os.makedirs(output_directory, exist_ok=True)
 
-    # cfg = OmegaConf.to_container(cfg, resolve=False, structured_config_mode="dict")
-
     # Initialize models
     models = init_models(cfg)
 
     update_start_epoch(cfg=cfg, output_directory=output_directory)
 
     for iteration in range(cfg["experiment"]["start_epoch"], cfg["experiment"]["nb_epochs"]):
+        # Reseed the random generator with a unique seed for each iteration.
+        seed = int(time.time_ns()) ^ os.getpid() ^ iteration
+        random.seed(seed)
+
         iteration_start_time = time.time()
 
         it_folder = os.path.join(output_directory, f"iteration_{iteration:03}")
@@ -99,7 +101,6 @@ def dond_run_train(cfg):
         )
 
         generation_end_time = time.time()
-
 
         logging_start_time = time.time()
 

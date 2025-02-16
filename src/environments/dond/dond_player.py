@@ -24,9 +24,9 @@ class DondPlayerHandler:
         player_with_first_move_prompt,
         received_message_prompt,
         other_player_finalized_prompt,
-        message_mechanics_prompt=None,     # Existing parameter for message mechanics
-        dond_version_specificities=None,    # New parameter for DOND-specific instructions
-        reasoning_mechanics_prompt=None     # Existing parameter for reasoning mechanics
+        message_mechanics_prompt=None, 
+        dond_version_specificities=None,    
+        reasoning_mechanics_prompt=None    
     ):
         """
         Initializes the DondPlayerHandler.
