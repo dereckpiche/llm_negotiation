@@ -1,9 +1,6 @@
-import regex as re
-import json
-import random
-import os
+from utils.common_imports import *
 from collections import deque
-import copy
+
 
 class DondGame:
     def __init__(
@@ -11,6 +8,7 @@ class DondGame:
         players,
         mode="coop",
         max_messages=None,
+        min_messages=None,
         max_chars_per_message=None,
         rounds_per_game=1,
         random_setup_func=None,
@@ -28,6 +26,7 @@ class DondGame:
             mode (str): The mode of the game, either 'coop' or 'basic'.
             max_messages (int): Maximum number of conversation (non-finalization) messages per player
                                 allowed before finalization is forced.
+            min_messages (int): Minimum number of conversation messages required before a player can finalize.
             max_chars_per_message (int): Maximum number of characters allowed per message.
             rounds_per_game (int): The number of rounds per game.
             random_setup_func (str): The name of the function to use for random setup.
@@ -42,6 +41,7 @@ class DondGame:
         self.roles = ["starting_negotiator", "responding_negotiator"]
         self.mode = mode
         self.max_messages = max_messages
+        self.min_messages = min_messages
         self.max_chars_per_message = max_chars_per_message
         self.random_setup_func = globals()[random_setup_func]
         self.random_setup_kwargs = random_setup_kwargs
@@ -210,6 +210,7 @@ class DondGame:
             "items": self.items,
             "message_count": self.message_turn,
             "max_messages": self.max_messages,
+            "min_messages": self.min_messages,
             "current_player": self.get_current_player(),
             "round_number": self.round_nb,
             "nb_rounds": self.rounds_per_game,

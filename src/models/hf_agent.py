@@ -1,3 +1,4 @@
+from utils.common_imports import *
 from typing import Any, Tuple, List
 import torch
 import uuid
@@ -20,33 +21,21 @@ from trl import (
     PPOTrainer
 )
 from peft import PeftModel, PeftConfig
-import os
 from functools import partial
-
 from datasets import load_dataset
 from trl import SFTConfig, SFTTrainer
 from utils.model_to_cpu import move_model_to_cpu
-import logging
-import time
-import subprocess
-
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
-
 from peft import LoraConfig, get_peft_model
 from trl import AutoModelForCausalLMWithValueHead, PPOConfig, PPOTrainer
 import torch
-import subprocess
-import gc
 from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
 from vllm.distributed.parallel_state import destroy_model_parallel
 from omegaconf import OmegaConf
-import copy
-import numpy as np
-import hydra
+
 from transformers import Trainer
-import json
 
 compute__logger = logging.getLogger("compute__logger")
 memory_logger = logging.getLogger("memory_logger")
@@ -124,8 +113,7 @@ class HfAgent:
 
         # set random seeds
         self.random_seed = random_seed
-        torch.manual_seed(self.random_seed)
-        np.random.seed(self.random_seed)
+        #torch.manual_seed(self.random_seed)
 
     def prepare_adapter_train(self, adapter_name: str):
         """

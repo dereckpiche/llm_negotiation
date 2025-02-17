@@ -1,11 +1,5 @@
-import hydra
-import os
-import logging
-import time
-from omegaconf import OmegaConf
-import random
-import json
-import copy
+from utils.common_imports import *
+
 # Local imports
 from models.hf_agent import HfAgent
 from environments.dond.dond_player import DondPlayerHandler
@@ -79,9 +73,6 @@ def dond_run_train(cfg):
     update_start_epoch(cfg=cfg, output_directory=output_directory)
 
     for iteration in range(cfg["experiment"]["start_epoch"], cfg["experiment"]["nb_epochs"]):
-        # Reseed the random generator with a unique seed for each iteration.
-        seed = int(time.time_ns()) ^ os.getpid() ^ iteration
-        random.seed(seed)
 
         iteration_start_time = time.time()
 
@@ -90,21 +81,24 @@ def dond_run_train(cfg):
 
         generation_start_time = time.time()
 
+        # Create independent matches based on the number in config
         matches = [create_blank_match(cfg) for _ in range(cfg["experiment"]["nb_matches_per_iteration"])]
-        players = copy.deepcopy(matches[0]["players"])
-
+        # Directly reference players from the first match instead of deep copying
+        players = matches[0]["players"]
+        player_names = players.keys()
         run_matches(
             export_path=it_folder,
             matches=matches,
             models=models,
             **cfg['matches']['run_matches_args']
         )
+        del matches
 
         generation_end_time = time.time()
 
         logging_start_time = time.time()
 
-        for player_name in players.keys():
+        for player_name in player_names:
             player_stats_folder = os.path.join(output_directory, "statistics", player_name)
             os.makedirs(player_stats_folder, exist_ok=True)
             player_stats_file = os.path.join(player_stats_folder, f"{player_name}_stats.jsonl")
@@ -155,23 +149,20 @@ def dond_run_train(cfg):
 
         iteration_end_time = time.time()
 
-        # Calculate times
+        # Timing calculations
         iteration_duration = iteration_end_time - iteration_start_time
         generation_duration = generation_end_time - generation_start_time
         logging_duration = logging_end_time - logging_start_time
         training_duration = training_end_time - training_start_time
 
-        # Percentages of time
         generation_percentage = (generation_duration / iteration_duration) * 100
         logging_percentage = (logging_duration / iteration_duration) * 100
         training_percentage = (training_duration / iteration_duration) * 100
 
-        # Estimate remaining time
         elapsed_time = iteration_end_time - total_start_time
         estimated_total_time = iteration_duration * cfg["experiment"]["nb_epochs"]
         estimated_remaining_time = estimated_total_time - elapsed_time
 
-        # Time estimates for future iterations
         time_per_iteration = iteration_duration
         time_est_10 = time_per_iteration * 10
         time_est_100 = time_per_iteration * 100
@@ -198,7 +189,6 @@ def dond_run_train(cfg):
             f"500 more iterations: {format_time(time_est_500)}."
         )
 
-    # Log total time
     total_end_time = time.time()
     total_duration = total_end_time - total_start_time
     compute__logger.info(f"Total time taken for the entire run: {format_time(total_duration)}")
