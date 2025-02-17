@@ -6,7 +6,7 @@ experiment:
   method: dond_run_train
   description: "Easy. They should be learning."
   nb_epochs: 1000
-  nb_matches_per_iteration: 6
+  nb_matches_per_iteration: 32
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: false
@@ -39,8 +39,8 @@ matches:
         discount_factor: 0.6
         
   dond_game_args:
-    rounds_per_game: 1
-    max_messages: 1
+    rounds_per_game: 2
+    max_messages: 3
     min_messages: 1
     max_chars_per_message: 300
     mode: basic
@@ -60,7 +60,7 @@ matches:
 
       dond_player_args:
         mod_adpt_id: 'llama/ad_alice'
-        max_errors: 1
+        max_errors: 2
         allow_reasoning: true
         max_reasoning_chars: 200
         intro_prompt: ${prompt_blocks.ultimatum_game_multiple_rounds}
@@ -79,7 +79,7 @@ matches:
 
       dond_player_args:
         mod_adpt_id: 'llama/ad_bob'
-        max_errors: 1
+        max_errors: 2
         allow_reasoning: true
         max_reasoning_chars: 200
         intro_prompt: ${prompt_blocks.ultimatum_game_multiple_rounds}
@@ -151,14 +151,14 @@ training:
         train_func: train_reinforce_main
         train_func_args: 
           temperature: 1
-          learning_rate: 1e-5 
+          learning_rate: 1e-6
 
 
       ad_bob:
         train_func: train_reinforce_main
         train_func_args: 
           temperature: 1
-          learning_rate: 1e-5
+          learning_rate: 1e-6
 
 
 ####################################################################################################
@@ -171,14 +171,13 @@ prompt_blocks:
     You are the first player. It is your turn to play.
 
   message_prompt: |
-    Other player's message: <message>{last_message}</message> | {remaining_messages}
+    Other player's message: <message>{last_message}</message>. [Msg Limits → {remaining_messages}]
 
   visible_finalization_prompt: |
-    Other Player's Finalization: {other_player_finalization} | {remaining_messages}
+    Other Player's Finalization: {other_player_finalization}. [Msg Limits → {remaining_messages}]
 
   hidden_finalization_prompt: |
-    The other player has made his finalization. 
-    You must make now make yours. | {remaining_messages}
+    The other player has submitted their finalization. It is now your turn to finalize. [Msg Limits → {remaining_messages}]
 
 
 ############################################################
@@ -189,7 +188,7 @@ prompt_blocks:
 
   barebone_ultimatum: |
     Welcome, you are playing the splitting game.
-    Game Description:
+    Game Description: 
       1) In this game, two players divide 10 coins among themselves.
       2) A finalization is a proposed division of the coins between the two players. 
       3) The first player will make a finalization. 
@@ -222,8 +221,7 @@ prompt_blocks:
     Your goal is to get as many coins as possible.
 
   agressive_pair_goal: |
-    Your goal is to get as many coins as possible.
-    This is also the goal of the other player.
+    Your goal is to get as many coins as possible. This is also the goal of the other player.
 
   fair_goal: |
     Goal: Aim to be fair with both the other player and yourself.
@@ -268,21 +266,21 @@ prompt_blocks:
     Goal: Your objective is to exactly follow the other player's preferences to ensure their satisfaction. Note that your points accumulate over rounds as the product of the number of each item received and its corresponding value. 
 
   first_round_prompt: |
-    For this new round, the items available are {quantities} and your assigned values are {values}.
+    For this new round, the items available are {quantities} and your assigned values are {values}. [Msg Limits → {remaining_messages}]
 
   new_round_prompt: |
-    The previous round has ended. In the last round, you earned {last_round_points} points. For this new round, the items available are {quantities} and your assigned values are {values}.
+    The previous round has ended. In the last round, you earned {last_round_points} points. For this new round, the items available are {quantities} and your assigned values are {values}. [Msg Limits → {remaining_messages}]
     
 
   dond_message_mechanics: |
-    In order to communicate with the other player, you are allowed to send messages back and forth. Messages are distinct from finalizations. You cannot send a message and a finalization in a single response.
+    In order to communicate with the other player, you are allowed to send messages (distinct from finalizations). You cannot send a message and a finalization in the same response.
     
     When sending a message, please follow these rules:
-      1) Enclose your entire message within <message> and </message> tags.
-      2) Do not include any extra text outside of these tags.
-      3) In each round, you must send at least {min_messages} and no more than {max_messages} messages, with each message having a maximum of {max_chars_per_message} characters.
-      4) You are allowed to send only one message per response.
-      5) Ensure you use your messages wisely.
+      1) Enclose your message entirely within <message> and </message> tags.
+      2) Do not include any extraneous text outside these tags.
+      3) In each round, send at least {min_messages} and no more than {max_messages} messages, with each message containing up to {max_chars_per_message} characters.
+      4) You may send only one message per response.
+      5) Use your messages strategically.
       
   dond_reasoning_mechanics: |
     In order to think before you act, you are allowed to use {max_reasoning_chars} characters per round. When reasoning, please follow these rules; 1) Enclose your thought process within <think> and </think> tags. 2) Do not include extraneous content outside these tags. 3) Your reasoning is limited to {max_reasoning_chars} characters per response. 4) You are not obligated to reason at each response.

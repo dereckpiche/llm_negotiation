@@ -118,6 +118,17 @@ class DondGame:
         self.game_over = False
         round_over = False
 
+        # NEW: Check the minimum message requirement on a finalization attempt.
+        # If a player tries to finalize but hasn't sent enough conversation messages,
+        # treat the finalization as a conversation message.
+        if is_finalization and self.round_messages[current_player] < self.min_messages:
+            print(f"Player {current_player} attempted finalization with only {self.round_messages[current_player]} message(s); minimum required is {self.min_messages}. Treating finalization as a conversation message.")
+            # Increment conversation-related counters.
+            self.round_messages[current_player] += 1
+            self.message_turn += 1
+            self.last_message = output
+            is_finalization = False
+
         if self.has_finalized:
             # We are in the second finalization phase.
             if not is_finalization:
@@ -138,8 +149,8 @@ class DondGame:
             if is_finalization:
                 self.has_finalized = True
                 self.finalize(output)
-            # Instead of using the global message_turn, check if every player
-            # has reached their personal message limit.
+            # Instead of using the global message_turn, check if any player has exceeded
+            # their personal maximum message limit.
             elif any(count > self.max_messages for count in self.round_messages.values()):
                 round_over = True
 
@@ -249,8 +260,11 @@ class DondGame:
             # New tracking information added:
             "game_moves": self.game_moves,
             "round_moves": self.round_moves,
-            "messages_remaining": {player: self.max_messages - self.round_messages.get(player, 0)
-                                   for player in self.players},
+            "round_messages": self.round_messages,
+            "messages_remaining": {
+                player: self.max_messages - self.round_messages.get(player, 0)
+                for player in self.players
+            },
         }
         return state
     
