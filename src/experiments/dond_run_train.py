@@ -33,23 +33,48 @@ def init_models(cfg):
     return models
 
 
-def create_blank_match(cfg):
+def create_blank_match(cfg, seed_offset=0):
     """
-    Initializes the matches for the game.
+    Initializes the match for the game, ensuring that each game instance
+    receives a unique random_seed passed to the DondGame, which in turn is used
+    by the random generation functions for quantities and values.
 
     Args:
-        cfg (omegaconf.DictConfig): Configuration object containing all necessary parameters for the negotiation cycle.
+        cfg (omegaconf.DictConfig): Configuration object containing all necessary parameters.
+        seed_offset (int): An offset to uniquely adjust the seed for each match.
 
     Returns:
-        list: A list of match dictionaries.
+        dict: A match dictionary.
     """
     players = {}
     for player_name in cfg["matches"]["players"].keys():
-        players[player_name] = DondPlayerHandler(player_name,
-                                                 **cfg["matches"]["players"][player_name]["dond_player_args"])
+        players[player_name] = DondPlayerHandler(
+            player_name,
+            **cfg["matches"]["players"][player_name]["dond_player_args"]
+        )
+    
+    # Build a fresh copy of game args to safely update random setup parameters.
+    game_args = dict(cfg["matches"]["dond_game_args"])
+    setup_kwargs = game_args.get("random_setup_kwargs", {})
+    setup_kwargs = dict(setup_kwargs)  # shallow copy
+
+    # Determine the base seed.
+    if "seed" in setup_kwargs:
+        base_seed = setup_kwargs.pop("seed")  # Remove it from kwargs so that DondGame controls randomness.
+        random_seed_value = base_seed + seed_offset
+    else:
+        random_seed_value = random.randint(1, 10**9) + seed_offset
+
+    # Put back the cleaned up random_setup_kwargs (without any seed key).
+    game_args["random_setup_kwargs"] = setup_kwargs
+
     blank_match = {
         "players": players,
-        "game": DondGame(players=list(players.keys()), **cfg["matches"]["dond_game_args"]),
+        "game": DondGame(
+            players=list(players.keys()),
+            random_seed=random_seed_value,  # Pass the unique seed here.
+            **game_args
+        ),
         "game_state": None,
         "stop_condition": cfg["matches"]["stop_condition"],
         "stop_condition_kwargs": cfg["matches"]["stop_condition_kwargs"]
@@ -82,8 +107,10 @@ def dond_run_train(cfg):
         generation_start_time = time.time()
 
         # Create independent matches based on the number in config
-        matches = [create_blank_match(cfg) for _ in range(cfg["experiment"]["nb_matches_per_iteration"])]
-        # Directly reference players from the first match instead of deep copying
+        matches = []
+        nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
+        for i in range(nb_matches):
+            matches.append(create_blank_match(cfg, seed_offset = (iteration * nb_matches) + i))
         players = matches[0]["players"]
         player_names = players.keys()
         run_matches(
