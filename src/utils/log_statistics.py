@@ -192,6 +192,11 @@ def generate_frequency_counts(input_path):
     with open(output_path, 'w') as f:
         json.dump(freq_stats, f, indent=4)
 
+import os
+import json
+import numpy as np
+import matplotlib.pyplot as plt
+
 def plot_seed_averaged_stats(root_path, player_names):
     """
     Plots seed-averaged statistics for given players.
@@ -240,25 +245,42 @@ def plot_seed_averaged_stats(root_path, player_names):
                 # Convert data into a NumPy array for processing
                 metric_data = np.array([entry['data'] for entry in metric_data])
                 metric_mean = np.mean(metric_data, axis=0)
+                metric_std = np.std(metric_data, axis=0)
 
-                # Plot individual runs with transparency
+                # Plot individual runs with pale blue
                 for instance in metric_data:
-                    plt.plot(instance, alpha=0.5)
+                    plt.plot(instance, color="lightblue", alpha=0.5)
 
-                # Overlay mean curve
-                plt.plot(metric_mean, linestyle='--', linewidth=2, label=f"{player} Mean", color='black')
+                # Overlay mean curve with dark blue
+                plt.plot(metric_mean, linewidth=2, color="darkblue", label=f"Average")
 
                 # Formatting and saving the plot
                 plt.title(f"{round_id}/seed_averaged_{metric}")
+                plt.xlabel("Iterations")
+                plt.ylabel(metric.replace("_", " ").title())
+                plt.legend()
 
-                output_filename = os.path.join(avg_stats_dir, f"{round_id}_{metric}.png")
+                output_filename = os.path.join(avg_stats_dir, f"{round_id}_seed_averaged_{metric}.png")
                 plt.savefig(output_filename)
                 plt.close()  # Close figure to free memory
 
-    print("Seed-averaged plots saved successfully!")
+                # Compute standard error
+                plt.figure()
+                std_error = metric_std / np.sqrt(len(metric_mean))
+                plt.plot(metric_mean, linestyle="-", linewidth=2, color="darkblue")
+
+                plt.errorbar(range(len(metric_mean)), metric_mean, yerr=std_error, fmt="o", color="#006400", capsize=3, markersize=3)
+
+                plt.title(f"{round_id}/std_error_{metric}")
+                plt.xlabel("Iterations")
+                plt.ylabel(metric.replace("_", " ").title())
+                plt.savefig(os.path.join(avg_stats_dir, f"{round_id}_std_error_{metric}.png"))
+                plt.close()  # Free memory
+
+    print(f"Seed-averaged plots saved successfully at {avg_stats_dir}!")
 
 
 if __name__ == "__main__":
     # plot_cumulative_points("/home/mila/d/dereck.piche/llm_negotiation/important_outputs/2025-01-12 naive RL with 12 rounds/statistics/alice/alice_stats.jsonl")
-    folder = "outputs/2025-02-13/15-32-27"
+    folder = "../scratch/outputs/2025-02-15/08-57-15-fair-bias"
     plot_seed_averaged_stats(folder, ["alice", "bob"])
