@@ -192,26 +192,71 @@ def generate_frequency_counts(input_path):
     with open(output_path, 'w') as f:
         json.dump(freq_stats, f, indent=4)
 
-def plot_seed_averaged_stats(path, player_names):
-    # Metrics to extract
-    data = {player: {} for player in player_names}
+def plot_seed_averaged_stats(root_path, player_names):
+    """
+    Plots seed-averaged statistics for given players.
 
-    files = [file for file in os.listdir(path) if file.startswith("seed")]
+    Args:
+        root_path (str): Path to the directory containing seed data.
+        player_names (list): List of player names to process.
+    """
+
+    # Initialize data structure for storing statistics
+    player_stats = {player: {} for player in player_names}
+
+    # Identify all seed directories
+    seed_dirs = [dir_name for dir_name in os.listdir(root_path) if dir_name.startswith("seed")]
 
     for player in player_names:
-        for file in files:
-            with open(f"{path}/{file}/statistics/{player}/{player}_stats.jsonl", "r") as f:
-                json_data = json.load(f)
-                round_data = json_data["round_0"]
+        # Create output directory for averaged stats
+        avg_stats_dir = os.path.join(root_path, "avg_seed_stats", player)
+        os.makedirs(avg_stats_dir, exist_ok=True)
 
+        # Collect statistics from each seed directory
+        for seed_dir in seed_dirs:
+            stats_file = os.path.join(root_path, seed_dir, "statistics", player, f"{player}_stats.jsonl")
+
+            with open(stats_file, "r") as file:
+                json_data = json.load(file)
+
+            for round_id, round_data in json_data.items():
                 for metric, values in round_data.items():
-                    data[player].setdefault(metric, []).append({
+                    # Initialize nested dictionary structure
+                    player_stats.setdefault(player, {}).setdefault(round_id, {}).setdefault(metric, []).append({
                         'data': [val if val is not None else 0 for val in values],
-                        'file': file
+                        'file': seed_dir
                     })
-    data = [i['data'] for i in data['alice']['agreement_percentage']]
-    data = np.array(data)
-    pprint.pp(np.mean(data, axis=0))
+
+        # Save collected statistics to a JSON file
+        json_output_file = os.path.join(avg_stats_dir, f"{player}_aggregated_stats.json")
+        with open(json_output_file, "w") as json_file:
+            json.dump(player_stats[player], json_file, indent=4)
+
+        # Plot and save seed-averaged statistics
+        for round_id, round_metrics in player_stats[player].items():
+            for metric, metric_data in round_metrics.items():
+                plt.figure()
+
+                # Convert data into a NumPy array for processing
+                metric_data = np.array([entry['data'] for entry in metric_data])
+                metric_mean = np.mean(metric_data, axis=0)
+
+                # Plot individual runs with transparency
+                for instance in metric_data:
+                    plt.plot(instance, alpha=0.5)
+
+                # Overlay mean curve
+                plt.plot(metric_mean, linestyle='--', linewidth=2, label=f"{player} Mean", color='black')
+
+                # Formatting and saving the plot
+                plt.title(f"{round_id}/seed_averaged_{metric}")
+
+                output_filename = os.path.join(avg_stats_dir, f"{round_id}_{metric}.png")
+                plt.savefig(output_filename)
+                plt.close()  # Close figure to free memory
+
+    print("Seed-averaged plots saved successfully!")
+
 
 if __name__ == "__main__":
     # plot_cumulative_points("/home/mila/d/dereck.piche/llm_negotiation/important_outputs/2025-01-12 naive RL with 12 rounds/statistics/alice/alice_stats.jsonl")
