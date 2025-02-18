@@ -1,9 +1,6 @@
-import regex as re
-import json
-import random
-import os
+from utils.common_imports import *
 from collections import deque
-import copy
+
 
 class DondGame:
     def __init__(
@@ -11,6 +8,7 @@ class DondGame:
         players,
         mode="coop",
         max_messages=None,
+        min_messages=None,
         max_chars_per_message=None,
         rounds_per_game=1,
         random_setup_func=None,
@@ -19,6 +17,7 @@ class DondGame:
         role_assignator_func_kwargs=None,
         finalization_visibility=False,
         other_values_visibility=False,
+        random_seed=None
     ):
         """
         Initializes the DoND game.
@@ -28,30 +27,46 @@ class DondGame:
             mode (str): The mode of the game, either 'coop' or 'basic'.
             max_messages (int): Maximum number of conversation (non-finalization) messages per player
                                 allowed before finalization is forced.
+            min_messages (int): Minimum number of conversation messages required before a player can finalize.
             max_chars_per_message (int): Maximum number of characters allowed per message.
             rounds_per_game (int): The number of rounds per game.
-            random_setup_func (str): The name of the function to use for random setup.
+            random_setup_func (str or callable): The function to use for random setup.
             random_setup_kwargs (dict): Keyword arguments for the random setup function.
-            role_assignator_func (str): The name of the function to use for role assignment.
+            role_assignator_func (str or callable): The function to use for role assignment.
             role_assignator_func_kwargs (dict): Keyword arguments for the role assignment function.
             finalization_visibility (bool): Visibility of finalization.
             other_values_visibility (bool): Visibility of other player's values.
+            random_seed (int, optional): The base seed that will be used (and incremented) for random generation.
         """
 
         self.players = players
         self.roles = ["starting_negotiator", "responding_negotiator"]
         self.mode = mode
         self.max_messages = max_messages
+        self.min_messages = min_messages
         self.max_chars_per_message = max_chars_per_message
-        self.random_setup_func = globals()[random_setup_func]
+        self.random_setup_func = (
+            globals()[random_setup_func] if isinstance(random_setup_func, str) else random_setup_func
+        )
         self.random_setup_kwargs = random_setup_kwargs
+        if random_setup_kwargs is not None:
+            self.random_setup_kwargs["random_seed"] = random_seed
+        else:
+            self.random_setup_kwargs = {"random_seed": random_seed}
+            
         self.finalization_visibility = finalization_visibility
         self.rounds_per_game = rounds_per_game
-        self.role_assignator_func = globals()[role_assignator_func]
-        self.role_assignator_func_kwargs = role_assignator_func_kwargs
+        self.role_assignator_func = (
+            globals()[role_assignator_func] if isinstance(role_assignator_func, str) else role_assignator_func
+        )
+        self.role_assignator_func_kwargs = role_assignator_func_kwargs or {}
         self.other_values_visibility = other_values_visibility
 
-        # Initialize move tracking dictionaries.
+        if random_seed is None:
+            self.random_seed = random.randint(1, 10**9)
+        else:
+            self.random_seed = random_seed
+
         self.game_moves = {player: 0 for player in players}
         self.round_moves = {player: 0 for player in players}
         self.round_messages = {player: 0 for player in players}
@@ -60,9 +75,13 @@ class DondGame:
 
     def set_new_setup(self):
         """
-        # TODO: write config
+        Sets up a new game configuration using a local (and updated) RNG.
+        The random_seed is incremented to ensure that each setup is different.
         """
-        self.items, self.quantities, role_values = self.random_setup_func(**self.random_setup_kwargs)
+        self.random_seed += 1
+        
+        kwargs = self.random_setup_kwargs
+        self.items, self.quantities, role_values = self.random_setup_func(**kwargs)
         self.role_values = {
             self.roles[0]: role_values[0],
             self.roles[1]: role_values[1]
@@ -99,6 +118,17 @@ class DondGame:
         self.game_over = False
         round_over = False
 
+        # NEW: Check the minimum message requirement on a finalization attempt.
+        # If a player tries to finalize but hasn't sent enough conversation messages,
+        # treat the finalization as a conversation message.
+        if is_finalization and self.round_messages[current_player] < self.min_messages:
+            print(f"Player {current_player} attempted finalization with only {self.round_messages[current_player]} message(s); minimum required is {self.min_messages}. Treating finalization as a conversation message.")
+            # Increment conversation-related counters.
+            self.round_messages[current_player] += 1
+            self.message_turn += 1
+            self.last_message = output
+            is_finalization = False
+
         if self.has_finalized:
             # We are in the second finalization phase.
             if not is_finalization:
@@ -119,8 +149,8 @@ class DondGame:
             if is_finalization:
                 self.has_finalized = True
                 self.finalize(output)
-            # Instead of using the global message_turn, check if every player
-            # has reached their personal message limit.
+            # Instead of using the global message_turn, check if any player has exceeded
+            # their personal maximum message limit.
             elif any(count > self.max_messages for count in self.round_messages.values()):
                 round_over = True
 
@@ -210,6 +240,7 @@ class DondGame:
             "items": self.items,
             "message_count": self.message_turn,
             "max_messages": self.max_messages,
+            "min_messages": self.min_messages,
             "current_player": self.get_current_player(),
             "round_number": self.round_nb,
             "nb_rounds": self.rounds_per_game,
@@ -229,8 +260,11 @@ class DondGame:
             # New tracking information added:
             "game_moves": self.game_moves,
             "round_moves": self.round_moves,
-            "messages_remaining": {player: self.max_messages - self.round_messages.get(player, 0)
-                                   for player in self.players},
+            "round_messages": self.round_messages,
+            "messages_remaining": {
+                player: self.max_messages - self.round_messages.get(player, 0)
+                for player in self.players
+            },
         }
         return state
     
@@ -356,32 +390,45 @@ class DondGame:
         """
         self.__dict__.update(checkpoint)
 
-def uniform_quant_random_vals(items, min_quant, max_quant, min_val, max_val):
-    # For each item, sample a quantity and a value.
-    quantities = {item: random.randint(min_quant, max_quant) for item in items}
-    val_starting_negotiator = {item: random.randint(min_val, max_val) for item in items}
-    # For the responding negotiator, you can copy and then shuffle the values
-    # if that is desired behavior.
-    values = list(val_starting_negotiator.values())
-    random.shuffle(values)
-    val_responding_negotiator = {item: values[i] for i, item in enumerate(items)}
-  
+def uniform_quant_random_vals(items, min_quant, max_quant, min_val, max_val, random_seed=None):
+    """
+    Generates items, random quantities and independent values for each player uniformly at random.
+    
+    Args:
+        items (list): List of items.
+        min_quant (int): Minimum quantity per item.
+        max_quant (int): Maximum quantity per item.
+        min_val (int): Minimum value per item.
+        max_val (int): Maximum value per item.
+        random_seed (int, optional): Seed for random generation.
+        
+    Returns:
+        tuple: (items, quantities, (val_starting_negotiator, val_responding_negotiator))
+    """
+    rng = np.random.default_rng(random_seed)
+    quantities = {item: int(rng.integers(min_quant, max_quant + 1)) for item in items}
+    # Previously, the responding values were a permutation of the starting ones.
+    # Now we generate independent values for each role.
+    val_starting_negotiator = {item: int(rng.integers(min_val, max_val + 1)) for item in items}
+    val_responding_negotiator = {item: int(rng.integers(min_val, max_val + 1)) for item in items}
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
-def independent_random_vals(items, min_quant, max_quant, min_val, max_val):
-    quantities = {item: random.randint(min_quant, max_quant) for item in items}
-    val_starting_negotiator = {item: random.randint(min_val, max_val) for item in items}
-    val_responding_negotiator = {item: random.randint(min_val, max_val) for item in items}
+def independent_random_vals(items, min_quant, max_quant, min_val, max_val, random_seed=None):
+    rng = np.random.default_rng(random_seed)
+    quantities = {item: int(rng.integers(min_quant, max_quant + 1)) for item in items}
+    val_starting_negotiator = {item: int(rng.integers(min_val, max_val + 1)) for item in items}
+    val_responding_negotiator = {item: int(rng.integers(min_val, max_val + 1)) for item in items}
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
-def fixed_manual(items, quantities, val_starting_negotiator, val_responding_negotiator):
+def fixed_manual(items, quantities, val_starting_negotiator, val_responding_negotiator, random_seed=None):
     quantities = {item: q for item, q in zip(items, quantities)}
     val_starting_negotiator = {item: v for item, v in zip(items, val_starting_negotiator)}
     val_responding_negotiator = {item: v for item, v in zip(items, val_responding_negotiator)}
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
-def random_quant_fixed_vals(items, min_quant, max_quant, val_starting_negotiator, val_responding_negotiator):
-    quantities = {item: random.randint(min_quant, max_quant) for item in items}
+def random_quant_fixed_vals(items, min_quant, max_quant, val_starting_negotiator, val_responding_negotiator, random_seed=None):
+    rng = np.random.default_rng(random_seed)
+    quantities = {item: int(rng.integers(min_quant, max_quant + 1)) for item in items}
     val_starting_negotiator = {item: v for item, v in zip(items, val_starting_negotiator)}
     val_responding_negotiator = {item: v for item, v in zip(items, val_responding_negotiator)}
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)

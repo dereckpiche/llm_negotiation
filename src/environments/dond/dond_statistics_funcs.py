@@ -1,5 +1,5 @@
-import json
-import numpy as np
+from utils.common_imports import *
+
 
 def gather_dond_statistics(player_info, info, stats_to_log):
     """
@@ -25,7 +25,13 @@ def gather_dond_statistics(player_info, info, stats_to_log):
         other_role = next(role for role in state.values() if role != player_role)
 
         round_info = {}
-
+        
+        # Extract the player's own values, the co-player's values, and the round quantities.
+        values = info['round_values'][i][player_role]
+        coplayer_values = info['round_values'][i][other_role]
+        quantities = info['round_quantities'][i]
+        points = info['round_points'][i]
+        coplayer_points = info['round_points'][i][other_role]
 
         if "agreement_percentage" in stats_to_log:
             round_info["agreement_percentage"] = 100 if info['round_agreements_reached'][i] else 0
@@ -55,10 +61,49 @@ def gather_dond_statistics(player_info, info, stats_to_log):
             round_info["points_diff_on_agreement"] = (info['round_points'][i][player_role] - info['round_points'][i][other_role]) if info['round_agreements_reached'][i] else None
 
         if "quantities" in stats_to_log:
-            round_info["quantities"] = info['round_quantities'][i]
+            round_info["quantities"] = quantities
 
         if "values" in stats_to_log:
-            round_info["values"] = info['round_values'][i][player_role]
+            round_info["values"] = values
+
+
+        if "cooperative_points_percentage" in stats_to_log:
+            if info['round_agreements_reached'][i]:
+                cooperative_points = 0
+                for item in quantities.keys():
+                    if values[item] >= coplayer_values[item]:
+                        cooperative_points += values[item] * quantities[item]
+                    elif values[item] == coplayer_values[item]:
+                        cooperative_points += values[item] * quantities[item] / 2
+                round_info["cooperative_points_percentage"] = 100 * points / cooperative_points
+            else:
+                round_info["cooperative_points_percentage"] = None
+
+        if "greedy_dominant_points_percentage" in stats_to_log:
+            if info['round_agreements_reached'][i]:
+                greedy_dominant_points = 0
+                for item in quantities.keys():
+                    greedy_dominant_points += values[item] * quantities[item]
+                greedy_dominant_points -= min(values.values())
+                round_info["greedy_dominant_points_percentage"] = 100 * points / greedy_dominant_points
+            else:
+                round_info["greedy_dominant_points_percentage"] = None
+
+        if "greedy_submission_points_percentage" in stats_to_log:
+            if info['round_agreements_reached'][i]:
+                greedy_submission_points = min(values.values())
+                round_info["greedy_submission_points_percentage"] = 100 * points / greedy_submission_points
+            else:
+                round_info["greedy_submission_points_percentage"] = None
+
+        if "split_equal_points_percentage" in stats_to_log:
+            if info['round_agreements_reached'][i]:
+                split_equal_points = 0
+                for item in quantities.keys():
+                    split_equal_points += (1/2) * values[item] * quantities[item]
+                round_info["split_equal_points_percentage"] = 100 * points / split_equal_points
+            else:
+                round_info["split_equal_points_percentage"] = None
 
         statistics[f"round_{i}"] = round_info
 

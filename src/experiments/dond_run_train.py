@@ -1,11 +1,5 @@
-import hydra
-import os
-import logging
-import time
-from omegaconf import OmegaConf
-import random
-import json
-import copy
+from utils.common_imports import *
+
 # Local imports
 from models.hf_agent import HfAgent
 from environments.dond.dond_player import DondPlayerHandler
@@ -39,23 +33,48 @@ def init_models(cfg):
     return models
 
 
-def create_blank_match(cfg):
+def create_blank_match(cfg, seed_offset=0):
     """
-    Initializes the matches for the game.
+    Initializes the match for the game, ensuring that each game instance
+    receives a unique random_seed passed to the DondGame, which in turn is used
+    by the random generation functions for quantities and values.
 
     Args:
-        cfg (omegaconf.DictConfig): Configuration object containing all necessary parameters for the negotiation cycle.
+        cfg (omegaconf.DictConfig): Configuration object containing all necessary parameters.
+        seed_offset (int): An offset to uniquely adjust the seed for each match.
 
     Returns:
-        list: A list of match dictionaries.
+        dict: A match dictionary.
     """
     players = {}
     for player_name in cfg["matches"]["players"].keys():
-        players[player_name] = DondPlayerHandler(player_name,
-                                                 **cfg["matches"]["players"][player_name]["dond_player_args"])
+        players[player_name] = DondPlayerHandler(
+            player_name,
+            **cfg["matches"]["players"][player_name]["dond_player_args"]
+        )
+    
+    # Build a fresh copy of game args to safely update random setup parameters.
+    game_args = dict(cfg["matches"]["dond_game_args"])
+    setup_kwargs = game_args.get("random_setup_kwargs", {})
+    setup_kwargs = dict(setup_kwargs)  # shallow copy
+
+    # Determine the base seed.
+    if "seed" in setup_kwargs:
+        base_seed = setup_kwargs.pop("seed")  # Remove it from kwargs so that DondGame controls randomness.
+        random_seed_value = base_seed + seed_offset
+    else:
+        random_seed_value = random.randint(1, 10**9) + seed_offset
+
+    # Put back the cleaned up random_setup_kwargs (without any seed key).
+    game_args["random_setup_kwargs"] = setup_kwargs
+
     blank_match = {
         "players": players,
-        "game": DondGame(players=list(players.keys()), **cfg["matches"]["dond_game_args"]),
+        "game": DondGame(
+            players=list(players.keys()),
+            random_seed=random_seed_value,  # Pass the unique seed here.
+            **game_args
+        ),
         "game_state": None,
         "stop_condition": cfg["matches"]["stop_condition"],
         "stop_condition_kwargs": cfg["matches"]["stop_condition_kwargs"]
@@ -73,14 +92,13 @@ def dond_run_train(cfg):
     output_directory = hydra_cfg["runtime"]["output_dir"]
     os.makedirs(output_directory, exist_ok=True)
 
-    # cfg = OmegaConf.to_container(cfg, resolve=False, structured_config_mode="dict")
-
     # Initialize models
     models = init_models(cfg)
 
     update_start_epoch(cfg=cfg, output_directory=output_directory)
 
     for iteration in range(cfg["experiment"]["start_epoch"], cfg["experiment"]["nb_epochs"]):
+
         iteration_start_time = time.time()
 
         it_folder = os.path.join(output_directory, f"iteration_{iteration:03}")
@@ -88,22 +106,26 @@ def dond_run_train(cfg):
 
         generation_start_time = time.time()
 
-        matches = [create_blank_match(cfg) for _ in range(cfg["experiment"]["nb_matches_per_iteration"])]
-        players = copy.deepcopy(matches[0]["players"])
-
+        # Create independent matches based on the number in config
+        matches = []
+        nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
+        for i in range(nb_matches):
+            matches.append(create_blank_match(cfg, seed_offset = (iteration * nb_matches) + i))
+        players = matches[0]["players"]
+        player_names = players.keys()
         run_matches(
             export_path=it_folder,
             matches=matches,
             models=models,
             **cfg['matches']['run_matches_args']
         )
+        del matches
 
         generation_end_time = time.time()
 
-
         logging_start_time = time.time()
 
-        for player_name in players.keys():
+        for player_name in player_names:
             player_stats_folder = os.path.join(output_directory, "statistics", player_name)
             os.makedirs(player_stats_folder, exist_ok=True)
             player_stats_file = os.path.join(player_stats_folder, f"{player_name}_stats.jsonl")
@@ -154,23 +176,20 @@ def dond_run_train(cfg):
 
         iteration_end_time = time.time()
 
-        # Calculate times
+        # Timing calculations
         iteration_duration = iteration_end_time - iteration_start_time
         generation_duration = generation_end_time - generation_start_time
         logging_duration = logging_end_time - logging_start_time
         training_duration = training_end_time - training_start_time
 
-        # Percentages of time
         generation_percentage = (generation_duration / iteration_duration) * 100
         logging_percentage = (logging_duration / iteration_duration) * 100
         training_percentage = (training_duration / iteration_duration) * 100
 
-        # Estimate remaining time
         elapsed_time = iteration_end_time - total_start_time
         estimated_total_time = iteration_duration * cfg["experiment"]["nb_epochs"]
         estimated_remaining_time = estimated_total_time - elapsed_time
 
-        # Time estimates for future iterations
         time_per_iteration = iteration_duration
         time_est_10 = time_per_iteration * 10
         time_est_100 = time_per_iteration * 100
@@ -197,7 +216,6 @@ def dond_run_train(cfg):
             f"500 more iterations: {format_time(time_est_500)}."
         )
 
-    # Log total time
     total_end_time = time.time()
     total_duration = total_end_time - total_start_time
     compute__logger.info(f"Total time taken for the entire run: {format_time(total_duration)}")

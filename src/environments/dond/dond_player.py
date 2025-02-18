@@ -1,13 +1,5 @@
-import json
-import regex as re
-import copy
-# local imports
-from environments.dond.dond_game import DondGame
-import math
-from statistics import mean
-import numpy as np
-import re
-import json
+from utils.common_imports import *
+
 
 class DondPlayerHandler:
     def __init__(
@@ -24,9 +16,9 @@ class DondPlayerHandler:
         player_with_first_move_prompt,
         received_message_prompt,
         other_player_finalized_prompt,
-        message_mechanics_prompt=None,     # Existing parameter for message mechanics
-        dond_version_specificities=None,    # New parameter for DOND-specific instructions
-        reasoning_mechanics_prompt=None     # Existing parameter for reasoning mechanics
+        message_mechanics_prompt=None, 
+        dond_version_specificities=None,    
+        reasoning_mechanics_prompt=None    
     ):
         """
         Initializes the DondPlayerHandler.
@@ -157,17 +149,21 @@ class DondPlayerHandler:
         if has_message and has_finalization:
             errors.append("You cannot send both a message and a finalization in one response.")
 
-        if not has_message and not has_finalization:
-            errors.append("Response must contain either a <message> block or a <finalize> block.")
-
         # 2.5) Check if this response is a message and would exceed per-player allowed messages.
         max_msgs = state.get("max_messages", None)
         player_messages = state.get("round_messages", {}).get(self.player_name, 0)
-        # In the game step, a non‐finalization move increases the count by 1 — so simulate that here.
         if max_msgs is not None and has_message:
             if player_messages == max_msgs:
                 errors.append("You must finalize because you reached the maximum number of messages!")
-        
+
+        # NEW: Check that the minimum number of messages has been sent before finalizing.
+        min_msgs = state.get("min_messages", None)
+        if min_msgs is not None and has_finalization:
+            if player_messages < min_msgs:
+                errors.append(
+                    f"You must send at least {min_msgs} message(s) before finalizing. You have sent {player_messages}."
+                )
+
         # 3) Check for excessive content outside valid tags (<think>, <message>, <finalize>).
         total_length = len(response)
         valid_tags = ["think", "message", "finalize"]
@@ -278,13 +274,6 @@ class DondPlayerHandler:
     def format_prompt(self, prompt, state):
         """
         Replaces placeholders in a prompt with actual values from the game state.
-
-        Args:
-            prompt (str): The prompt with placeholders.
-            state (dict): The current state of the game.
-
-        Returns:
-            str: The formatted prompt.
         """
         if prompt: 
             if state.get("has_finalized"):
@@ -300,15 +289,16 @@ class DondPlayerHandler:
             else:
                 last_round_points = 0
 
-            # Compute remaining messages for the current player.
+            # Retrieve message-related values from the state.
             remaining_msgs = state['messages_remaining'][self.player_name]
-            
-            # Build a summary from the last round (if available)
-            last_round_info = ""
-            if state.get("round_number", 0) > 0:
-                last_points = state["round_points"][-1] if state.get("round_points") else "N/A"
-                last_finalizations = state["round_finalizations"][-1] if state.get("round_finalizations") else "N/A"
-                last_round_info = f"Points: {last_points}, Finalizations: {last_finalizations}"
+            max_msgs = state.get("max_messages", 0)
+            min_msgs = state.get("min_messages", 0)
+            current_sent = state["round_messages"].get(self.player_name, 0)
+
+            # Format finalize samples using actual item names
+            items = state.get("items", [])
+            finalize_sample_i_take = ", ".join([f'"{item}": x' for item in items])
+            finalize_sample_other = ", ".join([f'"{item}": y' for item in items])
 
             return prompt.replace("{rounds_per_game}", str(state.get("rounds_per_game", ""))) \
                         .replace("{last_round_points}", str(last_round_points)) \
@@ -316,14 +306,18 @@ class DondPlayerHandler:
                         .replace("{nb_rounds}", str(state["round_number"] + 1)) \
                         .replace("{quantities}", str(state.get("quantities", ""))) \
                         .replace("{values}", str(values)) \
-                        .replace("{items}", str(state.get("items", ""))) \
+                        .replace("{items}", str(items)) \
                         .replace("{max_reasoning_chars}", str(self.max_reasoning_chars)) \
-                        .replace("{max_messages}", str(state.get("max_messages", ""))) \
+                        .replace("{max_messages}", str(max_msgs)) \
+                        .replace("{min_messages}", str(min_msgs)) \
                         .replace("{max_chars_per_message}", str(state.get("max_chars_per_message", ""))) \
                         .replace("{max_errors}", str(self.max_errors)) \
                         .replace("{last_message}", str(state.get("last_message", ""))) \
                         .replace("{other_player_finalization}", str(other_player_finalization)) \
-                        .replace("{remaining_messages}", f"Msgs left: {remaining_msgs} (max)")
+                        .replace("{remaining_messages}", 
+                                 f"Minimum Messages: {min_msgs}, Maximum Messages: {max_msgs}, Current Number Sent: {current_sent}") \
+                        .replace("{{finalize_sample_i_take}}", finalize_sample_i_take) \
+                        .replace("{{finalize_sample_other}}", finalize_sample_other)
         return ""
 
     def get_chat_history(self):
