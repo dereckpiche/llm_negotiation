@@ -33,9 +33,10 @@ matches:
         "items_given_to_self",
         "quantities",
         "values",
-        "cooperative_points",
-        "greedy_points",
-        "split_equal_points"
+        "greedy_dominant_points_percentage",
+        "greedy_submission_points_percentage",
+        "cooperative_points_percentage",
+        "split_equal_points_percentage"
         ]
       training_data_func: set_discounted_returns
       training_data_func_args:
