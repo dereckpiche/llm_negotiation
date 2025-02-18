@@ -295,13 +295,18 @@ class DondPlayerHandler:
             min_msgs = state.get("min_messages", 0)
             current_sent = state["round_messages"].get(self.player_name, 0)
 
+            # Format finalize samples using actual item names
+            items = state.get("items", [])
+            finalize_sample_i_take = ", ".join([f'"{item}": x' for item in items])
+            finalize_sample_other = ", ".join([f'"{item}": y' for item in items])
+
             return prompt.replace("{rounds_per_game}", str(state.get("rounds_per_game", ""))) \
                         .replace("{last_round_points}", str(last_round_points)) \
                         .replace("{current_round}", str(state.get("current_round", ""))) \
                         .replace("{nb_rounds}", str(state["round_number"] + 1)) \
                         .replace("{quantities}", str(state.get("quantities", ""))) \
                         .replace("{values}", str(values)) \
-                        .replace("{items}", str(state.get("items", ""))) \
+                        .replace("{items}", str(items)) \
                         .replace("{max_reasoning_chars}", str(self.max_reasoning_chars)) \
                         .replace("{max_messages}", str(max_msgs)) \
                         .replace("{min_messages}", str(min_msgs)) \
@@ -310,7 +315,9 @@ class DondPlayerHandler:
                         .replace("{last_message}", str(state.get("last_message", ""))) \
                         .replace("{other_player_finalization}", str(other_player_finalization)) \
                         .replace("{remaining_messages}", 
-                                 f"Minimum Messages: {min_msgs}, Maximum Messages: {max_msgs}, Current Number Sent: {current_sent}")
+                                 f"Minimum Messages: {min_msgs}, Maximum Messages: {max_msgs}, Current Number Sent: {current_sent}") \
+                        .replace("{{finalize_sample_i_take}}", finalize_sample_i_take) \
+                        .replace("{{finalize_sample_other}}", finalize_sample_other)
         return ""
 
     def get_chat_history(self):

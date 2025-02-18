@@ -25,7 +25,11 @@ def gather_dond_statistics(player_info, info, stats_to_log):
         other_role = next(role for role in state.values() if role != player_role)
 
         round_info = {}
-
+        
+        # Extract the player's own values, the co-player's values, and the round quantities.
+        values = info['round_values'][i][player_role]
+        coplayer_values = info['round_values'][i][other_role]
+        quantities = info['round_quantities'][i]
 
         if "agreement_percentage" in stats_to_log:
             round_info["agreement_percentage"] = 100 if info['round_agreements_reached'][i] else 0
@@ -55,10 +59,38 @@ def gather_dond_statistics(player_info, info, stats_to_log):
             round_info["points_diff_on_agreement"] = (info['round_points'][i][player_role] - info['round_points'][i][other_role]) if info['round_agreements_reached'][i] else None
 
         if "quantities" in stats_to_log:
-            round_info["quantities"] = info['round_quantities'][i]
+            round_info["quantities"] = quantities
 
         if "values" in stats_to_log:
-            round_info["values"] = info['round_values'][i][player_role]
+            round_info["values"] = values
+
+        # The following compute the points that would of been obtained
+        # (on agreement rounds) if the players had followed different strategies
+        
+        if "cooperative_points" in stats_to_log:
+            round_info["greedy_points"]= None
+            if info['round_agreements_reached'][i]:
+                round_info["cooperative_points"] = 0
+                for item in quantities.keys():
+                    if values[item] >= coplayer_values[item]:
+                        round_info["cooperative_points"] += values[item] * quantities[item]
+                    elif values[item] == coplayer_values[item]:
+                        round_info["cooperative_points"] += values[item] * quantities[item] / 2
+                
+        if "greedy_points" in stats_to_log:
+            round_info["greedy_points"]= None
+            if info['round_agreements_reached'][i]:
+                round_info["greedy_points"] = 0
+                for item in quantities.keys():
+                    round_info["greedy_points"] += values[item] * quantities[item]
+                round_info["greedy_points"] -= min(values.values())
+
+        if "split_equal_points" in stats_to_log:
+            round_info["greedy_points"]= None
+            if info['round_agreements_reached'][i]:
+                round_info["split_equal_points"] = 0
+                for item in quantities.keys():
+                    round_info["split_equal_points"] += (1/2) * values[item] * quantities[item]
 
         statistics[f"round_{i}"] = round_info
 

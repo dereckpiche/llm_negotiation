@@ -32,15 +32,18 @@ matches:
         "points_on_agreement",
         "items_given_to_self",
         "quantities",
-        "values"
+        "values",
+        "cooperative_points",
+        "greedy_points",
+        "split_equal_points"
         ]
       training_data_func: set_discounted_returns
       training_data_func_args:
-        discount_factor: 0.6
+        discount_factor: 0.9
         
   dond_game_args:
-    rounds_per_game: 2
-    max_messages: 3
+    rounds_per_game: 4
+    max_messages: 2
     min_messages: 1
     max_chars_per_message: 300
     mode: basic
@@ -63,7 +66,7 @@ matches:
         max_errors: 2
         allow_reasoning: true
         max_reasoning_chars: 200
-        intro_prompt: ${prompt_blocks.ultimatum_game_multiple_rounds}
+        intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
         message_mechanics_prompt: ${prompt_blocks.dond_message_mechanics}
         dond_version_specificities: ${prompt_blocks.dond_hidden_alternating_starting_player}
         reasoning_mechanics_prompt: ${prompt_blocks.dond_reasoning_mechanics}
@@ -82,7 +85,7 @@ matches:
         max_errors: 2
         allow_reasoning: true
         max_reasoning_chars: 200
-        intro_prompt: ${prompt_blocks.ultimatum_game_multiple_rounds}
+        intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
         message_mechanics_prompt: ${prompt_blocks.dond_message_mechanics}
         dond_version_specificities: ${prompt_blocks.dond_hidden_alternating_starting_player}
         reasoning_mechanics_prompt: ${prompt_blocks.dond_reasoning_mechanics}
@@ -121,7 +124,7 @@ models:
         target_modules: "all-linear"
 
       generation_args:
-        max_new_tokens: 100
+        max_new_tokens: 300
         do_sample: True
         temperature: 1.0
         top_k: 1
@@ -151,14 +154,14 @@ training:
         train_func: train_reinforce_main
         train_func_args: 
           temperature: 1
-          learning_rate: 1e-6
+          learning_rate: 1e-5
 
 
       ad_bob:
         train_func: train_reinforce_main
         train_func_args: 
           temperature: 1
-          learning_rate: 1e-6
+          learning_rate: 1e-5
 
 
 ####################################################################################################
@@ -168,7 +171,7 @@ training:
 prompt_blocks:
 
   initial_play_prompt: |
-    You are the first player. It is your turn to play.
+    You are the first player. It is your turn to play. [Msg Limits → {remaining_messages}]
 
   message_prompt: |
     Other player's message: <message>{last_message}</message>. [Msg Limits → {remaining_messages}]
@@ -237,27 +240,29 @@ prompt_blocks:
 
 
   dond_game_multiple_rounds: |
-    Welcome, you are playing a multi-round splitting game.
+    Welcome, you are participating in a multi-round negotiation game.
     Game Description:
-      1) In this game, two players will divide a collection of objects over multiple rounds.
-      2) In each round, the available items—such as books, hats, and balls—must be divided between both players.
-      3) In every round, both players submit a finalization proposal outlining how the objects are split.
-      4) If the two players do not propose the same split, both players receive zero points for that round.
-      5) Once a player has proposed a split, the other player must also propose a split.
-      6) Both players are assigned a value for each item. The points each player receives are the product of the number of items they get and the item's value.
+      1) In this game, two players will divide a collection of items over multiple rounds.
+      2) In each round, the available items of each category ({items}) and their corresponding quantities will be dynamically specified.
+      3) In each round, the different item categories will have different values for each player.
+      4) The points of each player in each round is determined by multiplying the number of items they receive by the value they assign to each item.
+      5) Both players must submit a finalization proposal indicating how they wish to split the items.
+      6) If the finalization proposals of both players do not match, neither player earns points for that round.
     Response Formatting:
-      1) All your responses in each round must be enclosed within <finalize></finalize> tags.
-      2) Specify the division in a JSON-parsable format. For example: <finalize> {"i_take": {"books": x, "hats": y, "balls": z}, "other_player_gets": {"books": a, "hats": b, "balls": c}} </finalize> where the numbers represent the counts of each object allocated to you and to your opponent.
+      1) Enclose your finalization proposal within <finalize></finalize> tags.
+      2) Provide your proposal in a JSON-parsable format ensuring that every expected item is included. For example:
+         <finalize> {"i_take": {{finalize_sample_i_take}}, "other_player_gets": {{finalize_sample_other}}} </finalize>
+
 
 
   dond_normal_goal: |
     Your points will be computed as the cumulative sum over rounds, where each round's score is determined by multiplying the quantity of each item you receive by its corresponding value. 
 
   dond_agressive_goal: |
-    Your goal is to maximize your cumulative points, which are derived by summing, across rounds, the products of the quantities of items you receive and the items' values. Aim for the highest possible total!
+    Your goal is to maximize your cumulative points, calculated by adding up, over rounds, the products of each item's quantity and the associated value (for you) at corresponding rounds. Aim for the highest possible total!
 
   dond_agressive_pair_goal: |
-    Your goal is to maximize your cumulative points, calculated by adding up, over rounds, the products of each item's quantity and its value. This is also the goal of your opponent.
+    Your goal is to maximize your cumulative points, calculated by adding up, over rounds, the products of each item's quantity and the associated value (for you) at corresponding rounds. This is also the goal of your opponent.
 
   dond_fair_goal: |
     Goal: Aim to be fair with both the other player and yourself. Remember, your points are awarded as the cumulative sum over rounds, with each round's score computed by multiplying the number of items received by their respective values.
@@ -266,27 +271,21 @@ prompt_blocks:
     Goal: Your objective is to exactly follow the other player's preferences to ensure their satisfaction. Note that your points accumulate over rounds as the product of the number of each item received and its corresponding value. 
 
   first_round_prompt: |
-    For this new round, the items available are {quantities} and your assigned values are {values}. [Msg Limits → {remaining_messages}]
+    For this new round, the items available are {quantities} and your assigned values are {values}. 
 
   new_round_prompt: |
-    The previous round has ended. In the last round, you earned {last_round_points} points. For this new round, the items available are {quantities} and your assigned values are {values}. [Msg Limits → {remaining_messages}]
+    The previous round has ended. In the last round, you earned {last_round_points} points. For this new round, the items available are {quantities} and your assigned values are {values}. 
     
 
   dond_message_mechanics: |
     In order to communicate with the other player, you are allowed to send messages (distinct from finalizations). You cannot send a message and a finalization in the same response.
-    
-    When sending a message, please follow these rules:
-      1) Enclose your message entirely within <message> and </message> tags.
-      2) Do not include any extraneous text outside these tags.
-      3) In each round, send at least {min_messages} and no more than {max_messages} messages, with each message containing up to {max_chars_per_message} characters.
-      4) You may send only one message per response.
-      5) Use your messages strategically.
+    When sending a message, please follow these rules: 1) Enclose your message entirely within <message> and </message> tags. 2) Do not include any extraneous text outside these tags. 3) In each round, send at least {min_messages} and no more than {max_messages} messages, with each message containing up to {max_chars_per_message} characters. 4) You may send only one message per response. 5) Use your messages strategically.
       
   dond_reasoning_mechanics: |
     In order to think before you act, you are allowed to use {max_reasoning_chars} characters per round. When reasoning, please follow these rules; 1) Enclose your thought process within <think> and </think> tags. 2) Do not include extraneous content outside these tags. 3) Your reasoning is limited to {max_reasoning_chars} characters per response. 4) You are not obligated to reason at each response.
 
   dond_hidden_alternating_starting_player: |
-    In this specific version of the game, the proposals (content of the <finalize> tags) are  NOT shown to the other player. If players want to agree (have the same proposal), they must use messages to communicate BEFORE making their finalization. Furthermore, in this version, players take turns (each round) to make the first move.
+    In this version of the game, your finalization proposal (enclosed in <finalize> tags) will be hidden to your coplayer. The values attributed to the items by other players are hidden as well. However, there are no restrictions to what the players are allowed to reveal themselves in their messages! Furthermore, in this version, players alternate turns and the player with the first move changes each round.
 
 
 
