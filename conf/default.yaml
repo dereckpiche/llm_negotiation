@@ -31,7 +31,6 @@ training:
           learning_rate: 1e-6
 
 models:
-
   llama:
     class: hf
     init_args:
@@ -60,7 +59,7 @@ models:
         max_new_tokens: 100
         do_sample: True
         temperature: 1.0
-        top_k: 1
+        top_k: 0.0
         top_p: 1.0
         repetition_penalty: 0.0
 
@@ -94,7 +93,8 @@ matches:
 
   dond_game_args:
     rounds_per_game: 1
-    max_turns: 1
+    max_messages: 0
+    min_messages: 0
     mode: basic
     random_setup_func: fixed_manual
     random_setup_kwargs:
@@ -115,14 +115,13 @@ matches:
         allow_reasoning: false
         max_errors: 1
         max_reasoning_chars: 0
-        max_messages: 0
-        max_chars_per_message: 0
         intro_prompt: ${prompt_blocks.barebone_ultimatum2}
         goal_prompt: ${prompt_blocks.agressive_goal}
         new_round_prompt: null
-        initial_move_prompt: "You are the first player. It is your turn to play."
-        ongoing_moves_prompt: null
-        finalization_prompt: ${prompt_blocks.visible_finalization_prompt}
+        player_with_first_move_prompt: "You are the first player. It is your turn to play."
+        received_message_prompt: null
+        first_round_prompt: null
+        other_player_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
 
     bob:
 
@@ -132,14 +131,13 @@ matches:
         allow_reasoning: false
         max_errors: 1
         max_reasoning_chars: 100
-        max_messages: 5
-        max_chars_per_message: 50
         intro_prompt: ${prompt_blocks.barebone_ultimatum2}
         goal_prompt: ${prompt_blocks.agressive_goal}
         new_round_prompt: null
-        initial_move_prompt: null
-        ongoing_moves_prompt: null
-        finalization_prompt: ${prompt_blocks.visible_finalization_prompt}
+        player_with_first_move_prompt: null
+        received_message_prompt: null
+        first_round_prompt: null
+        other_player_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
 
 
 prompt_blocks:
