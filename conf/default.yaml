@@ -31,45 +31,11 @@ training:
           learning_rate: 1e-6
 
 models:
-
-  llama:
-    class: hf
+  gpt:
+    class: oai
     init_args:
-      name: 'llama'
-      adapter_names: ['ad_alice', 'ad_bob']
-      max_model_length: 8000
-      include_value_head: false
-      device: "cuda"
-      model_name: "/network/weights/llama.var/llama_3.1/Meta-Llama-3.1-8B-Instruct"
-      pretrained_args:
-        pretrained_model_name_or_path: ${models.llama.init_args.model_name}
-        torch_dtype: "bfloat16"
-        device_map: "auto"
-        attn_implementation: "flash_attention_2"
-      bits_and_bytes_args: null
-        #load_in_8bit: False
-        #load_in_4bit: true
-      lora_args:
-        task_type: TaskType.CAUSAL_LM
-        r: 64
-        lora_alpha: 32
-        lora_dropout: 0.0
-        target_modules: "all-linear"
-
-      generation_args:
-        max_new_tokens: 100
-        do_sample: True
-        temperature: 1.0
-        top_k: 1
-        top_p: 1.0
-        repetition_penalty: 0.0
-
-      keep_vllm_during_training: False
-      keep_hf_during_training: True
-      keep_hf_during_eval: False
-      keep_vllm_during_eval: True
-      eval_with: "vllm"
-      train_with: "hf"
+      api_key: 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
+      model: gpt-4o
 
 matches:
 
@@ -94,7 +60,8 @@ matches:
 
   dond_game_args:
     rounds_per_game: 1
-    max_turns: 1
+    max_messages: 0
+    min_messages: 0
     mode: basic
     random_setup_func: fixed_manual
     random_setup_kwargs:
@@ -111,35 +78,33 @@ matches:
 
       dond_player_args:
 
-        mod_adpt_id: 'llama/ad_alice'
+        mod_adpt_id: 'gpt/ad_alice'
         allow_reasoning: false
         max_errors: 1
         max_reasoning_chars: 0
-        max_messages: 0
-        max_chars_per_message: 0
         intro_prompt: ${prompt_blocks.barebone_ultimatum2}
         goal_prompt: ${prompt_blocks.agressive_goal}
         new_round_prompt: null
-        initial_move_prompt: "You are the first player. It is your turn to play."
-        ongoing_moves_prompt: null
-        finalization_prompt: ${prompt_blocks.visible_finalization_prompt}
+        player_with_first_move_prompt: "You are the first player. It is your turn to play."
+        received_message_prompt: null
+        first_round_prompt: null
+        other_player_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
 
     bob:
 
       dond_player_args:
 
-        mod_adpt_id: 'llama/ad_bob'
+        mod_adpt_id: 'gpt/ad_bob'
         allow_reasoning: false
         max_errors: 1
         max_reasoning_chars: 100
-        max_messages: 5
-        max_chars_per_message: 50
         intro_prompt: ${prompt_blocks.barebone_ultimatum2}
         goal_prompt: ${prompt_blocks.agressive_goal}
         new_round_prompt: null
-        initial_move_prompt: null
-        ongoing_moves_prompt: null
-        finalization_prompt: ${prompt_blocks.visible_finalization_prompt}
+        player_with_first_move_prompt: null
+        received_message_prompt: null
+        first_round_prompt: null
+        other_player_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
 
 
 prompt_blocks:

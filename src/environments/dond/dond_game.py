@@ -113,7 +113,6 @@ class DondGame:
 
         # Update state flags.
         self.last_message = output
-        self.round_ended = False
         self.is_new_round = (self.message_turn == 1)
         self.is_new_game = (self.round_nb == 0 and self.message_turn == 1)
         self.game_over = False
