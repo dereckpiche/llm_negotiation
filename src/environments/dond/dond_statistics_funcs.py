@@ -30,8 +30,11 @@ def gather_dond_statistics(player_info, info, stats_to_log):
         values = info['round_values'][i][player_role]
         coplayer_values = info['round_values'][i][other_role]
         quantities = info['round_quantities'][i]
-        points = info['round_points'][i]
+        points = info['round_points'][i][player_role]
         coplayer_points = info['round_points'][i][other_role]
+        finalization = info['round_finalizations'][i][player_role]
+        coplayer_finalization = info['round_finalizations'][i][other_role]
+
 
         if "agreement_percentage" in stats_to_log:
             round_info["agreement_percentage"] = 100 if info['round_agreements_reached'][i] else 0
@@ -42,11 +45,6 @@ def gather_dond_statistics(player_info, info, stats_to_log):
         if "other_points" in stats_to_log:
             round_info["other_points"] = info['round_points'][i][other_role]
 
-        if "points_difference" in stats_to_log:
-            round_info["points_difference"] = info['round_points'][i][player_role] - info['round_points'][i][other_role]
-
-        if "imbalance" in stats_to_log:
-            round_info["imbalance"] = calculate_imbalance(info['round_points'][i], player_role, other_role)
 
         if "items_given_to_self" in stats_to_log:
             round_info["items_given_to_self"] = calculate_items_given_to_self(info['round_finalizations'][i][player_role])
@@ -65,45 +63,57 @@ def gather_dond_statistics(player_info, info, stats_to_log):
 
         if "values" in stats_to_log:
             round_info["values"] = values
+        
+        if "points_difference_on_agreement" in stats_to_log:
+            round_info["points_difference_on_agreement"] = (points - coplayer_points) if info['round_agreements_reached'][i] else None
 
-
-        if "cooperative_points_percentage" in stats_to_log:
+        if "imbalance_on_agreement" in stats_to_log:
             if info['round_agreements_reached'][i]:
-                cooperative_points = 0
-                for item in quantities.keys():
-                    if values[item] >= coplayer_values[item]:
-                        cooperative_points += values[item] * quantities[item]
+                round_info["imbalance_on_agreement"] = abs(points - coplayer_points) / (points + coplayer_points)
+            else:
+                round_info["imbalance_on_agreement"] = None
+
+        if "cooperative_strat_unit_distance_on_agreement" in stats_to_log:
+            if info['round_agreements_reached'][i]:
+                p = list(finalization.values())
+                target = []
+                for item in finalization.keys():
+                    if values[item] > coplayer_values[item]:
+                        target.append(quantities[item])
                     elif values[item] == coplayer_values[item]:
-                        cooperative_points += values[item] * quantities[item] / 2
-                round_info["cooperative_points_percentage"] = 100 * points / cooperative_points
-            else:
-                round_info["cooperative_points_percentage"] = None
+                        target.append(quantities[item] / 2)
+                round_info["cooperative_strat_unit_distance_on_agreement"] = min_displacements(p, target)
+            else: round_info["cooperative_strat_unit_distance_on_agreement"] = None
 
-        if "greedy_dominant_points_percentage" in stats_to_log:
+        if "greedy_dominant_strat_unit_distance_on_agreement" in stats_to_log:
             if info['round_agreements_reached'][i]:
-                greedy_dominant_points = 0
+                p = list(finalization.values())
+                target = list(quantities.values())
                 for item in quantities.keys():
-                    greedy_dominant_points += values[item] * quantities[item]
-                greedy_dominant_points -= min(values.values())
-                round_info["greedy_dominant_points_percentage"] = 100 * points / greedy_dominant_points
+                    target[np.argmin(values[item])] -= 1
+                round_info["greedy_dominant_strat_unit_distance_on_agreement"] = min_displacements(p, target)
             else:
-                round_info["greedy_dominant_points_percentage"] = None
+                round_info["greedy_dominant_strat_unit_distance_on_agreement"] = None
 
-        if "greedy_submission_points_percentage" in stats_to_log:
+        if "greedy_submission_strat_unit_distance_on_agreement" in stats_to_log:
             if info['round_agreements_reached'][i]:
-                greedy_submission_points = min(values.values())
-                round_info["greedy_submission_points_percentage"] = 100 * points / greedy_submission_points
-            else:
-                round_info["greedy_submission_points_percentage"] = None
-
-        if "split_equal_points_percentage" in stats_to_log:
-            if info['round_agreements_reached'][i]:
-                split_equal_points = 0
+                p = list(finalization.values())
+                target = list(np.zeros(len(quantities)))
                 for item in quantities.keys():
-                    split_equal_points += (1/2) * values[item] * quantities[item]
-                round_info["split_equal_points_percentage"] = 100 * points / split_equal_points
+                    target[np.argmin(values[item])] += 1
+                round_info["greedy_submission_strat_unit_distance_on_agreement"] = min_displacements(p, target)
             else:
-                round_info["split_equal_points_percentage"] = None
+                round_info["greedy_submission_strat_unit_distance_on_agreement"] = None
+
+        if "split_equal_strat_unit_distance_on_agreement" in stats_to_log:
+            if info['round_agreements_reached'][i]:
+                p = list(finalization.values())
+                target = []
+                for item in quantities.keys():
+                    target.append(quantities[item] / 2)
+                round_info["split_equal_strat_unit_distance_on_agreement"] = min_displacements(p, target)
+            else:
+                round_info["split_equal_strat_unit_distance_on_agreement"] = None
 
         statistics[f"round_{i}"] = round_info
 
@@ -125,6 +135,10 @@ def calculate_imbalance(points, player_role, other_role):
     if total_points == 0:
         return 0
     return abs((points[player_role] - points[other_role]) / total_points)
+
+def min_displacements(p, q):
+    """Compute the minimum number of unit moves to transform p into q."""
+    return int(np.abs(np.cumsum(np.array(p) - np.array(q))).sum())
 
 def calculate_items_given_to_self(finalization):
     if not finalization or not all(isinstance(x, (int, float)) for x in finalization.values()):
