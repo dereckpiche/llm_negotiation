@@ -31,11 +31,44 @@ training:
           learning_rate: 1e-6
 
 models:
-  gpt:
-    class: oai
+  llama:
+    class: hf
     init_args:
-      api_key: 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
-      model: gpt-4o
+      name: 'llama'
+      adapter_names: ['ad_alice', 'ad_bob']
+      max_model_length: 8000
+      include_value_head: false
+      device: "cuda"
+      model_name: "/network/weights/llama.var/llama_3.1/Meta-Llama-3.1-8B-Instruct"
+      pretrained_args:
+        pretrained_model_name_or_path: ${models.llama.init_args.model_name}
+        torch_dtype: "bfloat16"
+        device_map: "auto"
+        attn_implementation: "flash_attention_2"
+      bits_and_bytes_args: null
+        #load_in_8bit: False
+        #load_in_4bit: true
+      lora_args:
+        task_type: TaskType.CAUSAL_LM
+        r: 64
+        lora_alpha: 32
+        lora_dropout: 0.0
+        target_modules: "all-linear"
+
+      generation_args:
+        max_new_tokens: 100
+        do_sample: True
+        temperature: 1.0
+        top_k: 0.0
+        top_p: 1.0
+        repetition_penalty: 0.0
+
+      keep_vllm_during_training: False
+      keep_hf_during_training: True
+      keep_hf_during_eval: False
+      keep_vllm_during_eval: True
+      eval_with: "vllm"
+      train_with: "hf"
 
 matches:
 
