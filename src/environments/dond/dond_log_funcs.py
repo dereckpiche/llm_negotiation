@@ -1,5 +1,6 @@
 import os
 import json
+from utils.common_imports import *
 from .dond_statistics_funcs import *
 from .dond_return_funcs import *
 
@@ -55,16 +56,72 @@ def players_logging_and_html(
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Game Context</title>
         <style>
-            body { font-family: '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif; margin: 20px; background-color: #f5f5f5; }
-            .container { display: flex; }
-            .column { flex: 1; padding: 10px; border-left: 2px solid #ccc; }
-            .message { margin-bottom: 20px; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); }
-            .user { background-color: rgba(0, 123, 255, 0.1); }
-            .assistant { background-color: rgba(255, 193, 7, 0.1); }
-            .role { font-weight: bold; margin-bottom: 5px; }
-            .game-info { margin-top: 30px; padding: 15px; border-radius: 10px; background-color: #ffffff; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); }
-            .player-name { text-align: center; font-size: 1.5em; margin-bottom: 20px; }
-            .highlight-number { color: #007aff; font-weight: bold; }
+            body {
+                font-family: 'Arial', sans-serif;
+                background-color: #ffffff;
+                color: #333333;
+            }
+            .container {
+                display: flex;
+                justify-content: space-between;
+                background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(245, 248, 255, 0.95));
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            }
+            .column {
+                flex: 1;
+                margin: 10px;
+                padding: 20px;
+                border-radius: 10px;
+                background: rgba(255, 255, 255, 0.9);
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+                border: 2px solid #cccccc;
+                transition: transform 0.2s;
+            }
+            .message {
+                margin-bottom: 15px;
+                padding: 12px;
+                border-radius: 10px;
+                box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+            }
+            .user {
+                background: rgba(235, 245, 255, 0.8); /* Very light blue */
+                border-left: 4px solid #007bff;
+            }
+            .assistant {
+                background: rgba(240, 255, 240, 0.8); /* Very light green */
+                border-right: 4px solid #28a745;
+            }
+            .role {
+                font-weight: bold;
+                margin-bottom: 5px;
+                color: #333333;
+            }
+            .game-info {
+                margin-top: 20px;
+                padding: 15px;
+                border-radius: 10px;
+                background: rgba(255, 255, 255, 0.9);
+                box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+            }
+            .player-name {
+                text-align: center;
+                font-size: 1.4em;
+                margin-bottom: 15px;
+                color: black;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            .highlight-number {
+                color: #0056b3;
+                font-weight: bold;
+            }
+            .user .role {
+                text-align: left;
+            }
+            .assistant .role {
+                text-align: right;
+            }
         </style>
     </head>
     <body>
@@ -85,6 +142,7 @@ def players_logging_and_html(
 
             # Escape < and > in the message content
             message_content = message["content"].replace("<", "&lt;").replace(">", "&gt;")
+            message_content = message_content.replace("\n", "<br>")
 
             html_content += f"""
             <div class="message {role_class}">

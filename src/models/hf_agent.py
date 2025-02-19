@@ -1,3 +1,4 @@
+from utils.common_imports import *
 import torch
 from transformers import (
     AutoModelForCausalLM,
@@ -16,15 +17,15 @@ import time
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
-
 from peft import LoraConfig, get_peft_model
 from trl import AutoModelForCausalLMWithValueHead
 import torch
 import gc
 from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
-import numpy as np
 import json
+from vllm import LLM, SamplingParams
+from vllm.lora.request import LoRARequest
 
 compute__logger = logging.getLogger("compute__logger")
 memory_logger = logging.getLogger("memory_logger")
@@ -102,8 +103,7 @@ class HfAgent:
 
         # set random seeds
         self.random_seed = random_seed
-        torch.manual_seed(self.random_seed)
-        np.random.seed(self.random_seed)
+        #torch.manual_seed(self.random_seed)
 
     def prepare_adapter_train(self, adapter_name: str):
         """

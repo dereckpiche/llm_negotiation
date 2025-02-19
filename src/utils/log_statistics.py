@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 from collections import Counter
-import pprint
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -191,11 +190,6 @@ def generate_frequency_counts(input_path):
     # Save to JSON
     with open(output_path, 'w') as f:
         json.dump(freq_stats, f, indent=4)
-
-import os
-import json
-import numpy as np
-import matplotlib.pyplot as plt
 
 def plot_seed_averaged_stats(root_path, player_names):
     """

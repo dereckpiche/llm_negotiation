@@ -2,12 +2,11 @@ hydra:
   job:
     chdir: false
 
-
 experiment:
   method: dond_run_train
   description: "Easy. They should be learning."
-  nb_epochs: 40
-  nb_matches_per_iteration: 32
+  nb_epochs: 2
+  nb_matches_per_iteration: 1
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: false
@@ -61,7 +60,7 @@ models:
         max_new_tokens: 100
         do_sample: True
         temperature: 1.0
-        top_k: 0.0
+        top_k: 1
         top_p: 1.0
         repetition_penalty: 0.0
 
@@ -100,7 +99,7 @@ matches:
     random_setup_func: fixed_manual
     random_setup_kwargs:
       items: ['coins']
-      quantities: [10]
+      quantities: [[10]]
       val_starting_negotiator: [1]
       val_responding_negotiator: [1]
     role_assignator_func: fixed_role_assignator
@@ -114,7 +113,7 @@ matches:
 
         mod_adpt_id: 'llama/ad_alice'
         allow_reasoning: false
-        max_retries: 1
+        max_errors: 1
         max_reasoning_chars: 0
         max_messages: 0
         max_chars_per_message: 0
@@ -131,7 +130,7 @@ matches:
 
         mod_adpt_id: 'llama/ad_bob'
         allow_reasoning: false
-        max_retries: 1
+        max_errors: 1
         max_reasoning_chars: 100
         max_messages: 5
         max_chars_per_message: 50
