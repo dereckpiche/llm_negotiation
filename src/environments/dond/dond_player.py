@@ -97,13 +97,14 @@ class DondPlayerHandler:
                 user_message += "\n\n" + self.format_prompt(self.dond_version_specificities, state)
             if self.allow_reasoning and self.reasoning_mechanics_prompt:
                 user_message += "\n\n" + self.format_prompt(self.reasoning_mechanics_prompt, state)
-            user_message += "\n\n" + self.format_prompt(self.goal_prompt, state)
+            if self.goal_prompt:
+                user_message += "\n\n" + self.format_prompt(self.goal_prompt, state)
 
         # If the current player has not yet made any move in this round, add round instructions.
         if state["round_moves"].get(self.player_name, 0) == 0:
-            if state["round_number"] == 0:
+            if state["round_number"] == 0 and self.first_round_prompt:
                 user_message += "\n\n" + self.format_prompt(self.first_round_prompt, state)
-            else:
+            elif self.new_round_prompt:
                 user_message += self.format_prompt(self.new_round_prompt, state)
 
         # Then add the appropriate message based on the finalization state.

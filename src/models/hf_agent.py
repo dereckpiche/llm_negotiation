@@ -103,7 +103,6 @@ class HfAgent:
 
         # set random seeds
         self.random_seed = random_seed
-        #torch.manual_seed(self.random_seed)
 
     def prepare_adapter_train(self, adapter_name: str):
         """

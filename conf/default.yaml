@@ -5,7 +5,7 @@ hydra:
 experiment:
   method: dond_run_train
   description: "Easy. They should be learning."
-  nb_epochs: 40
+  nb_epochs: 500
   nb_matches_per_iteration: 32
   reinit_matches_each_it: true
   start_epoch: 0
@@ -21,14 +21,14 @@ training:
         train_func: train_reinforce_main
         train_func_args:
           temperature: 1
-          learning_rate: 1e-6
+          learning_rate: 3e-6
 
 
       ad_bob:
         train_func: train_reinforce_main
         train_func_args:
           temperature: 1
-          learning_rate: 1e-6
+          learning_rate: 3e-6
 
 models:
   llama:
@@ -99,7 +99,7 @@ matches:
     random_setup_func: fixed_manual
     random_setup_kwargs:
       items: ['coins']
-      quantities: [[10]]
+      quantities: [10]
       val_starting_negotiator: [1]
       val_responding_negotiator: [1]
     role_assignator_func: fixed_role_assignator
@@ -130,7 +130,7 @@ matches:
         mod_adpt_id: 'llama/ad_bob'
         allow_reasoning: false
         max_errors: 1
-        max_reasoning_chars: 100
+        max_reasoning_chars: 0
         intro_prompt: ${prompt_blocks.barebone_ultimatum2}
         goal_prompt: ${prompt_blocks.agressive_goal}
         new_round_prompt: null
