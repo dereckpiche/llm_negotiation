@@ -1,11 +1,11 @@
 hydra:
   run:
-    dir: "/home/mila/d/dereck.piche/scratch/${now:%Y-%m-%d<-><->%H-%M-%S}<-><->${experiment.name}"
+    dir: "/home/mila/d/dereck.piche/scratch/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}"
   job:
     chdir: false
 
 experiment:
-  name: "no_name"
+  name: "multi_round_dond_4_rounds"
   method: dond_run_train
   description: "no description"
   nb_epochs: 1000
@@ -42,17 +42,19 @@ matches:
         "greedy_submission_points_difference_on_agreement",
         "cooperative_points_difference_on_agreement",
         "split_equal_points_difference_on_agreement",
-        "total_coop_points_difference_player_on_agreement",
-        "total_coop_points_difference_coplayer_on_agreement",
+        "total_coop_points_difference_on_agreement_player",
+        "total_coop_points_difference_on_agreement_coplayer",
         "total_imbalance_on_agreement",
-        "total_points_difference_on_agreement"
+        "total_points_difference_on_agreement",
+        "total_coop_points_difference_player",
+        "total_coop_points_difference_coplayer"
         ]
       training_data_func: set_discounted_returns
       training_data_func_args:
         discount_factor: 0.9
         
   dond_game_args:
-    rounds_per_game: 1
+    rounds_per_game: 4
     max_messages: 2
     min_messages: 1
     max_chars_per_message: 300

@@ -136,11 +136,11 @@ def gather_dond_statistics(player_info, info, stats_to_log):
 
         statistics[f"round_{i}"] = round_info
 
-    if "total_coop_points_difference_player_on_agreement" in stats_to_log:
-        statistics["total_coop_points_difference_player_on_agreement"] = total_points_player - total_coop_player
+    if "total_coop_points_difference_on_agreement_player" in stats_to_log:
+        statistics["total_coop_points_difference_on_agreement_player"] = total_points_player - total_coop_player
 
-    if "total_coop_points_difference_coplayer_on_agreement" in stats_to_log:
-        statistics["total_coop_points_difference_coplayer_on_agreement"] = total_points_coplayer - total_coop_coplayer
+    if "total_coop_points_difference_on_agreement_coplayer" in stats_to_log:
+        statistics["total_coop_points_difference_on_agreement_coplayer"] = total_points_coplayer - total_coop_coplayer
 
     if "total_imbalance_on_agreement" in stats_to_log:
         statistics["total_imbalance_on_agreement"] = float(abs(total_points_player - total_points_coplayer) / (total_points_player + total_points_coplayer + 1e-6))
