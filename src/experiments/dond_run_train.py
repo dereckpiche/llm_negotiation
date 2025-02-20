@@ -88,9 +88,9 @@ def dond_run_train(cfg):
     """
     total_start_time = time.time()
 
+    # Get Hydra's runtime output directory which includes date and config info.
     hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
     output_directory = hydra_cfg["runtime"]["output_dir"]
-    os.makedirs(output_directory, exist_ok=True)
 
     # Initialize models
     models = init_models(cfg)
@@ -110,7 +110,7 @@ def dond_run_train(cfg):
         matches = []
         nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
         for i in range(nb_matches):
-            matches.append(create_blank_match(cfg, seed_offset = (iteration * nb_matches) + i))
+            matches.append(create_blank_match(cfg, seed_offset=(iteration * nb_matches) + i))
         players = matches[0]["players"]
         player_names = players.keys()
         run_matches(
@@ -142,8 +142,6 @@ def dond_run_train(cfg):
                 tensorboard_log_dir=os.path.join(player_stats_folder, "tensorboard"),
                 wandb_log_dir=os.path.join(player_stats_folder, "wandb"),
             )
-
-            generate_frequency_counts(os.path.join(it_folder, player_name, 'statistics'))
 
         logging_end_time = time.time()
 

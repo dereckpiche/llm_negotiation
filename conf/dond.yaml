@@ -1,10 +1,13 @@
 hydra:
+  run:
+    dir: "/home/mila/d/dereck.piche/scratch/${now:%Y-%m-%d<-><->%H-%M-%S}<-><->${experiment.name}"
   job:
     chdir: false
 
 experiment:
+  name: "no_name"
   method: dond_run_train
-  description: "Easy. They should be learning."
+  description: "no description"
   nb_epochs: 1000
   nb_matches_per_iteration: 32
   reinit_matches_each_it: true
@@ -12,7 +15,7 @@ experiment:
   resume_experiment: false
 
 ####################################################################################################
-#                                            GENERATION                                               
+#                                           GENERATION                                               
 ####################################################################################################
 
 matches:
@@ -33,17 +36,23 @@ matches:
         "items_given_to_self",
         "quantities",
         "values",
-        "greedy_dominant_points_percentage",
-        "greedy_submission_points_percentage",
-        "cooperative_points_percentage",
-        "split_equal_points_percentage"
+        "imbalance_on_agreement",
+        "points_difference_on_agreement",
+        "greedy_dominant_points_difference_on_agreement",
+        "greedy_submission_points_difference_on_agreement",
+        "cooperative_points_difference_on_agreement",
+        "split_equal_points_difference_on_agreement",
+        "total_coop_points_difference_player_on_agreement",
+        "total_coop_points_difference_coplayer_on_agreement",
+        "total_imbalance_on_agreement",
+        "total_points_difference_on_agreement"
         ]
       training_data_func: set_discounted_returns
       training_data_func_args:
         discount_factor: 0.9
         
   dond_game_args:
-    rounds_per_game: 4
+    rounds_per_game: 1
     max_messages: 2
     min_messages: 1
     max_chars_per_message: 300
@@ -142,7 +151,7 @@ models:
 
 
 ####################################################################################################
-#                                            TRAINING                                             
+# TRAINING                                             
 ####################################################################################################
 
 
@@ -166,7 +175,7 @@ training:
 
 
 ####################################################################################################
-#                                            PROMPT DEFINITIONS                                          
+# PROMPT DEFINITIONS                                          
 ####################################################################################################
 
 prompt_blocks:
@@ -185,9 +194,7 @@ prompt_blocks:
 
 
 ############################################################
-#                                                          #
-#                      Ultimatum Game Prompts              #
-#                                                          #
+# Ultimatum Game Prompts              
 ############################################################
 
   barebone_ultimatum: |
