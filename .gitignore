@@ -138,16 +138,8 @@ loggings/
 *.out
 outputs/
 important_outputs/
-
-# offline datasets dir
-src/datasets_offline/
-
-# VSCode settings
-.vscode/
-
-# HF token
-HF_TOKEN
-
-# additional files
-run_commands.py
+important_outputs/
 *.mp4
+**/__pycache__/
+**/**/__pycache__/
+.venv/
