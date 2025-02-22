@@ -15,6 +15,10 @@ from utils.log_statistics import update_player_statistics, generate_player_stats
 from utils.update_start_epoch import update_start_epoch
 from training.train_main import *
 from generation.run_games import run_matches
+import torch
+import numpy as np
+import random
+import pickle
 
 compute__logger = logging.getLogger("compute__logger")
 
@@ -79,6 +83,14 @@ def create_blank_match(cfg, seed_offset=0):
     }
     return blank_match
 
+def format_time(seconds):
+    if seconds >= 3600:
+        return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m {int(seconds % 60)}s"
+    elif seconds >= 60:
+        return f"{int(seconds // 60)}m {int(seconds % 60)}s"
+    else:
+        return f"{int(seconds)}s"
+
 
 def dond_run_train(cfg, random_seed):
     """
@@ -94,6 +106,22 @@ def dond_run_train(cfg, random_seed):
     models = init_models(cfg, random_seed=random_seed, output_directory=output_directory)
 
     update_start_epoch(cfg=cfg, output_directory=output_directory)
+
+    random.seed(random_seed)  # Python random
+    np.random.seed(random_seed)  # NumPy
+    torch.manual_seed(random_seed)  # PyTorch (CPU)
+    torch.cuda.manual_seed(random_seed)  # PyTorch (GPU)
+    torch.cuda.manual_seed_all(random_seed)  # If using multi-GPU
+
+    random_state_dir = f'{output_directory}/random_state.pkl'
+    # Load saved states
+    if os.path.exists(random_state_dir):
+        with open(random_state_dir, "rb") as f:
+            random_state_dict = pickle.load(f)
+        random.setstate(random_state_dict["python"])
+        np.random.set_state(random_state_dict["numpy"])
+        torch.set_rng_state(random_state_dict["torch"])
+        torch.cuda.set_rng_state_all(random_state_dict["torch_cuda"])
 
     for iteration in range(cfg["experiment"]["start_epoch"], cfg["experiment"]["nb_epochs"]):
 
@@ -193,14 +221,6 @@ def dond_run_train(cfg, random_seed):
         time_est_100 = time_per_iteration * 100
         time_est_500 = time_per_iteration * 500
 
-        def format_time(seconds):
-            if seconds >= 3600:
-                return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m {int(seconds % 60)}s"
-            elif seconds >= 60:
-                return f"{int(seconds // 60)}m {int(seconds % 60)}s"
-            else:
-                return f"{int(seconds)}s"
-
         compute__logger.info(
             f"Iteration {iteration + 1} took {format_time(iteration_duration)} "
             f"({generation_percentage:.2f}% Gen, {logging_percentage:.2f}% Log, {training_percentage:.2f}% Train). "
@@ -213,6 +233,29 @@ def dond_run_train(cfg, random_seed):
             f"100 more iterations: {format_time(time_est_100)}, "
             f"500 more iterations: {format_time(time_est_500)}."
         )
+
+        # Save Python random state
+        python_random_state = random.getstate()
+
+        # Save NumPy random state
+        numpy_random_state = np.random.get_state()
+
+        # Save PyTorch random state
+        torch_random_state = torch.get_rng_state()
+        torch_cuda_random_state = torch.cuda.get_rng_state_all()  # For all GPUs
+
+        # Store in a dictionary (or save to a file)
+        random_state_dict = {
+            "python": python_random_state,
+            "numpy": numpy_random_state,
+            "torch": torch_random_state,
+            "torch_cuda": torch_cuda_random_state,
+        }
+
+        with open(random_state_dir, "wb") as f:
+            pickle.dump(random_state_dict, f)
+
+        print("Saved random states!")
 
     total_end_time = time.time()
     total_duration = total_end_time - total_start_time

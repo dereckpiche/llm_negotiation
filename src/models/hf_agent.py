@@ -85,7 +85,6 @@ class HfAgent:
             max_tokens=generation_args["max_new_tokens"],
         )
         self.lora_config = LoraConfig(**lora_args)
-        self.adapters = {adapter_name: None for adapter_name in adapter_names}
         self.active_adapters = {adapter_name: False for adapter_name in adapter_names}
         self.current_adapter_name = None
         self.hf_model = None
@@ -100,6 +99,10 @@ class HfAgent:
         self.adapters_active = False
         self.vllm_id = 0
         self.hf_id = 0
+        self.adapters = {
+            adapter_name: os.path.join(self.output_directory, adapter_name) if os.path.isdir(os.path.join(output_directory, adapter_name)) else None
+            for adapter_name in adapter_names
+        }
 
         # set random seeds
         self.random_seed = random_seed
