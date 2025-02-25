@@ -34,22 +34,24 @@ matches:
         "items_given_to_self",
         "quantities",
         "values",
-        "greedy_dominant_points_percentage",
-        "greedy_submission_points_percentage",
-        "cooperative_points_percentage",
-        "split_equal_points_percentage"
+        "points_difference_on_agreement",
+        "imbalance_on_agreement",
+        "cooperative_strat_unit_distance_on_agreement",
+        "greedy_dominant_strat_unit_distance_on_agreement",
+        "greedy_submission_strat_unit_distance_on_agreement",
+        "split_equal_strat_unit_distance_on_agreement"
         ]
       training_data_func: set_discounted_returns
       training_data_func_args:
         discount_factor: 0.9
 
   dond_game_args:
-    rounds_per_game: 4
-    max_messages: 2
+    rounds_per_game: 1
+    max_messages: 1
     min_messages: 1
-    max_chars_per_message: 300
+    max_chars_per_message: 300s
     mode: basic
-    random_setup_func: uniform_quant_random_vals
+    random_setup_func: dond_random_setup
     random_setup_kwargs:
       items: ['coins'] # ['hats', 'balls', 'books']
       min_quant: 1
