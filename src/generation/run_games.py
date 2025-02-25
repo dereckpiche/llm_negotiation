@@ -1,6 +1,5 @@
+# local imports
 from utils.common_imports import *
-from collections import deque
-from utils.log_gpu_usage import log_gpu_usage
 from environments.dond.dond_log_funcs import *
 
 def run_matches(
@@ -28,11 +27,11 @@ def run_matches(
         nb_parallel_matches = len(matches)
 
     # Use the provided list of match dictionaries directly (no deep copy)
-    all_matches = matches  
+    all_matches = matches
     parallel_matches = [all_matches.pop(0) for _ in range(min(nb_parallel_matches, len(all_matches)))]
 
     # Get all the adapter names used by the players
-    mod_adpt_ids = []  
+    mod_adpt_ids = []
     for match in parallel_matches:
         for player in match["players"].values():
             if player.mod_adpt_id not in mod_adpt_ids:

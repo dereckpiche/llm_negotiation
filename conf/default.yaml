@@ -1,36 +1,39 @@
 hydra:
   job:
     chdir: false
+    name: default
+  run:
+    dir: ${oc.env:EXP_OUT}/${hydra.job.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
 
 experiment:
   method: dond_run_train
   description: "Easy. They should be learning."
-  nb_epochs: 2
-  nb_matches_per_iteration: 1
+  nb_epochs: 100
+  nb_matches_per_iteration: 32
   reinit_matches_each_it: true
   start_epoch: 0
-  resume_experiment: false
+  resume_experiment: true
+  random_seeds: [33, 53, 97, 157, 468, 484, 2959, 5145, 6368, 8602]
 
 training:
   keep_error_messages: False
   llama:
     adapters:
-    
+
       ad_alice:
         train_func: train_reinforce_main
-        train_func_args: 
+        train_func_args:
           temperature: 1
-          learning_rate: 1e-7
+          learning_rate: 3e-6
 
 
       ad_bob:
         train_func: train_reinforce_main
-        train_func_args: 
+        train_func_args:
           temperature: 1
-          learning_rate: 1e-7
+          learning_rate: 3e-6
 
 models:
-
   llama:
     class: hf
     init_args:
@@ -39,7 +42,7 @@ models:
       max_model_length: 8000
       include_value_head: false
       device: "cuda"
-      model_name: "meta-llama/Llama-3.1-8B-Instruct"
+      model_name: "/network/weights/llama.var/llama_3.1/Meta-Llama-3.1-8B-Instruct"
       pretrained_args:
         pretrained_model_name_or_path: ${models.llama.init_args.model_name}
         torch_dtype: "bfloat16"
@@ -49,7 +52,7 @@ models:
         #load_in_8bit: False
         #load_in_4bit: true
       lora_args:
-        task_type: TaskType.CAUSAL_LM
+        task_type: CAUSAL_LM
         r: 64
         lora_alpha: 32
         lora_dropout: 0.0
@@ -59,7 +62,7 @@ models:
         max_new_tokens: 100
         do_sample: True
         temperature: 1.0
-        top_k: 1
+        top_k: 0.0
         top_p: 1.0
         repetition_penalty: 0.0
 
@@ -69,7 +72,6 @@ models:
       keep_vllm_during_eval: True
       eval_with: "vllm"
       train_with: "hf"
-      random_seed: 500
 
 matches:
 
@@ -91,15 +93,16 @@ matches:
       training_data_func: set_discounted_returns
       training_data_func_args:
         discount_factor: 1.0
-        
+
   dond_game_args:
     rounds_per_game: 1
-    max_turns: 1
+    max_messages: 0
+    min_messages: 0
     mode: basic
     random_setup_func: fixed_manual
     random_setup_kwargs:
       items: ['coins']
-      quantities: [[10]]
+      quantities: [10]
       val_starting_negotiator: [1]
       val_responding_negotiator: [1]
     role_assignator_func: fixed_role_assignator
@@ -110,19 +113,18 @@ matches:
     alice:
 
       dond_player_args:
-      
+
         mod_adpt_id: 'llama/ad_alice'
         allow_reasoning: false
         max_errors: 1
         max_reasoning_chars: 0
-        max_messages: 0
-        max_chars_per_message: 0
         intro_prompt: ${prompt_blocks.barebone_ultimatum2}
         goal_prompt: ${prompt_blocks.agressive_goal}
         new_round_prompt: null
-        initial_move_prompt: "You are the first player. It is your turn to play."
-        ongoing_moves_prompt: null
-        finalization_prompt: ${prompt_blocks.visible_finalization_prompt}
+        player_with_first_move_prompt: "You are the first player. It is your turn to play."
+        received_message_prompt: null
+        first_round_prompt: null
+        other_player_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
 
     bob:
 
@@ -131,15 +133,14 @@ matches:
         mod_adpt_id: 'llama/ad_bob'
         allow_reasoning: false
         max_errors: 1
-        max_reasoning_chars: 100
-        max_messages: 5
-        max_chars_per_message: 50
+        max_reasoning_chars: 0
         intro_prompt: ${prompt_blocks.barebone_ultimatum2}
         goal_prompt: ${prompt_blocks.agressive_goal}
         new_round_prompt: null
-        initial_move_prompt: null
-        ongoing_moves_prompt: null
-        finalization_prompt: ${prompt_blocks.visible_finalization_prompt}
+        player_with_first_move_prompt: null
+        received_message_prompt: null
+        first_round_prompt: null
+        other_player_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
 
 
 prompt_blocks:
@@ -152,10 +153,10 @@ prompt_blocks:
 
       1) In this game, two players divide 10 coins among themselves.
 
-      2) A finalization is a proposed division of the coins between the two players. 
+      2) A finalization is a proposed division of the coins between the two players.
 
-      3) The first player will make a finalization. 
-      The second player must then make his finalization. 
+      3) The first player will make a finalization.
+      The second player must then make his finalization.
       Each player can make a single finalization for the entire game, hence the name.
 
       4) In order for both players to agree, the finalizations must be complementary. If no agreement is reached between the two players with the two finalizations, both players will receive zero points. If agreement is reached, the players will receive the coins corresponding to the finalizations.
@@ -177,7 +178,7 @@ prompt_blocks:
 
       2) Each player proposes a division of the coins.
 
-      3) Both players must agree on a division to receive the coins. If not, both receive zero coins. 
+      3) Both players must agree on a division to receive the coins. If not, both receive zero coins.
 
       4) The game is played only once.
 
@@ -189,7 +190,7 @@ prompt_blocks:
 
   dond_game: |
 
-    Welcome to the splitting game. 
+    Welcome to the splitting game.
 
     Game Description:
 
@@ -244,6 +245,6 @@ prompt_blocks:
     Goal: Aim to be fair with both the other player and yourself.
 
   submitted_goal: |
-    Goal: Your goal is to do exactly what the other player wants. You must make the other player happy. 
+    Goal: Your goal is to do exactly what the other player wants. You must make the other player happy.
 
 

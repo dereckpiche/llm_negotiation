@@ -1,3 +1,4 @@
+import random
 from utils.common_imports import *
 from collections import deque
 
@@ -53,7 +54,7 @@ class DondGame:
             self.random_setup_kwargs["random_seed"] = random_seed
         else:
             self.random_setup_kwargs = {"random_seed": random_seed}
-            
+
         self.finalization_visibility = finalization_visibility
         self.rounds_per_game = rounds_per_game
         self.role_assignator_func = (
@@ -79,7 +80,7 @@ class DondGame:
         The random_seed is incremented to ensure that each setup is different.
         """
         self.random_seed += 1
-        
+
         kwargs = self.random_setup_kwargs
         self.items, self.quantities, role_values = self.random_setup_func(**kwargs)
         self.role_values = {
@@ -112,7 +113,6 @@ class DondGame:
 
         # Update state flags.
         self.last_message = output
-        self.round_ended = False
         self.is_new_round = (self.message_turn == 1)
         self.is_new_game = (self.round_nb == 0 and self.message_turn == 1)
         self.game_over = False
@@ -155,7 +155,7 @@ class DondGame:
                 round_over = True
 
         self.role_deque.rotate(-1)
-        if round_over: 
+        if round_over:
             self.new_round()
         if self.round_nb > self.rounds_per_game - 1:
             self.game_over = True
@@ -163,7 +163,7 @@ class DondGame:
         state = self.get_state()
         reward = None
         done = self.game_over
-        info = self.get_info()  
+        info = self.get_info()
 
         return state, reward, done, info
 
@@ -267,7 +267,7 @@ class DondGame:
             },
         }
         return state
-    
+
     def get_info(self):
         return {
             "mode": self.mode,
@@ -289,7 +289,7 @@ class DondGame:
         # Ensure points are initialized for all roles
         if not all(role in self.points for role in self.roles):
             self.points = {role: 0 for role in self.roles}
-        
+
         self.round_player_roles.append(self.player_to_role.copy())
         self.round_quantities.append(self.quantities)
         self.round_values.append({role: self.role_values[role] for role in self.roles})
@@ -342,11 +342,11 @@ class DondGame:
             self.last_message = None
             self.role_deque = deque(self.roles)
             self.player_to_role = None
-            self.round_player_roles = [] 
+            self.round_player_roles = []
             self.round_quantities = []
-            self.round_values = []        
-            self.round_finalizations = [] 
-            self.round_agreements_reached = [] 
+            self.round_values = []
+            self.round_finalizations = []
+            self.round_agreements_reached = []
             self.round_points = []
             self.set_new_setup()
             self.assign_roles()
@@ -377,7 +377,7 @@ class DondGame:
         Assigns roles to players for the current round using the role_assignator_func.
         """
         self.player_to_role = self.role_assignator_func(self.get_state(), **self.role_assignator_func_kwargs)
-        
+
         # Create player_to_role mapping
         self.role_to_player = {role: player for player, role in self.player_to_role.items()}
 

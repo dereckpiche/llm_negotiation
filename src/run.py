@@ -7,7 +7,7 @@ from omegaconf import OmegaConf
 from experiments.dond_run_train import dond_run_train
 from experiments.arithmetic_test import arithmetic_test
 
-@hydra.main(config_path="../conf", config_name="dond")
+@hydra.main(config_path="../conf", config_name="default")
 def main(cfg):
 
     # Get Hydra's runtime directory
@@ -16,28 +16,32 @@ def main(cfg):
     # Define specific loggers to configure
     specific_loggers =[
         "model_logger",
-        "compute__logger",
+        "compute_logger",
         "memory_logger",
         "games_logger",
     ]
 
-    # Dynamically configure handlers for specific loggers
-    for logger_name in specific_loggers:
-        logger = logging.getLogger(logger_name)
-        log_file = os.path.join(hydra_run_dir, f"{logger_name}.log")
-        handler = logging.FileHandler(log_file)
-        handler.setFormatter(logging.Formatter("[%(asctime)s][%(name)s][%(levelname)s] - %(message)s"))
-        logger.addHandler(handler)
-        logger.propagate = False  # Prevent duplicate logs
+    for random_seed in cfg["experiment"]["random_seeds"]:
+        # Dynamically configure handlers for specific loggers
+        for logger_name in specific_loggers:
+            logger = logging.getLogger(logger_name)
+            log_dir = os.path.join(hydra_run_dir, f"seed_{random_seed}")  # Extract directory path
+            os.makedirs(log_dir, exist_ok=True)  # Ensure directory exists
 
-    # Redirect stdout and stderr to root logger
-    root_logger = logging.getLogger("root")
-    sys.stdout = LoggerStream(root_logger.info)
-    sys.stderr = LoggerStream(root_logger.error)
+            log_file = os.path.join(log_dir, f"{logger_name}.log")
+            handler = logging.FileHandler(log_file)
+            handler.setFormatter(logging.Formatter("[%(asctime)s][%(name)s][%(levelname)s] - %(message)s"))
+            logger.addHandler(handler)
+            logger.propagate = False  # Prevent duplicate logs
 
-    # Run the experiment specified in the configuration
+        # Redirect stdout and stderr to root logger
+        root_logger = logging.getLogger(f"root")
+        sys.stdout = LoggerStream(root_logger.info)
+        sys.stderr = LoggerStream(root_logger.error)
 
-    globals()[cfg.experiment.method](OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict"))
+        # Run the experiment specified in the configuration
+        globals()[cfg.experiment.method](OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict"), random_seed=random_seed)
+
 
 
 class LoggerStream:

@@ -1,16 +1,11 @@
 import json
 import os
-from statistics import mean
 import matplotlib.pyplot as plt
 import numpy as np
-import matplotlib.ticker as ticker
-from torch.utils.tensorboard import SummaryWriter
 
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-from typing import Dict, Union, List
-import wandb
 from log_statistics import *
 
 import matplotlib.animation as animation
@@ -18,7 +13,7 @@ import matplotlib.animation as animation
 
 def plot_cumulative_points(json_path):
     """
-    Generates a plot of cumulative points for Alice and Bob over iterations 
+    Generates a plot of cumulative points for Alice and Bob over iterations
     from a JSON file and saves it in the same directory as the input JSON.
 
     Args:
@@ -63,7 +58,7 @@ def plot_cumulative_points(json_path):
 def update_player_statistics(input_path, output_file):
     """
     Computes statistics for the current iteration and updates the global statistics file.
-    
+
     Args:
         input_path (str): Path to the folder containing player JSON files for the current iteration.
         output_file (str): Path to the JSON file where statistics are stored.
@@ -73,7 +68,7 @@ def update_player_statistics(input_path, output_file):
     statree = {}
     for filename in os.listdir(input_path):
         # search in alice "statistics" folder
-        
+
         if filename.endswith('.json'):
             with open(os.path.join(input_path, filename), 'r') as f:
                 data = json.load(f)
@@ -86,7 +81,7 @@ def update_player_statistics(input_path, output_file):
         with open(output_file, 'r') as f:
             global_stats = json.load(f)
     else:
-        global_stats = {}   
+        global_stats = {}
 
     append_statree(global_stats, var_statree)
 
@@ -214,13 +209,13 @@ def animate_items_given_to_self_by_round(base_path, output_file="items_given_to_
     plt.close(fig)
 
 
-    
+
 
 
 if __name__ == "__main__":
     folder = "important_outputs/2025-01-24 naive rl 10 rounds UG/"
     # output_file = "important_outputs/var_stats.json"
-    
+
     # # Sort the iterations to ensure they are processed in order
     # for iteration in sorted(os.listdir(folder)):
     #     if iteration.startswith("iteration_"):
@@ -229,7 +224,7 @@ if __name__ == "__main__":
     # # create plots of the var_stats.json file
     # with open(output_file, 'r') as f:
     #     var_stats = json.load(f)
-    
+
     # plot_statree(var_stats, folder="important_outputs/plots")
 
     # Generate animated histogram for items given to self

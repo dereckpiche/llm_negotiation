@@ -25,7 +25,7 @@ def gather_dond_statistics(player_info, info, stats_to_log):
         other_role = next(role for role in state.values() if role != player_role)
 
         round_info = {}
-        
+
         # Extract the player's own values, the co-player's values, and the round quantities.
         values = info['round_values'][i][player_role]
         coplayer_values = info['round_values'][i][other_role]
