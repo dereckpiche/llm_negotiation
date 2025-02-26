@@ -10,7 +10,8 @@ experiment:
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: true
-  random_seeds: [33, 53, 97, 157, 468, 484, 2959, 5145, 6368, 8602]
+  random_seed: 33
+  # random_seeds: [33, 53, 97, 157, 468, 484, 2959, 5145, 6368, 8602]
 
 training:
   keep_error_messages: False

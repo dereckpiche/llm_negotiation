@@ -21,26 +21,25 @@ def main(cfg):
         "games_logger",
     ]
 
-    for random_seed in cfg["experiment"]["random_seeds"]:
-        # Dynamically configure handlers for specific loggers
-        for logger_name in specific_loggers:
-            logger = logging.getLogger(logger_name)
-            log_dir = os.path.join(hydra_run_dir, f"seed_{random_seed}")  # Extract directory path
-            os.makedirs(log_dir, exist_ok=True)  # Ensure directory exists
+    # Dynamically configure handlers for specific loggers
+    for logger_name in specific_loggers:
+        logger = logging.getLogger(logger_name)
+        log_dir = os.path.join(hydra_run_dir, f"seed_{cfg.experiment.random_seed}")  # Extract directory path
+        os.makedirs(log_dir, exist_ok=True)  # Ensure directory exists
 
-            log_file = os.path.join(log_dir, f"{logger_name}.log")
-            handler = logging.FileHandler(log_file)
-            handler.setFormatter(logging.Formatter("[%(asctime)s][%(name)s][%(levelname)s] - %(message)s"))
-            logger.addHandler(handler)
-            logger.propagate = False  # Prevent duplicate logs
+        log_file = os.path.join(log_dir, f"{logger_name}.log")
+        handler = logging.FileHandler(log_file)
+        handler.setFormatter(logging.Formatter("[%(asctime)s][%(name)s][%(levelname)s] - %(message)s"))
+        logger.addHandler(handler)
+        logger.propagate = False  # Prevent duplicate logs
 
-        # Redirect stdout and stderr to root logger
-        root_logger = logging.getLogger(f"root")
-        sys.stdout = LoggerStream(root_logger.info)
-        sys.stderr = LoggerStream(root_logger.error)
+    # Redirect stdout and stderr to root logger
+    root_logger = logging.getLogger(f"root")
+    sys.stdout = LoggerStream(root_logger.info)
+    sys.stderr = LoggerStream(root_logger.error)
 
-        # Run the experiment specified in the configuration
-        globals()[cfg.experiment.method](OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict"), random_seed=random_seed)
+    # Run the experiment specified in the configuration
+    globals()[cfg.experiment.method](OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict"), random_seed=cfg.experiment.random_seed)
 
 
 
