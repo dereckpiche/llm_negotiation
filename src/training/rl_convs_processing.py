@@ -74,10 +74,11 @@ def conversations_to_rl_data(tokenizer, conversations):
     output_masks = []
 
     for conversation in conversations:
-        context_tensor, return_tensor, output_mask_tensor = conversation_to_rl_data(tokenizer, conversation)
-        contexts.append(context_tensor)
-        returns.append(return_tensor)
-        output_masks.append(output_mask_tensor)
+        if conversation:
+            context_tensor, return_tensor, output_mask_tensor = conversation_to_rl_data(tokenizer, conversation)
+            contexts.append(context_tensor)
+            returns.append(return_tensor)
+            output_masks.append(output_mask_tensor)
 
     return contexts, returns, output_masks
 
