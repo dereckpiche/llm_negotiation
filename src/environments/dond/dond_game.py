@@ -1,3 +1,4 @@
+import random
 from utils.common_imports import *
 from collections import deque
 
@@ -53,7 +54,7 @@ class DondGame:
             self.random_setup_kwargs["random_seed"] = random_seed
         else:
             self.random_setup_kwargs = {"random_seed": random_seed}
-            
+
         self.finalization_visibility = finalization_visibility
         self.rounds_per_game = rounds_per_game
         self.role_assignator_func = (
@@ -113,7 +114,6 @@ class DondGame:
 
         # Update state flags.
         self.last_message = output
-        self.round_ended = False
         self.is_new_round = (self.message_turn == 1)
         self.is_new_game = (self.round_nb == 0 and self.message_turn == 1)
         self.game_over = False
@@ -156,7 +156,7 @@ class DondGame:
                 round_over = True
 
         self.role_deque.rotate(-1)
-        if round_over: 
+        if round_over:
             self.new_round()
         if self.round_nb > self.rounds_per_game - 1:
             self.game_over = True
@@ -164,7 +164,7 @@ class DondGame:
         state = self.get_state()
         reward = None
         done = self.game_over
-        info = self.get_info()  
+        info = self.get_info()
 
         return state, reward, done, info
 
@@ -268,7 +268,7 @@ class DondGame:
             },
         }
         return state
-    
+
     def get_info(self):
         return {
             "mode": self.mode,
@@ -290,7 +290,7 @@ class DondGame:
         # Ensure points are initialized for all roles
         if not all(role in self.points for role in self.roles):
             self.points = {role: 0 for role in self.roles}
-        
+
         self.round_player_roles.append(self.player_to_role.copy())
         self.round_quantities.append(self.quantities)
         self.round_values.append({role: self.role_values[role] for role in self.roles})
@@ -343,11 +343,11 @@ class DondGame:
             self.last_message = None
             self.role_deque = deque(self.roles)
             self.player_to_role = None
-            self.round_player_roles = [] 
+            self.round_player_roles = []
             self.round_quantities = []
-            self.round_values = []        
-            self.round_finalizations = [] 
-            self.round_agreements_reached = [] 
+            self.round_values = []
+            self.round_finalizations = []
+            self.round_agreements_reached = []
             self.round_points = []
             self.set_new_setup()
             self.assign_roles()
@@ -378,7 +378,7 @@ class DondGame:
         Assigns roles to players for the current round using the role_assignator_func.
         """
         self.player_to_role = self.role_assignator_func(self.get_state(), **self.role_assignator_func_kwargs)
-        
+
         # Create player_to_role mapping
         self.role_to_player = {role: player for player, role in self.player_to_role.items()}
 
@@ -391,10 +391,10 @@ class DondGame:
         """
         self.__dict__.update(checkpoint)
 
-def uniform_quant_random_vals(items, min_quant, max_quant, min_val, max_val, random_seed=None):
+def dond_random_setup(items, min_quant, max_quant, min_val, max_val, random_seed=None):
     """
-    Generates items, random quantities and independent values for each player uniformly at random.
-    
+    Generates items, even-numbered quantities and distinct random values for each category for both players.
+
     Args:
         items (list): List of items.
         min_quant (int): Minimum quantity per item.
@@ -405,11 +405,32 @@ def uniform_quant_random_vals(items, min_quant, max_quant, min_val, max_val, ran
         
     scores:
         tuple: (items, quantities, (val_starting_negotiator, val_responding_negotiator))
+            - quantities (dict): A dictionary mapping each item to an even quantity.
+            - val_starting_negotiator (dict): Mapping for the starting negotiator with distinct values per item.
+            - val_responding_negotiator (dict): Mapping for the responding negotiator with distinct values per item.
     """
+    import numpy as np
     rng = np.random.default_rng(random_seed)
-    quantities = {item: int(rng.integers(min_quant, max_quant + 1)) for item in items}
-    val_starting_negotiator = {item: int(rng.integers(min_val, max_val + 1)) for item in items}
-    val_responding_negotiator = {item: int(rng.integers(min_val, max_val + 1)) for item in items}
+    
+    # Determine the possible even numbers in the given range.
+    start = min_quant if min_quant % 2 == 0 else min_quant + 1
+    end = max_quant if max_quant % 2 == 0 else max_quant - 1
+    if start > end:
+        raise ValueError("No even numbers available in the given quantity range.")
+    even_numbers = np.arange(start, end + 1, 2)
+    
+    # Generate quantities: for each item, randomly choose an even number.
+    quantities = {item: int(rng.choice(even_numbers)) for item in items}
+    
+    # Make sure there are enough distinct values available for each player's assignment.
+    available_values = np.arange(min_val, max_val + 1)
+    if len(available_values) < len(items):
+        raise ValueError("Range of values is not sufficient to assign unique values for all items.")
+    
+    # For each player, randomly assign a distinct value to each item.
+    val_starting_negotiator = dict(zip(items, rng.choice(available_values, size=len(items), replace=False)))
+    val_responding_negotiator = dict(zip(items, rng.choice(available_values, size=len(items), replace=False)))
+    
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
 def independent_random_vals(items, min_quant, max_quant, min_val, max_val, random_seed=None):

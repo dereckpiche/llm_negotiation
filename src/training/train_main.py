@@ -2,19 +2,14 @@ from utils.common_imports import *
 
 from training.rl_convs_processing import paths_to_rl_data
 from training.reinforce_training import reinforce_train
-from trl import (
-    SFTTrainer,
-    AutoModelForCausalLMWithValueHead,
-    PPOConfig,
-    PPOTrainer
-)
+from trl import AutoModelForCausalLMWithValueHead
 from training.ppo_train import ppo_train
 from training.ppo_train_value_head import ppo_train_value_head
 
 def train_main(
-        hf_model, 
+        hf_model,
         paths,
-        train_func, 
+        train_func,
         train_func_args,
         output_path=None,
     ):

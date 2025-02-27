@@ -41,7 +41,7 @@ def gather_dond_statistics(player_info, info, stats_to_log):
 
         other_role = next(role for role in state.values() if role != player_role)
         round_info = {}
-        
+
         # Extract the player's own values, the co-player's values, and the round quantities.
         values = info['round_values'][i][player_role]
         coplayer_values = info['round_values'][i][other_role]
@@ -105,6 +105,9 @@ def gather_dond_statistics(player_info, info, stats_to_log):
 
         if "values" in stats_to_log:
             round_info["values"] = values
+        
+        if "points_difference_on_agreement" in stats_to_log:
+            round_info["points_difference_on_agreement"] = (points - coplayer_points) if info['round_agreements_reached'][i] else None
 
         if "cooperative_points_difference_on_agreement" in stats_to_log:
             if agreement_reached:

@@ -13,6 +13,7 @@ experiment:
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: false
+  random_seeds: [33, 53, 97, 153, 468, 484, 2959, 5145, 6368, 8602]
 
 ####################################################################################################
 #                                           GENERATION                                               
@@ -65,7 +66,7 @@ matches:
     min_messages: 1
     max_chars_per_message: 400
     mode: basic
-    random_setup_func: uniform_quant_random_vals
+    random_setup_func: dond_random_setup
     random_setup_kwargs:
       items: ['coins'] # ['hats', 'balls', 'books']
       min_quant: 1
@@ -154,7 +155,6 @@ models:
       keep_vllm_during_eval: True
       eval_with: "vllm"
       train_with: "hf"
-      random_seed: 500
 
 
 ####################################################################################################
@@ -166,16 +166,16 @@ training:
   keep_error_messages: False
   llama:
     adapters:
-    
+
       ad_alice:
         train_func: train_reinforce_main
-        train_func_args: 
+        train_func_args:
           temperature: 1
           learning_rate: 3e-6
 
       ad_bob:
         train_func: train_reinforce_main
-        train_func_args: 
+        train_func_args:
           temperature: 1
           learning_rate: 3e-6
 
@@ -205,11 +205,11 @@ prompt_blocks:
 
   barebone_ultimatum: |
     Welcome, you are playing the splitting game.
-    Game Description: 
+    Game Description:
       1) In this game, two players divide 10 coins among themselves.
-      2) A finalization is a proposed division of the coins between the two players. 
-      3) The first player will make a finalization. 
-      The second player must then make his finalization. 
+      2) A finalization is a proposed division of the coins between the two players.
+      3) The first player will make a finalization.
+      The second player must then make his finalization.
       Each player can make a single finalization for the entire game, hence the name.
       4) In order for both players to agree, the finalizations must be complementary. If no agreement is reached between the two players with the two finalizations, both players will receive zero points. If agreement is reached, the players will receive the coins corresponding to the finalizations.
     Response Formatting:
@@ -244,7 +244,7 @@ prompt_blocks:
     Goal: Aim to be fair with both the other player and yourself.
 
   submitted_goal: |
-    Goal: Your goal is to do exactly what the other player wants. You must make the other player happy. 
+    Goal: Your goal is to do exactly what the other player wants. You must make the other player happy.
 
 ############################################################
 #                                                          #
@@ -285,10 +285,10 @@ prompt_blocks:
     Goal: Aim to be fair with both the other player and yourself. Remember, your points are awarded as the cumulative sum over rounds, with each round's score computed by multiplying the number of items received by their respective values.
 
   dond_submitted_goal: |
-    Goal: Your objective is to exactly follow the other player's preferences to ensure their satisfaction. Note that your points accumulate over rounds as the product of the number of each item received and its corresponding value. 
+    Goal: Your objective is to exactly follow the other player's preferences to ensure their satisfaction. Note that your points accumulate over rounds as the product of the number of each item received and its corresponding value.
 
   first_round_prompt: |
-    For this new round, the items available are {quantities} and your assigned values are {values}. 
+    For this new round, the items available are {quantities} and your assigned values are {values}.
 
   new_round_prompt: |
     The previous round has ended. In the last round, you earned {last_round_points} points. For this new round, the items available are {quantities} and your assigned values are {values}. 
@@ -299,7 +299,7 @@ prompt_blocks:
   dond_message_mechanics: |
     In order to communicate with the other player, you are allowed to send messages (distinct from finalizations). You cannot send a message and a finalization in the same response.
     When sending a message, please follow these rules: 1) Enclose your message entirely within <message> and </message> tags. 2) Do not include any extraneous text outside these tags. 3) In each round, send at least {min_messages} and no more than {max_messages} messages, with each message containing up to {max_chars_per_message} characters. 4) You may send only one message per response. 5) Use your messages strategically.
-      
+
   dond_reasoning_mechanics: |
     In order to think before you act, you are allowed to use {max_reasoning_chars} characters per round. When reasoning, please follow these rules; 1) Enclose your thought process within <think> and </think> tags. 2) Do not include extraneous content outside these tags. 3) Your reasoning is limited to {max_reasoning_chars} characters per response. 4) You are not obligated to reason at each response.
 

@@ -1,11 +1,8 @@
 from utils.common_imports import *
 
 import torch
-from omegaconf import OmegaConf
-
-
-# hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
-# print(hydra_cfg)
+import os
+import json
 
 def get_conversations(folder_path: str):
     conversations = []
@@ -14,16 +11,16 @@ def get_conversations(folder_path: str):
             conversations.append(json.load(f))
     return conversations
 
-def conversation_to_rl_data(tokenizer, 
+def conversation_to_rl_data(tokenizer,
                             conversation,
                             remove_error_messages=True,
                             ):
-    
+
     # Check if the tokenizer has an EOS token
     if tokenizer.eos_token is None:
         raise ValueError("The tokenizer does not have an EOS token.")
-    
-    # Remove messages relating to errors 
+
+    # Remove messages relating to errors
     if remove_error_messages:
          conversation = [m for m in conversation if m.get('is_error', False) == False]
 
@@ -48,7 +45,7 @@ def conversation_to_rl_data(tokenizer,
 
     # Associate return values and output masks based on adjusted <|eot_id|> positions
     for i, message in enumerate(conversation):
-        return_value = message.get('return', 0)  # Default to 0 if 'return' is not present. This line is not necessary I think. 
+        return_value = message.get('return', 0)  # Default to 0 if 'return' is not present. This line is not necessary I think.
 
         mask_value = 1 if message.get('role', None) == "assistant" else 0 # only train on messages from the assistant
 
