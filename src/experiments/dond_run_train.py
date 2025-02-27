@@ -1,3 +1,7 @@
+import hydra
+import os
+import logging
+import time
 from utils.common_imports import *
 
 # Local imports
@@ -6,25 +10,23 @@ from environments.dond.dond_player import DondPlayerHandler
 from environments.dond.dond_game import DondGame
 from models.dummy_hf_agent import DummyHfAgent
 from models.oai_agent import OaiAgent
-from utils.export_ppo_training_set import export_ppo_training_set
 from utils.log_statistics import *
-from utils.parallel_shuffle import parallel_shuffle
 from utils.log_statistics import update_player_statistics, generate_player_stats_plots
 from utils.update_start_epoch import update_start_epoch
 from training.train_main import *
 from generation.run_games import run_matches
+import torch
+import numpy as np
+import random
+import pickle
 
 compute__logger = logging.getLogger("compute__logger")
 
-def init_models(cfg):
-    hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
-    output_directory = hydra_cfg["runtime"]["output_dir"]
-    os.makedirs(output_directory, exist_ok=True)
-
+def init_models(cfg, random_seed, output_directory):
     models = {}
     for model_name in cfg["models"].keys():
         if cfg["models"][model_name]["class"] == "hf":
-            models[model_name] = HfAgent(**cfg["models"][model_name]["init_args"],
+            models[model_name] = HfAgent(**cfg["models"][model_name]["init_args"], random_seed=random_seed,
                                          output_directory=output_directory)
         elif cfg["models"][model_name]["class"] == "dummy_hf":
             models[model_name] = DummyHfAgent(**cfg["models"][model_name]["init_args"])
@@ -52,7 +54,7 @@ def create_blank_match(cfg, seed_offset=0):
             player_name,
             **cfg["matches"]["players"][player_name]["dond_player_args"]
         )
-    
+
     # Build a fresh copy of game args to safely update random setup parameters.
     game_args = dict(cfg["matches"]["dond_game_args"])
     setup_kwargs = game_args.get("random_setup_kwargs", {})
@@ -81,8 +83,16 @@ def create_blank_match(cfg, seed_offset=0):
     }
     return blank_match
 
+def format_time(seconds):
+    if seconds >= 3600:
+        return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m {int(seconds % 60)}s"
+    elif seconds >= 60:
+        return f"{int(seconds // 60)}m {int(seconds % 60)}s"
+    else:
+        return f"{int(seconds)}s"
 
-def dond_run_train(cfg):
+
+def dond_run_train(cfg, random_seed):
     """
     Executes a negotiation cycle for the Deal or No Deal (DoND) game.
     """
@@ -90,12 +100,29 @@ def dond_run_train(cfg):
 
     # Get Hydra's runtime output directory which includes date and config info.
     hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
-    output_directory = hydra_cfg["runtime"]["output_dir"]
+    output_directory = f"{hydra_cfg['runtime']['output_dir']}/seed_{random_seed}"
+    os.makedirs(output_directory, exist_ok=True)
 
     # Initialize models
-    models = init_models(cfg)
+    models = init_models(cfg, random_seed=random_seed, output_directory=output_directory)
 
     update_start_epoch(cfg=cfg, output_directory=output_directory)
+
+    random.seed(random_seed)  # Python random
+    np.random.seed(random_seed)  # NumPy
+    torch.manual_seed(random_seed)  # PyTorch (CPU)
+    torch.cuda.manual_seed(random_seed)  # PyTorch (GPU)
+    torch.cuda.manual_seed_all(random_seed)  # If using multi-GPU
+
+    random_state_dir = f'{output_directory}/random_state.pkl'
+    # Load saved states
+    if os.path.exists(random_state_dir):
+        with open(random_state_dir, "rb") as f:
+            random_state_dict = pickle.load(f)
+        random.setstate(random_state_dict["python"])
+        np.random.set_state(random_state_dict["numpy"])
+        torch.set_rng_state(random_state_dict["torch"])
+        torch.cuda.set_rng_state_all(random_state_dict["torch_cuda"])
 
     for iteration in range(cfg["experiment"]["start_epoch"], cfg["experiment"]["nb_epochs"]):
 
@@ -193,14 +220,6 @@ def dond_run_train(cfg):
         time_est_100 = time_per_iteration * 100
         time_est_500 = time_per_iteration * 500
 
-        def format_time(seconds):
-            if seconds >= 3600:
-                return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m {int(seconds % 60)}s"
-            elif seconds >= 60:
-                return f"{int(seconds // 60)}m {int(seconds % 60)}s"
-            else:
-                return f"{int(seconds)}s"
-
         compute__logger.info(
             f"Iteration {iteration + 1} took {format_time(iteration_duration)} "
             f"({generation_percentage:.2f}% Gen, {logging_percentage:.2f}% Log, {training_percentage:.2f}% Train). "
@@ -214,6 +233,29 @@ def dond_run_train(cfg):
             f"500 more iterations: {format_time(time_est_500)}."
         )
 
+        # Save Python random state
+        python_random_state = random.getstate()
+
+        # Save NumPy random state
+        numpy_random_state = np.random.get_state()
+
+        # Save PyTorch random state
+        torch_random_state = torch.get_rng_state()
+        torch_cuda_random_state = torch.cuda.get_rng_state_all()  # For all GPUs
+
+        # Store in a dictionary (or save to a file)
+        random_state_dict = {
+            "python": python_random_state,
+            "numpy": numpy_random_state,
+            "torch": torch_random_state,
+            "torch_cuda": torch_cuda_random_state,
+        }
+
+        with open(random_state_dir, "wb") as f:
+            pickle.dump(random_state_dict, f)
+
+        print("Saved random states!")
+
     total_end_time = time.time()
     total_duration = total_end_time - total_start_time
-    compute__logger.info(f"Total time taken for the entire run: {format_time(total_duration)}")
+    compute_logger.info(f"Total time taken for the entire run: {format_time(total_duration)}")

@@ -1,3 +1,7 @@
+import json
+import regex as re
+import re
+import json
 from utils.common_imports import *
 
 
@@ -16,9 +20,9 @@ class DondPlayerHandler:
         player_with_first_move_prompt,
         received_message_prompt,
         other_player_finalized_prompt,
-        message_mechanics_prompt=None, 
-        dond_version_specificities=None,    
-        reasoning_mechanics_prompt=None    
+        message_mechanics_prompt=None,
+        dond_version_specificities=None,
+        reasoning_mechanics_prompt=None
     ):
         """
         Initializes the DondPlayerHandler.
@@ -93,13 +97,14 @@ class DondPlayerHandler:
                 user_message += "\n\n" + self.format_prompt(self.dond_version_specificities, state)
             if self.allow_reasoning and self.reasoning_mechanics_prompt:
                 user_message += "\n\n" + self.format_prompt(self.reasoning_mechanics_prompt, state)
-            user_message += "\n\n" + self.format_prompt(self.goal_prompt, state)
-        
+            if self.goal_prompt:
+                user_message += "\n\n" + self.format_prompt(self.goal_prompt, state)
+
         # If the current player has not yet made any move in this round, add round instructions.
         if state["round_moves"].get(self.player_name, 0) == 0:
-            if state["round_number"] == 0:
+            if state["round_number"] == 0 and self.first_round_prompt:
                 user_message += "\n\n" + self.format_prompt(self.first_round_prompt, state)
-            else:
+            elif self.new_round_prompt:
                 user_message += self.format_prompt(self.new_round_prompt, state)
 
         # Then add the appropriate message based on the finalization state.
@@ -275,15 +280,15 @@ class DondPlayerHandler:
         """
         Replaces placeholders in a prompt with actual values from the game state.
         """
-        if prompt: 
+        if prompt:
             if state.get("has_finalized"):
                 other_player_finalization = state.get("last_message", "")
             else:
                 other_player_finalization = ""
-            
+
             # Get the values for the current player based on their role.
             values = state["role_values"][state["player_to_role"][state["current_player"]]]
-            
+
             if state.get("round_points") != []:
                 last_round_points = state['round_points'][-1][state["player_to_role"][state["current_player"]]]
             else:
@@ -454,7 +459,7 @@ class DondPlayerHandler:
         player_info = {"player_name": self.player_name, "chat_history": self.chat_history}
 
         return action, player_state, send_to_game, player_info
-    
+
     def get_info(self):
         return {"player_name": self.player_name, "chat_history": self.chat_history}
 
@@ -474,7 +479,7 @@ class DondPlayerHandler:
         # Implement cleanup logic if needed
         pass
 
-   
+
 
     def new_round(self):
         """
