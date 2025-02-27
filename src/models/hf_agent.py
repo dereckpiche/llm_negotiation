@@ -1,54 +1,33 @@
-from typing import Any, Tuple, List
+from utils.common_imports import *
 import torch
-import uuid
-from torch.utils.data import Dataset, DataLoader
-from datasets import Dataset
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
-    TrainingArguments,
-    BitsAndBytesConfig,
-    TextIteratorStreamer,
+    BitsAndBytesConfig
 )
 import os
-os.environ["WANDB_DISABLED"] = "True"
 import shutil
 from trl import (
-    SFTTrainer,
     AutoModelForCausalLMWithValueHead,
-    PPOConfig,
-    PPOTrainer
 )
-from peft import PeftModel, PeftConfig
+from peft import PeftModel
 import os
-from functools import partial
-
-from datasets import load_dataset
-from trl import SFTConfig, SFTTrainer
-from utils.model_to_cpu import move_model_to_cpu
 import logging
 import time
-import subprocess
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
-
 from peft import LoraConfig, get_peft_model
-from trl import AutoModelForCausalLMWithValueHead, PPOConfig, PPOTrainer
+from trl import AutoModelForCausalLMWithValueHead
 import torch
-import subprocess
 import gc
 from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
-from vllm.distributed.parallel_state import destroy_model_parallel
-from omegaconf import OmegaConf
-import copy
-import numpy as np
-import hydra
-from transformers import Trainer
 import json
+from vllm import LLM, SamplingParams
+from vllm.lora.request import LoRARequest
 
-compute__logger = logging.getLogger("compute__logger")
+compute_logger = logging.getLogger("compute_logger")
 memory_logger = logging.getLogger("memory_logger")
 model_logger = logging.getLogger("model_logger")
 
@@ -93,7 +72,7 @@ class HfAgent:
         self.tokenizer = AutoTokenizer.from_pretrained(
             pretrained_args["pretrained_model_name_or_path"]
         )
-        
+
         self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         self.tokenizer.pad_token = self.tokenizer.eos_token
         self.bits_and_bytes_configs = BitsAndBytesConfig(**bits_and_bytes_args) if bits_and_bytes_args else None
@@ -106,7 +85,6 @@ class HfAgent:
             max_tokens=generation_args["max_new_tokens"],
         )
         self.lora_config = LoraConfig(**lora_args)
-        self.adapters = {adapter_name: None for adapter_name in adapter_names}
         self.active_adapters = {adapter_name: False for adapter_name in adapter_names}
         self.current_adapter_name = None
         self.hf_model = None
@@ -121,11 +99,13 @@ class HfAgent:
         self.adapters_active = False
         self.vllm_id = 0
         self.hf_id = 0
+        self.adapters = {
+            adapter_name: os.path.join(self.output_directory, adapter_name) if os.path.isdir(os.path.join(output_directory, adapter_name)) else None
+            for adapter_name in adapter_names
+        }
 
         # set random seeds
         self.random_seed = random_seed
-        torch.manual_seed(self.random_seed)
-        np.random.seed(self.random_seed)
 
     def prepare_adapter_train(self, adapter_name: str):
         """
@@ -142,14 +122,14 @@ class HfAgent:
         model_logger.info(f"Preparing adapter {adapter_name} for training.")
 
         start_time = time.time()
-        
+
 
         self.current_adapter_name = adapter_name
         adapter_path = self.adapters[self.current_adapter_name]
         if self.train_with == "hf":
             if adapter_path is None:
                 self.hf_model = AutoModelForCausalLM.from_pretrained(
-                    **self.pretrained_args, 
+                    **self.pretrained_args,
                     quantization_config=self.bits_and_bytes_configs
                 )
                 self.hf_model = get_peft_model(self.hf_model, self.lora_config)
@@ -157,12 +137,12 @@ class HfAgent:
                 model_logger.info(f"Adapter '{self.current_adapter_name}' added to HF.")
             else:
                 self.hf_model = AutoModelForCausalLM.from_pretrained(
-                    **self.pretrained_args, 
+                    **self.pretrained_args,
                     quantization_config=self.bits_and_bytes_configs
                 )
                 self.hf_model = PeftModel.from_pretrained(
-                    model=self.hf_model, 
-                    model_id=adapter_path, 
+                    model=self.hf_model,
+                    model_id=adapter_path,
                     is_trainable=True
                 )
                 self.hf_model.train()
@@ -176,7 +156,7 @@ class HfAgent:
 
 
         end_time = time.time()
-        compute__logger.info(f"HF model loading time: {end_time - start_time:.2f} seconds.")
+        compute_logger.info(f"HF model loading time: {end_time - start_time:.2f} seconds.")
 
         self.log_gpu_usage(f"After loading HF model with adapter {adapter_name} for training.")
 
@@ -198,17 +178,17 @@ class HfAgent:
             if self.vllm_model is None:
                 self.log_gpu_usage(f"Before loading VLLM model with {adapter_name}.")
                 start_time = time.time()
-                self.vllm_model = LLM(self.model_name, 
-                                      enable_lora=True, 
-                                      max_lora_rank=256, 
+                self.vllm_model = LLM(self.model_name,
+                                      enable_lora=True,
+                                      max_lora_rank=256,
                                       seed=self.random_seed,
                                       max_model_len=self.max_model_length,
                                       dtype=self.pretrained_args["torch_dtype"]
                                       )
                 end_time = time.time()
-                compute__logger.info(f"VLLM model loading time: {end_time - start_time:.2f} seconds.")
+                compute_logger.info(f"VLLM model loading time: {end_time - start_time:.2f} seconds.")
                 self.log_gpu_usage(f"After loading VLLM model with {adapter_name}.")
-                
+
         elif self.eval_with == "hf":
             if self.hf_model is None:
                 start_time = time.time()
@@ -237,11 +217,11 @@ class HfAgent:
                 self.hf_model.eval()
 
                 end_time = time.time()
-                compute__logger.info(f"HF model loading time: {end_time - start_time:.2f} seconds.")
+                compute_logger.info(f"HF model loading time: {end_time - start_time:.2f} seconds.")
                 self.log_gpu_usage("After loading HF model.")
 
 
-        
+
     def destroy_hf(self):
         """
         Destroys the Hugging Face model to free up memory.
@@ -252,14 +232,14 @@ class HfAgent:
             self.log_gpu_usage("Before destroying HF.")
 
             start_time = time.time()
-            
+
             del self.hf_model
             gc.collect()
             torch.cuda.empty_cache()
             self.hf_model = None
 
             end_time = time.time()
-            compute__logger.info(f"HF model unloading time: {end_time - start_time:.2f} seconds.")
+            compute_logger.info(f"HF model unloading time: {end_time - start_time:.2f} seconds.")
 
             self.log_gpu_usage("After destroying HF.")
 
@@ -290,7 +270,7 @@ class HfAgent:
             self.log_gpu_usage("After destroying VLLM.")
 
         end_time = time.time()
-        compute__logger.info(f"VLLM model unloading time: {end_time - start_time:.2f} seconds.")
+        compute_logger.info(f"VLLM model unloading time: {end_time - start_time:.2f} seconds.")
 
     def log_gpu_usage(self, message: str) -> None:
         """
@@ -311,7 +291,7 @@ class HfAgent:
         Args:
             contexts (List[dict]): The contexts for generation.
 
-        Returns:
+        scores:
             str: The generated response from the model.
         """
         adapter_path = self.adapters[self.current_adapter_name]
@@ -376,13 +356,13 @@ class HfAgent:
             return []
 
         end_time = time.time()
-        # compute__logger.info(
+        # compute_logger.info(
         #     f"Generation completed in {end_time - start_time:.2f} seconds using {self.eval_with}."
         # )
 
         return responses
 
-    
+
 
     def export_current_adapter(self) -> None:
         """
@@ -400,14 +380,14 @@ class HfAgent:
 
         # Save only the LoRA weights
         if isinstance(self.hf_model, PeftModel) or isinstance(self.hf_model, AutoModelForCausalLMWithValueHead):
-            self.hf_model.save_pretrained(adapter_path) 
+            self.hf_model.save_pretrained(adapter_path)
             model_logger.info(f"LoRA weights saved to {adapter_path}")
         else:
             model_logger.warning("Model is not a LoraModel or ValueHead, skipping LoRA weights saving.")
 
         # For vllm
         with open(os.path.join(adapter_path, "config.json"), "w") as f:
-            json.dump({"model_type": "gpt2"}, f)
+            json.dump({"model_type": "llama"}, f)
 
         # Update the adapter path after export
         self.adapters[self.current_adapter_name] = adapter_path

@@ -1,16 +1,16 @@
-import regex as re
-import json
 import random
-import os
+from utils.common_imports import *
 from collections import deque
-import copy
+
 
 class DondGame:
     def __init__(
         self,
         players,
         mode="coop",
-        max_turns=None,
+        max_messages=None,
+        min_messages=None,
+        max_chars_per_message=None,
         rounds_per_game=1,
         random_setup_func=None,
         random_setup_kwargs=None,
@@ -18,6 +18,7 @@ class DondGame:
         role_assignator_func_kwargs=None,
         finalization_visibility=False,
         other_values_visibility=False,
+        random_seed=None
     ):
         """
         Initializes the DoND game.
@@ -25,36 +26,64 @@ class DondGame:
         Args:
             players (list): List of player names.
             mode (str): The mode of the game, either 'coop' or 'basic'.
-            max_turns (int): The maximum number of turns allowed in the game.
-            player_order (str): The order of players, either 'deterministic' or 'stochastic'.
-            setup (str): The setup type, either 'random_read' or 'manual'.
-            setups_file (str): The file containing game setups.
+            max_messages (int): Maximum number of conversation (non-finalization) messages per player
+                                allowed before finalization is forced.
+            min_messages (int): Minimum number of conversation messages required before a player can finalize.
+            max_chars_per_message (int): Maximum number of characters allowed per message.
             rounds_per_game (int): The number of rounds per game.
-            items (list): The list of items in the game.
-            quantities (list): The quantities of items.
+            random_setup_func (str or callable): The function to use for random setup.
+            random_setup_kwargs (dict): Keyword arguments for the random setup function.
+            role_assignator_func (str or callable): The function to use for role assignment.
+            role_assignator_func_kwargs (dict): Keyword arguments for the role assignment function.
             finalization_visibility (bool): Visibility of finalization.
             other_values_visibility (bool): Visibility of other player's values.
+            random_seed (int, optional): The base seed that will be used (and incremented) for random generation.
         """
 
         self.players = players
         self.roles = ["starting_negotiator", "responding_negotiator"]
         self.mode = mode
-        self.max_turns = max_turns
-        self.random_setup_func = globals()[random_setup_func]
+        self.max_messages = max_messages
+        self.min_messages = min_messages
+        self.max_chars_per_message = max_chars_per_message
+        self.random_setup_func = (
+            globals()[random_setup_func] if isinstance(random_setup_func, str) else random_setup_func
+        )
         self.random_setup_kwargs = random_setup_kwargs
+        if random_setup_kwargs is not None:
+            self.random_setup_kwargs["random_seed"] = random_seed
+        else:
+            self.random_setup_kwargs = {"random_seed": random_seed}
+
         self.finalization_visibility = finalization_visibility
         self.rounds_per_game = rounds_per_game
-        self.role_assignator_func = globals()[role_assignator_func]
-        self.role_assignator_func_kwargs = role_assignator_func_kwargs
+        self.role_assignator_func = (
+            globals()[role_assignator_func] if isinstance(role_assignator_func, str) else role_assignator_func
+        )
+        self.role_assignator_func_kwargs = role_assignator_func_kwargs or {}
         self.other_values_visibility = other_values_visibility
+
+        if random_seed is None:
+            self.random_seed = random.randint(1, 10**9)
+        else:
+            self.random_seed = random_seed
+
+        self.game_moves = {player: 0 for player in players}
+        self.round_moves = {player: 0 for player in players}
+        self.round_messages = {player: 0 for player in players}
 
         self.reset()
 
     def set_new_setup(self):
         """
-        # TODO: write config
+        Sets up a new game configuration using a local (and updated) RNG.
+        The random_seed is incremented to ensure that each setup is different.
         """
-        self.items, self.quantities, role_values = self.random_setup_func(**self.random_setup_kwargs)
+        self.random_seed += 1
+        self.random_setup_kwargs["random_seed"] = self.random_seed  # Ensure the new seed is used
+
+        kwargs = self.random_setup_kwargs
+        self.items, self.quantities, role_values = self.random_setup_func(**kwargs)
         self.role_values = {
             self.roles[0]: role_values[0],
             self.roles[1]: role_values[1]
@@ -66,21 +95,43 @@ class DondGame:
         Advances the game by one step.
 
         Args:
-            action (tuple): A tuple containing is_finalization and output.
+            action (tuple): A tuple containing (is_finalization, output).
 
-        Returns:
+        scores:
             tuple: (observation, reward, done, info)
         """
         is_finalization, output = action
-        self.turn += 1
+        current_player = self.get_current_player()  # Current player's name
+
+        # Count this move for the current player (finalization or conversation).
+        self.game_moves[current_player] += 1
+        self.round_moves[current_player] += 1
+
+        # Only conversation messages (non-finalization) increment the message counter.
+        if not is_finalization:
+            self.round_messages[current_player] += 1
+            self.message_turn += 1
+
+        # Update state flags.
         self.last_message = output
-        self.round_ended = False
-        self.is_new_round = True if self.turn <= 2 else False
-        self.is_new_game = True if (self.turn <= 1 and self.round_nb == 0) else False
+        self.is_new_round = (self.message_turn == 1)
+        self.is_new_game = (self.round_nb == 0 and self.message_turn == 1)
         self.game_over = False
         round_over = False
 
+        # NEW: Check the minimum message requirement on a finalization attempt.
+        # If a player tries to finalize but hasn't sent enough conversation messages,
+        # treat the finalization as a conversation message.
+        if is_finalization and self.round_messages[current_player] < self.min_messages:
+            print(f"Player {current_player} attempted finalization with only {self.round_messages[current_player]} message(s); minimum required is {self.min_messages}. Treating finalization as a conversation message.")
+            # Increment conversation-related counters.
+            self.round_messages[current_player] += 1
+            self.message_turn += 1
+            self.last_message = output
+            is_finalization = False
+
         if self.has_finalized:
+            # We are in the second finalization phase.
             if not is_finalization:
                 self.points = {player: 0 for player in self.players}
                 self.agreement_reached = False
@@ -95,24 +146,25 @@ class DondGame:
             round_over = True
 
         else:
+            # If a player sends a finalization, record it.
             if is_finalization:
                 self.has_finalized = True
                 self.finalize(output)
-
-            if self.turn > self.max_turns:
+            # Instead of using the global message_turn, check if any player has exceeded
+            # their personal maximum message limit.
+            elif any(count > self.max_messages for count in self.round_messages.values()):
                 round_over = True
 
         self.role_deque.rotate(-1)
-        if round_over: 
+        if round_over:
             self.new_round()
-        if self.round_nb > self.rounds_per_game-1:
+        if self.round_nb > self.rounds_per_game - 1:
             self.game_over = True
 
-        
         state = self.get_state()
         reward = None
         done = self.game_over
-        info = self.get_info()  
+        info = self.get_info()
 
         return state, reward, done, info
 
@@ -132,7 +184,7 @@ class DondGame:
         """
         Verifies if the finalizations from both players match the total quantities.
 
-        Returns:
+        scores:
             bool: True if the finalizations match, False otherwise.
         """
         for item in self.items:
@@ -165,13 +217,17 @@ class DondGame:
             finalization (list): The list of finalized quantities for each item.
         """
         current_role = self.current_turn()
-        self.role_props[current_role] = finalization["i_take"]
+        finalization_dict = finalization["i_take"]
+        # Ensure every item is present in the finalization, defaulting to 0 if missing
+        for item in self.items:
+            finalization_dict.setdefault(item, 0)
+        self.role_props[current_role] = finalization_dict
 
     def get_state(self):
         """
         Retrieves the current state of the game.
 
-        Returns:
+        scores:
             dict: The current state of the game.
         """
         state = {
@@ -183,15 +239,16 @@ class DondGame:
             "is_new_game": self.is_new_game,
             "game_over": self.game_over,
             "items": self.items,
-            "turn": self.turn,
-            "max_turns": self.max_turns,
+            "message_count": self.message_turn,
+            "max_messages": self.max_messages,
+            "min_messages": self.min_messages,
             "current_player": self.get_current_player(),
             "round_number": self.round_nb,
             "nb_rounds": self.rounds_per_game,
             "quantities": self.quantities,
             "has_finalized": self.has_finalized,
             "last_message": self.last_message,
-            "players" : self.players,
+            "players": self.players,
             "finalization_visibility": self.finalization_visibility,
             "other_values_visibility": self.other_values_visibility,
             # rounds history
@@ -201,9 +258,17 @@ class DondGame:
             "round_finalizations": self.round_finalizations,
             "round_agreements_reached": self.round_agreements_reached,
             "round_points": self.round_points,
+            # New tracking information added:
+            "game_moves": self.game_moves,
+            "round_moves": self.round_moves,
+            "round_messages": self.round_messages,
+            "messages_remaining": {
+                player: self.max_messages - self.round_messages.get(player, 0)
+                for player in self.players
+            },
         }
         return state
-    
+
     def get_info(self):
         return {
             "mode": self.mode,
@@ -225,7 +290,7 @@ class DondGame:
         # Ensure points are initialized for all roles
         if not all(role in self.points for role in self.roles):
             self.points = {role: 0 for role in self.roles}
-        
+
         self.round_player_roles.append(self.player_to_role.copy())
         self.round_quantities.append(self.quantities)
         self.round_values.append({role: self.role_values[role] for role in self.roles})
@@ -244,8 +309,11 @@ class DondGame:
         self.points = {role: 0 for role in self.roles}  # Ensure points are reset
         self.agreement_reached = False
         self.last_message = None
-        self.turn = 0
-        self.last_message = None
+        # Reset the conversation message counter for the new round.
+        self.message_turn = 0
+        # Reset per-round move tracking for every player.
+        self.round_moves = {player: 0 for player in self.players}
+        self.round_messages = {player: 0 for player in self.players}
         self.set_new_setup()
         self.assign_roles()
         self.role_deque = deque(self.roles)
@@ -267,21 +335,26 @@ class DondGame:
             self.agreement_reached = False
             self.last_message = None
             self.round_nb = 0
-            self.turn = 0
+            # Remove the old turn counter and use message_turn for conversation messages.
+            self.message_turn = 0
             self.is_new_round = True
             self.is_new_game = True
             self.game_over = False
             self.last_message = None
             self.role_deque = deque(self.roles)
             self.player_to_role = None
-            self.round_player_roles = [] 
+            self.round_player_roles = []
             self.round_quantities = []
-            self.round_values = []        
-            self.round_finalizations = [] 
-            self.round_agreements_reached = [] 
+            self.round_values = []
+            self.round_finalizations = []
+            self.round_agreements_reached = []
             self.round_points = []
             self.set_new_setup()
             self.assign_roles()
+            # Initialize move tracking dictionaries for a fresh game.
+            self.game_moves = {player: 0 for player in self.players}
+            self.round_moves = {player: 0 for player in self.players}
+            self.round_messages = {player: 0 for player in self.players}
 
     def get_current_player(self):
         """
@@ -295,7 +368,7 @@ class DondGame:
         """
         Determines the current role's turn.
 
-        Returns:
+        scores:
             str: The name of the current role.
         """
         return self.role_deque[0]
@@ -305,7 +378,7 @@ class DondGame:
         Assigns roles to players for the current round using the role_assignator_func.
         """
         self.player_to_role = self.role_assignator_func(self.get_state(), **self.role_assignator_func_kwargs)
-        
+
         # Create player_to_role mapping
         self.role_to_player = {role: player for player, role in self.player_to_role.items()}
 
@@ -318,32 +391,80 @@ class DondGame:
         """
         self.__dict__.update(checkpoint)
 
-def uniform_quant_random_vals(items, min_quant, max_quant, min_val, max_val):
-    quant = random.randint(min_quant, max_quant)
-    val_starting_negotiator = [random.randint(min_val, max_val) for _ in range(quant)]
-    val_responding_negotiator = copy.deepcopy(val_starting_negotiator)
-    random.shuffle(val_responding_negotiator)
-    val_starting_negotiator = {item: val for item, val in zip(items, val_starting_negotiator)}
-    val_responding_negotiator = {item: val for item, val in zip(items, val_responding_negotiator)}
-    quantities = {item:q for item,q in zip(items, [quant]*len(items))}
+def dond_random_setup(items, min_quant, max_quant, min_val, max_val, random_seed=None):
+    """
+    Generates items, even-numbered quantities and distinct random values for each category for both players.
+
+    Args:
+        items (list): List of items.
+        min_quant (int): Minimum quantity per item.
+        max_quant (int): Maximum quantity per item.
+        min_val (int): Minimum value per item.
+        max_val (int): Maximum value per item.
+        random_seed (int, optional): Seed for random generation.
+        
+    scores:
+        tuple: (items, quantities, (val_starting_negotiator, val_responding_negotiator))
+            - quantities (dict): A dictionary mapping each item to an even quantity.
+            - val_starting_negotiator (dict): Mapping for the starting negotiator with distinct values per item.
+            - val_responding_negotiator (dict): Mapping for the responding negotiator with distinct values per item.
+    """
+    import numpy as np
+    rng = np.random.default_rng(random_seed)
+    
+    # Determine the possible even numbers in the given range.
+    start = min_quant if min_quant % 2 == 0 else min_quant + 1
+    end = max_quant if max_quant % 2 == 0 else max_quant - 1
+    if start > end:
+        raise ValueError("No even numbers available in the given quantity range.")
+    even_numbers = np.arange(start, end + 1, 2)
+    
+    # Generate quantities: for each item, randomly choose an even number.
+    quantities = {item: int(rng.choice(even_numbers)) for item in items}
+    
+    # Make sure there are enough distinct values available for each player's assignment.
+    available_values = np.arange(min_val, max_val + 1)
+    if len(available_values) < len(items):
+        raise ValueError("Range of values is not sufficient to assign unique values for all items.")
+    
+    # For each player, randomly assign a distinct value to each item.
+    val_starting_negotiator = dict(zip(items, rng.choice(available_values, size=len(items), replace=False)))
+    val_responding_negotiator = dict(zip(items, rng.choice(available_values, size=len(items), replace=False)))
+    
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
-def independent_random_vals(items, min_quant, max_quant, min_val, max_val):
-    quantities = {item: random.randint(min_quant, max_quant) for item in items}
-    val_starting_negotiator = {item: random.randint(min_val, max_val) for item in items}
-    val_responding_negotiator = {item: random.randint(min_val, max_val) for item in items}
+def independent_random_vals(items, min_quant, max_quant, min_val, max_val, random_seed=None):
+    rng = np.random.default_rng(random_seed)
+    quantities = {item: int(rng.integers(min_quant, max_quant + 1)) for item in items}
+    val_starting_negotiator = {item: int(rng.integers(min_val, max_val + 1)) for item in items}
+    val_responding_negotiator = {item: int(rng.integers(min_val, max_val + 1)) for item in items}
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
-def fixed_manual(items, quantities, val_starting_negotiator, val_responding_negotiator):
+def fixed_manual(items, quantities, val_starting_negotiator, val_responding_negotiator, random_seed=None):
     quantities = {item: q for item, q in zip(items, quantities)}
     val_starting_negotiator = {item: v for item, v in zip(items, val_starting_negotiator)}
     val_responding_negotiator = {item: v for item, v in zip(items, val_responding_negotiator)}
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
-def random_quant_fixed_vals(items, min_quant, max_quant, val_starting_negotiator, val_responding_negotiator):
-    quantities = {item: random.randint(min_quant, max_quant) for item in items}
+def random_quant_fixed_vals(items, min_quant, max_quant, val_starting_negotiator, val_responding_negotiator, random_seed=None):
+    rng = np.random.default_rng(random_seed)
+    quantities = {item: int(rng.integers(min_quant, max_quant + 1)) for item in items}
     val_starting_negotiator = {item: v for item, v in zip(items, val_starting_negotiator)}
     val_responding_negotiator = {item: v for item, v in zip(items, val_responding_negotiator)}
+    return items, quantities, (val_starting_negotiator, val_responding_negotiator)
+
+def bicameral_vals_assignator(items, min_quant, max_quant, low_val_mean, low_val_std, high_val_mean, high_val_std, random_seed=None):
+    rng = np.random.default_rng(random_seed)
+    quantities = {item: int(rng.integers(min_quant, max_quant + 1)) for item in items}
+
+    bernoullis = np.random.binomial(1, 0.5, len(items))
+    random_left = np.random.normal(low_val_mean, low_val_std, len(items))
+    random_right = np.random.normal(high_val_mean, high_val_std, len(items))
+
+    vals_0 = np.ceil( np.abs(bernoullis * random_left + (1 - bernoullis) * random_right) + 0.001)
+    vals_1 = np.ceil( np.abs((1 - bernoullis) * random_left + (bernoullis) * random_right) + 0.001)
+    val_starting_negotiator = {item: v for item, v in zip(items, vals_0)}
+    val_responding_negotiator = {item: v for item, v in zip(items, vals_1)}
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
 def alternating_role_assignator(state, **kwargs):
@@ -355,7 +476,7 @@ def alternating_role_assignator(state, **kwargs):
         state (dict): The current state of the game.
         kwargs (dict): Additional keyword arguments (not used here).
 
-    Returns:
+    scores:
         dict: A mapping of players to roles.
     """
     round_number = state["round_number"]
@@ -380,7 +501,7 @@ def fixed_role_assignator(state, **kwargs):
         state (dict): The current state of the game.
         kwargs (dict): Additional keyword arguments (not used here).
 
-    Returns:
+    scores:
         dict: A mapping of players to roles.
     """
     players = state["players"]

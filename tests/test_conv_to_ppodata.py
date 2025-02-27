@@ -6,7 +6,7 @@ from training.rl_convs_processing import conversation_to_rl_data
 # Initialize the tokenizer
 tokenizer = AutoTokenizer.from_pretrained("""meta-llama/Llama-3.2-1B-Instruct""")
 
-# Mock conversation with roles and fake returns
+# Mock conversation with roles and fake scores
 conversation = [
     {'role': 'user', 'content': 'The first day of summer.', 'return': 1},
     {'role': 'assistant', 'content': 'Dead men tell no tales.'},

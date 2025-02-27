@@ -1,3 +1,5 @@
+from utils.common_imports import *
+
 import torch.nn.functional as F
 from accelerate import Accelerator
 import torch
@@ -10,7 +12,7 @@ def ppo_train(
         ref_model,
         value_model=None,
         contexts_list=[],
-        returns_list=[],
+        scores_list=[],
         output_masks_list=[],
         optimizer=None,     
         nb_epochs=1,
@@ -27,7 +29,7 @@ def ppo_train(
         model (torch.nn.Module): The language model with a value head to be optimized.
         ref_model (torch.nn.Module): Reference model used for KL penalty.
         contexts_list (list of torch.Tensor): List of input contexts, each of shape (S, V).
-        returns_list (list of torch.Tensor): List of estimated returns for each time step, each of shape (S,).
+        scores_list (list of torch.Tensor): List of estimated scores for each time step, each of shape (S,).
         output_masks_list (list of torch.Tensor): List of masks for output tokens, each of shape (S,). These tokens should not be included in the loss.
         optimizer (torch.optim.Optimizer, optional): Optimizer for training the model. If None, a default optimizer will be created.
         nb_epochs (int): Number of epochs to train over the dataset.
@@ -37,7 +39,7 @@ def ppo_train(
         vf_coef (float, optional): Coefficient for value loss, default is 0.5.
         entropy_coef (float, optional): Coefficient for entropy bonus, default is 0.01.
 
-    Returns:
+    scores:
         float: The total loss value for the training step.
     """
     model.train()
@@ -46,7 +48,7 @@ def ppo_train(
     if optimizer is None:
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-    verify_ppo_train_inputs(contexts_list, returns_list, output_masks_list)
+    verify_ppo_train_inputs(contexts_list, scores_list, output_masks_list)
 
     # Initialize the accelerators
     model_accelerator = Accelerator()
@@ -65,7 +67,7 @@ def ppo_train(
         for i in range(0, len(contexts_list), mb_size):
             
             context_batch = contexts_list[i:i+mb_size]
-            return_batch = returns_list[i:i+mb_size]
+            return_batch = scores_list[i:i+mb_size]
             mask_batch = output_masks_list[i:i+mb_size]
 
             # Get the minibatch
@@ -149,13 +151,13 @@ def ppo_train(
     return loss.item()
 
 
-def verify_ppo_train_inputs(contexts_list, returns_list, output_masks_list):
+def verify_ppo_train_inputs(contexts_list, scores_list, output_masks_list):
     """
     Verify the inputs to the ppo_train function.
     """
-    for context, returns, mask in zip(contexts_list, returns_list, output_masks_list):
-        assert context.size(0) == returns.size(0) == mask.size(0), (
-            f"Context, returns, and mask lengths do not match. "
-            f"Context shape: {context.shape}, Returns shape: {returns.shape}, Mask shape: {mask.shape}"
+    for context, scores, mask in zip(contexts_list, scores_list, output_masks_list):
+        assert context.size(0) == scores.size(0) == mask.size(0), (
+            f"Context, scores, and mask lengths do not match. "
+            f"Context shape: {context.shape}, scores shape: {scores.shape}, Mask shape: {mask.shape}"
         )
         

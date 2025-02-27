@@ -28,7 +28,7 @@ conversations = [
     {'role': 'assistant', 'content': 'All the world\'s a stage.', 'return': 4}],
 ]
 tokenizer = AutoTokenizer.from_pretrained("""meta-llama/Llama-3.2-1B-Instruct""")
-contexts_list, returns_list, output_masks = conversations_to_rl_data(tokenizer, conversations)
+contexts_list, scores_list, output_masks = conversations_to_rl_data(tokenizer, conversations)
 
 # Get Hugging Face model and tokenizer
 model = AutoModelForCausalLMWithValueHead.from_pretrained("""meta-llama/Llama-3.2-1B-Instruct""")
@@ -38,7 +38,7 @@ ppo_train(
         model, 
         ref_model,
         contexts_list,
-        returns_list,
+        scores_list,
         output_masks,
         optimizer=None, 
         nb_epochs=1,

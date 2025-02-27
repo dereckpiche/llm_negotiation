@@ -1,6 +1,6 @@
-from typing import Any, List, Dict
+from typing import List
+from utils.common_imports import *
 from openai import OpenAI
-import os
 
 
 class OaiAgent:
@@ -39,7 +39,7 @@ class OaiAgent:
         Args:
             contexts (List[dict]): The contexts for generation.
 
-        Returns:
+        scores:
             str: The generated response from the model.
         """
         if not contexts:

@@ -2,13 +2,10 @@ import torch.nn.functional as F
 from accelerate import Accelerator
 import torch
 import torch.nn.functional as F
-from torch.nn.utils.rnn import pad_sequence
 import os
-import random
 import matplotlib.pyplot as plt
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import time
-import csv  # Add this import for CSV export
 from peft import LoraConfig, get_peft_model  # Import necessary modules for LoRA
 
 if __name__ == "__main__":
@@ -26,17 +23,17 @@ if __name__ == "__main__":
 
     # Configure LoRA
     lora_config = LoraConfig(
-        r=64, 
-        lora_alpha=32,  
-        lora_dropout=0,  
-        target_modules="all-linear"  
+        r=64,
+        lora_alpha=32,
+        lora_dropout=0,
+        target_modules="all-linear"
     )
 
     # Apply LoRA to the model
     model = get_peft_model(model, lora_config)
     model.train()
     model.gradient_checkpointing_enable(dict(use_reentrant=False))
-   
+
 
     # Initialize Accelerator for mixed precision
     accelerator = Accelerator()
@@ -57,7 +54,7 @@ if __name__ == "__main__":
 
         # Create a dummy context of the specified length
         context = torch.randint(0, tokenizer.vocab_size, (length,)).unsqueeze(0).to('cuda')
-        returns = torch.ones(length).unsqueeze(0).to('cuda')
+        scores = torch.ones(length).unsqueeze(0).to('cuda')
         mask = torch.ones(length).unsqueeze(0).to('cuda')
 
         # Forward pass without checkpointing
@@ -67,7 +64,7 @@ if __name__ == "__main__":
         # Compute dummy loss
         log_probs = F.log_softmax(logits, dim=-1)
         action_log_probs = log_probs.gather(dim=-1, index=context.unsqueeze(-1)).squeeze(-1)
-        rewarded_action_log_probs = action_log_probs * (returns * mask)
+        rewarded_action_log_probs = action_log_probs * (scores * mask)
         loss = -rewarded_action_log_probs.mean()
 
         # Backward pass using accelerator
@@ -95,7 +92,7 @@ if __name__ == "__main__":
         lengths, max_memory_allocated = zip(*[(l, m) for l, _, m, _ in memory_usages])
         plt.figure(figsize=(20, 8))  # Make the plot wider
         plt.plot(lengths, max_memory_allocated, label='Max Memory Allocated (GB)', linestyle='--', marker='x')
-        
+
         # Annotate each point with its value
         for i, (x, y) in enumerate(zip(lengths, max_memory_allocated)):
             plt.annotate(f'{y:.2f}', (x, y), textcoords="offset points", xytext=(0,10), ha='center', fontsize=8)
@@ -112,7 +109,7 @@ if __name__ == "__main__":
         lengths, time_taken = zip(*time_usages)
         plt.figure(figsize=(20, 8))  # Make the plot wider
         plt.plot(lengths, time_taken, label='Time Taken (s)', marker='o')
-        
+
         # Annotate each point with its value
         for i, (x, y) in enumerate(zip(lengths, time_taken)):
             plt.annotate(f'{y:.0f}', (x, y), textcoords="offset points", xytext=(0,10), ha='center', fontsize=8)
