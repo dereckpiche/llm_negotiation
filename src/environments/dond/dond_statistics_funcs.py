@@ -17,7 +17,7 @@ def gather_dond_statistics(player_info, info, stats_to_log):
         info (dict): A dictionary containing game information.
         stats_to_log (list): A list of statistics names to log.
     
-    Returns:
+    scores:
         dict: A dictionary (formatted like JSONL) containing the specified game statistics.
     """
     statistics = {}
@@ -167,7 +167,7 @@ def calculate_imbalance(points, player_role, other_role):
         player_role (str): The role of the player.
         other_role (str): The role of the other player.
     
-    Returns:
+    scores:
         float: The calculated imbalance.
     """
     total_points = points[player_role] + points[other_role]
@@ -183,7 +183,7 @@ def calculate_items_given_to_self(finalization):
     Args:
         finalization (dict): A dictionary with values representing item amounts.
     
-    Returns:
+    scores:
         float or None: The sum of the values if valid; otherwise, None.
     """
     if not finalization or not all(isinstance(x, (int, float)) for x in finalization.values()):
@@ -201,7 +201,7 @@ def compute_points_difference(player_points, other_points):
         player_points (numeric): Points for the player.
         other_points (numeric): Points for the other player.
     
-    Returns:
+    scores:
         numeric: The difference (player_points - other_points).
     """
     return player_points - other_points
@@ -209,13 +209,13 @@ def compute_points_difference(player_points, other_points):
 
 def compute_points_on_agreement(player_points, agreement_reached):
     """
-    Returns the player's points if an agreement was reached, otherwise None.
+    scores the player's points if an agreement was reached, otherwise None.
     
     Args:
         player_points (numeric): The player's points.
         agreement_reached (bool): Whether an agreement was reached.
     
-    Returns:
+    scores:
         numeric or None
     """
     return player_points if agreement_reached else None
@@ -231,7 +231,7 @@ def compute_points_diff_on_agreement(player_points, other_points, agreement_reac
         other_points (numeric): The other player's points.
         agreement_reached (bool): Whether an agreement was reached.
     
-    Returns:
+    scores:
         numeric or None: The difference if agreement reached; otherwise, None.
     """
     return player_points - other_points if agreement_reached else None
@@ -250,7 +250,7 @@ def compute_cooperative_points_for_round(player_values, coplayer_values, quantit
         coplayer_values (dict): The co-player's values for each item.
         quantities (dict): The quantities for each item.
     
-    Returns:
+    scores:
         tuple: (player_cooperative_points, coplayer_cooperative_points)
     """
     player_coop = 0
@@ -275,7 +275,7 @@ def compute_greedy_dominant_points(player_values, quantities):
         player_values (dict): The player's values for each item.
         quantities (dict): The quantities for each item.
     
-    Returns:
+    scores:
         numeric: The computed greedy dominant points.
     """
     total = sum(player_values[item] * quantities[item] for item in quantities)
@@ -289,7 +289,7 @@ def compute_greedy_submission_points(player_values):
     Args:
         player_values (dict): The player's values for each item.
     
-    Returns:
+    scores:
         numeric: The minimum value among the player's item values.
     """
     return min(player_values.values()) if player_values else None
@@ -304,7 +304,7 @@ def compute_split_equal_points(player_values, quantities):
         player_values (dict): The player's values for each item.
         quantities (dict): The quantities for each item.
     
-    Returns:
+    scores:
         numeric: The computed split-equal points.
     """
     return sum(0.5 * player_values[item] * quantities[item] for item in quantities)

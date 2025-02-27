@@ -88,7 +88,7 @@ matches:
         "points_on_agreement",
         "items_given_to_self"
         ]
-      training_data_func: set_discounted_returns
+      training_data_func: set_discounted_scores
       training_data_func_args:
         discount_factor: 1.0
         

@@ -299,7 +299,7 @@ class HfAgent:
         Args:
             contexts (List[dict]): The contexts for generation.
 
-        Returns:
+        scores:
             str: The generated response from the model.
         """
         adapter_path = self.adapters[self.current_adapter_name]
@@ -395,7 +395,7 @@ class HfAgent:
 
         # For vllm
         with open(os.path.join(adapter_path, "config.json"), "w") as f:
-            json.dump({"model_type": "gpt2"}, f)
+            json.dump({"model_type": "llama"}, f)
 
         # Update the adapter path after export
         self.adapters[self.current_adapter_name] = adapter_path

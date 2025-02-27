@@ -79,7 +79,8 @@ class DondGame:
         The random_seed is incremented to ensure that each setup is different.
         """
         self.random_seed += 1
-        
+        self.random_setup_kwargs["random_seed"] = self.random_seed  # Ensure the new seed is used
+
         kwargs = self.random_setup_kwargs
         self.items, self.quantities, role_values = self.random_setup_func(**kwargs)
         self.role_values = {
@@ -95,7 +96,7 @@ class DondGame:
         Args:
             action (tuple): A tuple containing (is_finalization, output).
 
-        Returns:
+        scores:
             tuple: (observation, reward, done, info)
         """
         is_finalization, output = action
@@ -183,7 +184,7 @@ class DondGame:
         """
         Verifies if the finalizations from both players match the total quantities.
 
-        Returns:
+        scores:
             bool: True if the finalizations match, False otherwise.
         """
         for item in self.items:
@@ -226,7 +227,7 @@ class DondGame:
         """
         Retrieves the current state of the game.
 
-        Returns:
+        scores:
             dict: The current state of the game.
         """
         state = {
@@ -367,7 +368,7 @@ class DondGame:
         """
         Determines the current role's turn.
 
-        Returns:
+        scores:
             str: The name of the current role.
         """
         return self.role_deque[0]
@@ -402,13 +403,11 @@ def uniform_quant_random_vals(items, min_quant, max_quant, min_val, max_val, ran
         max_val (int): Maximum value per item.
         random_seed (int, optional): Seed for random generation.
         
-    Returns:
+    scores:
         tuple: (items, quantities, (val_starting_negotiator, val_responding_negotiator))
     """
     rng = np.random.default_rng(random_seed)
     quantities = {item: int(rng.integers(min_quant, max_quant + 1)) for item in items}
-    # Previously, the responding values were a permutation of the starting ones.
-    # Now we generate independent values for each role.
     val_starting_negotiator = {item: int(rng.integers(min_val, max_val + 1)) for item in items}
     val_responding_negotiator = {item: int(rng.integers(min_val, max_val + 1)) for item in items}
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
@@ -433,6 +432,20 @@ def random_quant_fixed_vals(items, min_quant, max_quant, val_starting_negotiator
     val_responding_negotiator = {item: v for item, v in zip(items, val_responding_negotiator)}
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
+def bicameral_vals_assignator(items, min_quant, max_quant, low_val_mean, low_val_std, high_val_mean, high_val_std, random_seed=None):
+    rng = np.random.default_rng(random_seed)
+    quantities = {item: int(rng.integers(min_quant, max_quant + 1)) for item in items}
+
+    bernoullis = np.random.binomial(1, 0.5, len(items))
+    random_left = np.random.normal(low_val_mean, low_val_std, len(items))
+    random_right = np.random.normal(high_val_mean, high_val_std, len(items))
+
+    vals_0 = np.ceil( np.abs(bernoullis * random_left + (1 - bernoullis) * random_right) + 0.001)
+    vals_1 = np.ceil( np.abs((1 - bernoullis) * random_left + (bernoullis) * random_right) + 0.001)
+    val_starting_negotiator = {item: v for item, v in zip(items, vals_0)}
+    val_responding_negotiator = {item: v for item, v in zip(items, vals_1)}
+    return items, quantities, (val_starting_negotiator, val_responding_negotiator)
+
 def alternating_role_assignator(state, **kwargs):
     """
     Alternates roles between player_0 and player_1 at each round.
@@ -442,7 +455,7 @@ def alternating_role_assignator(state, **kwargs):
         state (dict): The current state of the game.
         kwargs (dict): Additional keyword arguments (not used here).
 
-    Returns:
+    scores:
         dict: A mapping of players to roles.
     """
     round_number = state["round_number"]
@@ -467,7 +480,7 @@ def fixed_role_assignator(state, **kwargs):
         state (dict): The current state of the game.
         kwargs (dict): Additional keyword arguments (not used here).
 
-    Returns:
+    scores:
         dict: A mapping of players to roles.
     """
     players = state["players"]

@@ -43,7 +43,7 @@ def create_blank_match(cfg, seed_offset=0):
         cfg (omegaconf.DictConfig): Configuration object containing all necessary parameters.
         seed_offset (int): An offset to uniquely adjust the seed for each match.
 
-    Returns:
+    scores:
         dict: A match dictionary.
     """
     players = {}

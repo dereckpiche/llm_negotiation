@@ -1,11 +1,11 @@
 hydra:
-  run:
+  run:                  
     dir: "/home/mila/d/dereck.piche/scratch/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}"
   job:
     chdir: false
 
 experiment:
-  name: "multi_round_dond_4_rounds"
+  name: "multi_round_dond_4_rounds_easier_collab"
   method: dond_run_train
   description: "no description"
   nb_epochs: 1000
@@ -49,21 +49,27 @@ matches:
         "total_coop_points_difference_player",
         "total_coop_points_difference_coplayer"
         ]
-      training_data_func: set_discounted_returns
+      training_data_func: bicameral_vals_assignator
       training_data_func_args:
-        discount_factor: 0.9
+        items: ['coins']
+        min_quant: 1
+        max_quant: 12
+        low_val_mean: 3
+        low_val_std: 1
+        high_val_mean: 15
+        high_val_std: 1
         
   dond_game_args:
     rounds_per_game: 4
-    max_messages: 2
+    max_messages: 3
     min_messages: 1
-    max_chars_per_message: 300
+    max_chars_per_message: 400
     mode: basic
     random_setup_func: uniform_quant_random_vals
     random_setup_kwargs:
       items: ['coins'] # ['hats', 'balls', 'books']
       min_quant: 1
-      max_quant: 10
+      max_quant: 12
       min_val: 1
       max_val: 10
     role_assignator_func: alternating_role_assignator
@@ -77,18 +83,17 @@ matches:
         mod_adpt_id: 'llama/ad_alice'
         max_errors: 2
         allow_reasoning: true
-        max_reasoning_chars: 200
+        max_reasoning_chars: 400
         intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
         message_mechanics_prompt: ${prompt_blocks.dond_message_mechanics}
-        dond_version_specificities: ${prompt_blocks.dond_hidden_alternating_starting_player}
+        dond_version_specificities: ${prompt_blocks.dond_visible_alternating_starting_player}
         reasoning_mechanics_prompt: ${prompt_blocks.dond_reasoning_mechanics}
-        goal_prompt: ${prompt_blocks.dond_agressive_goal}
+        goal_prompt: ${prompt_blocks.dond_goal_long_term}
         first_round_prompt: ${prompt_blocks.first_round_prompt}
-        new_round_prompt: ${prompt_blocks.new_round_prompt}
+        new_round_prompt: ${prompt_blocks.new_round_prompt_with_values}
         player_with_first_move_prompt: "You are the first player. It is your turn to play."
         received_message_prompt: ${prompt_blocks.message_prompt}
-        other_player_finalized_prompt: ${prompt_blocks.hidden_finalization_prompt}
-
+        other_player_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
 
     bob:
 
@@ -96,17 +101,17 @@ matches:
         mod_adpt_id: 'llama/ad_bob'
         max_errors: 2
         allow_reasoning: true
-        max_reasoning_chars: 200
+        max_reasoning_chars: 400
         intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
         message_mechanics_prompt: ${prompt_blocks.dond_message_mechanics}
-        dond_version_specificities: ${prompt_blocks.dond_hidden_alternating_starting_player}
+        dond_version_specificities: ${prompt_blocks.dond_visible_alternating_starting_player}
         reasoning_mechanics_prompt: ${prompt_blocks.dond_reasoning_mechanics}
-        goal_prompt: ${prompt_blocks.dond_agressive_goal}
+        goal_prompt: ${prompt_blocks.dond_goal_long_term}
         first_round_prompt: ${prompt_blocks.first_round_prompt}
-        new_round_prompt: ${prompt_blocks.new_round_prompt}
+        new_round_prompt: ${prompt_blocks.new_round_prompt_with_values}
         player_with_first_move_prompt: "You are the first player to make a move."
         received_message_prompt: ${prompt_blocks.message_prompt}
-        other_player_finalized_prompt: ${prompt_blocks.hidden_finalization_prompt}
+        other_player_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
 
 
 models:
@@ -166,14 +171,13 @@ training:
         train_func: train_reinforce_main
         train_func_args: 
           temperature: 1
-          learning_rate: 1e-5
-
+          learning_rate: 3e-6
 
       ad_bob:
         train_func: train_reinforce_main
         train_func_args: 
           temperature: 1
-          learning_rate: 1e-5
+          learning_rate: 3e-6
 
 
 ####################################################################################################
@@ -266,7 +270,10 @@ prompt_blocks:
 
 
   dond_normal_goal: |
-    Your points will be computed as the cumulative sum over rounds, where each round's score is determined by multiplying the quantity of each item you receive by its corresponding value. 
+    The points attributed to each player will be computed as the cumulative sum of their points over rounds, where each player's round score is determined by multiplying the quantity of each item they receive by the value they assign to each item. 
+
+  dond_goal_long_term: |
+    The points attributed to each player will be computed as the cumulative sum of their points over rounds, where each player's round score is determined by multiplying the quantity of each item they receive by the value they assign to each item. What matters is the total points each player has accumulated over all rounds, not the points they have accumulated in each round. This is not a zero-sum game. It is a general-sum game.
 
   dond_agressive_goal: |
     Your goal is to maximize your cumulative points, calculated by adding up, over rounds, the products of each item's quantity and the associated value (for you) at corresponding rounds. Aim for the highest possible total!
@@ -285,7 +292,9 @@ prompt_blocks:
 
   new_round_prompt: |
     The previous round has ended. In the last round, you earned {last_round_points} points. For this new round, the items available are {quantities} and your assigned values are {values}. 
-    
+
+  new_round_prompt_with_values: |
+    The previous round has ended. In the last round, you earned {last_round_points_computed}. Your coplayer earned {coplayer_last_round_points_computed_other}. Up to now, you have accumulated {cumulative_round_points_your} points and your coplayer has accumulated {cumulative_round_points_coplayer} points. For this new round, the items available are {quantities} and your assigned values are {values}. 
 
   dond_message_mechanics: |
     In order to communicate with the other player, you are allowed to send messages (distinct from finalizations). You cannot send a message and a finalization in the same response.
@@ -295,7 +304,10 @@ prompt_blocks:
     In order to think before you act, you are allowed to use {max_reasoning_chars} characters per round. When reasoning, please follow these rules; 1) Enclose your thought process within <think> and </think> tags. 2) Do not include extraneous content outside these tags. 3) Your reasoning is limited to {max_reasoning_chars} characters per response. 4) You are not obligated to reason at each response.
 
   dond_hidden_alternating_starting_player: |
-    In this version of the game, your finalization proposal (enclosed in <finalize> tags) will be hidden to your coplayer. The values attributed to the items by other players are hidden as well. However, there are no restrictions to what the players are allowed to reveal themselves in their messages! Furthermore, in this version, players alternate turns and the player with the first move changes each round.
+    In this version of the game, your finalization proposal (enclosed in <finalize> tags) will be hidden to your coplayer. The values attributed to the items by other players are hidden as well. However, there are no restrictions to what the players are allowed to reveal themselves in their messages! Furthermore, in this version, players alternate turns and the player with the first move changes each round. 
+
+  dond_visible_alternating_starting_player: |
+    In this version of the game, your finalization proposal (enclosed in <finalize> tags) will be shown to your coplayer. However, the values attributed to the items by other players are hidden. However, there are no restrictions to what the players are allowed to reveal themselves in their messages. Feel free to reveal your values in your messages. Furthermore, in this version, players alternate turns and the player with the first move changes each round.
 
 
 

@@ -17,7 +17,7 @@ model_logger = logging.getLogger("model_logger")
 def reinforce_train( 
         model, 
         contexts_list,
-        returns_list,
+        scores_list,
         output_masks_list,
         optimizer=None, 
         nb_epochs=1,
@@ -33,7 +33,7 @@ def reinforce_train(
         model (torch.nn.Module): The language model with a value head to be optimized.
         ref_model (torch.nn.Module): Reference model used for KL penalty.
         contexts_list (list of torch.Tensor): List of input contexts, each of shape (S, V).
-        returns_list (list of torch.Tensor): List of estimated returns for each time step, each of shape (S,).
+        scores_list (list of torch.Tensor): List of estimated scores for each time step, each of shape (S,).
         output_masks_list (list of torch.Tensor): List of masks for output tokens, each of shape (S,).
         optimizer (torch.optim.Optimizer, optional): Optimizer for training the model. If None, a default optimizer will be created.
         nb_epochs (int): Number of epochs to train over the dataset.
@@ -44,14 +44,14 @@ def reinforce_train(
         entropy_coef (float, optional): Coefficient for entropy bonus, default is 0.01.
         temperature (float): Hyperparameter to control the softmax temperature. Must be > 0 (default: 1.0).
 
-    Returns:
+    scores:
         float: The total loss value for the training step.
     """
     model.train()
     if output_path: 
         output_train_data_debug(output_path, 
                                 contexts_list, 
-                                returns_list, 
+                                scores_list, 
                                 output_masks_list, 
                                 tokenizer)
 
@@ -59,7 +59,7 @@ def reinforce_train(
     if optimizer is None:
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-    verify_reinforce_train_inputs(contexts_list, returns_list, output_masks_list)
+    verify_reinforce_train_inputs(contexts_list, scores_list, output_masks_list)
 
     # Initialize the accelerators
     model_accelerator = Accelerator()
@@ -79,7 +79,7 @@ def reinforce_train(
 
             # Get the minibatch
             context_batch = contexts_list[i:i + mb_size]
-            return_batch = returns_list[i:i + mb_size]
+            return_batch = scores_list[i:i + mb_size]
             mask_batch = output_masks_list[i:i + mb_size]
 
             action_batch = [a[1:] for a in context_batch]
@@ -143,24 +143,24 @@ def reinforce_train(
     return loss.item()
 
 
-def verify_reinforce_train_inputs(contexts_list, returns_list, output_masks_list):
+def verify_reinforce_train_inputs(contexts_list, scores_list, output_masks_list):
     """
     Verify the inputs to the reinforce_train function.
     """
-    for context, returns, mask in zip(contexts_list, returns_list, output_masks_list):
-        assert context.size(0) == returns.size(0) == mask.size(0), (
-            f"Context, returns, and mask lengths do not match. "
-            f"Context shape: {context.shape}, Returns shape: {returns.shape}, Mask shape: {mask.shape}"
+    for context, scores, mask in zip(contexts_list, scores_list, output_masks_list):
+        assert context.size(0) == scores.size(0) == mask.size(0), (
+            f"Context, scores, and mask lengths do not match. "
+            f"Context shape: {context.shape}, scores shape: {scores.shape}, Mask shape: {mask.shape}"
         )
 
-def output_train_data_debug(path, contexts_list, returns_list, output_masks_list, tokenizer):
+def output_train_data_debug(path, contexts_list, scores_list, output_masks_list, tokenizer):
     """
     Output the training data for debugging.
     
     Args:
         path (str): The directory path where the output files will be saved.
         contexts_list (list of torch.Tensor): List of input contexts, each of shape (S, V).
-        returns_list (list of torch.Tensor): List of estimated returns for each time step, each of shape (S,).
+        scores_list (list of torch.Tensor): List of estimated scores for each time step, each of shape (S,).
         output_masks_list (list of torch.Tensor): List of masks for output tokens, each of shape (S,).
         tokenizer: Tokenizer to convert token IDs to their written form.
     """
@@ -168,12 +168,12 @@ def output_train_data_debug(path, contexts_list, returns_list, output_masks_list
     # Ensure the output directory exists
     os.makedirs(path, exist_ok=True)
 
-    for idx, (context, returns, mask) in enumerate(zip(contexts_list, returns_list, output_masks_list)):
+    for idx, (context, scores, mask) in enumerate(zip(contexts_list, scores_list, output_masks_list)):
         # Convert token IDs to written form
         tokens = tokenizer.convert_ids_to_tokens(context.tolist())
 
         # Prepare the triplets
-        triplets = list(zip(tokens, returns.tolist(), mask.tolist()))
+        triplets = list(zip(tokens, scores.tolist(), mask.tolist()))
 
         # Define the file path for the current conversation
         file_path = os.path.join(path, f"conversation_{idx}.txt")

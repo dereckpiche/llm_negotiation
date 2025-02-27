@@ -21,7 +21,7 @@ def run_matches(
         game_json_path (str): Path to save game metrics.
         log_matches (bool): Whether to log matches after completion.
 
-    Returns:
+    scores:
         None
     """
     if nb_parallel_matches == -1:

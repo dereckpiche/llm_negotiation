@@ -126,7 +126,7 @@ class DondPlayerHandler:
             response (str): The response from the LLM player.
             state (dict): The current state of the game.
 
-        Returns:
+        scores:
             tuple: (is_error, error_message, is_finalization, processed_response)
         """
         errors = []
@@ -260,7 +260,7 @@ class DondPlayerHandler:
         Args:
             prompts (dict): Dictionary containing various prompts.
 
-        Returns:
+        scores:
             dict: Formatted prompts with placeholders replaced.
         """
         formatted_prompts = {}
@@ -300,8 +300,77 @@ class DondPlayerHandler:
             finalize_sample_i_take = ", ".join([f'"{item}": x' for item in items])
             finalize_sample_other = ", ".join([f'"{item}": y' for item in items])
 
+            # -------------------------------------------
+            # New logic: Compute last round breakdown details for new_round_prompt_with_values.
+            #
+            # If archived round info exists, then check if an agreement was reached.
+            # If no agreement was reached, fill with "0 points, since no agreement was reached".
+            # If agreement was reached, compute detailed breakdown per item.
+            if (state.get("round_player_roles") and state.get("round_agreements_reached") and
+                len(state["round_player_roles"]) > 0 and len(state["round_agreements_reached"]) > 0):
+                last_agreement = state["round_agreements_reached"][-1]
+                last_arch_roles = state["round_player_roles"][-1]  # mapping: player -> role for that round
+                # Determine current player's role in the last round
+                my_role = last_arch_roles.get(self.player_name, None)
+                # Determine the other player's name and role
+                other_player_name, other_role = None, None
+                for p, role in last_arch_roles.items():
+                    if p != self.player_name:
+                        other_player_name = p
+                        other_role = role
+                        break
+                if not last_agreement:
+                    last_round_points_computed = "0 points, since no agreement was reached"
+                    coplayer_last_round_points_computed = "0 points, since no agreement was reached"
+                else:
+                    # Retrieve last round's finalizations and values
+                    last_round_finalizations = state["round_finalizations"][-1]  # mapping: role -> finalization dict
+                    last_round_values = state["round_values"][-1]  # mapping: role -> values dict
+                    # Compute detailed breakdown for current player:
+                    total_my = 0
+                    details_my = []
+                    for item in items:
+                        my_qty = last_round_finalizations.get(my_role, {}).get(item, 0)
+                        my_val = last_round_values.get(my_role, {}).get(item, 0)
+                        product_my = my_qty * my_val
+                        total_my += product_my
+                        details_my.append(f"{my_val} per {item} x {my_qty} = {product_my}")
+                    last_round_points_computed = "; ".join(details_my) + f" | Total: {total_my} points"
+                    # Compute detailed breakdown for the coplayer:
+                    total_other = 0
+                    details_other = []
+                    for item in items:
+                        other_qty = last_round_finalizations.get(other_role, {}).get(item, 0)
+                        other_val = last_round_values.get(other_role, {}).get(item, 0)
+                        product_other = other_qty * other_val
+                        total_other += product_other
+                        details_other.append(f"{other_val} per {item} x {other_qty} = {product_other}")
+                    coplayer_last_round_points_computed = "; ".join(details_other) + f" | Total: {total_other} points"
+            else:
+                last_round_points_computed = "0 points, since no agreement was reached"
+                coplayer_last_round_points_computed = "0 points, since no agreement was reached"
+            # -------------------------------------------
+
+            # After computing last_round_points_computed and coplayer_last_round_points_computed, add cumulative points calculations based on historical rounds.
+            rounds_roles = state.get("round_player_roles", [])
+            rounds_points = state.get("round_points", [])
+            cumulative_your_points = 0
+            cumulative_coplayer_points = 0
+            for mapping, rp in zip(rounds_roles, rounds_points):
+                if self.player_name in mapping:
+                    your_role = mapping[self.player_name]
+                    cumulative_your_points += rp.get(your_role, 0)
+                    # Determine the coplayer's name from the round mapping
+                    coplayer_names = [p for p in mapping if p != self.player_name]
+                    if coplayer_names:
+                        cp = coplayer_names[0]
+                        cp_role = mapping[cp]
+                        cumulative_coplayer_points += rp.get(cp_role, 0)
+
             return prompt.replace("{rounds_per_game}", str(state.get("rounds_per_game", ""))) \
                         .replace("{last_round_points}", str(last_round_points)) \
+                        .replace("{last_round_points_computed}", last_round_points_computed) \
+                        .replace("{coplayer_last_round_points_computed_other}", coplayer_last_round_points_computed) \
                         .replace("{current_round}", str(state.get("current_round", ""))) \
                         .replace("{nb_rounds}", str(state["round_number"] + 1)) \
                         .replace("{quantities}", str(state.get("quantities", ""))) \
@@ -314,10 +383,12 @@ class DondPlayerHandler:
                         .replace("{max_errors}", str(self.max_errors)) \
                         .replace("{last_message}", str(state.get("last_message", ""))) \
                         .replace("{other_player_finalization}", str(other_player_finalization)) \
-                        .replace("{remaining_messages}", 
+                        .replace("{remaining_messages}", \
                                  f"Minimum Messages: {min_msgs}, Maximum Messages: {max_msgs}, Current Number Sent: {current_sent}") \
                         .replace("{{finalize_sample_i_take}}", finalize_sample_i_take) \
-                        .replace("{{finalize_sample_other}}", finalize_sample_other)
+                        .replace("{{finalize_sample_other}}", finalize_sample_other) \
+                        .replace("{cumulative_round_points_your}", str(cumulative_your_points)) \
+                        .replace("{cumulative_round_points_coplayer}", str(cumulative_coplayer_points))
         return ""
 
     def get_chat_history(self):
@@ -335,7 +406,7 @@ class DondPlayerHandler:
             state (dict): The current state of the game.
             llm_output (str): The output from the language model.
 
-        Returns:
+        scores:
             tuple: A tuple containing:
                 - observation (dict): The new state of the game.
                 - reward (float): The reward obtained from the action.
@@ -439,7 +510,7 @@ class DondPlayerHandler:
 
     def export(self, path, state_history):
         game_stats = self.gather_statistics_func(state_history, self.conversation_history, **self.gather_statistics_func_args)
-        self.set_chat_returns_func(self.conversation_history, **self.set_chat_returns_func_args)
+        self.set_chat_scores_func(self.conversation_history, **self.set_chat_scores_func_args)
 
         with open(path, "w") as f:
             json.dump(game_stats, f)

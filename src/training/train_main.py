@@ -28,20 +28,20 @@ def train_ppo_main(
         train_ppo_args={},
         output_path=None,
     ):
-    contexts_list, returns_list, output_masks_list = paths_to_rl_data(hf_model.tokenizer, paths)
+    contexts_list, scores_list, output_masks_list = paths_to_rl_data(hf_model.tokenizer, paths)
 
     if isinstance(hf_model.hf_model, AutoModelForCausalLMWithValueHead):
         ppo_train_value_head(model=hf_model.hf_model, 
                 ref_model=hf_model.hf_model, 
                 contexts_list=contexts_list, 
-                returns_list=returns_list, 
+                scores_list=scores_list, 
                 output_masks_list=output_masks_list,
                 **train_ppo_args)
     else:
         ppo_train(model=hf_model.hf_model, 
                 ref_model=hf_model.hf_model, 
                 contexts_list=contexts_list, 
-                returns_list=returns_list, 
+                scores_list=scores_list, 
                 output_masks_list=output_masks_list,
                 **train_ppo_args)
 
@@ -51,10 +51,10 @@ def train_reinforce_main(
         train_reinforce_args={},
         output_path=None,
     ):
-    contexts_list, returns_list, output_masks_list = paths_to_rl_data(hf_model.tokenizer, paths)
+    contexts_list, scores_list, output_masks_list = paths_to_rl_data(hf_model.tokenizer, paths)
     reinforce_train(model=hf_model.hf_model, 
                     contexts_list=contexts_list, 
-                    returns_list=returns_list, 
+                    scores_list=scores_list, 
                     output_masks_list=output_masks_list, 
                     **train_reinforce_args, 
                     output_path=output_path, 
