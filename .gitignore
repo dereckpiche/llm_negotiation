@@ -140,3 +140,4 @@ important_outputs/
 **/__pycache__/
 **/**/__pycache__/
 .venv/
+*.code-workspace
