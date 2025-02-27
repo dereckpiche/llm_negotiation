@@ -46,11 +46,11 @@ def reinforce_train(
         float: The total loss value for the training step.
     """
     model.train()
-    if output_path: 
-        output_train_data_debug(output_path, 
-                                contexts_list, 
-                                scores_list, 
-                                output_masks_list, 
+    if output_path:
+        output_train_data_debug(output_path,
+                                contexts_list,
+                                returns_list,
+                                output_masks_list,
                                 tokenizer)
 
     # Create optimizer if not provided

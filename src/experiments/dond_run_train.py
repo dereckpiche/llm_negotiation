@@ -100,7 +100,8 @@ def dond_run_train(cfg, random_seed):
 
     # Get Hydra's runtime output directory which includes date and config info.
     hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
-    output_directory = hydra_cfg["runtime"]["output_dir"]
+    output_directory = f"{hydra_cfg['runtime']['output_dir']}/seed_{random_seed}"
+    os.makedirs(output_directory, exist_ok=True)
 
     # Initialize models
     models = init_models(cfg, random_seed=random_seed, output_directory=output_directory)
