@@ -65,7 +65,7 @@ matches:
     min_messages: 1
     max_chars_per_message: 400
     mode: basic
-    random_setup_func: uniform_quant_random_vals
+    random_setup_func: dond_random_setup
     random_setup_kwargs:
       items: ['coins'] # ['hats', 'balls', 'books']
       min_quant: 1
