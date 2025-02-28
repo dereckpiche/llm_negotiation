@@ -5,7 +5,8 @@ import time
 from utils.common_imports import *
 
 # Local imports
-from models.hf_agent import HfAgent
+from llms.local_llm import LocalLLM
+from llms.server_llm import ServerLLM
 from environments.dond.dond_player import DondPlayerHandler
 from environments.dond.dond_game import DondGame
 from models.dummy_hf_agent import DummyHfAgent
@@ -25,13 +26,13 @@ compute__logger = logging.getLogger("compute__logger")
 def init_models(cfg, random_seed, output_directory):
     models = {}
     for model_name in cfg["models"].keys():
-        if cfg["models"][model_name]["class"] == "hf":
-            models[model_name] = HfAgent(**cfg["models"][model_name]["init_args"], random_seed=random_seed,
+        if cfg["models"][model_name]["class"] == "local_llm":
+            models[model_name] = LocalLLM(**cfg["models"][model_name]["init_args"], random_seed=random_seed,
                                          output_directory=output_directory)
-        elif cfg["models"][model_name]["class"] == "dummy_hf":
-            models[model_name] = DummyHfAgent(**cfg["models"][model_name]["init_args"])
-        elif cfg["models"][model_name]["class"] == "oai":
-            models[model_name] = OaiAgent(**cfg["models"][model_name]["init_args"])
+        elif cfg["models"][model_name]["class"] == "dummy_llm":
+            models[model_name] = DummyLLM(**cfg["models"][model_name]["init_args"])
+        elif cfg["models"][model_name]["class"] == "server_llm":
+            models[model_name] = ServerLLM(**cfg["models"][model_name]["init_args"])
     return models
 
 

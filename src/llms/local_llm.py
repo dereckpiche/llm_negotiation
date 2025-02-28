@@ -32,9 +32,9 @@ memory_logger = logging.getLogger("memory_logger")
 model_logger = logging.getLogger("model_logger")
 
 
-class HfAgent:
+class LocalLLM:
     """
-    HfAgent is an agent that utilizes HuggingFace models for causal language modeling.
+    LocalLLM is an agent that utilizes HuggingFace models for causal language modeling.
     It supports training using Proximal Policy Optimization (PPO) and saving/loading models.
     """
 
@@ -49,6 +49,7 @@ class HfAgent:
         lora_args=None,
         adapter_names=None,
         generation_args=None,
+        sgl_args=None,
         include_value_head=True,
         keep_vllm_during_training=False,
         keep_hf_during_training=True,
@@ -60,11 +61,11 @@ class HfAgent:
         random_seed: int = 42,
     ) -> None:
         """
-        Initializes the HfAgent.
+        Initializes the LocalLLM.
         """
         super().__init__()
         self.name = name
-        self.device = torch.device(device) if device else torch.device("cuda")
+        self.device = torch.device(device) if device else torch.device("cuda:0")
         self.model_name = model_name
         self.include_value_head = include_value_head
         self.pretrained_args = pretrained_args
@@ -84,6 +85,7 @@ class HfAgent:
             top_p=generation_args["top_p"],
             max_tokens=generation_args["max_new_tokens"],
         )
+        self.sgl_sampling_params = sgl_args if sgl_args is not None else self.hf_sampling_params
         self.lora_config = LoraConfig(**lora_args)
         self.active_adapters = {adapter_name: False for adapter_name in adapter_names}
         self.current_adapter_name = None
@@ -111,6 +113,12 @@ class HfAgent:
         """
         Prepares the agent for training with the specified adapter.
         """
+        ######################################
+        # Prepare training model with HF
+        ######################################
+
+        torch.cuda.set_device(self.device.index)
+
         self.destroy_hf()
         if not self.keep_vllm_during_training:
             self.destroy_vllm()
@@ -148,6 +156,9 @@ class HfAgent:
                 self.hf_model.train()
                 model_logger.info(f"Adapter '{self.current_adapter_name}' loaded to HF from {adapter_path}.")
 
+            # Ensure HF model is moved to the proper device
+            self.hf_model.to(self.device)
+
             # Log trainable parameters
             total_params = sum(p.numel() for p in self.hf_model.parameters())
             trainable_params = sum(p.numel() for p in self.hf_model.parameters() if p.requires_grad)
@@ -165,15 +176,18 @@ class HfAgent:
         """
         Prepares the agent for evaluation with the specified adapter.
         """
+        torch.cuda.set_device(self.device.index)
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(self.device.index)
         if not self.keep_hf_during_eval:
             self.destroy_hf()
         if not self.keep_vllm_during_eval:
             self.destroy_vllm()
-
         model_logger.info(f"Preparing adapter {adapter_name} for evaluation.")
-
         self.current_adapter_name = adapter_name
 
+        ######################################
+        # Prepare evaluation model with vLLM
+        ######################################
         if self.eval_with == "vllm":
             if self.vllm_model is None:
                 self.log_gpu_usage(f"Before loading VLLM model with {adapter_name}.")
@@ -183,19 +197,22 @@ class HfAgent:
                                       max_lora_rank=256,
                                       seed=self.random_seed,
                                       max_model_len=self.max_model_length,
-                                      dtype=self.pretrained_args["torch_dtype"]
+                                      tensor_parallel_size=1,
+                                      dtype=self.pretrained_args["torch_dtype"],
+                                      device=self.device
                                       )
                 end_time = time.time()
                 compute_logger.info(f"VLLM model loading time: {end_time - start_time:.2f} seconds.")
                 self.log_gpu_usage(f"After loading VLLM model with {adapter_name}.")
 
+        ######################################
+        # Prepare evaluation model with vLLM
+        ######################################
         elif self.eval_with == "hf":
             if self.hf_model is None:
                 start_time = time.time()
                 model_logger.info("Loading HF model for evaluation.")
-
                 adapter_path = self.adapters[self.current_adapter_name]
-
                 if adapter_path is None:
                     self.hf_model = AutoModelForCausalLM.from_pretrained(
                         **self.pretrained_args,
@@ -213,34 +230,46 @@ class HfAgent:
                         model_id=adapter_path
                     )
                     model_logger.info(f"HF model loaded with LoRA weights from {adapter_path}.")
-
                 self.hf_model.eval()
-
                 end_time = time.time()
                 compute_logger.info(f"HF model loading time: {end_time - start_time:.2f} seconds.")
                 self.log_gpu_usage("After loading HF model.")
 
-
+        ######################################
+        # Prepare evaluation model with SGL
+        ######################################
+        elif self.eval_with == "sgl":
+            if self.sgl_model is None:
+                self.log_gpu_usage(f"Before loading SGL model with {adapter_name}.")
+                start_time = time.time()
+                import sgl
+                self.sgl_model = sglang.LLM(
+                    self.model_name,
+                    use_adapter=True,
+                    adapter_path=self.adapters[self.current_adapter_name],
+                    seed=self.random_seed,
+                    max_model_len=self.max_model_length,
+                    device=self.device
+                )
+                self.sgl_model.to(self.device)
+                end_time = time.time()
+                compute_logger.info(f"SGL model loading time: {end_time - start_time:.2f} seconds.")
+                self.log_gpu_usage(f"After loading SGL model with {adapter_name}.")
 
     def destroy_hf(self):
         """
         Destroys the Hugging Face model to free up memory.
         """
         model_logger.info("Destroying HF model.")
-
         if self.hf_model is not None:
             self.log_gpu_usage("Before destroying HF.")
-
             start_time = time.time()
-
             del self.hf_model
             gc.collect()
             torch.cuda.empty_cache()
             self.hf_model = None
-
             end_time = time.time()
             compute_logger.info(f"HF model unloading time: {end_time - start_time:.2f} seconds.")
-
             self.log_gpu_usage("After destroying HF.")
 
 
@@ -249,33 +278,24 @@ class HfAgent:
         Destroys the VLLM model to free up memory.
         """
         start_time = time.time()
-
         if self.vllm_model is not None:
-
             self.log_gpu_usage("Before destroying VLLM")
-
             del self.vllm_model
             gc.collect()
             torch.cuda.empty_cache()
             self.vllm_model = None
-
             torch.cuda.reset_peak_memory_stats()
             torch.cuda.synchronize()
-
             torch.cuda.device(0)
             torch.cuda.synchronize()
             torch.cuda.empty_cache()
-
-
             self.log_gpu_usage("After destroying VLLM.")
-
         end_time = time.time()
         compute_logger.info(f"VLLM model unloading time: {end_time - start_time:.2f} seconds.")
 
     def log_gpu_usage(self, message: str) -> None:
         """
         Logs the GPU memory usage.
-
         Args:
             message (str): A message to include in the log.
         """
@@ -287,23 +307,34 @@ class HfAgent:
     def prompt(self, contexts) -> str:
         """
         Generates a response from the model based on the provided contexts.
-
         Args:
-            contexts (List[dict]): The contexts for generation.
-
-        scores:
-            str: The generated response from the model.
+            contexts (List[List[dict]]): The contexts for generation.
+            Each context should be of the form:
+            [ {
+                "role": "user",
+                "content": "Hello, how are you?"
+            },
+            {
+                "role": "assistant",
+                "content": "I'm fine, thank you!"
+            }
+            ...
+            ]
+        Output:
+            List[str]: The generated responses from the model.
         """
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(self.device.index)
         adapter_path = self.adapters[self.current_adapter_name]
         if len(contexts) == 0:
             return []
-
         texts = self.tokenizer.apply_chat_template(
             contexts, tokenize=False, add_generation_prompt=True
         )
-
         start_time = time.time()
 
+        ###############################
+        # Generate response with vLLM
+        ###############################
         if self.eval_with == "vllm":
             with torch.no_grad():
                 if adapter_path is not None:
@@ -322,6 +353,10 @@ class HfAgent:
             responses = [d.outputs[0].text for d in decoded]
             del decoded
 
+
+        ###############################
+        # Generate responses with HF
+        ###############################
         elif self.eval_with == "hf":
             if self.hf_model is None:
                 model_logger.error("HF model is not loaded. Cannot proceed with generation.")
@@ -333,8 +368,8 @@ class HfAgent:
 
                 encoded_inputs = self.tokenizer(
                     texts, return_tensors="pt", padding=True, truncation=True
-                ).to(self.device)
-
+                )
+                encoded_inputs = {k: v.to(self.device) for k, v in encoded_inputs.items()}
                 output_tokens = self.hf_model.generate(
                     **encoded_inputs,
                     max_new_tokens=self.hf_sampling_params["max_new_tokens"],
@@ -342,14 +377,38 @@ class HfAgent:
                     top_k=self.hf_sampling_params["top_k"],
                     top_p=self.hf_sampling_params["top_p"],
                 )
-
                 responses = self.tokenizer.batch_decode(
                     output_tokens, skip_special_tokens=True
                 )
-
                 gc.collect()
                 torch.cuda.empty_cache()
                 self.log_gpu_usage("After HF generation")
+
+        ###############################
+        # Generate responses with SGL
+        ###############################
+        elif self.eval_with == "sgl":
+            if self.sgl_model is None:
+                model_logger.error("SGL model is not loaded. Cannot proceed with generation.")
+                return []
+            with torch.no_grad():
+                model_logger.info("Generating using SGL.")
+                self.log_gpu_usage("Before SGL generation")
+                encoded_inputs = self.tokenizer(
+                    texts, return_tensors="pt", padding=True, truncation=True
+                )
+                encoded_inputs = {k: v.to(self.device) for k, v in encoded_inputs.items()}
+                output_tokens = self.sgl_model.generate(
+                    **encoded_inputs,
+                    max_new_tokens=self.sgl_sampling_params["max_new_tokens"],
+                    temperature=self.sgl_sampling_params["temperature"],
+                    top_k=self.sgl_sampling_params["top_k"],
+                    top_p=self.sgl_sampling_params["top_p"]
+                )
+                responses = self.tokenizer.batch_decode(output_tokens, skip_special_tokens=True)
+                gc.collect()
+                torch.cuda.empty_cache()
+                self.log_gpu_usage("After SGL generation")
 
         else:
             model_logger.error(f"Unsupported generation method: {self.eval_with}")

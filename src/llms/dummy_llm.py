@@ -1,9 +1,9 @@
 from typing import List
 from utils.common_imports import *
 
-from models.hf_agent import *
+from llms.local_llm import *
 
-class DummyHfAgent(HfAgent):
+class Dummy (LocalLLM):
     def prompt(self, contexts) -> str:
         return ["" for item in contexts]
     def use_hf_model(self): return
