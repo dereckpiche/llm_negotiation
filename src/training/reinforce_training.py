@@ -24,6 +24,7 @@ def reinforce_train(
         learning_rate=1e-5,
         output_path=None,
         tokenizer=None,
+        entropy_coef=0.0,
         temperature=1.0  # new hyperparameter to control softmax temperature during training
         ):
     """
@@ -49,7 +50,7 @@ def reinforce_train(
     if output_path:
         output_train_data_debug(output_path,
                                 contexts_list,
-                                returns_list,
+                                scores_list,
                                 output_masks_list,
                                 tokenizer)
 
@@ -92,31 +93,38 @@ def reinforce_train(
             mask_batch = pad_sequence(mask_batch, batch_first=True).float()
 
             # Create attention mask to ignore padding tokens
-            attention_mask = (context_batch != 0).long()
+            attention_mask = (context_batch != 0).long()  # context_batch: (B, S) -> attention_mask: (B, S)
 
             # Move data to the appropriate device
-            action_batch = action_batch.to(model_accelerator.device)
-            context_batch = context_batch.to(model_accelerator.device)
-            return_batch = return_batch.to(model_accelerator.device)
-            mask_batch = mask_batch.to(model_accelerator.device)
-            attention_mask = attention_mask.to(model_accelerator.device)
+            action_batch = action_batch.to(model_accelerator.device)     # (B, S)
+            context_batch = context_batch.to(model_accelerator.device)     # (B, S)
+            return_batch = return_batch.to(model_accelerator.device)       # (B, S)
+            mask_batch = mask_batch.to(model_accelerator.device)           # (B, S)
+            attention_mask = attention_mask.to(model_accelerator.device)   # (B, S)
 
             # Forward pass
             outputs = model(input_ids=context_batch, attention_mask=attention_mask)
-            logits = outputs[0]
+            logits = outputs[0]  # (B, S, V)
             # Apply temperature scaling before computing log probabilities
             assert temperature > 0, "Temperature must be greater than 0."
-            scaled_logits = logits / temperature
+            scaled_logits = logits / temperature  # (B, S, V)
             # Compute new log probabilities
-            log_probs = F.log_softmax(scaled_logits, dim=-1)
-            action_log_probs = log_probs.gather(dim=-1, index=action_batch.unsqueeze(-1)).squeeze(-1)
+            log_probs = F.log_softmax(scaled_logits, dim=-1)  # (B, S, V)
+            action_log_probs = log_probs.gather(dim=-1, index=action_batch.unsqueeze(-1)).squeeze(-1)  # (B, S)
 
-            # Apply mask to log probabilities and values
-            rewarded_action_log_probs = action_log_probs * (return_batch * mask_batch)
-            loss = -rewarded_action_log_probs.sum()
-            loss = loss / nb_trajectories_we_train_on # we mean contributions across trajectories
+            # Get masked log probabilities
+            rewarded_action_log_probs = action_log_probs * (return_batch * mask_batch)  # (B, S)
+
+            # Compute entropy regularization term
+            entropy = -log_probs * F.softmax(scaled_logits, dim=-1)  # (B, S, V)
+            entropy = entropy.sum(dim=-1)  # (B, S)
+            entropy = entropy * mask_batch  # (B, S)
+
+            # Compute loss 
+            loss = -rewarded_action_log_probs.sum() - entropy_coef * entropy.sum()  # scalar
 
             # Accumulate gradients
+            loss = loss / nb_trajectories_we_train_on  # scalar (averaged across trajectories)
             model_accelerator.backward(loss)
 
             # Update max GPU memory usage

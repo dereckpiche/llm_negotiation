@@ -5,7 +5,7 @@ hydra:
     chdir: false
 
 experiment:
-  name: "multi_round_dond_4_rounds_easier_collab"
+  name: "dond_1_round_easier_collab_entropy_3e-6"
   method: dond_run_train
   description: "no description"
   nb_epochs: 1000
@@ -13,7 +13,7 @@ experiment:
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: false
-  random_seeds: [33, 53, 97, 153, 468, 484, 2959, 5145, 6368, 8602]
+  random_seeds: [1]
 
 ####################################################################################################
 #                                           GENERATION                                               
@@ -42,6 +42,7 @@ matches:
         "greedy_dominant_points_difference_on_agreement",
         "greedy_submission_points_difference_on_agreement",
         "cooperative_points_difference_on_agreement",
+        "coplayer_cooperative_points_difference_on_agreement",
         "split_equal_points_difference_on_agreement",
         "total_coop_points_difference_on_agreement_player",
         "total_coop_points_difference_on_agreement_coplayer",
@@ -50,15 +51,9 @@ matches:
         "total_coop_points_difference_player",
         "total_coop_points_difference_coplayer"
         ]
-      training_data_func: bicameral_vals_assignator
+      training_data_func: set_discounted_sum_rewards_scores
       training_data_func_args:
-        items: ['coins']
-        min_quant: 1
-        max_quant: 12
-        low_val_mean: 3
-        low_val_std: 1
-        high_val_mean: 15
-        high_val_std: 1
+        discount_factor: 0.99
         
   dond_game_args:
     rounds_per_game: 4
@@ -66,13 +61,15 @@ matches:
     min_messages: 1
     max_chars_per_message: 400
     mode: basic
-    random_setup_func: dond_random_setup
+    random_setup_func: bicameral_vals_assignator
     random_setup_kwargs:
       items: ['coins'] # ['hats', 'balls', 'books']
       min_quant: 1
-      max_quant: 12
-      min_val: 1
-      max_val: 10
+      max_quant: 10
+      low_val_mean: 4
+      low_val_std: 1
+      high_val_mean: 15
+      high_val_std: 1
     role_assignator_func: alternating_role_assignator
     role_assignator_func_kwargs: {}
 
@@ -171,14 +168,14 @@ training:
         train_func: train_reinforce_main
         train_func_args:
           temperature: 1
-          learning_rate: 3e-6
-
+          learning_rate: 1e-6
+          entropy_coef: 1e-6
       ad_bob:
         train_func: train_reinforce_main
         train_func_args:
           temperature: 1
-          learning_rate: 3e-6
-
+          learning_rate: 1e-6
+          entropy_coef: 1e-6
 
 ####################################################################################################
 # PROMPT DEFINITIONS                                          
