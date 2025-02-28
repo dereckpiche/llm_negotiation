@@ -11,7 +11,7 @@ class DondPlayerHandler:
         player_name,
         allow_reasoning,
         max_errors,
-        mod_adpt_id,
+        llm_and_adapter_id,
         max_reasoning_chars,
         intro_prompt,
         goal_prompt,
@@ -31,7 +31,7 @@ class DondPlayerHandler:
             player_name (str): The name of the player.
             allow_reasoning (bool): Whether reasoning is allowed.
             max_errors (int): Maximum number of retries allowed.
-            mod_adpt_id (str): The model adapter id to use.
+            llm_and_adapter_id (str): The model adapter id to use.
             max_reasoning_chars (int): Maximum reasoning characters allowed.
             intro_prompt (str): Prompt for the game introduction.
             goal_prompt (str): Prompt for the player's goal.
@@ -47,7 +47,7 @@ class DondPlayerHandler:
         self.player_name = player_name
         self.allow_reasoning = allow_reasoning
         self.max_errors = max_errors
-        self.mod_adpt_id = mod_adpt_id
+        self.llm_and_adapter_id = llm_and_adapter_id
         self.max_reasoning_chars = max_reasoning_chars
 
         self.intro_prompt = intro_prompt

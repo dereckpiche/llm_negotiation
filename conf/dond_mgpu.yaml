@@ -78,7 +78,7 @@ matches:
     alice:
 
       dond_player_args:
-        mod_adpt_id: 'llama_0/ad_alice'
+        llm_and_adapter_id: 'llama_0/ad_alice'
         max_errors: 2
         allow_reasoning: true
         max_reasoning_chars: 400
@@ -96,7 +96,7 @@ matches:
     bob:
 
       dond_player_args:
-        mod_adpt_id: 'llama_1/ad_bob'
+        llm_and_adapter_id: 'llama_1/ad_bob'
         max_errors: 2
         allow_reasoning: true
         max_reasoning_chars: 400

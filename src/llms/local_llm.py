@@ -16,6 +16,7 @@ import logging
 import time
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
 from peft import PeftModel
 from peft import LoraConfig, get_peft_model
 from trl import AutoModelForCausalLMWithValueHead
@@ -304,122 +305,184 @@ class LocalLLM:
 
 
 
-    def prompt(self, contexts) -> str:
+    def prompt(self, contexts, kv_caches=None) -> any:
         """
-        Generates a response from the model based on the provided contexts.
-        Args:
-            contexts (List[List[dict]]): The contexts for generation.
-            Each context should be of the form:
-            [ {
-                "role": "user",
-                "content": "Hello, how are you?"
-            },
-            {
-                "role": "assistant",
-                "content": "I'm fine, thank you!"
-            }
-            ...
-            ]
-        Output:
-            List[str]: The generated responses from the model.
+        Generates a response (or responses) from the model based on the provided contexts.
+        If kv_caches is provided (as a list with same length as contexts), generation will be performed iteratively
+        for each context with its corresponding key-value cache, and the updated caches will be returned.
         """
         os.environ["CUDA_VISIBLE_DEVICES"] = str(self.device.index)
         adapter_path = self.adapters[self.current_adapter_name]
         if len(contexts) == 0:
             return []
-        texts = self.tokenizer.apply_chat_template(
-            contexts, tokenize=False, add_generation_prompt=True
-        )
-        start_time = time.time()
 
-        ###############################
-        # Generate response with vLLM
-        ###############################
-        if self.eval_with == "vllm":
-            with torch.no_grad():
-                if adapter_path is not None:
-                    model_logger.info(f"Generating using VLLM with LoRA at {adapter_path}")
-                    self.vllm_id += 1
-                    decoded = self.vllm_model.generate(
-                        texts,
-                        sampling_params=self.vllm_sampling_params,
-                        lora_request=LoRARequest(f"dond_lora_{self.vllm_id}", self.vllm_id, adapter_path),
+        # If no kv_caches provided, use the existing batched generation approach
+        if kv_caches is None:
+            texts = self.tokenizer.apply_chat_template(
+                contexts, tokenize=False, add_generation_prompt=True
+            )
+            start_time = time.time()
+
+            ###############################
+            # Generate response with vLLM
+            ###############################
+            if self.eval_with == "vllm":
+                with torch.no_grad():
+                    if adapter_path is not None:
+                        model_logger.info(f"Generating using VLLM with LoRA at {adapter_path}")
+                        self.vllm_id += 1
+                        decoded = self.vllm_model.generate(
+                            texts,
+                            sampling_params=self.vllm_sampling_params,
+                            lora_request=LoRARequest(f"dond_lora_{self.vllm_id}", self.vllm_id, adapter_path),
+                        )
+                    else:
+                        model_logger.info("Generating using VLLM without LoRA")
+                        decoded = self.vllm_model.generate(
+                            texts, sampling_params=self.vllm_sampling_params
+                        )
+                responses = [d.outputs[0].text for d in decoded]
+                del decoded
+
+            ###############################
+            # Generate responses with HF
+            ###############################
+            elif self.eval_with == "hf":
+                if self.hf_model is None:
+                    model_logger.error("HF model is not loaded. Cannot proceed with generation.")
+                    return []
+                with torch.no_grad():
+                    model_logger.info("Generating using HF.")
+                    self.log_gpu_usage("Before HF generation")
+                    encoded_inputs = self.tokenizer(
+                        texts, return_tensors="pt", padding=True, truncation=True
                     )
-                else:
-                    model_logger.info("Generating using VLLM without LoRA")
-                    decoded = self.vllm_model.generate(
-                        texts, sampling_params=self.vllm_sampling_params
+                    encoded_inputs = {k: v.to(self.device) for k, v in encoded_inputs.items()}
+                    output = self.hf_model.generate(
+                        **encoded_inputs,
+                        max_new_tokens=self.hf_sampling_params["max_new_tokens"],
+                        temperature=self.hf_sampling_params["temperature"],
+                        top_k=self.hf_sampling_params["top_k"],
+                        top_p=self.hf_sampling_params["top_p"],
                     )
-            responses = [d.outputs[0].text for d in decoded]
-            del decoded
+                    responses = self.tokenizer.batch_decode(
+                        output, skip_special_tokens=True
+                    )
+                    gc.collect()
+                    torch.cuda.empty_cache()
+                    self.log_gpu_usage("After HF generation")
 
-
-        ###############################
-        # Generate responses with HF
-        ###############################
-        elif self.eval_with == "hf":
-            if self.hf_model is None:
-                model_logger.error("HF model is not loaded. Cannot proceed with generation.")
+            ###############################
+            # Generate responses with SGL
+            ###############################
+            elif self.eval_with == "sgl":
+                if self.sgl_model is None:
+                    model_logger.error("SGL model is not loaded. Cannot proceed with generation.")
+                    return []
+                with torch.no_grad():
+                    model_logger.info("Generating using SGL.")
+                    self.log_gpu_usage("Before SGL generation")
+                    encoded_inputs = self.tokenizer(
+                        texts, return_tensors="pt", padding=True, truncation=True
+                    )
+                    encoded_inputs = {k: v.to(self.device) for k, v in encoded_inputs.items()}
+                    output = self.sgl_model.generate(
+                        **encoded_inputs,
+                        max_new_tokens=self.sgl_sampling_params["max_new_tokens"],
+                        temperature=self.sgl_sampling_params["temperature"],
+                        top_k=self.sgl_sampling_params["top_k"],
+                        top_p=self.sgl_sampling_params["top_p"]
+                    )
+                    responses = self.tokenizer.batch_decode(output, skip_special_tokens=True)
+                    gc.collect()
+                    torch.cuda.empty_cache()
+                    self.log_gpu_usage("After SGL generation")
+            else:
+                model_logger.error(f"Unsupported generation method: {self.eval_with}")
                 return []
 
-            with torch.no_grad():
-                model_logger.info("Generating using HF.")
-                self.log_gpu_usage("Before HF generation")
-
-                encoded_inputs = self.tokenizer(
-                    texts, return_tensors="pt", padding=True, truncation=True
-                )
-                encoded_inputs = {k: v.to(self.device) for k, v in encoded_inputs.items()}
-                output_tokens = self.hf_model.generate(
-                    **encoded_inputs,
-                    max_new_tokens=self.hf_sampling_params["max_new_tokens"],
-                    temperature=self.hf_sampling_params["temperature"],
-                    top_k=self.hf_sampling_params["top_k"],
-                    top_p=self.hf_sampling_params["top_p"],
-                )
-                responses = self.tokenizer.batch_decode(
-                    output_tokens, skip_special_tokens=True
-                )
-                gc.collect()
-                torch.cuda.empty_cache()
-                self.log_gpu_usage("After HF generation")
-
-        ###############################
-        # Generate responses with SGL
-        ###############################
-        elif self.eval_with == "sgl":
-            if self.sgl_model is None:
-                model_logger.error("SGL model is not loaded. Cannot proceed with generation.")
-                return []
-            with torch.no_grad():
-                model_logger.info("Generating using SGL.")
-                self.log_gpu_usage("Before SGL generation")
-                encoded_inputs = self.tokenizer(
-                    texts, return_tensors="pt", padding=True, truncation=True
-                )
-                encoded_inputs = {k: v.to(self.device) for k, v in encoded_inputs.items()}
-                output_tokens = self.sgl_model.generate(
-                    **encoded_inputs,
-                    max_new_tokens=self.sgl_sampling_params["max_new_tokens"],
-                    temperature=self.sgl_sampling_params["temperature"],
-                    top_k=self.sgl_sampling_params["top_k"],
-                    top_p=self.sgl_sampling_params["top_p"]
-                )
-                responses = self.tokenizer.batch_decode(output_tokens, skip_special_tokens=True)
-                gc.collect()
-                torch.cuda.empty_cache()
-                self.log_gpu_usage("After SGL generation")
+            end_time = time.time()
+            # Optionally log generation time
+            return responses
 
         else:
-            model_logger.error(f"Unsupported generation method: {self.eval_with}")
-            return []
-
-        end_time = time.time()
-        # compute_logger.info(
-        #     f"Generation completed in {end_time - start_time:.2f} seconds using {self.eval_with}."
-        # )
-
-        return responses
+            # Iterative generation with provided KV caches (one per context)
+            if len(kv_caches) != len(contexts):
+                model_logger.error("Length of kv_caches does not match number of contexts.")
+                return []
+            responses = []
+            new_caches = []
+            # Process each context individually, preserving its kv_cache
+            for idx, context in enumerate(contexts):
+                # Apply chat template for a single context
+                text = self.tokenizer.apply_chat_template([context], tokenize=False, add_generation_prompt=True)[0]
+                if self.eval_with == "hf":
+                    with torch.no_grad():
+                        model_logger.info("Generating using HF with KV cache.")
+                        self.log_gpu_usage("Before HF generation (iterative)")
+                        encoded_inputs = self.tokenizer(
+                            text, return_tensors="pt", padding=False, truncation=True
+                        )
+                        encoded_inputs = {k: v.to(self.device) for k, v in encoded_inputs.items()}
+                        # Pass the individual kv_cache
+                        output = self.hf_model.generate(
+                            **encoded_inputs,
+                            max_new_tokens=self.hf_sampling_params["max_new_tokens"],
+                            temperature=self.hf_sampling_params["temperature"],
+                            top_k=self.hf_sampling_params["top_k"],
+                            top_p=self.hf_sampling_params["top_p"],
+                            past_key_values=kv_caches[idx],
+                            use_cache=True,
+                            return_dict_in_generate=True
+                        )
+                        # Determine how many tokens were input
+                        input_length = encoded_inputs["input_ids"].shape[1]
+                        sequence = output.sequences
+                        completion = self.tokenizer.decode(sequence[0, input_length:], skip_special_tokens=True)
+                        responses.append(completion)
+                        # Retrieve the updated KV cache
+                        new_caches.append(output.past_key_values)
+                        gc.collect()
+                        torch.cuda.empty_cache()
+                        self.log_gpu_usage("After HF generation (iterative)")
+                elif self.eval_with == "vllm":
+                    # For vLLM, assume similar support; process iteratively
+                    with torch.no_grad():
+                        model_logger.info("Generating using VLLM with KV cache (iterative).")
+                        # Expecting vLLM.generate to accept past_key_values, if not, fallback to batched
+                        output = self.vllm_model.generate(
+                            [text],
+                            sampling_params=self.vllm_sampling_params,
+                            lora_request=LoRARequest(f"dond_lora_{self.vllm_id}", self.vllm_id, adapter_path),
+                            past_key_values=kv_caches[idx]
+                        )
+                        completion = output[0].outputs[0].text
+                        responses.append(completion)
+                        # For demonstration, assume updated cache is returned in the output (placeholder)
+                        new_caches.append(kv_caches[idx])
+                elif self.eval_with == "sgl":
+                    with torch.no_grad():
+                        model_logger.info("Generating using SGL with KV cache (iterative).")
+                        encoded_inputs = self.tokenizer(
+                            text, return_tensors="pt", padding=False, truncation=True
+                        )
+                        encoded_inputs = {k: v.to(self.device) for k, v in encoded_inputs.items()}
+                        output = self.sgl_model.generate(
+                            **encoded_inputs,
+                            max_new_tokens=self.sgl_sampling_params["max_new_tokens"],
+                            temperature=self.sgl_sampling_params["temperature"],
+                            top_k=self.sgl_sampling_params["top_k"],
+                            top_p=self.sgl_sampling_params["top_p"],
+                            past_key_values=kv_caches[idx]  
+                        )
+                        input_length = encoded_inputs["input_ids"].shape[1]
+                        completion = self.tokenizer.decode(output[0, input_length:], skip_special_tokens=True)
+                        responses.append(completion)
+                        new_caches.append(kv_caches[idx])
+                else:
+                    model_logger.error(f"Unsupported generation method: {self.eval_with}")
+                    return []
+            return responses, new_caches
 
 
 

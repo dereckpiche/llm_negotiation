@@ -114,7 +114,7 @@ matches:
 
       dond_player_args:
 
-        mod_adpt_id: 'llama/ad_alice'
+        llm_and_adapter_id: 'llama/ad_alice'
         allow_reasoning: false
         max_errors: 1
         max_reasoning_chars: 0
@@ -130,7 +130,7 @@ matches:
 
       dond_player_args:
 
-        mod_adpt_id: 'llama/ad_bob'
+        llm_and_adapter_id: 'llama/ad_bob'
         allow_reasoning: false
         max_errors: 1
         max_reasoning_chars: 0

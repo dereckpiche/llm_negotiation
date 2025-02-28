@@ -179,12 +179,12 @@ def dond_run_train(cfg, random_seed):
         for model_name, model in models.items():
             if hasattr(model, 'adapters'):
                 for adapter_name in model.adapters.keys():
-                    mod_adpt_id = f"{model_name}/{adapter_name}"
+                    llm_and_adapter_id = f"{model_name}/{adapter_name}"
                     model.prepare_adapter_train(adapter_name)
 
                     data_paths = []
                     for player in players.values():
-                        if player.mod_adpt_id == mod_adpt_id:
+                        if player.llm_and_adapter_id == llm_and_adapter_id:
                             player_export_path = os.path.join(it_folder, player.player_name, "training")
                             data_paths.append(player_export_path)
 
