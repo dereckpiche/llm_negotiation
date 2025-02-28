@@ -9,7 +9,7 @@ experiment:
   method: dond_run_train
   description: "Easy. They should be learning."
   nb_epochs: 100
-  nb_matches_per_iteration: 32
+  nb_matches_per_iteration: 64
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: true
@@ -53,7 +53,7 @@ models:
         #load_in_4bit: true
       lora_args:
         task_type: CAUSAL_LM
-        r: 64
+        r: 16
         lora_alpha: 32
         lora_dropout: 0.0
         target_modules: "all-linear"
@@ -68,9 +68,9 @@ models:
 
       keep_vllm_during_training: False
       keep_hf_during_training: True
-      keep_hf_during_eval: False
-      keep_vllm_during_eval: True
-      eval_with: "vllm"
+      keep_hf_during_eval: True
+      keep_vllm_during_eval: False
+      eval_with: "hf"
       train_with: "hf"
 
 matches:

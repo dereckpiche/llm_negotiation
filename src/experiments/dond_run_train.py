@@ -177,8 +177,8 @@ def dond_run_train(cfg, random_seed):
         training_start_time = time.time()
 
         for model_name, model in models.items():
-            if hasattr(model, 'adapters'):
-                for adapter_name in model.adapters.keys():
+            if hasattr(model, 'adapter_names'):
+                for adapter_name in model.adapter_names:
                     mod_adpt_id = f"{model_name}/{adapter_name}"
                     model.prepare_adapter_train(adapter_name)
 
@@ -197,6 +197,9 @@ def dond_run_train(cfg, random_seed):
                             train_func_args=train_func_args,
                             output_path=it_folder
                         )
+                        # TODO: Add argument for export_current_adapter
+                        if iteration % 50 == 0:
+                            model.export_current_adapter()
 
         training_end_time = time.time()
 

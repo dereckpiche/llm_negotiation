@@ -7,6 +7,7 @@ from omegaconf import OmegaConf
 from experiments.dond_run_train import dond_run_train
 from experiments.arithmetic_test import arithmetic_test
 
+#TODO: figure out a good way to handle the config files names
 @hydra.main(config_path="../conf", config_name="default")
 def main(cfg):
 

@@ -23,6 +23,7 @@ def run_matches(
     Returns:
         None
     """
+    # TODO: Ask Dereck to explain this code (I don't understand it), where are deciding if output is error and requering a new match?
     if nb_parallel_matches == -1:
         nb_parallel_matches = len(matches)
 
@@ -56,7 +57,7 @@ def run_matches(
             adapter_name = mod_adpt_id.split("/")[1]
             model = models[model_name]
             if prompt_batches[mod_adpt_id]:
-                if hasattr(model, 'adapters'):
+                if hasattr(model, 'adapter_names'):
                     model.prepare_adapter_eval(adapter_name)
                 response_batches[mod_adpt_id] = model.prompt(prompt_batches[mod_adpt_id])
             prompt_batches[mod_adpt_id] = []

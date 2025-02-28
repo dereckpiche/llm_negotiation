@@ -90,6 +90,7 @@ class DondGame:
 
 
     def step(self, action):
+        # TODO: might need a rewrite (seems convoluted)
         """
         Advances the game by one step.
 
