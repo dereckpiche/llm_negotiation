@@ -21,10 +21,12 @@ def main(cfg):
         "games_logger",
     ]
 
+    print("Total epochs: ", cfg.experiment.nb_epochs)
+
     # Dynamically configure handlers for specific loggers
     for logger_name in specific_loggers:
         logger = logging.getLogger(logger_name)
-        log_dir = os.path.join(hydra_run_dir, f"seed_{cfg.experiment.random_seed}")  # Extract directory path
+        log_dir = os.path.join(hydra_run_dir, f"seed_{cfg.experiment.base_seed}")  # Extract directory path
         os.makedirs(log_dir, exist_ok=True)  # Ensure directory exists
 
         log_file = os.path.join(log_dir, f"{logger_name}.log")
@@ -39,8 +41,9 @@ def main(cfg):
     sys.stderr = LoggerStream(root_logger.error)
 
     # Run the experiment specified in the configuration
-    globals()[cfg.experiment.method](OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict"), random_seed=cfg.experiment.random_seed)
+    globals()[cfg.experiment.method](OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict"), base_seed=cfg.experiment.base_seed)
 
+    print(f"Run for seed_{cfg.experiment.base_seed} complete!")
 
 
 class LoggerStream:

@@ -5,6 +5,7 @@ from environments.dond.dond_log_funcs import *
 def run_matches(
               matches,
               models,
+              iteration,
               log_func,
               log_func_args,
               export_path,
@@ -15,6 +16,7 @@ def run_matches(
     Args:
         matches (list): List of match dictionaries.
         models (dict): Dictionary of models to use for generating player moves.
+        iteration (int): Iteration number
         export_folder (str): Base folder to save player contexts.
         nb_parallel_matches (int): Number of matches to run in parallel.
         game_json_path (str): Path to save game metrics.
@@ -57,7 +59,7 @@ def run_matches(
             model = models[model_name]
             if prompt_batches[mod_adpt_id]:
                 if hasattr(model, 'adapters'):
-                    model.prepare_adapter_eval(adapter_name)
+                    model.prepare_adapter_eval(adapter_name, iteration)
                 response_batches[mod_adpt_id] = model.prompt(prompt_batches[mod_adpt_id])
             prompt_batches[mod_adpt_id] = []
 

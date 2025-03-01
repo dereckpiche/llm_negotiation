@@ -1,16 +1,18 @@
 hydra:
+  run:
+    dir: "${oc.env:SCRATCH}/outputs/${now:%Y-%m-%d/%H-%M-%S}"
   job:
     chdir: false
 
 experiment:
   method: dond_run_train
   description: "Easy. They should be learning."
-  nb_epochs: 100
+  nb_epochs: 500
   nb_matches_per_iteration: 32
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: true
-  random_seed: 33
+  base_seed: 33
   # random_seeds: [33, 53, 97, 157, 468, 484, 2959, 5145, 6368, 8602]
 
 training:
