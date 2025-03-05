@@ -146,6 +146,10 @@ class DondPlayerHandler:
         has_message = num_message_tags == 1
         has_finalization = num_finalize_tags == 1
 
+        # New check: If the co-player has finalized and our agent sends a message instead of a finalization, raise an error.
+        if state.get("has_finalized", False) and has_message:
+            errors.append("You must finalize your move because the other player has finalized. Do not send a conversation message.")
+
         if num_message_tags > 1:
             errors.append("Multiple <message> blocks detected. Please send only one message block.")
         if num_finalize_tags > 1:
@@ -390,8 +394,8 @@ class DondPlayerHandler:
                         .replace("{other_player_finalization}", str(other_player_finalization)) \
                         .replace("{remaining_messages}", \
                                  f"Minimum Messages: {min_msgs}, Maximum Messages: {max_msgs}, Current Number Sent: {current_sent}") \
-                        .replace("{{finalize_sample_i_take}}", finalize_sample_i_take) \
-                        .replace("{{finalize_sample_other}}", finalize_sample_other) \
+                        .replace("{finalize_sample_i_take}", finalize_sample_i_take) \
+                        .replace("{finalize_sample_other}", finalize_sample_other) \
                         .replace("{cumulative_round_points_your}", str(cumulative_your_points)) \
                         .replace("{cumulative_round_points_coplayer}", str(cumulative_coplayer_points))
         return ""

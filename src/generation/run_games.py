@@ -9,7 +9,8 @@ def run_matches(
               log_func,
               log_func_args,
               export_path,
-              nb_parallel_matches):
+              nb_parallel_matches
+              ):
     """
     Runs multiple games in parallel and logs the results.
 

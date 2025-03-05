@@ -26,7 +26,7 @@ training:
         train_func_args:
           temperature: 1
           learning_rate: 1e-6
-          beta: 0 # Temperature parameter for entropy regularization
+          entropy_coef: 0 # Temperature parameter for entropy regularization
 
 
       ad_bob:
@@ -34,7 +34,7 @@ training:
         train_func_args:
           temperature: 1
           learning_rate: 1e-6
-          beta: 0 # Temperature parameter for entropy regularization
+          entropy_coef: 0 # Temperature parameter for entropy regularization
 
 models:
   llama:

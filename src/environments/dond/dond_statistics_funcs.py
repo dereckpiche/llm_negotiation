@@ -39,17 +39,17 @@ def gather_dond_statistics(player_info, info, stats_to_log):
         if player_role is None:
             continue
 
-        other_role = next(role for role in state.values() if role != player_role)
+        coplayer_role = next(role for role in state.values() if role != player_role)
         round_info = {}
 
         # Extract the player's own values, the co-player's values, and the round quantities.
         values = info['round_values'][i][player_role]
-        coplayer_values = info['round_values'][i][other_role]
+        coplayer_values = info['round_values'][i][coplayer_role]
         quantities = info['round_quantities'][i]
         points = info['round_points'][i]
         # Note: points for each role are stored in the points dict.
         player_points = points[player_role]
-        other_points = points[other_role]
+        coplayer_points = points[coplayer_role]
         agreement_reached = info['round_agreements_reached'][i]
 
         # --- NEW: Compute cooperative points (unconditionally) ---
@@ -57,7 +57,7 @@ def gather_dond_statistics(player_info, info, stats_to_log):
         total_coop_player_all += coop_player_all
         total_coop_coplayer_all += coop_coplayer_all
         total_points_player_all += player_points
-        total_points_coplayer_all += other_points
+        total_points_coplayer_all += coplayer_points
 
         # Aggregate cooperative points only if an agreement was reached.
         if agreement_reached:
@@ -65,7 +65,7 @@ def gather_dond_statistics(player_info, info, stats_to_log):
             total_coop_player += coop_player
             total_coop_coplayer += coop_coplayer
             total_points_player += player_points
-            total_points_coplayer += other_points
+            total_points_coplayer += coplayer_points
 
         if "agreement_percentage" in stats_to_log:
             round_info["agreement_percentage"] = 100 if agreement_reached else 0
@@ -73,18 +73,18 @@ def gather_dond_statistics(player_info, info, stats_to_log):
         if "points" in stats_to_log:
             round_info["points"] = player_points
 
-        if "other_points" in stats_to_log:
-            round_info["other_points"] = other_points
+        if "coplayer_points" in stats_to_log:
+            round_info["coplayer_points"] = coplayer_points
 
         if "points_difference_on_agreement" in stats_to_log:
             if agreement_reached:
-                round_info["points_difference_on_agreement"] = compute_points_difference(player_points, other_points)
+                round_info["points_difference_on_agreement"] = compute_points_difference(player_points, coplayer_points)
             else:
                 round_info["points_difference_on_agreement"] = None
 
         if "imbalance_on_agreement" in stats_to_log:
             if agreement_reached:
-                round_info["imbalance_on_agreement"] = calculate_imbalance(points, player_role, other_role)
+                round_info["imbalance_on_agreement"] = calculate_imbalance(points, player_role, coplayer_role)
             else:
                 round_info["imbalance_on_agreement"] = None
 
@@ -94,11 +94,11 @@ def gather_dond_statistics(player_info, info, stats_to_log):
         if "points_on_agreement" in stats_to_log:
             round_info["points_on_agreement"] = compute_points_on_agreement(player_points, agreement_reached)
 
-        if "other_points_on_agreement" in stats_to_log:
-            round_info["other_points_on_agreement"] = compute_points_on_agreement(other_points, agreement_reached)
+        if "coplayer_points_on_agreement" in stats_to_log:
+            round_info["coplayer_points_on_agreement"] = compute_points_on_agreement(coplayer_points, agreement_reached)
 
         if "points_diff_on_agreement" in stats_to_log:
-            round_info["points_diff_on_agreement"] = compute_points_diff_on_agreement(player_points, other_points, agreement_reached)
+            round_info["points_diff_on_agreement"] = compute_points_diff_on_agreement(player_points, coplayer_points, agreement_reached)
 
         if "quantities" in stats_to_log:
             round_info["quantities"] = quantities
@@ -106,15 +106,19 @@ def gather_dond_statistics(player_info, info, stats_to_log):
         if "values" in stats_to_log:
             round_info["values"] = values
         
-        if "points_difference_on_agreement" in stats_to_log:
-            round_info["points_difference_on_agreement"] = (points - coplayer_points) if info['round_agreements_reached'][i] else None
-
         if "cooperative_points_difference_on_agreement" in stats_to_log:
             if agreement_reached:
                 coop_player, _ = compute_cooperative_points_for_round(values, coplayer_values, quantities)
                 round_info["cooperative_points_difference_on_agreement"] = player_points - coop_player
             else:
                 round_info["cooperative_points_difference_on_agreement"] = None
+
+        if "coplayer_cooperative_points_difference_on_agreement" in stats_to_log:
+            if agreement_reached:
+                _, coop_coplayer = compute_cooperative_points_for_round(values, coplayer_values, quantities)
+                round_info["coplayer_cooperative_points_difference_on_agreement"] = coplayer_points - coop_coplayer
+            else:
+                round_info["coplayer_cooperative_points_difference_on_agreement"] = None
 
         if "greedy_dominant_points_difference_on_agreement" in stats_to_log:
             if agreement_reached:
@@ -140,18 +144,29 @@ def gather_dond_statistics(player_info, info, stats_to_log):
         statistics[f"round_{i}"] = round_info
 
     if "total_coop_points_difference_on_agreement_player" in stats_to_log:
-        statistics["total_coop_points_difference_on_agreement_player"] = total_points_player - total_coop_player
+        if total_points_player > 0:
+            statistics["total_coop_points_difference_on_agreement_player"] = total_points_player - total_coop_player
+        else:
+            statistics["total_coop_points_difference_on_agreement_player"] = None
 
     if "total_coop_points_difference_on_agreement_coplayer" in stats_to_log:
-        statistics["total_coop_points_difference_on_agreement_coplayer"] = total_points_coplayer - total_coop_coplayer
+        if total_points_coplayer > 0:
+            statistics["total_coop_points_difference_on_agreement_coplayer"] = total_points_coplayer - total_coop_coplayer
+        else:
+            statistics["total_coop_points_difference_on_agreement_coplayer"] = None
 
     if "total_imbalance_on_agreement" in stats_to_log:
-        statistics["total_imbalance_on_agreement"] = float(abs(total_points_player - total_points_coplayer) / (total_points_player + total_points_coplayer + 1e-6))
+        if total_points_player + total_points_coplayer > 0:
+            statistics["total_imbalance_on_agreement"] = float(abs(total_points_player - total_points_coplayer) / (total_points_player + total_points_coplayer + 1e-6))
+        else:
+            statistics["total_imbalance_on_agreement"] = None
 
     if "total_points_difference_on_agreement" in stats_to_log:
-        statistics["total_points_difference_on_agreement"] = float(total_points_player - total_points_coplayer)
+        if total_points_player + total_points_coplayer > 0:
+            statistics["total_points_difference_on_agreement"] = float(total_points_player - total_points_coplayer)
+        else:
+            statistics["total_points_difference_on_agreement"] = None
     
-    # --- NEW: Statistics computed over all rounds (i.e. independent of agreement) ---
     if "total_coop_points_difference_player" in stats_to_log:
         statistics["total_coop_points_difference_player"] = total_points_player_all - total_coop_player_all
 
@@ -161,22 +176,22 @@ def gather_dond_statistics(player_info, info, stats_to_log):
     return statistics
 
 
-def calculate_imbalance(points, player_role, other_role):
+def calculate_imbalance(points, player_role, coplayer_role):
     """
-    Calculates the imbalance between the points of the player and the other player.
+    Calculates the imbalance between the points of the player and the coplayer player.
     
     Args:
         points (dict): A dictionary containing points for each role.
         player_role (str): The role of the player.
-        other_role (str): The role of the other player.
+        coplayer_role (str): The role of the coplayer player.
     
     scores:
         float: The calculated imbalance.
     """
-    total_points = points[player_role] + points[other_role]
+    total_points = points[player_role] + points[coplayer_role]
     if total_points == 0:
         return 0
-    return abs((points[player_role] - points[other_role]) / total_points)
+    return abs((points[player_role] - points[coplayer_role]) / total_points)
 
 
 def calculate_items_given_to_self(finalization):
@@ -187,7 +202,7 @@ def calculate_items_given_to_self(finalization):
         finalization (dict): A dictionary with values representing item amounts.
     
     scores:
-        float or None: The sum of the values if valid; otherwise, None.
+        float or None: The sum of the values if valid; coplayerwise, None.
     """
     if not finalization or not all(isinstance(x, (int, float)) for x in finalization.values()):
         return None
@@ -196,23 +211,23 @@ def calculate_items_given_to_self(finalization):
 
 # --- External points computation functions --- #
 
-def compute_points_difference(player_points, other_points):
+def compute_points_difference(player_points, coplayer_points):
     """
-    Computes the difference between the player's points and the other player's points.
+    Computes the difference between the player's points and the coplayer player's points.
     
     Args:
         player_points (numeric): Points for the player.
-        other_points (numeric): Points for the other player.
+        coplayer_points (numeric): Points for the coplayer player.
     
     scores:
-        numeric: The difference (player_points - other_points).
+        numeric: The difference (player_points - coplayer_points).
     """
-    return player_points - other_points
+    return player_points - coplayer_points
 
 
 def compute_points_on_agreement(player_points, agreement_reached):
     """
-    scores the player's points if an agreement was reached, otherwise None.
+    scores the player's points if an agreement was reached, coplayerwise None.
     
     Args:
         player_points (numeric): The player's points.
@@ -224,20 +239,20 @@ def compute_points_on_agreement(player_points, agreement_reached):
     return player_points if agreement_reached else None
 
 
-def compute_points_diff_on_agreement(player_points, other_points, agreement_reached):
+def compute_points_diff_on_agreement(player_points, coplayer_points, agreement_reached):
     """
-    Computes the difference between the player's and the other player's points
+    Computes the difference between the player's and the coplayer player's points
     only if an agreement was reached.
     
     Args:
         player_points (numeric): The player's points.
-        other_points (numeric): The other player's points.
+        coplayer_points (numeric): The coplayer player's points.
         agreement_reached (bool): Whether an agreement was reached.
     
     scores:
-        numeric or None: The difference if agreement reached; otherwise, None.
+        numeric or None: The difference if agreement reached; coplayerwise, None.
     """
-    return player_points - other_points if agreement_reached else None
+    return player_points - coplayer_points if agreement_reached else None
 
 
 def compute_cooperative_points_for_round(player_values, coplayer_values, quantities):

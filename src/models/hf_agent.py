@@ -161,7 +161,7 @@ class HfAgent:
         self.log_gpu_usage(f"After loading HF model with adapter {adapter_name} for training.")
 
 
-    def prepare_adapter_eval(self, adapter_name: str, iteration: int):
+    def prepare_adapter_eval(self, adapter_name: str, seed_offset: int = 0):
         """
         Prepares the agent for evaluation with the specified adapter.
         """
@@ -177,12 +177,12 @@ class HfAgent:
         if self.eval_with == "vllm":
             if self.vllm_model is None:
                 self.log_gpu_usage(f"Before loading VLLM model with {adapter_name}.")
-                print("Seed used for generation: ", self.base_seed+iteration)
+                print("Seed used for generation: ", self.base_seed+seed_offset)
                 start_time = time.time()
                 self.vllm_model = LLM(self.model_name,
                                         enable_lora=True,
                                         max_lora_rank=256,
-                                        seed=self.base_seed+iteration,
+                                        seed=self.base_seed+seed_offset,
                                         max_model_len=self.max_model_length,
                                         dtype=self.pretrained_args["torch_dtype"]
                                         )
