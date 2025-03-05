@@ -24,14 +24,16 @@ training:
         train_func: train_reinforce_main
         train_func_args:
           temperature: 1
-          learning_rate: 3e-6
+          learning_rate: 1e-6
+          beta: 0 # Temperature parameter for entropy regularization
 
 
       ad_bob:
         train_func: train_reinforce_main
         train_func_args:
           temperature: 1
-          learning_rate: 3e-6
+          learning_rate: 1e-6
+          beta: 0 # Temperature parameter for entropy regularization
 
 models:
   llama:

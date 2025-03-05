@@ -203,8 +203,10 @@ def plot_seed_averaged_stats(root_path, player_names):
     # Initialize data structure for storing statistics
     player_stats = {player: {} for player in player_names}
 
+    seed_dirs = []
     # Identify all seed directories
-    seed_dirs = [dir_name for dir_name in os.listdir(root_path) if dir_name.startswith("seed")]
+    for date_dir in os.listdir(root_path):
+        seed_dirs.extend([os.path.join(root_path, date_dir, dir_name) for dir_name in os.listdir(os.path.join(root_path, date_dir)) if dir_name.startswith("seed") and dir_name != 'seed_6368'])
 
     for player in player_names:
         # Create output directory for averaged stats
@@ -213,7 +215,7 @@ def plot_seed_averaged_stats(root_path, player_names):
 
         # Collect statistics from each seed directory
         for seed_dir in seed_dirs:
-            stats_file = os.path.join(root_path, seed_dir, "statistics", player, f"{player}_stats.jsonl")
+            stats_file = os.path.join(seed_dir, "statistics", player, f"{player}_stats.jsonl")
 
             with open(stats_file, "r") as file:
                 json_data = json.load(file)
@@ -237,7 +239,12 @@ def plot_seed_averaged_stats(root_path, player_names):
                 plt.figure()
 
                 # Convert data into a NumPy array for processing
-                metric_data = np.array([entry['data'] for entry in metric_data])
+                try:
+                    metric_data = np.array([entry['data'] for entry in metric_data])
+                except:
+                    for entry in metric_data:
+                        print(len(entry['data']))
+                        print(entry['file'])
                 metric_mean = np.mean(metric_data, axis=0)
                 metric_std = np.std(metric_data, axis=0)
 
@@ -271,10 +278,23 @@ def plot_seed_averaged_stats(root_path, player_names):
                 plt.savefig(os.path.join(avg_stats_dir, f"{round_id}_std_error_{metric}.png"))
                 plt.close()  # Free memory
 
+                # Plot standard deviation with mean
+                plt.figure()
+                plt.plot(metric_mean, linestyle="-", linewidth=2, color="darkblue", label="Mean")
+                plt.fill_between(range(len(metric_mean)), metric_mean - metric_std, metric_mean + metric_std, color="gray", alpha=0.3, label="Std Dev")
+
+                plt.title(f"{round_id}/std_dev_{metric}")
+                plt.xlabel("Iterations")
+                plt.ylabel(metric.replace("_", " ").title())
+                plt.legend()
+
+                plt.savefig(os.path.join(avg_stats_dir, f"{round_id}_std_dev_{metric}.png"))
+                plt.close()  # Free memory
+
     print(f"Seed-averaged plots saved successfully at {avg_stats_dir}!")
 
 
 if __name__ == "__main__":
     # plot_cumulative_points("/home/mila/d/dereck.piche/llm_negotiation/important_outputs/2025-01-12 naive RL with 12 rounds/statistics/alice/alice_stats.jsonl")
-    folder = "../scratch/outputs/2025-02-15/08-57-15-fair-bias"
+    folder = "scratch/outputs/2025-02-26-unbiased-500-iter"
     plot_seed_averaged_stats(folder, ["alice", "bob"])
