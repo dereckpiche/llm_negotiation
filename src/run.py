@@ -21,8 +21,6 @@ def main(cfg):
         "games_logger",
     ]
 
-    print("Total epochs: ", cfg.experiment.nb_epochs)
-
     # Dynamically configure handlers for specific loggers
     for logger_name in specific_loggers:
         logger = logging.getLogger(logger_name)

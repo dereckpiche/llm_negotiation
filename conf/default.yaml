@@ -1,6 +1,4 @@
 hydra:
-  run:
-    dir: "${oc.env:SCRATCH}/outputs/${now:%Y-%m-%d/%H-%M-%S}"
   job:
     chdir: false
     name: default

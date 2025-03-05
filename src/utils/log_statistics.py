@@ -206,7 +206,7 @@ def plot_seed_averaged_stats(root_path, player_names):
     seed_dirs = []
     # Identify all seed directories
     for date_dir in os.listdir(root_path):
-        seed_dirs.extend([os.path.join(root_path, date_dir, dir_name) for dir_name in os.listdir(os.path.join(root_path, date_dir)) if dir_name.startswith("seed") and dir_name != 'seed_6368'])
+        seed_dirs.extend([os.path.join(root_path, date_dir, dir_name) for dir_name in os.listdir(os.path.join(root_path, date_dir)) if dir_name.startswith("seed")])
 
     for player in player_names:
         # Create output directory for averaged stats
@@ -239,12 +239,7 @@ def plot_seed_averaged_stats(root_path, player_names):
                 plt.figure()
 
                 # Convert data into a NumPy array for processing
-                try:
-                    metric_data = np.array([entry['data'] for entry in metric_data])
-                except:
-                    for entry in metric_data:
-                        print(len(entry['data']))
-                        print(entry['file'])
+                metric_data = np.array([entry['data'] for entry in metric_data])
                 metric_mean = np.mean(metric_data, axis=0)
                 metric_std = np.std(metric_data, axis=0)
 
