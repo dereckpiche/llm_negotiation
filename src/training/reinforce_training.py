@@ -24,6 +24,7 @@ def reinforce_train(
         learning_rate=1e-5,
         output_path=None,
         tokenizer=None,
+        beta=0,
         temperature=1.0  # new hyperparameter to control softmax temperature during training
         ):
     """
@@ -49,7 +50,7 @@ def reinforce_train(
     if output_path:
         output_train_data_debug(output_path,
                                 contexts_list,
-                                returns_list,
+                                scores_list,
                                 output_masks_list,
                                 tokenizer)
 
@@ -110,9 +111,11 @@ def reinforce_train(
             # Compute new log probabilities
             log_probs = F.log_softmax(scaled_logits, dim=-1)
             action_log_probs = log_probs.gather(dim=-1, index=action_batch.unsqueeze(-1)).squeeze(-1)
+            entropy = -log_probs * F.softmax(scaled_logits, dim=-1)  # (B, S, V)
+            entropy = entropy.sum(dim=-1)  # (B, S)
 
             # Apply mask to log probabilities and values
-            rewarded_action_log_probs = action_log_probs * (return_batch * mask_batch)
+            rewarded_action_log_probs = action_log_probs * (return_batch * mask_batch) + beta * (entropy * mask_batch)
             loss = -rewarded_action_log_probs.sum()
             loss = loss / nb_trajectories_we_train_on # we mean contributions across trajectories
 

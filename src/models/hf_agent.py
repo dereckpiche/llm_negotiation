@@ -57,7 +57,7 @@ class HfAgent:
         eval_with="vllm",
         train_with="hf",
         output_directory=None,
-        random_seed: int = 42,
+        base_seed: int = 42
     ) -> None:
         """
         Initializes the HfAgent.
@@ -105,7 +105,7 @@ class HfAgent:
         }
 
         # set random seeds
-        self.random_seed = random_seed
+        self.base_seed = base_seed
 
     def prepare_adapter_train(self, adapter_name: str):
         """
@@ -161,7 +161,7 @@ class HfAgent:
         self.log_gpu_usage(f"After loading HF model with adapter {adapter_name} for training.")
 
 
-    def prepare_adapter_eval(self, adapter_name: str):
+    def prepare_adapter_eval(self, adapter_name: str, iteration: int):
         """
         Prepares the agent for evaluation with the specified adapter.
         """
@@ -177,14 +177,15 @@ class HfAgent:
         if self.eval_with == "vllm":
             if self.vllm_model is None:
                 self.log_gpu_usage(f"Before loading VLLM model with {adapter_name}.")
+                print("Seed used for generation: ", self.base_seed+iteration)
                 start_time = time.time()
                 self.vllm_model = LLM(self.model_name,
-                                      enable_lora=True,
-                                      max_lora_rank=256,
-                                      seed=self.random_seed,
-                                      max_model_len=self.max_model_length,
-                                      dtype=self.pretrained_args["torch_dtype"]
-                                      )
+                                        enable_lora=True,
+                                        max_lora_rank=256,
+                                        seed=self.base_seed+iteration,
+                                        max_model_len=self.max_model_length,
+                                        dtype=self.pretrained_args["torch_dtype"]
+                                        )
                 end_time = time.time()
                 compute_logger.info(f"VLLM model loading time: {end_time - start_time:.2f} seconds.")
                 self.log_gpu_usage(f"After loading VLLM model with {adapter_name}.")
