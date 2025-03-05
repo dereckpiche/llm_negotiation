@@ -5,7 +5,7 @@ hydra:
     chdir: false
 
 experiment:
-  name: "dond_4_rounds_collab_order"
+  name: "dond_4_rounds_normal_independent_discounted_scores"
   method: dond_run_train
   description: "no description"
   nb_epochs: 1000
@@ -51,15 +51,15 @@ matches:
         "total_coop_points_difference_player",
         "total_coop_points_difference_coplayer"
         ]
-      training_data_func: set_discounted_sum_rewards_scores
+      training_data_func: set_discounted_scores
       training_data_func_args:
         discount_factor: 0.99
         
   dond_game_args:
     rounds_per_game: 4
-    max_messages: 3
+    max_messages: 2
     min_messages: 1
-    max_chars_per_message: 450
+    max_chars_per_message: 400
     mode: basic
     random_setup_func: bicameral_vals_assignator
     random_setup_kwargs:
@@ -86,7 +86,7 @@ matches:
         message_mechanics_prompt: ${prompt_blocks.dond_message_mechanics}
         dond_version_specificities: ${prompt_blocks.dond_visible_alternating_starting_player}
         reasoning_mechanics_prompt: ${prompt_blocks.dond_reasoning_mechanics}
-        goal_prompt: ${prompt_blocks.dond_cooperative_goal}
+        goal_prompt: ${prompt_blocks.dond_agressive_pair_goal}
         first_round_prompt: ${prompt_blocks.first_round_prompt}
         new_round_prompt: ${prompt_blocks.new_round_prompt_with_values}
         player_with_first_move_prompt: "You are the first player. It is your turn to play."
@@ -104,7 +104,7 @@ matches:
         message_mechanics_prompt: ${prompt_blocks.dond_message_mechanics}
         dond_version_specificities: ${prompt_blocks.dond_visible_alternating_starting_player}
         reasoning_mechanics_prompt: ${prompt_blocks.dond_reasoning_mechanics}
-        goal_prompt: ${prompt_blocks.dond_cooperative_goal}
+        goal_prompt: ${prompt_blocks.dond_agressive_pair_goal}
         first_round_prompt: ${prompt_blocks.first_round_prompt}
         new_round_prompt: ${prompt_blocks.new_round_prompt_with_values}
         player_with_first_move_prompt: "You are the first player to make a move."

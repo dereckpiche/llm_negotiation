@@ -144,7 +144,8 @@ def dond_run_train(cfg, random_seed):
             export_path=it_folder,
             matches=matches,
             models=models,
-            **cfg['matches']['run_matches_args']
+            **cfg['matches']['run_matches_args'],
+            random_seed=random_seed+(iteration * nb_matches)
         )
         del matches
 

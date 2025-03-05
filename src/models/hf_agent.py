@@ -161,7 +161,7 @@ class HfAgent:
         self.log_gpu_usage(f"After loading HF model with adapter {adapter_name} for training.")
 
 
-    def prepare_adapter_eval(self, adapter_name: str):
+    def prepare_adapter_eval(self, adapter_name: str, random_seed: int = 42):
         """
         Prepares the agent for evaluation with the specified adapter.
         """
@@ -181,7 +181,7 @@ class HfAgent:
                 self.vllm_model = LLM(self.model_name,
                                       enable_lora=True,
                                       max_lora_rank=256,
-                                      seed=self.random_seed,
+                                      seed=random_seed,
                                       max_model_len=self.max_model_length,
                                       dtype=self.pretrained_args["torch_dtype"]
                                       )

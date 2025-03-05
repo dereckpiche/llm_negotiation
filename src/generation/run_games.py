@@ -8,7 +8,9 @@ def run_matches(
               log_func,
               log_func_args,
               export_path,
-              nb_parallel_matches):
+              nb_parallel_matches,
+              random_seed=0
+              ):
     """
     Runs multiple games in parallel and logs the results.
 
@@ -57,7 +59,7 @@ def run_matches(
             model = models[model_name]
             if prompt_batches[mod_adpt_id]:
                 if hasattr(model, 'adapters'):
-                    model.prepare_adapter_eval(adapter_name)
+                    model.prepare_adapter_eval(adapter_name, random_seed=random_seed)
                 response_batches[mod_adpt_id] = model.prompt(prompt_batches[mod_adpt_id])
             prompt_batches[mod_adpt_id] = []
 
