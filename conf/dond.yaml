@@ -1,5 +1,5 @@
 hydra:
-  run:                  
+  run:
     dir: "/home/mila/d/dereck.piche/scratch/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}"
   job:
     chdir: false
@@ -13,10 +13,10 @@ experiment:
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: false
-  random_seeds: [1]
+  base_seed: 1
 
 ####################################################################################################
-#                                           GENERATION                                               
+#                                           GENERATION
 ####################################################################################################
 
 matches:
@@ -54,7 +54,7 @@ matches:
       training_data_func: set_discounted_scores
       training_data_func_args:
         discount_factor: 0.99
-        
+
   dond_game_args:
     rounds_per_game: 4
     max_messages: 2
@@ -155,7 +155,7 @@ models:
 
 
 ####################################################################################################
-# TRAINING                                             
+# TRAINING
 ####################################################################################################
 
 
@@ -178,7 +178,7 @@ training:
           entropy_coef: 0.0
 
 ####################################################################################################
-# PROMPT DEFINITIONS                                          
+# PROMPT DEFINITIONS
 ####################################################################################################
 
 prompt_blocks:
@@ -197,7 +197,7 @@ prompt_blocks:
 
 
 ############################################################
-# Ultimatum Game Prompts              
+# Ultimatum Game Prompts
 ############################################################
 
   barebone_ultimatum: |
@@ -267,7 +267,7 @@ prompt_blocks:
 
 
   dond_normal_goal: |
-    The points attributed to each player will be computed as the cumulative sum of their points over rounds, where each player's round score is determined by multiplying the quantity of each item they receive by the value they assign to each item. 
+    The points attributed to each player will be computed as the cumulative sum of their points over rounds, where each player's round score is determined by multiplying the quantity of each item they receive by the value they assign to each item.
 
   dond_cooperative_goal: |
     The points attributed to each player will be computed as the cumulative sum of their points over rounds, where each player's round score is determined by multiplying the quantity of each item they receive by the value they assign to each item. The right strategy here is not to be naively greedy. The right strategy is as follows: 1) Reveal your values in your messages. Your coplayer will do the same. 2) Together, find the player who values the items the most in the current round. 3) Give the items to the player who values them the most. That way, both players will maximize their expected sum of points over rounds. Your goal is to perform this strategy with your coplayer. Please follow this strategy with your coplayer.
@@ -291,12 +291,12 @@ prompt_blocks:
     For this new round, the items available are {quantities} and your assigned values are {values}.
 
   new_round_prompt: |
-    The previous round has ended. In the last round, you earned {last_round_points} points. For this new round, the items available are {quantities} and your assigned values are {values}. 
+    The previous round has ended. In the last round, you earned {last_round_points} points. For this new round, the items available are {quantities} and your assigned values are {values}.
 
   new_round_prompt_with_values: |
-    The previous round has ended. In the last round, you earned {last_round_points_computed}. Your coplayer earned {coplayer_last_round_points_computed_other}. Up to now, you have accumulated {cumulative_round_points_your} points and your coplayer has accumulated {cumulative_round_points_coplayer} points. For this new round, the items available are {quantities} and your assigned values are {values}. 
+    The previous round has ended. In the last round, you earned {last_round_points_computed}. Your coplayer earned {coplayer_last_round_points_computed_other}. Up to now, you have accumulated {cumulative_round_points_your} points and your coplayer has accumulated {cumulative_round_points_coplayer} points. For this new round, the items available are {quantities} and your assigned values are {values}.
 
-  
+
 
   dond_message_mechanics: |
     In order to communicate with the other player, you are allowed to send messages (distinct from finalizations). You cannot send a message and a finalization in the same response.
@@ -306,7 +306,7 @@ prompt_blocks:
     In order to think before you act, you are allowed to use {max_reasoning_chars} characters per round. When reasoning, please follow these rules; 1) Enclose your thought process within <think> and </think> tags. 2) Do not include extraneous content outside these tags. 3) Your reasoning is limited to {max_reasoning_chars} characters per response. 4) You are not obligated to reason at each response.
 
   dond_hidden_alternating_starting_player: |
-    In this version of the game, your finalization proposal (enclosed in <finalize> tags) will be hidden to your coplayer. The values attributed to the items by other players are hidden as well. However, there are no restrictions to what the players are allowed to reveal themselves in their messages! Furthermore, in this version, players alternate turns and the player with the first move changes each round. 
+    In this version of the game, your finalization proposal (enclosed in <finalize> tags) will be hidden to your coplayer. The values attributed to the items by other players are hidden as well. However, there are no restrictions to what the players are allowed to reveal themselves in their messages! Furthermore, in this version, players alternate turns and the player with the first move changes each round.
 
   dond_visible_alternating_starting_player: |
     In this version of the game, your finalization proposal (enclosed in <finalize> tags) will be shown to your coplayer. However, the values attributed to the items by other players are hidden. However, there are no restrictions to what the players are allowed to reveal themselves in their messages.Furthermore, in this version, players alternate turns and the player with the first move changes each round.

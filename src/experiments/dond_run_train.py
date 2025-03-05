@@ -20,13 +20,13 @@ import numpy as np
 import random
 import pickle
 
-compute__logger = logging.getLogger("compute__logger")
+compute_logger = logging.getLogger("compute_logger")
 
-def init_models(cfg, random_seed, output_directory):
+def init_models(cfg, base_seed, output_directory):
     models = {}
     for model_name in cfg["models"].keys():
         if cfg["models"][model_name]["class"] == "hf":
-            models[model_name] = HfAgent(**cfg["models"][model_name]["init_args"], random_seed=random_seed,
+            models[model_name] = HfAgent(**cfg["models"][model_name]["init_args"], base_seed=base_seed * cfg["experiment"]["nb_epochs"],
                                          output_directory=output_directory)
         elif cfg["models"][model_name]["class"] == "dummy_hf":
             models[model_name] = DummyHfAgent(**cfg["models"][model_name]["init_args"])
@@ -92,7 +92,7 @@ def format_time(seconds):
         return f"{int(seconds)}s"
 
 
-def dond_run_train(cfg, random_seed):
+def dond_run_train(cfg, base_seed):
     """
     Executes a negotiation cycle for the Deal or No Deal (DoND) game.
     """
@@ -100,19 +100,20 @@ def dond_run_train(cfg, random_seed):
 
     # Get Hydra's runtime output directory which includes date and config info.
     hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
-    output_directory = f"{hydra_cfg['runtime']['output_dir']}/seed_{random_seed}"
+    output_directory = f"{hydra_cfg['runtime']['output_dir']}/seed_{base_seed}"
     os.makedirs(output_directory, exist_ok=True)
 
     # Initialize models
-    models = init_models(cfg, random_seed=random_seed, output_directory=output_directory)
+    models = init_models(cfg, base_seed=base_seed, output_directory=output_directory)
 
     update_start_epoch(cfg=cfg, output_directory=output_directory)
+    print("Start iteration: ", cfg["experiment"]["start_epoch"])
 
-    random.seed(random_seed)  # Python random
-    np.random.seed(random_seed)  # NumPy
-    torch.manual_seed(random_seed)  # PyTorch (CPU)
-    torch.cuda.manual_seed(random_seed)  # PyTorch (GPU)
-    torch.cuda.manual_seed_all(random_seed)  # If using multi-GPU
+    random.seed(base_seed)  # Python random
+    np.random.seed(base_seed)  # NumPy
+    torch.manual_seed(base_seed)  # PyTorch (CPU)
+    torch.cuda.manual_seed(base_seed)  # PyTorch (GPU)
+    torch.cuda.manual_seed_all(base_seed)  # If using multi-GPU
 
     random_state_dir = f'{output_directory}/random_state.pkl'
     # Load saved states
@@ -143,9 +144,9 @@ def dond_run_train(cfg, random_seed):
         run_matches(
             export_path=it_folder,
             matches=matches,
+            iteration=iteration,
             models=models,
-            **cfg['matches']['run_matches_args'],
-            random_seed=random_seed+(iteration * nb_matches)
+            **cfg['matches']['run_matches_args']
         )
         del matches
 
@@ -221,7 +222,7 @@ def dond_run_train(cfg, random_seed):
         time_est_100 = time_per_iteration * 100
         time_est_500 = time_per_iteration * 500
 
-        compute__logger.info(
+        compute_logger.info(
             f"Iteration {iteration + 1} took {format_time(iteration_duration)} "
             f"({generation_percentage:.2f}% Gen, {logging_percentage:.2f}% Log, {training_percentage:.2f}% Train). "
             f"Generation: {format_time(generation_duration)}, "
