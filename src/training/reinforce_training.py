@@ -50,7 +50,7 @@ def reinforce_train(
     if output_path:
         output_train_data_debug(output_path,
                                 contexts_list,
-                                returns_list,
+                                scores_list,
                                 output_masks_list,
                                 tokenizer)
 
