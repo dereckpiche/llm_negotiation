@@ -13,7 +13,7 @@ Environments should follow a specific interface that allows for consistent inter
      ```
 
 2. **Reset Method:**
-   - Resets the environment to an initial state and returns the initial observation.
+   - Resets the environment to an initial state and scores the initial observation.
    - Example:
      ```python
      def reset(self):

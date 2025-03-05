@@ -39,7 +39,7 @@ class OaiAgent:
         Args:
             contexts (List[dict]): The contexts for generation.
 
-        Returns:
+        scores:
             str: The generated response from the model.
         """
         if not contexts:

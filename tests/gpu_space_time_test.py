@@ -54,7 +54,7 @@ if __name__ == "__main__":
 
         # Create a dummy context of the specified length
         context = torch.randint(0, tokenizer.vocab_size, (length,)).unsqueeze(0).to('cuda')
-        returns = torch.ones(length).unsqueeze(0).to('cuda')
+        scores = torch.ones(length).unsqueeze(0).to('cuda')
         mask = torch.ones(length).unsqueeze(0).to('cuda')
 
         # Forward pass without checkpointing
@@ -64,7 +64,7 @@ if __name__ == "__main__":
         # Compute dummy loss
         log_probs = F.log_softmax(logits, dim=-1)
         action_log_probs = log_probs.gather(dim=-1, index=context.unsqueeze(-1)).squeeze(-1)
-        rewarded_action_log_probs = action_log_probs * (returns * mask)
+        rewarded_action_log_probs = action_log_probs * (scores * mask)
         loss = -rewarded_action_log_probs.mean()
 
         # Backward pass using accelerator

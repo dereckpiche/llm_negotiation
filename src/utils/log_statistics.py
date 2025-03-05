@@ -42,7 +42,7 @@ def append_statree(tree1: Dict, tree2: Dict):
 
 def get_mean_statree(tree: Dict) -> Dict:
     """
-    Returns a statree where each leaf is replaced by the mean of the leaf values.
+    scores a statree where each leaf is replaced by the mean of the leaf values.
     """
     result = {}
     for key, value in tree.items():
@@ -57,7 +57,7 @@ def get_mean_statree(tree: Dict) -> Dict:
 
 def get_var_statree(tree: Dict) -> Dict:
     """
-    Returns a statree where each leaf is replaced by the variance of the leaf values.
+    scores a statree where each leaf is replaced by the variance of the leaf values.
     """
     result = {}
     for key, value in tree.items():

@@ -16,7 +16,7 @@ def main(cfg):
     # Define specific loggers to configure
     specific_loggers =[
         "model_logger",
-        "compute__logger",
+        "compute_logger",
         "memory_logger",
         "games_logger",
     ]

@@ -70,17 +70,16 @@ def conversation_to_rl_data(tokenizer,
 
 def conversations_to_rl_data(tokenizer, conversations):
     contexts = []
-    returns = []
+    scores = []
     output_masks = []
 
     for conversation in conversations:
-        if conversation:
-            context_tensor, return_tensor, output_mask_tensor = conversation_to_rl_data(tokenizer, conversation)
-            contexts.append(context_tensor)
-            returns.append(return_tensor)
-            output_masks.append(output_mask_tensor)
-
-    return contexts, returns, output_masks
+        context_tensor, return_tensor, output_mask_tensor = conversation_to_rl_data(tokenizer, conversation)
+        contexts.append(context_tensor)
+        scores.append(return_tensor)
+        output_masks.append(output_mask_tensor)
+    
+    return contexts, scores, output_masks
 
 def paths_to_rl_data(tokenizer, paths):
     conversations = []

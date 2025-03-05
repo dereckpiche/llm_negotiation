@@ -45,7 +45,7 @@ def create_blank_match(cfg, seed_offset=0):
         cfg (omegaconf.DictConfig): Configuration object containing all necessary parameters.
         seed_offset (int): An offset to uniquely adjust the seed for each match.
 
-    Returns:
+    scores:
         dict: A match dictionary.
     """
     players = {}
@@ -98,6 +98,7 @@ def dond_run_train(cfg, base_seed):
     """
     total_start_time = time.time()
 
+    # Get Hydra's runtime output directory which includes date and config info.
     hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
     output_directory = f"{hydra_cfg['runtime']['output_dir']}/seed_{base_seed}"
     os.makedirs(output_directory, exist_ok=True)
@@ -137,7 +138,7 @@ def dond_run_train(cfg, base_seed):
         matches = []
         nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
         for i in range(nb_matches):
-            matches.append(create_blank_match(cfg, seed_offset = (iteration * nb_matches) + i))
+            matches.append(create_blank_match(cfg, seed_offset=(iteration * nb_matches) + i))
         players = matches[0]["players"]
         player_names = players.keys()
         run_matches(
@@ -170,8 +171,6 @@ def dond_run_train(cfg, base_seed):
                 tensorboard_log_dir=os.path.join(player_stats_folder, "tensorboard"),
                 wandb_log_dir=os.path.join(player_stats_folder, "wandb"),
             )
-
-            generate_frequency_counts(os.path.join(it_folder, player_name, 'statistics'))
 
         logging_end_time = time.time()
 
@@ -261,4 +260,4 @@ def dond_run_train(cfg, base_seed):
 
     total_end_time = time.time()
     total_duration = total_end_time - total_start_time
-    compute__logger.info(f"Total time taken for the entire run: {format_time(total_duration)}")
+    compute_logger.info(f"Total time taken for the entire run: {format_time(total_duration)}")
