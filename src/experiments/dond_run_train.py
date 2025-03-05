@@ -20,7 +20,7 @@ import numpy as np
 import random
 import pickle
 
-compute__logger = logging.getLogger("compute__logger")
+compute_logger = logging.getLogger("compute_logger")
 
 def init_models(cfg, base_seed, output_directory):
     models = {}
@@ -222,7 +222,7 @@ def dond_run_train(cfg, base_seed):
         time_est_100 = time_per_iteration * 100
         time_est_500 = time_per_iteration * 500
 
-        compute__logger.info(
+        compute_logger.info(
             f"Iteration {iteration + 1} took {format_time(iteration_duration)} "
             f"({generation_percentage:.2f}% Gen, {logging_percentage:.2f}% Log, {training_percentage:.2f}% Train). "
             f"Generation: {format_time(generation_duration)}, "
