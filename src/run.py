@@ -4,7 +4,7 @@ import logging
 import os
 import sys
 from omegaconf import OmegaConf
-from src.experiments.generate_and_train import generate_and_train
+from experiments.generate_and_train import generate_and_train
 from experiments.arithmetic_test import arithmetic_test
 
 @hydra.main(config_path="../conf", config_name="dond")

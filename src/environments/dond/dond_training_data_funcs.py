@@ -37,16 +37,13 @@ def generate_training_data_from_raw(raw_data_folder, training_data_folder, disco
         if exclude_errors:
             chat_history = [msg for msg in chat_history if not msg.get("is_error", False)]
 
-        # Extract game info
-        game_info = next((msg.get("game_info") for msg in chat_history if msg.get("role") == "system"), None)
-        if not game_info:
-            print(f"No game info found in {raw_file_path}")
-            continue
-
         # Calculate scores for each round
-        round_points = game_info.get("round_points", [])
-        player_name = chat_history[0].get("player_name", "")
-        scores = globals()[score_shaping_function](round_points, game_info, player_name, discount_factor, **(score_shaping_function_args or {}))
+        game_info = chat_history[-1].get("game_info")
+        player_name = chat_history[-1].get("player_name")
+        scores = globals()[score_shaping_function](game_info=game_info, 
+                                                   player_name=player_name, 
+                                                   discount_factor=discount_factor, 
+                                                   **(score_shaping_function_args or {}))
 
         # Update chat history with scores
         for message in chat_history:
@@ -60,26 +57,29 @@ def generate_training_data_from_raw(raw_data_folder, training_data_folder, disco
         with open(training_file, 'w') as f:
             json.dump(chat_history, f, indent=4)
 
-def calculate_discounted_scores(round_points, game_info, player_name, discount_factor, normalize_func=None):
+def calculate_discounted_scores(game_info, 
+                                player_name, 
+                                discount_factor, 
+                                normalize_func=None):
     """
     Calculates discounted scores for each round.
 
     Args:
-        round_points (list): List of points for each round.
         game_info (dict): Game information including player roles.
         player_name (str): Name of the player.
         discount_factor (float): The discount factor to apply to future scores.
         normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
-        score_shaping_function_args (dict, optional): Additional arguments to pass to the normalize function.
     
     Returns:
         list: Discounted scores for each round.
     """
     scores = []
     cumulative_return = 0
+    round_points = game_info.get("round_points")
+
     for i in reversed(range(len(round_points))):
         role = game_info['round_player_roles'][i].get(player_name)
-        round_value = round_points[i].get(role, 0)
+        round_value = round_points[i].get(role)
         cumulative_return = round_value + discount_factor * cumulative_return
         scores.insert(0, cumulative_return)
     
@@ -87,58 +87,27 @@ def calculate_discounted_scores(round_points, game_info, player_name, discount_f
         scores = globals()[normalize_func](scores)
     return scores
 
-def set_discounted_scores(player_info, info, discount_factor=0.99, normalize_func=None):
-    """
-    Sets the discounted scores for each message in the conversation.
 
-    Args:
-        player_info (dict): Contains the chat history of the player.
-        info (dict): Contains the game information including scores.
-        discount_factor (float): The discount factor to apply to future scores.
-        normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
-        score_shaping_function_args (dict, optional): Additional arguments to pass to the normalize function.
-    """
-    # Extract the chat history and scores from the game info
-    chat_history = player_info.get("chat_history", [])
-    round_points = info.get("round_points", [])
-    player_name = player_info.get("player_name", "")
-
-    # Calculate discounted scores for each round
-    scores = []
-    cumulative_return = 0
-    for i in reversed(range(len(round_points))):
-        role = info['round_player_roles'][i].get(player_name)
-        round_value = round_points[i].get(role, 0) 
-        cumulative_return = round_value + discount_factor * cumulative_return
-        scores.insert(0, cumulative_return)
-
-    if normalize_func:
-        scores = normalize_func(scores)
-
-    # Set the discounted scores for each message based on round_number
-    for message in chat_history:
-        if message["role"] != "user":
-            round_number = message["round_nb"]
-            if round_number < len(scores):
-                message["return"] = scores[round_number]
-    return chat_history
-
-def calculate_advantage_alignment_scores(round_points, game_info, player_name, discount_factor=0.99, beta=1, normalize_func=None):
+  
+def calculate_advantage_alignment_scores(game_info, 
+                                         player_name, 
+                                         discount_factor=0.99, 
+                                         beta=1, 
+                                         normalize_func=None):
     """
     Calculates advantage alignment scores for each round.
 
     Args:
-        round_points (list): List of points for each round.
         game_info (dict): Game information including player roles.
         player_name (str): Name of the player.
         discount_factor (float): The discount factor to apply to future scores.
         beta (float): Weight for the opponent shaping term.
         normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
-        score_shaping_function_args (dict, optional): Additional arguments to pass to the normalize function.
     
     Returns:
         list: Advantage alignment scores for each round.
     """
+    round_points = game_info.get("round_points")
     nb_rounds = len(round_points)
     ordered_points_self = np.zeros(nb_rounds)
     ordered_points_other = np.zeros(nb_rounds)
@@ -178,18 +147,23 @@ def calculate_advantage_alignment_scores(round_points, game_info, player_name, d
         scores = globals()[normalize_func](scores)
     return scores
 
-def calculate_sum_scores(round_points, discount_factor=0.99, normalize_func=None):
+def calculate_sum_scores(game_info, 
+                         player_name=None, 
+                         discount_factor=0.99, 
+                         normalize_func=None):
     """
     Calculates the sum of rewards for both players for each round.
 
     Args:
-        round_points (list): List of points for each round.
+        game_info (dict): Game information including round points.
+        player_name (str, optional): Name of the player (not used in this function but included for signature consistency).
         discount_factor (float): The discount factor to apply to future scores.
         normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
     
     Returns:
         list: Sum scores for each round.
     """
+    round_points = game_info.get("round_points")
     nb_rounds = len(round_points)
     total_rewards = [sum(points.values()) for points in round_points]
 
