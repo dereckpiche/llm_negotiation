@@ -169,12 +169,12 @@ def generate_and_train(cfg, base_seed):
             # Process the raw data using the specified training data function
             if player_name in cfg["training"]["players"]:
                 player_cfg = cfg["training"]["players"][player_name]
-                training_func = player_cfg.get("training_data_func")
-                training_args = player_cfg.get("training_data_func_args", {})
-                globals()[training_func](
+                training_data_func = player_cfg.get("training_data_func")
+                training_data_func_args = player_cfg.get("training_data_func_args", {})
+                globals()[training_data_func](
                     raw_data_folder=raw_data_path,
                     training_data_folder=training_data_path,
-                    **training_args
+                    **training_data_func_args
                 )
             
             # Update player statistics
