@@ -5,7 +5,7 @@ hydra:
     chdir: false
 
 experiment:
-  name: "dond_4_rounds_normal_independent_discounted_scores"
+  name: "dond_baseline_test"
   method: dond_run_train
   description: "no description"
   nb_epochs: 1000
@@ -53,8 +53,8 @@ matches:
         ]
 
   dond_game_args:
-    rounds_per_game: 1
-    max_messages: 1
+    rounds_per_game: 2
+    max_messages: 2
     min_messages: 1
     max_chars_per_message: 200
     mode: basic
@@ -165,12 +165,18 @@ training:
       training_data_func: generate_training_data_from_raw
       training_data_func_args:
         discount_factor: 0.99
-    
+        exclude_errors: True
+        score_shaping_function: calculate_discounted_scores
+        score_shaping_function_args:
+          normalize_func: subtract_rloo_baseline
     bob:
       training_data_func: generate_training_data_from_raw
       training_data_func_args:
         discount_factor: 0.99
-  
+        exclude_errors: True
+        score_shaping_function: calculate_discounted_scores
+        score_shaping_function_args:
+          normalize_func: subtract_rloo_baseline
   llama:
     adapters:
       ad_alice:

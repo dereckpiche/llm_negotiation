@@ -4,7 +4,7 @@ import numpy as np
 
 
 
-def generate_training_data_from_raw(raw_data_folder, training_data_folder, discount_factor=0.99, exclude_errors=False, score_shaping_function=None):
+def generate_training_data_from_raw(raw_data_folder, training_data_folder, discount_factor=0.99, exclude_errors=False, score_shaping_function=None, score_shaping_function_args=None):
     """
     Generates training data from raw conversation data by calculating scores.
 
@@ -13,8 +13,9 @@ def generate_training_data_from_raw(raw_data_folder, training_data_folder, disco
         training_data_folder (str): Path to save the processed training data.
         discount_factor (float): The discount factor to apply to future scores.
         exclude_errors (bool): If True, exclude messages with "is_error" set to True.
-        score_shaping_function (callable, optional): Function that takes a list of raw scores and returns a new list 
+        normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list 
             of shaped scores.
+        score_shaping_function_args (dict, optional): Additional arguments to pass to the normalize function.
     """
     # Create training data directory if it doesn't exist
     os.makedirs(training_data_folder, exist_ok=True)
@@ -45,7 +46,7 @@ def generate_training_data_from_raw(raw_data_folder, training_data_folder, disco
         # Calculate scores for each round
         round_points = game_info.get("round_points", [])
         player_name = chat_history[0].get("player_name", "")
-        scores = calculate_discounted_scores(round_points, game_info, player_name, discount_factor, score_shaping_function)
+        scores = globals()[score_shaping_function](round_points, game_info, player_name, discount_factor, **(score_shaping_function_args or {}))
 
         # Update chat history with scores
         for message in chat_history:
@@ -59,7 +60,7 @@ def generate_training_data_from_raw(raw_data_folder, training_data_folder, disco
         with open(training_file, 'w') as f:
             json.dump(chat_history, f, indent=4)
 
-def calculate_discounted_scores(round_points, game_info, player_name, discount_factor, score_shaping_function=None):
+def calculate_discounted_scores(round_points, game_info, player_name, discount_factor, normalize_func=None):
     """
     Calculates discounted scores for each round.
 
@@ -68,7 +69,8 @@ def calculate_discounted_scores(round_points, game_info, player_name, discount_f
         game_info (dict): Game information including player roles.
         player_name (str): Name of the player.
         discount_factor (float): The discount factor to apply to future scores.
-        score_shaping_function (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
+        normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
+        score_shaping_function_args (dict, optional): Additional arguments to pass to the normalize function.
     
     Returns:
         list: Discounted scores for each round.
@@ -81,11 +83,11 @@ def calculate_discounted_scores(round_points, game_info, player_name, discount_f
         cumulative_return = round_value + discount_factor * cumulative_return
         scores.insert(0, cumulative_return)
     
-    if score_shaping_function:
-        scores = score_shaping_function(scores)
+    if normalize_func:
+        scores = globals()[normalize_func](scores)
     return scores
 
-def set_discounted_scores(player_info, info, discount_factor=0.99, score_shaping_function=None):
+def set_discounted_scores(player_info, info, discount_factor=0.99, normalize_func=None):
     """
     Sets the discounted scores for each message in the conversation.
 
@@ -93,7 +95,8 @@ def set_discounted_scores(player_info, info, discount_factor=0.99, score_shaping
         player_info (dict): Contains the chat history of the player.
         info (dict): Contains the game information including scores.
         discount_factor (float): The discount factor to apply to future scores.
-        score_shaping_function (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
+        normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
+        score_shaping_function_args (dict, optional): Additional arguments to pass to the normalize function.
     """
     # Extract the chat history and scores from the game info
     chat_history = player_info.get("chat_history", [])
@@ -109,8 +112,8 @@ def set_discounted_scores(player_info, info, discount_factor=0.99, score_shaping
         cumulative_return = round_value + discount_factor * cumulative_return
         scores.insert(0, cumulative_return)
 
-    if score_shaping_function:
-        scores = score_shaping_function(scores)
+    if normalize_func:
+        scores = normalize_func(scores)
 
     # Set the discounted scores for each message based on round_number
     for message in chat_history:
@@ -120,7 +123,7 @@ def set_discounted_scores(player_info, info, discount_factor=0.99, score_shaping
                 message["return"] = scores[round_number]
     return chat_history
 
-def calculate_advantage_alignment_scores(round_points, game_info, player_name, discount_factor=0.99, beta=1, score_shaping_function=None):
+def calculate_advantage_alignment_scores(round_points, game_info, player_name, discount_factor=0.99, beta=1, normalize_func=None):
     """
     Calculates advantage alignment scores for each round.
 
@@ -130,7 +133,8 @@ def calculate_advantage_alignment_scores(round_points, game_info, player_name, d
         player_name (str): Name of the player.
         discount_factor (float): The discount factor to apply to future scores.
         beta (float): Weight for the opponent shaping term.
-        score_shaping_function (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
+        normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
+        score_shaping_function_args (dict, optional): Additional arguments to pass to the normalize function.
     
     Returns:
         list: Advantage alignment scores for each round.
@@ -170,18 +174,18 @@ def calculate_advantage_alignment_scores(round_points, game_info, player_name, d
         scores[t] = score
 
     scores = scores.tolist()
-    if score_shaping_function:
-        scores = score_shaping_function(scores)
+    if normalize_func:  
+        scores = globals()[normalize_func](scores)
     return scores
 
-def calculate_sum_scores(round_points, discount_factor=0.99, score_shaping_function=None):
+def calculate_sum_scores(round_points, discount_factor=0.99, normalize_func=None):
     """
     Calculates the sum of rewards for both players for each round.
 
     Args:
         round_points (list): List of points for each round.
         discount_factor (float): The discount factor to apply to future scores.
-        score_shaping_function (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
+        normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
     
     Returns:
         list: Sum scores for each round.
@@ -195,8 +199,8 @@ def calculate_sum_scores(round_points, discount_factor=0.99, score_shaping_funct
         cumulative_return = total_rewards[i] + discount_factor * cumulative_return
         scores.insert(0, cumulative_return)
 
-    if score_shaping_function:
-        scores = score_shaping_function(scores)
+    if normalize_func:
+        scores = globals()[normalize_func](scores)
     return scores
 
 def gaussian_normalization(scores):
