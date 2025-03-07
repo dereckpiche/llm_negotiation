@@ -11,15 +11,16 @@ class DondPlayerHandler:
         player_name,
         allow_reasoning,
         max_errors,
-        mod_adpt_id,
-        max_reasoning_chars,
-        intro_prompt,
-        goal_prompt,
-        first_round_prompt,
-        new_round_prompt,
-        player_with_first_move_prompt,
-        received_message_prompt,
-        other_player_finalized_prompt,
+        policy_id,
+        value_function_id=None,
+        max_reasoning_chars=None,
+        intro_prompt=None,
+        goal_prompt=None,
+        first_round_prompt=None,
+        new_round_prompt=None,
+        player_with_first_move_prompt=None,
+        received_message_prompt=None,
+        other_player_finalized_prompt=None,
         message_mechanics_prompt=None,
         dond_version_specificities=None,
         reasoning_mechanics_prompt=None
@@ -31,7 +32,8 @@ class DondPlayerHandler:
             player_name (str): The name of the player.
             allow_reasoning (bool): Whether reasoning is allowed.
             max_errors (int): Maximum number of retries allowed.
-            mod_adpt_id (str): The model adapter id to use.
+            policy_id (str): The model adapter id to use.
+            value_function_id (str): The value function id to use.
             max_reasoning_chars (int): Maximum reasoning characters allowed.
             intro_prompt (str): Prompt for the game introduction.
             goal_prompt (str): Prompt for the player's goal.
@@ -47,7 +49,8 @@ class DondPlayerHandler:
         self.player_name = player_name
         self.allow_reasoning = allow_reasoning
         self.max_errors = max_errors
-        self.mod_adpt_id = mod_adpt_id
+        self.policy_id = policy_id
+        self.value_function_id = value_function_id
         self.max_reasoning_chars = max_reasoning_chars
 
         self.intro_prompt = intro_prompt

@@ -18,12 +18,12 @@ def run_matches(
         matches (list): List of match dictionaries.
         models (dict): Dictionary of models to use for generating player moves.
         iteration (int): Iteration number
-        export_folder (str): Base folder to save player contexts.
+        log_func (str): Name of the function to use for logging results.
+        log_func_args (dict): Arguments for the log function.
+        export_path (str): Base folder to save player contexts.
         nb_parallel_matches (int): Number of matches to run in parallel.
-        game_json_path (str): Path to save game metrics.
-        log_matches (bool): Whether to log matches after completion.
 
-    scores:
+    Returns:
         None
     """
     if nb_parallel_matches == -1:
@@ -34,13 +34,13 @@ def run_matches(
     parallel_matches = [all_matches.pop(0) for _ in range(min(nb_parallel_matches, len(all_matches)))]
 
     # Get all the adapter names used by the players
-    mod_adpt_ids = []
+    policy_ids = []
     for match in parallel_matches:
         for player in match["players"].values():
-            if player.mod_adpt_id not in mod_adpt_ids:
-                mod_adpt_ids.append(player.mod_adpt_id)
-    prompt_batches = {mod_adpt_id: [] for mod_adpt_id in mod_adpt_ids}
-    response_batches = {mod_adpt_id: [] for mod_adpt_id in mod_adpt_ids}
+            if player.policy_id not in policy_ids:
+                policy_ids.append(player.policy_id)
+    prompt_batches = {policy_id: [] for policy_id in policy_ids}
+    response_batches = {policy_id: [] for policy_id in policy_ids}
 
     while parallel_matches or all_matches:
 
@@ -49,26 +49,26 @@ def run_matches(
             match["game_state"] = match["game"].get_state()
             current_player = match["players"][match["game"].get_current_player()]
             current_player.set_usr_message(match["game_state"])
-            prompt_batches[current_player.mod_adpt_id].append(
+            prompt_batches[current_player.policy_id].append(
                 current_player.get_chat_history()  # No deep copy needed here
             )
 
         # Process prompts for each model
-        for mod_adpt_id in mod_adpt_ids:
-            model_name = mod_adpt_id.split("/")[0]
-            adapter_name = mod_adpt_id.split("/")[1]
+        for policy_id in policy_ids:
+            model_name = policy_id.split("/")[0]
+            adapter_name = policy_id.split("/")[1]
             model = models[model_name]
-            if prompt_batches[mod_adpt_id]:
+            if prompt_batches[policy_id]:
                 if hasattr(model, 'adapters'):
                     model.prepare_adapter_eval(adapter_name, iteration)
-                response_batches[mod_adpt_id] = model.prompt(prompt_batches[mod_adpt_id])
-            prompt_batches[mod_adpt_id] = []
+                response_batches[policy_id] = model.prompt(prompt_batches[policy_id])
+            prompt_batches[policy_id] = []
 
         # Execute player moves based on responses
         for match in parallel_matches[:]:
             match["game_state"] = match["game"].get_state()
             current_player = match["players"][match["game"].get_current_player()]
-            response = response_batches[current_player.mod_adpt_id].pop(0)
+            response = response_batches[current_player.policy_id].pop(0)
 
             action, player_state, send_to_game, player_info = current_player.step(
                 input=(match["game_state"], match["game"].get_info(), response)
@@ -79,7 +79,7 @@ def run_matches(
                 match["game_state"] = observation
 
                 if done:
-                    # Log game results
+                    # Log game data
                     player_infos = []
                     for player in match["players"].values():
                         player_infos.append(player.get_info())

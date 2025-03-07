@@ -3,9 +3,9 @@ from utils.common_imports import *
 from openai import OpenAI
 
 
-class OaiAgent:
+class ServerLLM:
     """
-    OaiAgent is an agent that utilizes the OpenAI API for generating responses in a conversational manner.
+    ServerLLM is an agent that utilizes the OpenAI API for generating responses in a conversational manner.
     It supports prompting the model and managing conversation history.
     """
 
@@ -16,7 +16,7 @@ class OaiAgent:
         model: str = "gpt-3.5-turbo"  # default OpenAI model
     ) -> None:
         """
-        Initializes the OaiAgent.
+        Initializes the ServerLLM.
 
         Args:
             name (str): The name of the agent.

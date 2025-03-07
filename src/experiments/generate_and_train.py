@@ -5,11 +5,12 @@ import time
 from utils.common_imports import *
 
 # Local imports
-from models.hf_agent import HfAgent
+from models.local_llm import LocalLLM
 from environments.dond.dond_player import DondPlayerHandler
 from environments.dond.dond_game import DondGame
-from models.dummy_hf_agent import DummyHfAgent
-from models.oai_agent import OaiAgent
+from environments.dond.dond_training_data_funcs import *
+from models.dummy_local_llm import DummyLocalLLM
+from models.server_llm import ServerLLM
 from utils.log_statistics import *
 from utils.log_statistics import update_player_statistics, generate_player_stats_plots
 from utils.update_start_epoch import update_start_epoch
@@ -26,12 +27,12 @@ def init_models(cfg, base_seed, output_directory):
     models = {}
     for model_name in cfg["models"].keys():
         if cfg["models"][model_name]["class"] == "hf":
-            models[model_name] = HfAgent(**cfg["models"][model_name]["init_args"], base_seed=base_seed * cfg["experiment"]["nb_epochs"],
+            models[model_name] = LocalLLM(**cfg["models"][model_name]["init_args"], base_seed=base_seed * cfg["experiment"]["nb_epochs"],
                                          output_directory=output_directory)
         elif cfg["models"][model_name]["class"] == "dummy_hf":
-            models[model_name] = DummyHfAgent(**cfg["models"][model_name]["init_args"])
+            models[model_name] = DummyLocalLLM(**cfg["models"][model_name]["init_args"])
         elif cfg["models"][model_name]["class"] == "oai":
-            models[model_name] = OaiAgent(**cfg["models"][model_name]["init_args"])
+            models[model_name] = ServerLLM(**cfg["models"][model_name]["init_args"])
     return models
 
 
@@ -92,7 +93,7 @@ def format_time(seconds):
         return f"{int(seconds)}s"
 
 
-def dond_run_train(cfg, base_seed):
+def generate_and_train(cfg, base_seed):
     """
     Executes a negotiation cycle for the Deal or No Deal (DoND) game.
     """
@@ -141,6 +142,8 @@ def dond_run_train(cfg, base_seed):
             matches.append(create_blank_match(cfg, seed_offset=(iteration * nb_matches) + i))
         players = matches[0]["players"]
         player_names = players.keys()
+        
+        # Run matches to collect raw conversation data
         run_matches(
             export_path=it_folder,
             matches=matches,
@@ -154,12 +157,31 @@ def dond_run_train(cfg, base_seed):
 
         logging_start_time = time.time()
 
+        # Process raw data into training data using the specified functions for each player
         for player_name in player_names:
+            # Create training data directory
+            training_data_path = os.path.join(it_folder, player_name, "training")
+            os.makedirs(training_data_path, exist_ok=True)
+            
+            # Get the raw data path
+            raw_data_path = os.path.join(it_folder, player_name, "raw_data")
+            
+            # Process the raw data using the specified training data function
+            if player_name in cfg["training"]["players"]:
+                player_cfg = cfg["training"]["players"][player_name]
+                training_data_func = player_cfg.get("training_data_func")
+                training_data_func_args = player_cfg.get("training_data_func_args", {})
+                globals()[training_data_func](
+                    raw_data_folder=raw_data_path,
+                    training_data_folder=training_data_path,
+                    **training_data_func_args
+                )
+            
+            # Update player statistics
             player_stats_folder = os.path.join(output_directory, "statistics", player_name)
             os.makedirs(player_stats_folder, exist_ok=True)
             player_stats_file = os.path.join(player_stats_folder, f"{player_name}_stats.jsonl")
-            player_plots_folder = os.path.join(player_stats_folder, "plots")
-
+            
             update_player_statistics(
                 input_path=os.path.join(it_folder, player_name, "statistics"),
                 output_file=player_stats_file
@@ -180,12 +202,12 @@ def dond_run_train(cfg, base_seed):
         for model_name, model in models.items():
             if hasattr(model, 'adapters'):
                 for adapter_name in model.adapters.keys():
-                    mod_adpt_id = f"{model_name}/{adapter_name}"
+                    policy_id = f"{model_name}/{adapter_name}"
                     model.prepare_adapter_train(adapter_name)
 
                     data_paths = []
                     for player in players.values():
-                        if player.mod_adpt_id == mod_adpt_id:
+                        if player.policy_id == policy_id:
                             player_export_path = os.path.join(it_folder, player.player_name, "training")
                             data_paths.append(player_export_path)
 
