@@ -6,7 +6,7 @@ hydra:
 
 experiment:
   name: "dond_baseline_test"
-  method: dond_run_train
+  method: generate_and_train
   description: "no description"
   nb_epochs: 1000
   nb_matches_per_iteration: 32

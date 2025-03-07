@@ -6,7 +6,7 @@ hydra:
     dir: ${oc.env:EXP_OUT}/${hydra.job.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
 
 experiment:
-  method: dond_run_train
+  method: generate_and_train
   description: "Easy. They should be learning."
   nb_epochs: 500
   nb_matches_per_iteration: 32

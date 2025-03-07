@@ -93,7 +93,7 @@ def format_time(seconds):
         return f"{int(seconds)}s"
 
 
-def dond_run_train(cfg, base_seed):
+def generate_and_train(cfg, base_seed):
     """
     Executes a negotiation cycle for the Deal or No Deal (DoND) game.
     """
