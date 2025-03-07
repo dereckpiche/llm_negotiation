@@ -2,7 +2,7 @@ import os
 import json
 from utils.common_imports import *
 from .dond_statistics_funcs import *
-from .dond_return_funcs import *
+from .dond_training_data_funcs import *
 
 def players_logging_and_html(
         path,
@@ -219,3 +219,59 @@ def independant_players_logging(
         metrics = globals()[metrics_func](player_info, info, **metrics_func_args)
         with open(metrics_file, "w") as f:
             json.dump(metrics, f, indent=4)
+
+def log_raw_conversations(
+        path,
+        player_infos,
+        info,
+        metrics_func=None,
+        metrics_func_args=None
+        ):
+    """
+    Logs only the raw conversation data for each player.
+    
+    Args:
+        path (str): Base path to save the data.
+        player_infos (list): List of player information dictionaries.
+        info (dict): Game information.
+        metrics_func (str, optional): Name of the function to calculate metrics.
+        metrics_func_args (dict, optional): Arguments for the metrics function.
+    """
+    for player_info in player_infos:
+        player_name = player_info["player_name"]
+
+        # Define paths for raw data and statistics subfolders
+        raw_data_path = os.path.join(path, player_name, "raw_data")
+        statistics_path = os.path.join(path, player_name, "statistics")
+
+        # Ensure directories exist
+        os.makedirs(raw_data_path, exist_ok=True)
+        os.makedirs(statistics_path, exist_ok=True)
+
+        # Determine the next available file number for raw data
+        raw_files = os.listdir(raw_data_path)
+        raw_numbers = [int(f.split('_')[-1].split('.')[0]) for f in raw_files if f.startswith("conversation_")]
+        next_raw_number = max(raw_numbers, default=0) + 1
+        raw_file = os.path.join(raw_data_path, f"conversation_{next_raw_number}.json")
+
+        # Log raw conversation data
+        chat_history = player_info.get("chat_history", [])
+        
+        # Add game info to the chat history for later processing
+        chat_history_with_info = chat_history.copy()
+        game_info_message = {"role": "system", "game_info": info, "player_name": player_name}
+        chat_history_with_info.append(game_info_message)
+        
+        with open(raw_file, "w") as f:
+            json.dump(chat_history_with_info, f, indent=4)
+
+        # Log metrics if a metrics function is provided
+        if metrics_func:
+            metrics_files = os.listdir(statistics_path)
+            metrics_numbers = [int(f.split('_')[-1].split('.')[0]) for f in metrics_files if f.startswith("metrics_")]
+            next_metrics_number = max(metrics_numbers, default=0) + 1
+            metrics_file = os.path.join(statistics_path, f"metrics_{next_metrics_number}.json")
+
+            metrics = globals()[metrics_func](player_info, info, **metrics_func_args)
+            with open(metrics_file, "w") as f:
+                json.dump(metrics, f, indent=4)

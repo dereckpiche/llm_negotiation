@@ -26,7 +26,7 @@ matches:
 
   run_matches_args:
     nb_parallel_matches: -1
-    log_func: players_logging_and_html
+    log_func: log_raw_conversations
     log_func_args:
       metrics_func: gather_dond_statistics
       metrics_func_args:
@@ -51,15 +51,12 @@ matches:
         "total_coop_points_difference_player",
         "total_coop_points_difference_coplayer"
         ]
-      training_data_func: set_discounted_scores
-      training_data_func_args:
-        discount_factor: 0.99
 
   dond_game_args:
-    rounds_per_game: 4
-    max_messages: 2
+    rounds_per_game: 1
+    max_messages: 1
     min_messages: 1
-    max_chars_per_message: 400
+    max_chars_per_message: 200
     mode: basic
     random_setup_func: bicameral_vals_assignator
     random_setup_kwargs:
@@ -78,8 +75,8 @@ matches:
     alice:
 
       dond_player_args:
-        mod_adpt_id: 'llama/ad_alice'
-        max_errors: 2
+        policy_id: 'llama/ad_alice'
+        max_errors: 0
         allow_reasoning: true
         max_reasoning_chars: 400
         intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
@@ -96,8 +93,8 @@ matches:
     bob:
 
       dond_player_args:
-        mod_adpt_id: 'llama/ad_bob'
-        max_errors: 2
+        policy_id: 'llama/ad_bob'
+        max_errors: 0
         allow_reasoning: true
         max_reasoning_chars: 400
         intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
@@ -161,9 +158,21 @@ models:
 
 training:
   keep_error_messages: False
+  
+  # New section for player-specific training data processing
+  players:
+    alice:
+      training_data_func: generate_training_data_from_raw
+      training_data_func_args:
+        discount_factor: 0.99
+    
+    bob:
+      training_data_func: generate_training_data_from_raw
+      training_data_func_args:
+        discount_factor: 0.99
+  
   llama:
     adapters:
-
       ad_alice:
         train_func: train_reinforce_main
         train_func_args:
