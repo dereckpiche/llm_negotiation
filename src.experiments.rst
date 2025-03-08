@@ -13,5 +13,5 @@ Submodules
    :maxdepth: 4
 
    src.experiments.arithmetic_test
-   src.experiments.generate_and_train
+   src.experiments.dond_run_train
    src.experiments.last_completion

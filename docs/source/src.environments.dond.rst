@@ -15,5 +15,5 @@ Submodules
    src.environments.dond.dond_game
    src.environments.dond.dond_log_funcs
    src.environments.dond.dond_player
-   src.environments.dond.dond_return_funcs
    src.environments.dond.dond_statistics_funcs
+   src.environments.dond.dond_training_data_funcs

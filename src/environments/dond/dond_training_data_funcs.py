@@ -152,7 +152,7 @@ def calculate_sum_scores(game_info,
                          discount_factor=0.99, 
                          normalize_func=None):
     """
-    Calculates the sum of rewards for both players for each round.
+    Calculates the sum of rewards for both agents for each round.
 
     Args:
         game_info (dict): Game information including round points.

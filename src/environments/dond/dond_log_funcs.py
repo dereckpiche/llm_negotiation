@@ -4,7 +4,7 @@ from utils.common_imports import *
 from .dond_statistics_funcs import *
 from .dond_training_data_funcs import *
 
-def players_logging_and_html(
+def agents_logging_and_html(
         path,
         player_infos,
         info,
@@ -175,7 +175,7 @@ def players_logging_and_html(
         f.write(html_content)
 
 
-def independant_players_logging(
+def independant_agents_logging(
         path,
         player_infos,
         info,

@@ -5,15 +5,15 @@ import time
 from omegaconf import OmegaConf
 import random
 # local imports
-from src.environments.dond_run_matches import run_matches
-from environments.dond_game import DondGame
+from environments.dond_run_matches import run_matches
+from environments.dond.dond_game import DondEnv
 from models.local_llm import LocalLLM
 from models.dummy_local_llm import DummyLocalLLM
 from models.server_llm import ServerLLM
 from statistics import mean
 from utils.plot_curves import plot_curves
 
-from environments.dond_player import DondPlayerHandler
+from environments.dond_player import DondAgent
 from training.extract_ppo_dataset import extract_ppo_dataset
 from training.extract_sft_dataset import extract_sft_dataset
 import copy
@@ -65,7 +65,7 @@ def run_partial_game(game, player_0, player_1, agent):
         if is_finalization:
             return game, other_player  # Game ends, return the game state and the other player
 
-        # Swap players for the next turn
+        # Swap agents for the next turn
         current_player, other_player = other_player, current_player
 
 
@@ -75,12 +75,12 @@ def last_completion(cfg):
     NB_SAMPLES = cfg['NB_SAMPLES']
 
     agent = LocalLLM(**cfg['models']['llama']['init_args'])
-    player_0 = DondPlayerHandler(player_name="player_a", **cfg['players']['player_a']['dond_player_args'])
+    player_0 = DondAgent(player_name="player_a", **cfg['agents']['player_a']['dond_player_args'])
     player_0.game_id = 0
-    player_1 = DondPlayerHandler(player_name="player_b", **cfg['players']['player_b']['dond_player_args'])
+    player_1 = DondAgent(player_name="player_b", **cfg['agents']['player_b']['dond_player_args'])
     player_1.game_id = 1
 
-    dond_game = DondGame(**cfg['dond_game_args'])
+    dond_game = DondEnv(**cfg['dond_game_args'])
     dond_game, player = run_partial_game(dond_game, player_0, player_1, agent)
 
     mean_scores = []

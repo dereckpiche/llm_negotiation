@@ -257,7 +257,7 @@ def compute_points_diff_on_agreement(player_points, coplayer_points, agreement_r
 
 def compute_cooperative_points_for_round(player_values, coplayer_values, quantities):
     """
-    Computes the hypothetical cooperative policy points for both players for a round.
+    Computes the hypothetical cooperative policy points for both agents for a round.
     The rule used here is symmetric:
       - If player_values[item] > coplayer_values[item]:
           the player receives full credit (value * quantity) and vice versa.

@@ -193,7 +193,7 @@ def generate_frequency_counts(input_path):
 
 def plot_seed_averaged_stats(root_path, player_names):
     """
-    Plots seed-averaged statistics for given players.
+    Plots seed-averaged statistics for given agents.
 
     Args:
         root_path (str): Path to the directory containing seed data.

@@ -1,17 +1,17 @@
 #!/bin/bash
 
 # Define the commands for each pair of goals
-unbiased_test='python src/run.py matches.players.alice.dond_player_args.goal_prompt=${prompt_blocks.unbiased_goal} matches.players.bob.dond_player_args.goal_prompt=${prompt_blocks.unbiased_goal} hydra.run.dir=outputs/2025-02-20/19-42-41'
+unbiased_test='python src/run.py matches.agents.alice.dond_player_args.goal_prompt=${prompt_blocks.unbiased_goal} matches.agents.bob.dond_player_args.goal_prompt=${prompt_blocks.unbiased_goal} hydra.run.dir=outputs/2025-02-20/19-42-41'
 
-normal_bias_test='python src/run.py matches.players.alice.dond_player_args.goal_prompt=${prompt_blocks.normal_goal} matches.players.bob.dond_player_args.goal_prompt=${prompt_blocks.normal_goal}'
+normal_bias_test='python src/run.py matches.agents.alice.dond_player_args.goal_prompt=${prompt_blocks.normal_goal} matches.agents.bob.dond_player_args.goal_prompt=${prompt_blocks.normal_goal}'
 
-agressive_bias_test='python src/run.py matches.players.alice.dond_player_args.goal_prompt=${prompt_blocks.agressive_goal} matches.players.bob.dond_player_args.goal_prompt=${prompt_blocks.agressive_goal} hydra.run.dir=outputs/2025-02-21/02-25-31'
+agressive_bias_test='python src/run.py matches.agents.alice.dond_player_args.goal_prompt=${prompt_blocks.agressive_goal} matches.agents.bob.dond_player_args.goal_prompt=${prompt_blocks.agressive_goal} hydra.run.dir=outputs/2025-02-21/02-25-31'
 
-agressive_pair_bias_test='python src/run.py matches.players.alice.dond_player_args.goal_prompt=${prompt_blocks.agressive_pair_goal} matches.players.bob.dond_player_args.goal_prompt=${prompt_blocks.agressive_pair_goal}'
+agressive_pair_bias_test='python src/run.py matches.agents.alice.dond_player_args.goal_prompt=${prompt_blocks.agressive_pair_goal} matches.agents.bob.dond_player_args.goal_prompt=${prompt_blocks.agressive_pair_goal}'
 
-fair_bias_test='python src/run.py matches.players.alice.dond_player_args.goal_prompt=${prompt_blocks.fair_goal} matches.players.bob.dond_player_args.goal_prompt=${prompt_blocks.fair_goal}'
+fair_bias_test='python src/run.py matches.agents.alice.dond_player_args.goal_prompt=${prompt_blocks.fair_goal} matches.agents.bob.dond_player_args.goal_prompt=${prompt_blocks.fair_goal}'
 
-submitted_goal_test='python src/run.py matches.players.alice.dond_player_args.goal_prompt=${prompt_blocks.normal_goal} matches.players.bob.dond_player_args.goal_prompt=${prompt_blocks.submitted_goal}'
+submitted_goal_test='python src/run.py matches.agents.alice.dond_player_args.goal_prompt=${prompt_blocks.normal_goal} matches.agents.bob.dond_player_args.goal_prompt=${prompt_blocks.submitted_goal}'
 
 # List of commands to execute
 command_list=(

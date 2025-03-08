@@ -70,7 +70,7 @@ matches:
     role_assignator_func: alternating_role_assignator
     role_assignator_func_kwargs: {}
 
-  players:
+  agents:
 
     alice:
 
@@ -150,6 +150,11 @@ models:
       eval_with: "vllm"
       train_with: "hf"
 
+  dummy_llm:
+    class: dummy
+    init_args:
+      name: 'dummy_llm'
+
 
 ####################################################################################################
 # TRAINING
@@ -160,7 +165,7 @@ training:
   keep_error_messages: False
   
   # New section for player-specific training data processing
-  players:
+  agents:
     alice:
       training_data_func: generate_training_data_from_raw
       training_data_func_args:
@@ -218,12 +223,12 @@ prompt_blocks:
   barebone_ultimatum: |
     Welcome, you are playing the splitting game.
     Game Description:
-      1) In this game, two players divide 10 coins among themselves.
-      2) A finalization is a proposed division of the coins between the two players.
+      1) In this game, two agents divide 10 coins among themselves.
+      2) A finalization is a proposed division of the coins between the two agents.
       3) The first player will make a finalization.
       The second player must then make his finalization.
       Each player can make a single finalization for the entire game, hence the name.
-      4) In order for both players to agree, the finalizations must be complementary. If no agreement is reached between the two players with the two finalizations, both players will receive zero points. If agreement is reached, the players will receive the coins corresponding to the finalizations.
+      4) In order for both agents to agree, the finalizations must be complementary. If no agreement is reached between the two agents with the two finalizations, both agents will receive zero points. If agreement is reached, the agents will receive the coins corresponding to the finalizations.
     Response Formatting:
       1) All of your responses must be within <finalize></finalize> tags.
       2) The division must be in a JSON-parsable format. Formatting: Final division: <finalize> {"i_take": {"coins": x}, "other_player_gets": {"coins": y}} </finalize> where "i_take" represents your share and "other_player_gets" represents the other player's share of the coins.
@@ -231,12 +236,12 @@ prompt_blocks:
   ultimatum_game_multiple_rounds: |
     Welcome, you are playing a multi-round splitting game.
     Game Description:
-      1) In this game, two players will divide a collection of coins over multiple rounds.
-      2) In each round, the available coins must be divided between both players.
-      3) In every round, both players submit a finalization proposal outlining how the coins are split.
-      4) If the two players do not propose the same split, both players receive zero points for that round.
+      1) In this game, two agents will divide a collection of coins over multiple rounds.
+      2) In each round, the available coins must be divided between both agents.
+      3) In every round, both agents submit a finalization proposal outlining how the coins are split.
+      4) If the two agents do not propose the same split, both agents receive zero points for that round.
       5) Once a player has proposed a split, the other player must also propose a split.
-      6) Both players are assigned a value for each coin. The points each player receives are the product of the number of coins they get and the coin's value.
+      6) Both agents are assigned a value for each coin. The points each player receives are the product of the number of coins they get and the coin's value.
     Response Formatting:
       1) All your responses in each round must be enclosed within <finalize></finalize> tags.
       2) Specify the division in a JSON-parsable format. For example: <finalize> {"i_take": {"coins": x}, "other_player_gets": {"coins": y}} </finalize> where the numbers represent the counts of each object allocated to you and to your opponent.
@@ -268,12 +273,12 @@ prompt_blocks:
   dond_game_multiple_rounds: |
     Welcome, you are participating in a multi-round negotiation game.
     Game Description:
-      1) In this game, two players will divide a collection of items over multiple rounds.
+      1) In this game, two agents will divide a collection of items over multiple rounds.
       2) In each round, the available items of each category ({items}) and their corresponding quantities will be dynamically specified.
       3) In each round, the different item categories will have different values for each player.
       4) The points of each player in each round is determined by multiplying the number of items they receive by the value they assign to each item.
-      5) Both players must submit a finalization proposal indicating how they wish to split the items.
-      6) If the finalization proposals of both players do not match, neither player earns points for that round.
+      5) Both agents must submit a finalization proposal indicating how they wish to split the items.
+      6) If the finalization proposals of both agents do not match, neither player earns points for that round.
     Response Formatting:
       1) Enclose your finalization proposal within <finalize></finalize> tags.
       2) Provide your proposal in a JSON-parsable format ensuring that every expected item is included. For example:
@@ -285,7 +290,7 @@ prompt_blocks:
     The points attributed to each player will be computed as the cumulative sum of their points over rounds, where each player's round score is determined by multiplying the quantity of each item they receive by the value they assign to each item.
 
   dond_cooperative_goal: |
-    The points attributed to each player will be computed as the cumulative sum of their points over rounds, where each player's round score is determined by multiplying the quantity of each item they receive by the value they assign to each item. The right strategy here is not to be naively greedy. The right strategy is as follows: 1) Reveal your values in your messages. Your coplayer will do the same. 2) Together, find the player who values the items the most in the current round. 3) Give the items to the player who values them the most. That way, both players will maximize their expected sum of points over rounds. Your goal is to perform this strategy with your coplayer. Please follow this strategy with your coplayer.
+    The points attributed to each player will be computed as the cumulative sum of their points over rounds, where each player's round score is determined by multiplying the quantity of each item they receive by the value they assign to each item. The right strategy here is not to be naively greedy. The right strategy is as follows: 1) Reveal your values in your messages. Your coplayer will do the same. 2) Together, find the player who values the items the most in the current round. 3) Give the items to the player who values them the most. That way, both agents will maximize their expected sum of points over rounds. Your goal is to perform this strategy with your coplayer. Please follow this strategy with your coplayer.
 
   dond_goal_long_term: |
     The points attributed to each player will be computed as the cumulative sum of their points over rounds, where each player's round score is determined by multiplying the quantity of each item they receive by the value they assign to each item. What matters is the total points each player has accumulated over all rounds, not the points they have accumulated in each round. This is not a zero-sum game. It is a general-sum game.
@@ -321,10 +326,10 @@ prompt_blocks:
     In order to think before you act, you are allowed to use {max_reasoning_chars} characters per round. When reasoning, please follow these rules; 1) Enclose your thought process within <think> and </think> tags. 2) Do not include extraneous content outside these tags. 3) Your reasoning is limited to {max_reasoning_chars} characters per response. 4) You are not obligated to reason at each response.
 
   dond_hidden_alternating_starting_player: |
-    In this version of the game, your finalization proposal (enclosed in <finalize> tags) will be hidden to your coplayer. The values attributed to the items by other players are hidden as well. However, there are no restrictions to what the players are allowed to reveal themselves in their messages! Furthermore, in this version, players alternate turns and the player with the first move changes each round.
+    In this version of the game, your finalization proposal (enclosed in <finalize> tags) will be hidden to your coplayer. The values attributed to the items by other agents are hidden as well. However, there are no restrictions to what the agents are allowed to reveal themselves in their messages! Furthermore, in this version, agents alternate turns and the player with the first move changes each round.
 
   dond_visible_alternating_starting_player: |
-    In this version of the game, your finalization proposal (enclosed in <finalize> tags) will be shown to your coplayer. However, the values attributed to the items by other players are hidden. However, there are no restrictions to what the players are allowed to reveal themselves in their messages.Furthermore, in this version, players alternate turns and the player with the first move changes each round.
+    In this version of the game, your finalization proposal (enclosed in <finalize> tags) will be shown to your coplayer. However, the values attributed to the items by other agents are hidden. However, there are no restrictions to what the agents are allowed to reveal themselves in their messages.Furthermore, in this version, agents alternate turns and the player with the first move changes each round.
 
 
 

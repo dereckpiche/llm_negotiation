@@ -6,8 +6,8 @@ from utils.common_imports import *
 
 # Local imports
 from models.local_llm import LocalLLM
-from environments.dond.dond_player import DondPlayerHandler
-from environments.dond.dond_game import DondGame
+from environments.dond.dond_player import DondAgent
+from environments.dond.dond_game import DondEnv
 from environments.dond.dond_training_data_funcs import *
 from models.dummy_local_llm import DummyLocalLLM
 from models.server_llm import ServerLLM
@@ -23,74 +23,6 @@ import pickle
 
 compute_logger = logging.getLogger("compute_logger")
 
-def init_models(cfg, base_seed, output_directory):
-    models = {}
-    for model_name in cfg["models"].keys():
-        if cfg["models"][model_name]["class"] == "hf":
-            models[model_name] = LocalLLM(**cfg["models"][model_name]["init_args"], base_seed=base_seed * cfg["experiment"]["nb_epochs"],
-                                         output_directory=output_directory)
-        elif cfg["models"][model_name]["class"] == "dummy_hf":
-            models[model_name] = DummyLocalLLM(**cfg["models"][model_name]["init_args"])
-        elif cfg["models"][model_name]["class"] == "oai":
-            models[model_name] = ServerLLM(**cfg["models"][model_name]["init_args"])
-    return models
-
-
-def create_blank_match(cfg, seed_offset=0):
-    """
-    Initializes the match for the game, ensuring that each game instance
-    receives a unique random_seed passed to the DondGame, which in turn is used
-    by the random generation functions for quantities and values.
-
-    Args:
-        cfg (omegaconf.DictConfig): Configuration object containing all necessary parameters.
-        seed_offset (int): An offset to uniquely adjust the seed for each match.
-
-    scores:
-        dict: A match dictionary.
-    """
-    players = {}
-    for player_name in cfg["matches"]["players"].keys():
-        players[player_name] = DondPlayerHandler(
-            player_name,
-            **cfg["matches"]["players"][player_name]["dond_player_args"]
-        )
-
-    # Build a fresh copy of game args to safely update random setup parameters.
-    game_args = dict(cfg["matches"]["dond_game_args"])
-    setup_kwargs = game_args.get("random_setup_kwargs", {})
-    setup_kwargs = dict(setup_kwargs)  # shallow copy
-
-    # Determine the base seed.
-    if "seed" in setup_kwargs:
-        base_seed = setup_kwargs.pop("seed")  # Remove it from kwargs so that DondGame controls randomness.
-        random_seed_value = base_seed + seed_offset
-    else:
-        random_seed_value = random.randint(1, 10**9) + seed_offset
-
-    # Put back the cleaned up random_setup_kwargs (without any seed key).
-    game_args["random_setup_kwargs"] = setup_kwargs
-
-    blank_match = {
-        "players": players,
-        "game": DondGame(
-            players=list(players.keys()),
-            random_seed=random_seed_value,  # Pass the unique seed here.
-            **game_args
-        ),
-        "game_state": None,
-        "stop_condition": cfg["matches"]["stop_condition"],
-        "stop_condition_kwargs": cfg["matches"]["stop_condition_kwargs"]
-    }
-    return blank_match
-
-def format_time(seconds):
-    if seconds >= 3600:
-        return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m {int(seconds % 60)}s"
-    elif seconds >= 60:
-        return f"{int(seconds // 60)}m {int(seconds % 60)}s"
-    else:
-        return f"{int(seconds)}s"
 
 
 def generate_and_train(cfg, base_seed):
@@ -140,8 +72,8 @@ def generate_and_train(cfg, base_seed):
         nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
         for i in range(nb_matches):
             matches.append(create_blank_match(cfg, seed_offset=(iteration * nb_matches) + i))
-        players = matches[0]["players"]
-        player_names = players.keys()
+        agents = matches[0]["agents"]
+        player_names = agents.keys()
         
         # Run matches to collect raw conversation data
         run_matches(
@@ -167,8 +99,8 @@ def generate_and_train(cfg, base_seed):
             raw_data_path = os.path.join(it_folder, player_name, "raw_data")
             
             # Process the raw data using the specified training data function
-            if player_name in cfg["training"]["players"]:
-                player_cfg = cfg["training"]["players"][player_name]
+            if player_name in cfg["training"]["agents"]:
+                player_cfg = cfg["training"]["agents"][player_name]
                 training_data_func = player_cfg.get("training_data_func")
                 training_data_func_args = player_cfg.get("training_data_func_args", {})
                 globals()[training_data_func](
@@ -206,7 +138,7 @@ def generate_and_train(cfg, base_seed):
                     model.prepare_adapter_train(adapter_name)
 
                     data_paths = []
-                    for player in players.values():
+                    for player in agents.values():
                         if player.policy_id == policy_id:
                             player_export_path = os.path.join(it_folder, player.player_name, "training")
                             data_paths.append(player_export_path)
@@ -283,3 +215,64 @@ def generate_and_train(cfg, base_seed):
     total_end_time = time.time()
     total_duration = total_end_time - total_start_time
     compute_logger.info(f"Total time taken for the entire run: {format_time(total_duration)}")
+
+
+
+def init_models(cfg, base_seed, output_directory):
+    models = {}
+    for model_name in cfg["models"].keys():
+        if cfg["models"][model_name]["class"] == "hf":
+            models[model_name] = LocalLLM(**cfg["models"][model_name]["init_args"], base_seed=base_seed * cfg["experiment"]["nb_epochs"],
+                                         output_directory=output_directory)
+        elif cfg["models"][model_name]["class"] == "dummy_hf":
+            models[model_name] = DummyLocalLLM(**cfg["models"][model_name]["init_args"])
+        elif cfg["models"][model_name]["class"] == "oai":
+            models[model_name] = ServerLLM(**cfg["models"][model_name]["init_args"])
+    return models
+
+
+def create_blank_match(cfg, seed_offset=0):
+    """
+    Initializes the match for the game, ensuring that each game instance
+    receives a unique random_seed passed to the DondEnv, which in turn is used
+    by the random generation functions for quantities and values.
+
+    Args:
+        cfg (omegaconf.DictConfig): Configuration object containing all necessary parameters.
+        seed_offset (int): An offset to uniquely adjust the seed for each match.
+
+    scores:
+        dict: A match dictionary.
+    """
+    agents = {}
+    for player_name in cfg["matches"]["agents"].keys():
+        agents[player_name] = DondAgent(
+            player_name,
+            **cfg["matches"]["agents"][player_name]["dond_player_args"]
+        )
+
+    # Build a fresh copy of game args to safely update random setup parameters.
+    game_args = dict(cfg["matches"]["dond_game_args"])
+    setup_kwargs = game_args.get("random_setup_kwargs", {})
+    setup_kwargs = dict(setup_kwargs)  # shallow copy
+
+    # Put back the cleaned up random_setup_kwargs (without any seed key).
+    game_args["random_setup_kwargs"] = setup_kwargs
+
+    blank_match = {
+        "env": DondEnv(
+            agents=list(agents.keys()),
+            random_seed=seed_offset,  # Pass the unique seed here.
+            **game_args
+        ),
+        "agents": agents,
+    }
+    return blank_match
+
+def format_time(seconds):
+    if seconds >= 3600:
+        return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m {int(seconds % 60)}s"
+    elif seconds >= 60:
+        return f"{int(seconds // 60)}m {int(seconds % 60)}s"
+    else:
+        return f"{int(seconds)}s"

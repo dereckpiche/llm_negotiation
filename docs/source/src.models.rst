@@ -12,6 +12,6 @@ Submodules
 .. toctree::
    :maxdepth: 4
 
-   src.models.dummy_hf_agent
-   src.models.hf_agent
-   src.models.oai_agent
+   src.models.dummy_local_llm
+   src.models.local_llm
+   src.models.server_llm

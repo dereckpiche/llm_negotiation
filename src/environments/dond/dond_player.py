@@ -5,7 +5,7 @@ import json
 from utils.common_imports import *
 
 
-class DondPlayerHandler:
+class DondAgent:
     def __init__(
         self,
         player_name,
@@ -26,7 +26,7 @@ class DondPlayerHandler:
         reasoning_mechanics_prompt=None
     ):
         """
-        Initializes the DondPlayerHandler.
+        Initializes the DondAgent.
 
         Args:
             player_name (str): The name of the player.
@@ -68,6 +68,111 @@ class DondPlayerHandler:
 
         self.game_id = None  # ID of the player in the game
         self.reset()
+
+    def step(self, observation_from_env, policy_output=None):
+        """Update the agent state based on the observation and action.
+        The action is the output of the LLM.
+
+        Args:
+            observation_from_env (dict): The observation of the environment.
+            policy_output (str, optional): The output of the policy (LLM response).
+
+        Returns:
+            policy_id (str): The policy identifier. 
+            policy_input (dict): The input to the policy.
+            action : The official action to be sent to the environment.
+            done (bool): Whether the LLM action is ready to be sent to the environment.
+            info (dict): Additional information about the agent.
+        """
+        state = observation_from_env
+        
+        # If we don't have policy output, we need to generate the user message and return policy input
+        if policy_output is None:
+            # Set the user message in chat history based on the current state
+            self.set_usr_message(state)
+            
+            # Get the latest user message to be used as policy input
+            latest_message = self.chat_history[-1]["content"]
+            
+            return self.policy_id, self.chat_history, None, False, self.get_log_info()
+        
+        # If we have policy output, we need to process it and determine the action
+        else:
+            # Process the LLM output
+            is_error, error_message, is_finalization, processed_response = self.process_response(
+                policy_output, state
+            )
+            
+            # Add the model response to chat history
+            model_response = {
+                "role": "assistant",
+                "content": policy_output,
+                "is_error": is_error,
+                "is_finalization": is_finalization,
+                "round_nb": state["round_number"],
+            }
+            self.add_to_chat_history(model_response)
+            
+            # Handle errors
+            if is_error:
+                self.retries += 1
+                self.error_message = error_message
+                
+                # Too many mistakes were made
+                if self.retries > self.max_errors:
+                    self.error_message = False
+                    action = (is_finalization, "-------")
+                    return None, None, action, True, self.get_log_info()
+                self.set_usr_message(state)
+                # Return with a request for policy output again (done = False)
+                return self.policy_id, self.chat_history, None, False, self.get_log_info()
+            
+            # Reset retries on successful processing
+            self.retries = 0
+            
+            # Create the action to be sent to the environment
+            action = (is_finalization, processed_response)
+            
+            # Action is ready to be sent to the environment
+            return self.policy_id, None, action, True, self.get_log_info()
+
+    def get_log_info(self):
+        """Get information about the agent required to log a trajectory.
+        
+        Returns:
+            log_info (dict): Information about the agent required to log a trajectory.
+        """
+        return {
+            "player_name": self.player_name, 
+            "chat_history": self.chat_history
+        }
+
+    def render(self):
+        """Render the current state of the agent."""
+        # Implementation can be expanded if needed
+        pass
+
+    def close(self):
+        """Perform any necessary cleanup."""
+        # Implementation can be expanded if needed
+        pass
+
+
+
+
+
+
+
+
+
+
+
+
+    
+
+    ###########################################################################
+    # Helper methods below this point
+    ###########################################################################
 
     def set_usr_message(self, state):
         """
@@ -134,7 +239,7 @@ class DondPlayerHandler:
             response (str): The response from the LLM player.
             state (dict): The current state of the game.
 
-        scores:
+        Returns:
             tuple: (is_error, error_message, is_finalization, processed_response)
         """
         errors = []
@@ -265,24 +370,6 @@ class DondPlayerHandler:
 
         return True, "Unknown error: Invalid response format.", False, None
 
-    def initialize_prompts(self, prompts):
-        """
-        Initializes and formats prompts from the configuration.
-
-        Args:
-            prompts (dict): Dictionary containing various prompts.
-
-        scores:
-            dict: Formatted prompts with placeholders replaced.
-        """
-        formatted_prompts = {}
-        for key, prompt in prompts.items():
-            if isinstance(prompt, list):
-                formatted_prompts[key] = self.format_prompt_list(prompt)
-            else:
-                formatted_prompts[key] = self.format_prompt(prompt)
-        return formatted_prompts
-
     def format_prompt(self, prompt, state):
         """
         Replaces placeholders in a prompt with actual values from the game state.
@@ -408,85 +495,6 @@ class DondPlayerHandler:
 
     def add_to_chat_history(self, element: dict):
         self.chat_history.append(element)
-
-    def step(self, input):
-        """
-        Processes the response from the model and updates the game state.
-
-        Args:
-            action (str): The action to be taken.
-            state (dict): The current state of the game.
-            llm_output (str): The output from the language model.
-
-        scores:
-            tuple: A tuple containing:
-                - observation (dict): The new state of the game.
-                - reward (float): The reward obtained from the action.
-                - done (bool): Whether the game is finished.
-                - info (dict): Additional information.
-        """
-        state, info, llm_output = input
-        # Initiate what will be returned
-        processed_response = None
-        send_to_game = False
-        is_finalization = False
-
-        # Process response. Check for errors.
-        is_error, error_message, is_finalization, processed_response = self.process_response(
-            llm_output, state
-        )
-
-        if is_error:
-            self.retries += 1
-            self.error_message = error_message
-            # Too many mistakes were made
-            if self.retries > self.max_errors:
-                self.error_message = False
-                processed_response = "-------"
-                send_to_game = True
-                self.retries = 0
-
-        else:
-            self.retries = 0
-            send_to_game = True
-
-        # Add raw response to chat_history
-        model_response = {
-            "role": "assistant",
-            "content": llm_output,
-            "is_error": is_error,
-            "is_finalization": is_finalization,
-            "round_nb": state["round_number"],
-        }
-
-        self.add_to_chat_history(model_response)
-
-        action = (is_finalization, processed_response)
-        player_state = None
-        player_info = {"player_name": self.player_name, "chat_history": self.chat_history}
-
-        return action, player_state, send_to_game, player_info
-
-    def get_info(self):
-        return {"player_name": self.player_name, "chat_history": self.chat_history}
-
-    # Optional render method
-    def render(self, mode='human'):
-        """
-        Renders the environment for visualization.
-        """
-        # Implement rendering logic if needed
-        pass
-
-    # Optional close method
-    def close(self):
-        """
-        Cleans up resources when the environment is no longer needed.
-        """
-        # Implement cleanup logic if needed
-        pass
-
-
 
     def new_round(self):
         """
