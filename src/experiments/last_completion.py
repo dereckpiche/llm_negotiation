@@ -7,9 +7,9 @@ import random
 # local imports
 from src.environments.dond_run_matches import run_matches
 from environments.dond_game import DondGame
-from models.hf_agent import HfAgent
-from models.dummy_hf_agent import DummyHfAgent
-from models.oai_agent import OaiAgent
+from models.local_llm import LocalLLM
+from models.dummy_local_llm import DummyLocalLLM
+from models.server_llm import ServerLLM
 from statistics import mean
 from utils.plot_curves import plot_curves
 
@@ -74,7 +74,7 @@ def last_completion(cfg):
     NB_TRAINING_STEPS = cfg['N_TRAINING_STEPS']
     NB_SAMPLES = cfg['NB_SAMPLES']
 
-    agent = HfAgent(**cfg['models']['llama']['init_args'])
+    agent = LocalLLM(**cfg['models']['llama']['init_args'])
     player_0 = DondPlayerHandler(player_name="player_a", **cfg['players']['player_a']['dond_player_args'])
     player_0.game_id = 0
     player_1 = DondPlayerHandler(player_name="player_b", **cfg['players']['player_b']['dond_player_args'])

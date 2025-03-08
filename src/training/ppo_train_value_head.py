@@ -60,19 +60,19 @@ def ppo_train_value_head(
         for i in range(0, len(contexts_list), mb_size):
             
             context_batch = contexts_list[i:i+mb_size]
-            return_batch = scores_list[i:i+mb_size]
+            score_batch = scores_list[i:i+mb_size]
             mask_batch = output_masks_list[i:i+mb_size]
 
             # Get the minibatch
             action_batch = [a[1:] for a in context_batch]
-            return_batch = [r[1:] for r in return_batch]
+            score_batch = [r[1:] for r in score_batch]
             mask_batch = [m[1:] for m in mask_batch]
             context_batch = [c[:-1] for c in context_batch]
 
             # Pad sequences
             action_batch = pad_sequence(action_batch, batch_first=True).long()
             context_batch = pad_sequence(context_batch, batch_first=True).long()
-            return_batch = pad_sequence(return_batch, batch_first=True).float()
+            score_batch = pad_sequence(score_batch, batch_first=True).float()
             mask_batch = pad_sequence(mask_batch, batch_first=True).float()
 
             # Create attention mask to ignore padding tokens
@@ -81,7 +81,7 @@ def ppo_train_value_head(
             # Move data to the appropriate device
             action_batch = action_batch.to(model_accelerator.device)
             context_batch = context_batch.to(model_accelerator.device)
-            return_batch = return_batch.to(model_accelerator.device)
+            score_batch = score_batch.to(model_accelerator.device)
             mask_batch = mask_batch.to(model_accelerator.device)
             attention_mask = attention_mask.to(model_accelerator.device)
 
@@ -100,7 +100,7 @@ def ppo_train_value_head(
             action_log_probs = log_probs.gather(dim=-1, index=action_batch.unsqueeze(-1)).squeeze(-1)
 
             # # Compute policy loss
-            # advantages = return_batch - values
+            # advantages = score_batch - values
             # ratios = torch.exp(action_log_probs - ref_action_log_probs)
             # surr1 = ratios * advantages
             # surr2 = torch.clamp(ratios, 1.0 - clip_param, 1.0 + clip_param) * advantages
@@ -109,7 +109,7 @@ def ppo_train_value_head(
             # policy_loss = policy_loss.sum() / (mask_batch.sum() + 1e-7) # get mean over non-masked output tokens
 
             # # Compute value loss with masking
-            # value_losses = F.mse_loss(values, return_batch, reduction='none')
+            # value_losses = F.mse_loss(values, score_batch, reduction='none')
             # value_loss = (value_losses * mask_batch).sum() / (mask_batch.sum() + 1e-7)
 
             # # Compute entropy loss
@@ -122,7 +122,7 @@ def ppo_train_value_head(
             #loss = policy_loss + vf_coef * value_loss + entropy_coef * entropy_loss
 
             # Test reinforce loss
-            rewarded_action_log_probs = action_log_probs * (return_batch * mask_batch)
+            rewarded_action_log_probs = action_log_probs * (score_batch * mask_batch)
             reinforce_loss = -rewarded_action_log_probs.mean()
             # Accumulate gradients
             model_accelerator.backward(reinforce_loss)

@@ -13,16 +13,11 @@ def get_conversations(folder_path: str):
 
 def conversation_to_rl_data(tokenizer,
                             conversation,
-                            remove_error_messages=True,
                             ):
 
     # Check if the tokenizer has an EOS token
     if tokenizer.eos_token is None:
         raise ValueError("The tokenizer does not have an EOS token.")
-
-    # Remove messages relating to errors
-    if remove_error_messages:
-         conversation = [m for m in conversation if m.get('is_error', False) == False]
 
     # Apply chat template to the entire conversation, include the last assistant message
     formatted_conversation = tokenizer.apply_chat_template(
@@ -39,13 +34,13 @@ def conversation_to_rl_data(tokenizer,
     # Remove the first <|eot_id|> position which corresponds to the system prompt
     eot_positions = all_eot_positions[1:]
 
-    return_values = []
+    score_values = []
     output_mask = []
     current_position = 0
 
     # Associate return values and output masks based on adjusted <|eot_id|> positions
     for i, message in enumerate(conversation):
-        return_value = message.get('return', 0)  # Default to 0 if 'return' is not present. This line is not necessary I think.
+        score_value = message.get('score', 0)  # Default to 0 if 'score' is not present. This line is not necessary I think.
 
         mask_value = 1 if message.get('role', None) == "assistant" else 0 # only train on messages from the assistant
 
@@ -56,11 +51,11 @@ def conversation_to_rl_data(tokenizer,
 
         # Extend return values and output masks for the current segment
         segment_length = next_position - current_position
-        return_values.extend([return_value] * segment_length)
+        score_values.extend([score_value] * segment_length)
         output_mask.extend([mask_value] * segment_length)
         current_position = next_position
 
-    return_tensor = torch.tensor(return_values)
+    return_tensor = torch.tensor(score_values)
     output_mask_tensor = torch.tensor(output_mask)
     last_eot_index = (tokens == eot_id).nonzero(as_tuple=True)[0][-1].item()
     tokens = tokens[:last_eot_index+1]

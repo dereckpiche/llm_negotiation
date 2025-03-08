@@ -32,9 +32,9 @@ memory_logger = logging.getLogger("memory_logger")
 model_logger = logging.getLogger("model_logger")
 
 
-class HfAgent:
+class LocalLLM:
     """
-    HfAgent is an agent that utilizes HuggingFace models for causal language modeling.
+    LocalLLM is an agent that utilizes HuggingFace models for causal language modeling.
     It supports training using Proximal Policy Optimization (PPO) and saving/loading models.
     """
 
@@ -60,7 +60,7 @@ class HfAgent:
         base_seed: int = 42
     ) -> None:
         """
-        Initializes the HfAgent.
+        Initializes the LocalLLM.
         """
         super().__init__()
         self.name = name

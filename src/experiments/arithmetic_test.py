@@ -2,7 +2,7 @@ import logging
 import re
 from statistics import mean
 from utils.common_imports import *
-from models.hf_agent import HfAgent  # Assuming the class is in the same folder
+from models.local_llm import LocalLLM  # Assuming the class is in the same folder
 
 
 
@@ -62,7 +62,7 @@ def train_agent(agent, num_steps, training_mode="ppo"):
 
 def arithmetic_test(cfg):
     cfg = OmegaConf.to_container(cfg, resolve=True, structured_config_mode='dict')
-    agent = HfAgent(**cfg['models']['llama']['init_args'])
+    agent = LocalLLM(**cfg['models']['llama']['init_args'])
     training_mode = cfg.get('training_mode', 'ppo')
     train_agent(agent, N_STEPS, training_mode)
     logging.info("Training completed.")
