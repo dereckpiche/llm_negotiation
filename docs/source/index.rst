@@ -1,11 +1,12 @@
-Welcome to llm_negotiation's documentation!
+Welcome to LLM Negotiation's documentation!
 ===========================================
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
    :caption: Contents:
 
    installation
+   environments
    usage
    modules
    contributing
