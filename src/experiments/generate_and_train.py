@@ -24,8 +24,8 @@ from environments.ipd.ipd_game import IPDEnv
 from environments.ipd.ipd_agent import IPDAgent
 from environments.dond.dond_game import DondEnv
 from environments.dond.dond_agent import DondAgent
-from environments.ipd.ipd_log_funcs import ipd_log_raw_conversations
-from environments.dond.dond_log_funcs import log_raw_conversations
+from environments.ipd.ipd_log_funcs import *
+from environments.dond.dond_log_funcs import *
 
 
 compute_logger = logging.getLogger("compute_logger")

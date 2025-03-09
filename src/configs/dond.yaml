@@ -22,7 +22,7 @@ experiment:
 matches:
   env_class: "DondEnv"
   agent_class: "DondAgent"
-  log_func: log_raw_conversations
+  log_func: log_raw_conversations_with_html
   log_func_args:
     metrics_func: gather_dond_statistics
     metrics_func_args:
