@@ -151,7 +151,7 @@ models:
       train_with: "hf"
 
   dummy_llm:
-    class: dummy
+    class: dummy_hf
     init_args:
       name: 'dummy_llm'
 

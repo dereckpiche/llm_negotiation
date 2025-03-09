@@ -1,18 +1,16 @@
-# local imports
 from utils.common_imports import *
 from environments.dond.dond_log_funcs import *
 
-
 def run_matches(
-              matches,
-              models,
-              iteration,
-              log_func,
-              log_func_args,
-              export_path,
-              nb_parallel_matches,
-              seed_offset=None
-              ):
+    matches,
+    models,
+    iteration,
+    log_func,
+    log_func_args,
+    export_path,
+    nb_parallel_matches,
+    seed_offset=0
+):
     """
     Runs multiple negotiation games in parallel and logs the results.
 
@@ -33,92 +31,78 @@ def run_matches(
     if nb_parallel_matches == -1:
         nb_parallel_matches = len(matches)
 
-    # Queue of matches to process
-    pending_matches = matches.copy()  # No deep copy needed for list of references
+    pending_matches = matches.copy()
     active_matches = {}
     
     # Initial population of active matches
     for i in range(min(nb_parallel_matches, len(pending_matches))):
         match = pending_matches.pop(0)
-        match_id = id(match)  # Use object ID as unique identifier
+        match_id = id(match)
         
-        # Initialize match state
         env = match['env']
         initial_observations = env.reset()
         
-        # Store match with its state
         active_matches[match_id] = {
             'env': env,
             'agents': match['agents'],
             'observations': initial_observations,
             'pending_actions': {},
-            'agent_needs_policy': {}  # Track which agents need policy outputs
+            'policy_outputs': {agent_id: None for agent_id in match['agents']}
         }
     
     # Main simulation loop
     while active_matches or pending_matches:
-        # Dictionary to collect policy inputs by policy ID
-        policy_inputs_by_id = {}
-        # Track which policy inputs correspond to which match and agent
-        policy_input_mapping = {}  # (policy_id, input_index) -> (match_id, agent_id)
+        # Collect policy inputs using nested dictionary structure
+        policy_inputs = {}  # {policy_id: {match_id: {agent_id: input}}}
         
-        # Process each active match to collect policy inputs
         for match_id, match_data in active_matches.items():
             env = match_data['env']
             agents = match_data['agents']
             observations = match_data['observations']
             
-            # Check each agent to see if they need a policy decision
             for agent_id, agent_state in agents.items():
-                # Only process agents that have observations
-                if agent_id in observations:
-                    # Process agent state to get policy needs
+                if agent_id in observations.keys():
+                    # Pass existing policy output if it exists
+                    existing_policy_output = match_data['policy_outputs'][agent_id]
                     policy_id, policy_input, action, ready, info = agent_state.step(
-                        observation_from_env=observations[agent_id]
+                        observation_from_env=observations[agent_id],
+                        policy_output=existing_policy_output
                     )
                     
-                    # If agent needs policy output
                     if not ready:
-                        # Initialize list for this policy if not exists
-                        if policy_id not in policy_inputs_by_id:
-                            policy_inputs_by_id[policy_id] = []
-                        
-                        # Add input to the batch and store mapping
-                        input_index = len(policy_inputs_by_id[policy_id])
-                        policy_inputs_by_id[policy_id].append(policy_input)
-                        policy_input_mapping[(policy_id, input_index)] = (match_id, agent_id)
-                        
-                        # Mark this agent as waiting for policy
-                        match_data['agent_needs_policy'][agent_id] = (policy_id, input_index)
+                        if policy_id not in policy_inputs:
+                            policy_inputs[policy_id] = {}
+                        if match_id not in policy_inputs[policy_id]:
+                            policy_inputs[policy_id][match_id] = {}
+                        policy_inputs[policy_id][match_id][agent_id] = policy_input
+                        # Reset policy output to None since we're requesting a new one
+                        match_data['policy_outputs'][agent_id] = None
                     else:
-                        # Agent has determined an action without needing policy
                         match_data['pending_actions'][agent_id] = action
+                        # Clear policy output if action is ready
+                        match_data['policy_outputs'][agent_id] = None
         
-        # Process all policy inputs to get outputs
-        policy_outputs_by_id = process_policy_inputs(models, policy_inputs_by_id)
+        # Process policy inputs and get outputs
+        policy_outputs = process_policy_inputs(models, policy_inputs, seed_offset=seed_offset)
         
-        # Distribute policy outputs to the appropriate agents
+        # Distribute policy outputs to agents
         for match_id, match_data in active_matches.items():
             agents = match_data['agents']
             observations = match_data['observations']
             
-            # Check each agent that was waiting for a policy output
-            for agent_id, policy_info in match_data['agent_needs_policy'].items():
-                policy_id, input_index = policy_info
-                policy_output = policy_outputs_by_id[policy_id][input_index]
-                
-                # Process the policy output to get an action
-                _, _, action, ready, _ = agents[agent_id].step(
-                    observation_from_env=observations[agent_id],
-                    policy_output=policy_output
-                )
-                
-                if ready:
-                    # Add action to pending actions
-                    match_data['pending_actions'][agent_id] = action
-            
-            # Clear the list of agents waiting for policy
-            match_data['agent_needs_policy'] = {}
+            # Update policy outputs for this match
+            if match_id in policy_outputs:
+                for agent_id, policy_output in policy_outputs[match_id].items():
+                    match_data['policy_outputs'][agent_id] = policy_output
+                    
+                    # Process the new policy output immediately
+                    policy_id, policy_input, action, ready, info = agents[agent_id].step(
+                        observation_from_env=observations[agent_id],
+                        policy_output=policy_output
+                    )
+                    if ready:
+                        match_data['pending_actions'][agent_id] = action
+                        match_data['policy_outputs'][agent_id] = None  # Clear if used
         
         # Step environments forward with collected actions
         completed_matches = []
@@ -126,38 +110,27 @@ def run_matches(
             env = match_data['env']
             pending_actions = match_data['pending_actions']
             
-            # If we have at least one action, step the environment
             if pending_actions:
-                # Step the environment with all pending actions
+                #import pdb; pdb.set_trace()
                 new_observations, done, info = env.step(pending_actions)
                 
-                # Update match data
                 match_data['observations'] = new_observations
                 match_data['pending_actions'] = {}
                 
-                # Check if match is completed
                 if done:
-                    # Collect log information from environment and all agents
                     env_info = env.get_log_info()
-                    agent_infos = {agent_id: agent.get_log_info() 
-                                   for agent_id, agent in match_data['agents'].items()}
-                    
-                    # Log game data using the specified logging function
+                    agent_infos = [agent.get_log_info() for agent in match_data['agents'].values()]
                     globals()[log_func](export_path, agent_infos, env_info, **log_func_args)
-                    
-                    # Mark match for removal
                     completed_matches.append(match_id)
         
-        # Remove completed matches and add new ones if available
+        # Remove completed matches and add new ones
         for match_id in completed_matches:
             del active_matches[match_id]
             
-            # Add a new match if available
             if pending_matches:
                 new_match = pending_matches.pop(0)
                 new_match_id = id(new_match)
                 
-                # Initialize new match
                 env = new_match['env']
                 initial_observations = env.reset()
                 
@@ -166,37 +139,51 @@ def run_matches(
                     'agents': new_match['agents'],
                     'observations': initial_observations,
                     'pending_actions': {},
-                    'agent_needs_policy': {}
+                    'policy_outputs': {agent_id: None for agent_id in new_match['agents']}
                 }
     
     return None
 
 
-def process_policy_inputs(models, policy_inputs_by_id, seed_offset=0):
+def process_policy_inputs(models, policy_inputs, seed_offset=0):
     """
     Process batches of inputs for each policy and return the outputs.
     
     Args:
         models (dict): Dictionary of models to use for generating outputs.
-        policy_inputs_by_id (dict): Dictionary mapping policy IDs to lists of inputs.
+        policy_inputs (dict): Nested dictionary {policy_id: {match_id: {agent_id: input}}}
+        seed_offset (int, optional): Offset for seeding, defaults to 0
         
     Returns:
-        dict: Dictionary mapping policy IDs to lists of outputs.
+        dict: Nested dictionary {match_id: {agent_id: output}}
     """
-    policy_outputs_by_id = {}
+    policy_outputs = {}  # {match_id: {agent_id: output}}
     
-    for policy_id, inputs in policy_inputs_by_id.items():
-        if not inputs:
-            policy_outputs_by_id[policy_id] = []
+    for policy_id, match_dict in policy_inputs.items():
+        if not match_dict:
             continue
             
         model_name, adapter_name = policy_id.split("/")
         model = models[model_name]
         
         if hasattr(model, 'adapters'):
-            model.prepare_adapter_eval(adapter_name, seed_offset)  # Iteration is handled separately
-            
-        policy_outputs_by_id[policy_id] = model.prompt(inputs)
+            model.prepare_adapter_eval(adapter_name, seed_offset)
         
-    return policy_outputs_by_id
-
+        # Flatten inputs for batch processing
+        flat_inputs = []
+        input_mapping = []  # [(match_id, agent_id), ...]
+        for match_id, agent_dict in match_dict.items():
+            for agent_id, input_data in agent_dict.items():
+                flat_inputs.append(input_data)
+                input_mapping.append((match_id, agent_id))
+        
+        # Get batch outputs
+        batch_outputs = model.prompt(flat_inputs)
+        
+        # Reconstruct nested structure
+        for (match_id, agent_id), output in zip(input_mapping, batch_outputs):
+            if match_id not in policy_outputs:
+                policy_outputs[match_id] = {}
+            policy_outputs[match_id][agent_id] = output
+    
+    return policy_outputs

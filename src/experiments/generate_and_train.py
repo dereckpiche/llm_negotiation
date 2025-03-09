@@ -30,7 +30,6 @@ def generate_and_train(cfg, base_seed):
     Executes a negotiation cycle for the Deal or No Deal (DoND) game.
     """
     total_start_time = time.time()
-
     # Get Hydra's runtime output directory which includes date and config info.
     hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
     output_directory = f"{hydra_cfg['runtime']['output_dir']}/seed_{base_seed}"
@@ -228,6 +227,8 @@ def init_models(cfg, base_seed, output_directory):
             models[model_name] = DummyLocalLLM(**cfg["models"][model_name]["init_args"])
         elif cfg["models"][model_name]["class"] == "oai":
             models[model_name] = ServerLLM(**cfg["models"][model_name]["init_args"])
+        else:
+            raise ValueError(f"Model class {cfg['models'][model_name]['class']} not found.")
     return models
 
 

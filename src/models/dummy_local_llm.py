@@ -28,7 +28,7 @@ class DummyLocalLLM(LocalLLM):
         pass
 
     def prompt(self, contexts) -> str:
-        return [""] * len(contexts)
+        return ["Bzzzzzzzzzzz"] * len(contexts)
 
     def export_current_adapter(self) -> None:
         pass

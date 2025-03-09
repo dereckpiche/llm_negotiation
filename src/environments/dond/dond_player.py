@@ -85,15 +85,14 @@ class DondAgent:
             info (dict): Additional information about the agent.
         """
         state = observation_from_env
+        is_error = False
+        error_message = None
         
         # If we don't have policy output, we need to generate the user message and return policy input
         if policy_output is None:
             # Set the user message in chat history based on the current state
-            self.set_usr_message(state)
-            
-            # Get the latest user message to be used as policy input
-            latest_message = self.chat_history[-1]["content"]
-            
+            user_message = self.get_user_message(state, is_error, error_message)
+            self.add_to_chat_history(user_message)
             return self.policy_id, self.chat_history, None, False, self.get_log_info()
         
         # If we have policy output, we need to process it and determine the action
@@ -118,23 +117,32 @@ class DondAgent:
                 self.retries += 1
                 self.error_message = error_message
                 
-                # Too many mistakes were made
+                # Too many mistakes were made: force dummy message
                 if self.retries > self.max_errors:
                     self.error_message = False
-                    action = (is_finalization, "-------")
+                    action = (False, "-------")
+                    self.retries = 0
                     return None, None, action, True, self.get_log_info()
-                self.set_usr_message(state)
+                
+                # Set error user message
+                user_message = self.get_user_message(state, is_error, error_message)
+                self.add_to_chat_history(user_message)
+
                 # Return with a request for policy output again (done = False)
                 return self.policy_id, self.chat_history, None, False, self.get_log_info()
             
-            # Reset retries on successful processing
             self.retries = 0
+            
+            user_message = self.get_user_message(state, is_error, error_message)
+            self.add_to_chat_history(user_message)
+            
+            # Reset retries on successful processing
             
             # Create the action to be sent to the environment
             action = (is_finalization, processed_response)
             
             # Action is ready to be sent to the environment
-            return self.policy_id, None, action, True, self.get_log_info()
+            return None, None, action, True, self.get_log_info()
 
     def get_log_info(self):
         """Get information about the agent required to log a trajectory.
@@ -144,7 +152,8 @@ class DondAgent:
         """
         return {
             "player_name": self.player_name, 
-            "chat_history": self.chat_history
+            "chat_history": self.chat_history,
+            "augmented_chat_history": self.augmented_chat_history   
         }
 
     def render(self):
@@ -158,23 +167,11 @@ class DondAgent:
         pass
 
 
-
-
-
-
-
-
-
-
-
-
-    
-
     ###########################################################################
     # Helper methods below this point
     ###########################################################################
 
-    def set_usr_message(self, state):
+    def get_user_message(self, state, is_error, error_message):
         """
         Constructs a user message based on the current game state.
 
@@ -183,17 +180,15 @@ class DondAgent:
         """
         user_message = ""
 
-        if self.error_message:
-            user_message = self.error_message
+        if is_error:
+            user_message = error_message
             usr_prompt = {
                 "role": "user",
                 "content": user_message,
                 "is_error": True,
                 "round_nb": state["round_number"],
             }
-            self.add_to_chat_history(usr_prompt)
-            self.error_message = None
-            return
+            return usr_prompt
 
         # Use the new move information to decide on the prompts.
         # If the current player has not yet made any move in the game, prepend the introductory prompts.
@@ -229,7 +224,7 @@ class DondAgent:
             "is_error": False,
             "round_nb": state["round_number"],
         }
-        self.add_to_chat_history(usr_prompt)
+        return usr_prompt
 
     def process_response(self, response, state):
         """
@@ -265,6 +260,9 @@ class DondAgent:
 
         if has_message and has_finalization:
             errors.append("You cannot send both a message and a finalization in one response.")
+
+        if not has_message and not has_finalization:
+            errors.append("You must send either a message or a finalization. You have sent nothing.")
 
         # 2.5) Check if this response is a message and would exceed per-player allowed messages.
         max_msgs = state.get("max_messages", None)

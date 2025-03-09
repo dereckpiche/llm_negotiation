@@ -57,7 +57,7 @@ class LocalLLM:
         eval_with="vllm",
         train_with="hf",
         output_directory=None,
-        base_seed: int = 42
+        base_seed=0
     ) -> None:
         """
         Initializes the LocalLLM.

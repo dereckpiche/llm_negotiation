@@ -105,7 +105,9 @@ class DondEnv:
         """
         # Process the action for the current player
         current_player = self.get_current_player()
+
         if current_player in actions:
+
             action = actions[current_player]
             is_finalization, output = action
 
@@ -162,11 +164,15 @@ class DondEnv:
                 self.new_round()
             if self.round_nb > self.rounds_per_game - 1:
                 self.game_over = True
+        
+        else:
+            raise ValueError(f"Player {current_player} did not provide an action.")
 
         # Get the updated state to return as observation
         state = self.get_state()
-        # Create observations for all agents
-        observations = {player: state for player in self.agents}
+        # Create observation for only the current player who needs to act.
+        current_actor = self.get_current_player()
+        observations = {current_actor: state}
         done = self.game_over
         info = self.get_info()
 
@@ -382,8 +388,9 @@ class DondEnv:
         # Get the initial state to return as observation
         state = self.get_state()
         # Create a dictionary of observations for each player
-        observations = {player: state for player in self.agents}
-        return observations
+        current_actor = self.get_current_player()
+        initial_observations = {current_actor: state}
+        return initial_observations
 
     def get_current_player(self):
         """
