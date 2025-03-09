@@ -44,79 +44,79 @@ def run_matches(
             'env': env,
             'agents': match['agents'],
             'observations': initial_observations,
+            'action_required_agents': list(initial_observations.keys()),
             'pending_actions': {},
             'policy_outputs': {agent_id: None for agent_id in match['agents']},
             'log_func': match['log_func'],
             'log_func_args': match['log_func_args']
         }
+    policy_inputs = {}  # {policy_id: {match_id: {agent_id: input}}}
+    
     
     # Main simulation loop
     while active_matches or pending_matches:
-        # Collect policy inputs using nested dictionary structure
-        policy_inputs = {}  # {policy_id: {match_id: {agent_id: input}}}
+
         
         for match_id, match_data in active_matches.items():
             env = match_data['env']
             agents = match_data['agents']
             observations = match_data['observations']
-            
-            for agent_id, agent_state in agents.items():
-                if agent_id in observations.keys():
-                    # Pass existing policy output if it exists
-                    existing_policy_output = match_data['policy_outputs'][agent_id]
-                    policy_id, policy_input, action, ready, info = agent_state.step(
-                        observation_from_env=observations[agent_id],
-                        policy_output=existing_policy_output
-                    )
-                    
-                    if not ready:
-                        if policy_id not in policy_inputs:
-                            policy_inputs[policy_id] = {}
-                        if match_id not in policy_inputs[policy_id]:
-                            policy_inputs[policy_id][match_id] = {}
-                        policy_inputs[policy_id][match_id][agent_id] = policy_input
-                        # Reset policy output to None since we're requesting a new one
-                        match_data['policy_outputs'][agent_id] = None
-                    else:
-                        match_data['pending_actions'][agent_id] = action
-                        # Clear policy output if action is ready
-                        match_data['policy_outputs'][agent_id] = None
+            action_required_agents = set(match_data['action_required_agents'])
+            ready_agents = set(match_data["pending_actions"].keys())
+            not_ready_agents = action_required_agents - ready_agents
+
+            for agent_id in not_ready_agents:
+
+                agent_state = agents[agent_id]
+
+                policy_id, policy_input, action, ready, info = agent_state.step(
+                    observation_from_env=observations[agent_id],
+                    policy_output=match_data['policy_outputs'].get(agent_id, None)
+                )
+                
+                if not ready:
+                    if policy_id not in policy_inputs:
+                        policy_inputs[policy_id] = {}
+                    if match_id not in policy_inputs[policy_id]:
+                        policy_inputs[policy_id][match_id] = {}
+                    policy_inputs[policy_id][match_id][agent_id] = policy_input
+                    # Reset policy output to None since we're requesting a new one
+                    match_data['policy_outputs'][agent_id] = None
+                else:
+                    match_data['pending_actions'][agent_id] = action
+                    match_data['policy_outputs'][agent_id] = None
         
-        # Process policy inputs and get outputs
+        # Get policy outputs for the agents -- in a batched and efficient way
+    
         policy_outputs = process_policy_inputs(models, policy_inputs, seed_offset=seed_offset)
-        
-        # Distribute policy outputs to agents
         for match_id, match_data in active_matches.items():
-            agents = match_data['agents']
-            observations = match_data['observations']
-            
-            # Update policy outputs for this match
-            if match_id in policy_outputs:
+            if match_id in policy_outputs:  # Add this check to prevent KeyError
                 for agent_id, policy_output in policy_outputs[match_id].items():
                     match_data['policy_outputs'][agent_id] = policy_output
-                    
-                    # Process the new policy output immediately
-                    policy_id, policy_input, action, ready, info = agents[agent_id].step(
-                        observation_from_env=observations[agent_id],
-                        policy_output=policy_output
-                    )
-                    if ready:
-                        match_data['pending_actions'][agent_id] = action
-                        match_data['policy_outputs'][agent_id] = None  # Clear if used
+        policy_inputs = {} 
         
-        # Step environments forward with collected actions
+        
+        # Step environments forward with collected actions - only when all agents are ready
         completed_matches = []
+
         for match_id, match_data in active_matches.items():
-            env = match_data['env']
+
             pending_actions = match_data['pending_actions']
-            
-            if pending_actions:
-                #import pdb; pdb.set_trace()
+            action_required_agents = set(match_data['action_required_agents'])
+            ready_agents = set(pending_actions.keys())
+
+            # Only step when all agents (with action required) are ready
+
+            if action_required_agents == ready_agents:
+
+                # Take step 
+                env = match_data['env']
                 new_observations, done, info = env.step(pending_actions)
-                
                 match_data['observations'] = new_observations
+                match_data['action_required_agents'] = list(new_observations.keys())
                 match_data['pending_actions'] = {}
                 
+                # Trajectory has completed
                 if done:
                     env_info = env.get_log_info()
                     agent_infos = [agent.get_log_info() for agent in match_data['agents'].values()]
@@ -140,6 +140,7 @@ def run_matches(
                     'env': env,
                     'agents': new_match['agents'],
                     'observations': initial_observations,
+                    'action_required_agents': list(initial_observations.keys()),
                     'pending_actions': {},
                     'policy_outputs': {agent_id: None for agent_id in new_match['agents']},
                     'log_func': new_match['log_func'],

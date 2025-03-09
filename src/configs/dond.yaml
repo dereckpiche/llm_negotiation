@@ -77,7 +77,7 @@ matches:
   agents:
     alice:
       kwargs:
-        policy_id: 'llama/ad_alice'
+        policy_id: 'dummy_llm/ad_alice'
         max_errors: 1
         allow_reasoning: true
         max_reasoning_chars: 400
@@ -94,7 +94,7 @@ matches:
 
     bob:
       kwargs:
-        policy_id: 'llama/ad_bob'
+        policy_id: 'dummy_llm/ad_bob'
         max_errors: 1
         allow_reasoning: true
         max_reasoning_chars: 400
