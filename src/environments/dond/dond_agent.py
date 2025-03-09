@@ -88,7 +88,7 @@ class DondAgent:
         is_error = False
         error_message = None
         
-        # If we don't have policy output, we need to generate the user message and return policy input
+        # If we don't have policy output, we always need to generate the user message and return policy input
         if policy_output is None:
             # Set the user message in chat history based on the current state
             user_message = self.get_user_message(state, is_error, error_message)
@@ -131,12 +131,9 @@ class DondAgent:
                 # Return with a request for policy output again (done = False)
                 return self.policy_id, self.chat_history, None, False, self.get_log_info()
             
+            # Reset retries on successful processing
             self.retries = 0
             
-            user_message = self.get_user_message(state, is_error, error_message)
-            self.add_to_chat_history(user_message)
-            
-            # Reset retries on successful processing
             
             # Create the action to be sent to the environment
             action = (is_finalization, processed_response)
