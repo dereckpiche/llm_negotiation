@@ -24,11 +24,11 @@ class DondEnv:
         Initializes the DoND game.
 
         Args:
-            agents (list): List of player names.
+            agents (list): List of agent names.
             mode (str): The mode of the game, either 'coop' or 'basic'.
-            max_messages (int): Maximum number of conversation (non-finalization) messages per player
+            max_messages (int): Maximum number of conversation (non-finalization) messages per agent
                                 allowed before finalization is forced.
-            min_messages (int): Minimum number of conversation messages required before a player can finalize.
+            min_messages (int): Minimum number of conversation messages required before a agent can finalize.
             max_chars_per_message (int): Maximum number of characters allowed per message.
             rounds_per_game (int): The number of rounds per game.
             random_setup_func (str or callable): The function to use for random setup.
@@ -36,7 +36,7 @@ class DondEnv:
             role_assignator_func (str or callable): The function to use for role assignment.
             role_assignator_func_kwargs (dict): Keyword arguments for the role assignment function.
             finalization_visibility (bool): Visibility of finalization.
-            other_values_visibility (bool): Visibility of other player's values.
+            other_values_visibility (bool): Visibility of other agent's values.
             random_seed (int, optional): The base seed that will be used (and incremented) for random generation.
         """
 
@@ -68,9 +68,9 @@ class DondEnv:
         else:
             self.random_seed = random_seed
 
-        self.game_moves = {player: 0 for player in agents}
-        self.round_moves = {player: 0 for player in agents}
-        self.round_messages = {player: 0 for player in agents}
+        self.game_moves = {agent: 0 for agent in agents}
+        self.round_moves = {agent: 0 for agent in agents}
+        self.round_messages = {agent: 0 for agent in agents}
 
         self.reset()
 
@@ -103,21 +103,21 @@ class DondEnv:
             done (bool): Whether the episode has ended.
             info (dict): Additional information about the environment.
         """
-        # Process the action for the current player
-        current_player = self.get_current_player()
+        # Process the action for the current agent
+        current_agent = self.get_current_agent()
 
-        if current_player in actions:
+        if current_agent in actions:
 
-            action = actions[current_player]
+            action = actions[current_agent]
             is_finalization, output = action
 
-            # Count this move for the current player (finalization or conversation).
-            self.game_moves[current_player] += 1
-            self.round_moves[current_player] += 1
+            # Count this move for the current agent (finalization or conversation).
+            self.game_moves[current_agent] += 1
+            self.round_moves[current_agent] += 1
 
             # Only conversation messages (non-finalization) increment the message counter.
             if not is_finalization:
-                self.round_messages[current_player] += 1
+                self.round_messages[current_agent] += 1
                 self.message_turn += 1
 
             # Update state flags.
@@ -128,9 +128,9 @@ class DondEnv:
             round_over = False
 
             # Check the minimum message requirement on a finalization attempt.
-            if is_finalization and self.round_messages[current_player] < self.min_messages:
+            if is_finalization and self.round_messages[current_agent] < self.min_messages:
                 # Treat the finalization as a conversation message
-                self.round_messages[current_player] += 1
+                self.round_messages[current_agent] += 1
                 self.message_turn += 1
                 self.last_message = output
                 is_finalization = False
@@ -138,7 +138,7 @@ class DondEnv:
             if self.has_finalized:
                 # We are in the second finalization phase.
                 if not is_finalization:
-                    self.points = {player: 0 for player in self.agents}
+                    self.points = {agent: 0 for agent in self.agents}
                     self.agreement_reached = False
                 else:
                     self.finalize(output)
@@ -146,16 +146,16 @@ class DondEnv:
                         self.set_points()
                         self.agreement_reached = True
                     else:
-                        self.points = {player: 0 for player in self.agents}
+                        self.points = {agent: 0 for agent in self.agents}
                         self.agreement_reached = False
                 round_over = True
 
             else:
-                # If a player sends a finalization, record it.
+                # If a agent sends a finalization, record it.
                 if is_finalization:
                     self.has_finalized = True
                     self.finalize(output)
-                # Check if any player has exceeded their personal maximum message limit.
+                # Check if any agent has exceeded their personal maximum message limit.
                 elif any(count > self.max_messages for count in self.round_messages.values()):
                     round_over = True
 
@@ -166,12 +166,12 @@ class DondEnv:
                 self.game_over = True
         
         else:
-            raise ValueError(f"Player {current_player} did not provide an action.")
+            raise ValueError(f"agent {current_agent} did not provide an action.")
 
         # Get the updated state to return as observation
         state = self.get_state()
-        # Create observation for only the current player who needs to act.
-        current_actor = self.get_current_player()
+        # Create observation for only the current agent who needs to act.
+        current_actor = self.get_current_agent()
         observations = {current_actor: state}
         done = self.game_over
         info = self.get_info()
@@ -190,7 +190,7 @@ class DondEnv:
             "agents": self.agents,
             "finalization_visibility": self.finalization_visibility,
             "other_values_visibility": self.other_values_visibility,
-            "round_player_roles": self.round_player_roles,
+            "round_agent_roles": self.round_agent_roles,
             "round_quantities": self.round_quantities,
             "round_values": self.round_values,
             "round_finalizations": self.round_finalizations,
@@ -238,7 +238,7 @@ class DondEnv:
 
     def finalize(self, finalization: list):
         """
-        Records the finalization from the current player.
+        Records the finalization from the current agent.
 
         Args:
             finalization (list): The list of finalized quantities for each item.
@@ -261,7 +261,7 @@ class DondEnv:
             "mode": self.mode,
             "role_values": self.role_values,
             "role_props": self.role_props,
-            "player_to_role": self.player_to_role,
+            "agent_to_role": self.agent_to_role,
             "is_new_round": self.is_new_round,
             "is_new_game": self.is_new_game,
             "game_over": self.game_over,
@@ -269,7 +269,7 @@ class DondEnv:
             "message_count": self.message_turn,
             "max_messages": self.max_messages,
             "min_messages": self.min_messages,
-            "current_player": self.get_current_player(),
+            "current_agent": self.get_current_agent(),
             "round_number": self.round_nb,
             "nb_rounds": self.rounds_per_game,
             "quantities": self.quantities,
@@ -279,7 +279,7 @@ class DondEnv:
             "finalization_visibility": self.finalization_visibility,
             "other_values_visibility": self.other_values_visibility,
             # rounds history
-            "round_player_roles": self.round_player_roles,
+            "round_agent_roles": self.round_agent_roles,
             "round_quantities": self.round_quantities,
             "round_values": self.round_values,
             "round_finalizations": self.round_finalizations,
@@ -290,8 +290,8 @@ class DondEnv:
             "round_moves": self.round_moves,
             "round_messages": self.round_messages,
             "messages_remaining": {
-                player: self.max_messages - self.round_messages.get(player, 0)
-                for player in self.agents
+                agent: self.max_messages - self.round_messages.get(agent, 0)
+                for agent in self.agents
             },
         }
         return state
@@ -302,7 +302,7 @@ class DondEnv:
             "agents" : self.agents,
             "finalization_visibility": self.finalization_visibility,
             "other_values_visibility": self.other_values_visibility,
-            "round_player_roles": self.round_player_roles,
+            "round_agent_roles": self.round_agent_roles,
             "round_quantities": self.round_quantities,
             "round_values": self.round_values,
             "round_finalizations": self.round_finalizations,
@@ -310,7 +310,7 @@ class DondEnv:
             "round_points": self.round_points,
         }
 
-    def archive_player_states(self):
+    def archive_agent_states(self):
         """
         Archives the states of the agents for the current round.
         """
@@ -318,7 +318,7 @@ class DondEnv:
         if not all(role in self.points for role in self.roles):
             self.points = {role: 0 for role in self.roles}
 
-        self.round_player_roles.append(self.player_to_role.copy())
+        self.round_agent_roles.append(self.agent_to_role.copy())
         self.round_quantities.append(self.quantities)
         self.round_values.append({role: self.role_values[role] for role in self.roles})
         self.round_finalizations.append({role: self.role_props[role] for role in self.roles})
@@ -329,7 +329,7 @@ class DondEnv:
         """
         Ends the current round and prepares for the next round.
         """
-        self.archive_player_states()
+        self.archive_agent_states()
         self.round_nb += 1
         self.has_finalized = False
         self.role_props = {role: {} for role in self.roles}
@@ -338,9 +338,9 @@ class DondEnv:
         self.last_message = None
         # Reset the conversation message counter for the new round.
         self.message_turn = 0
-        # Reset per-round move tracking for every player.
-        self.round_moves = {player: 0 for player in self.agents}
-        self.round_messages = {player: 0 for player in self.agents}
+        # Reset per-round move tracking for every agent.
+        self.round_moves = {agent: 0 for agent in self.agents}
+        self.round_messages = {agent: 0 for agent in self.agents}
         self.set_new_setup()
         self.assign_roles()
         self.role_deque = deque(self.roles)
@@ -371,8 +371,8 @@ class DondEnv:
             self.game_over = False
             self.last_message = None
             self.role_deque = deque(self.roles)
-            self.player_to_role = None
-            self.round_player_roles = []
+            self.agent_to_role = None
+            self.round_agent_roles = []
             self.round_quantities = []
             self.round_values = []
             self.round_finalizations = []
@@ -381,24 +381,24 @@ class DondEnv:
             self.set_new_setup()
             self.assign_roles()
             # Initialize move tracking dictionaries for a fresh game.
-            self.game_moves = {player: 0 for player in self.agents}
-            self.round_moves = {player: 0 for player in self.agents}
-            self.round_messages = {player: 0 for player in self.agents}
+            self.game_moves = {agent: 0 for agent in self.agents}
+            self.round_moves = {agent: 0 for agent in self.agents}
+            self.round_messages = {agent: 0 for agent in self.agents}
         
         # Get the initial state to return as observation
         state = self.get_state()
-        # Create a dictionary of observations for each player
-        current_actor = self.get_current_player()
+        # Create a dictionary of observations for each agent
+        current_actor = self.get_current_agent()
         initial_observations = {current_actor: state}
         return initial_observations
 
-    def get_current_player(self):
+    def get_current_agent(self):
         """
-        Get the current player (the one who has to play next)
+        Get the current agent (the one who has to play next)
         """
-        if not hasattr(self, 'role_to_player') or not hasattr(self, 'role_deque') or not self.role_deque:
+        if not hasattr(self, 'role_to_agent') or not hasattr(self, 'role_deque') or not self.role_deque:
             return None
-        return self.role_to_player[self.role_deque[0]]
+        return self.role_to_agent[self.role_deque[0]]
 
     def current_turn(self):
         """
@@ -413,10 +413,10 @@ class DondEnv:
         """
         Assigns roles to agents for the current round using the role_assignator_func.
         """
-        self.player_to_role = self.role_assignator_func(self.get_state(), **self.role_assignator_func_kwargs)
+        self.agent_to_role = self.role_assignator_func(self.get_state(), **self.role_assignator_func_kwargs)
 
-        # Create player_to_role mapping
-        self.role_to_player = {role: player for player, role in self.player_to_role.items()}
+        # Create agent_to_role mapping
+        self.role_to_agent = {role: agent for agent, role in self.agent_to_role.items()}
 
     def load_checkpoint(self, checkpoint):
         """
@@ -458,12 +458,12 @@ def dond_random_setup(items, min_quant, max_quant, min_val, max_val, random_seed
     # Generate quantities: for each item, randomly choose an even number.
     quantities = {item: int(rng.choice(even_numbers)) for item in items}
     
-    # Make sure there are enough distinct values available for each player's assignment.
+    # Make sure there are enough distinct values available for each agent's assignment.
     available_values = np.arange(min_val, max_val + 1)
     if len(available_values) < len(items):
         raise ValueError("Range of values is not sufficient to assign unique values for all items.")
     
-    # For each player, randomly assign a distinct value to each item.
+    # For each agent, randomly assign a distinct value to each item.
     val_starting_negotiator = dict(zip(items, rng.choice(available_values, size=len(items), replace=False)))
     val_responding_negotiator = dict(zip(items, rng.choice(available_values, size=len(items), replace=False)))
     
@@ -505,8 +505,8 @@ def bicameral_vals_assignator(items, min_quant, max_quant, low_val_mean, low_val
 
 def alternating_role_assignator(state, **kwargs):
     """
-    Alternates roles between player_0 and player_1 at each round.
-    At the first round, player_0 is assigned to the role "starting_negotiator".
+    Alternates roles between agent_0 and agent_1 at each round.
+    At the first round, agent_0 is assigned to the role "starting_negotiator".
 
     Args:
         state (dict): The current state of the game.
@@ -520,18 +520,18 @@ def alternating_role_assignator(state, **kwargs):
     roles = ["starting_negotiator", "responding_negotiator"]
 
     if round_number % 2 == 0:
-        # Even rounds: player_0 is "starting_negotiator"
-        player_to_role = {agents[0]: roles[0], agents[1]: roles[1]}
+        # Even rounds: agent_0 is "starting_negotiator"
+        agent_to_role = {agents[0]: roles[0], agents[1]: roles[1]}
     else:
-        # Odd rounds: player_1 is "starting_negotiator"
-        player_to_role = {agents[0]: roles[1], agents[1]: roles[0]}
+        # Odd rounds: agent_1 is "starting_negotiator"
+        agent_to_role = {agents[0]: roles[1], agents[1]: roles[0]}
 
-    return player_to_role
+    return agent_to_role
 
 
 def fixed_role_assignator(state, **kwargs):
     """
-    Always assigns player_0 to the role "starting_negotiator".
+    Always assigns agent_0 to the role "starting_negotiator".
 
     Args:
         state (dict): The current state of the game.
@@ -543,7 +543,7 @@ def fixed_role_assignator(state, **kwargs):
     agents = state["agents"]
     roles = ["starting_negotiator", "responding_negotiator"]
 
-    # Always assign player_0 to "starting_negotiator"
-    player_to_role = {agents[0]: roles[0], agents[1]: roles[1]}
+    # Always assign agent_0 to "starting_negotiator"
+    agent_to_role = {agents[0]: roles[0], agents[1]: roles[1]}
 
-    return player_to_role
+    return agent_to_role

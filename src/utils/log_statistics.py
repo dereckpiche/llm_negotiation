@@ -101,12 +101,12 @@ def tb_statree(tree: Dict, writer, path: str = ""):
 
 
 
-def update_player_statistics(input_path, output_file):
+def update_agent_statistics(input_path, output_file):
     """
     Computes statistics for the current iteration and updates the global statistics file.
 
     Args:
-        input_path (str): Path to the folder containing player JSON files for the current iteration.
+        input_path (str): Path to the folder containing agent JSON files for the current iteration.
         output_file (str): Path to the JSON file where statistics are stored.
     """
 
@@ -134,7 +134,7 @@ def update_player_statistics(input_path, output_file):
 
 
 
-def generate_player_stats_plots(global_stats_path, matplotlib_log_dir, tensorboard_log_dir, wandb_log_dir):
+def generate_agent_stats_plots(global_stats_path, matplotlib_log_dir, tensorboard_log_dir, wandb_log_dir):
     """
     Visualizes the global statistics by logging them to TensorBoard and Weights & Biases.
 
@@ -197,25 +197,25 @@ def plot_seed_averaged_stats(root_path, agent_names):
 
     Args:
         root_path (str): Path to the directory containing seed data.
-        agent_names (list): List of player names to process.
+        agent_names (list): List of agent names to process.
     """
 
     # Initialize data structure for storing statistics
-    player_stats = {player: {} for player in agent_names}
+    agent_stats = {agent: {} for agent in agent_names}
 
     seed_dirs = []
     # Identify all seed directories
     for date_dir in os.listdir(root_path):
         seed_dirs.extend([os.path.join(root_path, date_dir, dir_name) for dir_name in os.listdir(os.path.join(root_path, date_dir)) if dir_name.startswith("seed")])
 
-    for player in agent_names:
+    for agent in agent_names:
         # Create output directory for averaged stats
-        avg_stats_dir = os.path.join(root_path, "avg_seed_stats", player)
+        avg_stats_dir = os.path.join(root_path, "avg_seed_stats", agent)
         os.makedirs(avg_stats_dir, exist_ok=True)
 
         # Collect statistics from each seed directory
         for seed_dir in seed_dirs:
-            stats_file = os.path.join(seed_dir, "statistics", player, f"{player}_stats.jsonl")
+            stats_file = os.path.join(seed_dir, "statistics", agent, f"{agent}_stats.jsonl")
 
             with open(stats_file, "r") as file:
                 json_data = json.load(file)
@@ -223,18 +223,18 @@ def plot_seed_averaged_stats(root_path, agent_names):
             for round_id, round_data in json_data.items():
                 for metric, values in round_data.items():
                     # Initialize nested dictionary structure
-                    player_stats.setdefault(player, {}).setdefault(round_id, {}).setdefault(metric, []).append({
+                    agent_stats.setdefault(agent, {}).setdefault(round_id, {}).setdefault(metric, []).append({
                         'data': [val if val is not None else 0 for val in values],
                         'file': seed_dir
                     })
 
         # Save collected statistics to a JSON file
-        json_output_file = os.path.join(avg_stats_dir, f"{player}_aggregated_stats.json")
+        json_output_file = os.path.join(avg_stats_dir, f"{agent}_aggregated_stats.json")
         with open(json_output_file, "w") as json_file:
-            json.dump(player_stats[player], json_file, indent=4)
+            json.dump(agent_stats[agent], json_file, indent=4)
 
         # Plot and save seed-averaged statistics
-        for round_id, round_metrics in player_stats[player].items():
+        for round_id, round_metrics in agent_stats[agent].items():
             for metric, metric_data in round_metrics.items():
                 plt.figure()
 

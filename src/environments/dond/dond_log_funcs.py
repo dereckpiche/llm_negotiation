@@ -6,7 +6,7 @@ from .dond_training_data_funcs import *
 
 def agents_logging_and_html(
         path,
-        player_infos,
+        agent_infos,
         info,
         training_data_func,
         training_data_func_args,
@@ -14,8 +14,8 @@ def agents_logging_and_html(
         metrics_func_args
         ):
 
-    for player_info in player_infos:
-        agent_name = player_info["agent_name"]
+    for agent_info in agent_infos:
+        agent_name = agent_info["agent_name"]
 
         # Define paths for training and statistics subfolders
         training_path = os.path.join(path, agent_name, "training")
@@ -32,7 +32,7 @@ def agents_logging_and_html(
         training_file = os.path.join(training_path, f"training_data_{next_training_number}.json")
 
         # Log training data
-        training_data = globals()[training_data_func](player_info, info, **training_data_func_args)
+        training_data = globals()[training_data_func](agent_info, info, **training_data_func_args)
         with open(training_file, "w") as f:
             json.dump(training_data, f, indent=4)
 
@@ -43,7 +43,7 @@ def agents_logging_and_html(
         metrics_file = os.path.join(statistics_path, f"metrics_{next_metrics_number}.json")
 
         # Log metrics
-        metrics = globals()[metrics_func](player_info, info, **metrics_func_args)
+        metrics = globals()[metrics_func](agent_info, info, **metrics_func_args)
         with open(metrics_file, "w") as f:
             json.dump(metrics, f, indent=4)
 
@@ -103,7 +103,7 @@ def agents_logging_and_html(
                 background: rgba(255, 255, 255, 0.9);
                 box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
             }
-            .player-name {
+            .agent-name {
                 text-align: center;
                 font-size: 1.4em;
                 margin-bottom: 15px;
@@ -128,15 +128,15 @@ def agents_logging_and_html(
         <div class="container">
     """
 
-    for player_info in player_infos:
-        agent_name = player_info["agent_name"]
-        player_class = "alice" if agent_name.lower() == "alice" else "bob"
+    for agent_info in agent_infos:
+        agent_name = agent_info["agent_name"]
+        agent_class = "alice" if agent_name.lower() == "alice" else "bob"
         html_content += f"""
-            <div class="column {player_class}">
-                <div class="player-name">{agent_name}</div>
+            <div class="column {agent_class}">
+                <div class="agent-name">{agent_name}</div>
         """
-        player_data = globals()[training_data_func](player_info, info, **training_data_func_args)
-        for message in player_data:
+        agent_data = globals()[training_data_func](agent_info, info, **training_data_func_args)
+        for message in agent_data:
             role = "Intermediary ⚙️" if message["role"] == "user" else f"LLM ({agent_name}) 🤖"
             role_class = "user" if message["role"] == "user" else "assistant"
 
@@ -177,7 +177,7 @@ def agents_logging_and_html(
 
 def independant_agents_logging(
         path,
-        player_infos,
+        agent_infos,
         info,
         training_data_func,
         training_data_func_args,
@@ -185,10 +185,10 @@ def independant_agents_logging(
         metrics_func_args
         ):
     """
-    Logs the training data and metrics independently for each player in a match.
+    Logs the training data and metrics independently for each agent in a match.
     """
-    for player_info in player_infos:
-        agent_name = player_info["agent_name"]
+    for agent_info in agent_infos:
+        agent_name = agent_info["agent_name"]
 
         # Define paths for training and statistics subfolders
         training_path = os.path.join(path, agent_name, "training")
@@ -205,7 +205,7 @@ def independant_agents_logging(
         training_file = os.path.join(training_path, f"training_data_{next_training_number}.json")
 
         # Log training data
-        training_data = globals()[training_data_func](player_info, info, **training_data_func_args)
+        training_data = globals()[training_data_func](agent_info, info, **training_data_func_args)
         with open(training_file, "w") as f:
             json.dump(training_data, f, indent=4)
 
@@ -216,29 +216,29 @@ def independant_agents_logging(
         metrics_file = os.path.join(statistics_path, f"metrics_{next_metrics_number}.json")
 
         # Log metrics
-        metrics = globals()[metrics_func](player_info, info, **metrics_func_args)
+        metrics = globals()[metrics_func](agent_info, info, **metrics_func_args)
         with open(metrics_file, "w") as f:
             json.dump(metrics, f, indent=4)
 
 def log_raw_conversations(
         path,
-        player_infos,
+        agent_infos,
         info,
         metrics_func=None,
         metrics_func_args=None
         ):
     """
-    Logs only the raw conversation data for each player.
+    Logs only the raw conversation data for each agent.
     
     Args:
         path (str): Base path to save the data.
-        player_infos (list): List of player information dictionaries.
+        agent_infos (list): List of agent information dictionaries.
         info (dict): Game information.
         metrics_func (str, optional): Name of the function to calculate metrics.
         metrics_func_args (dict, optional): Arguments for the metrics function.
     """
-    for player_info in player_infos:
-        agent_name = player_info["agent_name"]
+    for agent_info in agent_infos:
+        agent_name = agent_info["agent_name"]
 
         # Define paths for raw data and statistics subfolders
         raw_data_path = os.path.join(path, agent_name, "raw_data")
@@ -255,7 +255,7 @@ def log_raw_conversations(
         raw_file = os.path.join(raw_data_path, f"conversation_{next_raw_number}.json")
 
         # Log raw conversation data
-        chat_history = player_info.get("chat_history", [])
+        chat_history = agent_info.get("chat_history", [])
         
         # Add game info to the chat history for later processing
         chat_history_with_info = chat_history.copy()
@@ -272,6 +272,6 @@ def log_raw_conversations(
             next_metrics_number = max(metrics_numbers, default=0) + 1
             metrics_file = os.path.join(statistics_path, f"metrics_{next_metrics_number}.json")
 
-            metrics = globals()[metrics_func](player_info, info, **metrics_func_args)
+            metrics = globals()[metrics_func](agent_info, info, **metrics_func_args)
             with open(metrics_file, "w") as f:
                 json.dump(metrics, f, indent=4)

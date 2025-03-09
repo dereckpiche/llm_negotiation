@@ -3,12 +3,13 @@ import numpy as np
 from collections import Counter
 
 
-def gather_ipd_statistics(match_info: Dict[str, Any]) -> Dict[str, Any]:
+def gather_ipd_statistics(match_info: Dict[str, Any], env_info: Dict[str, Any]) -> Dict[str, Any]:
     """
     Calculate statistics for an Iterated Prisoner's Dilemma match.
     
     Args:
         match_info: Information about the match
+        env_info: Information about the environment
         
     Returns:
         Dictionary of statistics
@@ -76,12 +77,13 @@ def gather_ipd_statistics(match_info: Dict[str, Any]) -> Dict[str, Any]:
     return statistics
 
 
-def calculate_ipd_scores(match_info: Dict[str, Any], agent_id: str) -> Tuple[List[float], float]:
+def calculate_ipd_scores(match_info: Dict[str, Any], env_info: Dict[str, Any], agent_id: str) -> Tuple[List[float], float]:
     """
     Calculate scores for the Iterated Prisoner's Dilemma for a specific agent.
     
     Args:
         match_info: Information about the match
+        env_info: Information about the environment
         agent_id: The ID of the agent to calculate scores for
         
     Returns:

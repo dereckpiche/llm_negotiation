@@ -115,7 +115,7 @@ matches:
 
     alice:
 
-      dond_player_args:
+      dond_agent_args:
 
         policy_id: 'llama/ad_alice'
         allow_reasoning: false
@@ -124,14 +124,14 @@ matches:
         intro_prompt: ${prompt_blocks.barebone_ultimatum2}
         goal_prompt: ${prompt_blocks.agressive_goal}
         new_round_prompt: null
-        player_with_first_move_prompt: "You are the first player. It is your turn to play."
+        agent_with_first_move_prompt: "You are the first agent. It is your turn to play."
         received_message_prompt: null
         first_round_prompt: null
-        other_player_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
+        other_agent_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
 
     bob:
 
-      dond_player_args:
+      dond_agent_args:
 
         policy_id: 'llama/ad_bob'
         allow_reasoning: false
@@ -140,10 +140,10 @@ matches:
         intro_prompt: ${prompt_blocks.barebone_ultimatum2}
         goal_prompt: ${prompt_blocks.agressive_goal}
         new_round_prompt: null
-        player_with_first_move_prompt: null
+        agent_with_first_move_prompt: null
         received_message_prompt: null
         first_round_prompt: null
-        other_player_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
+        other_agent_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
 
 
 prompt_blocks:
@@ -158,9 +158,9 @@ prompt_blocks:
 
       2) A finalization is a proposed division of the coins between the two agents.
 
-      3) The first player will make a finalization.
-      The second player must then make his finalization.
-      Each player can make a single finalization for the entire game, hence the name.
+      3) The first agent will make a finalization.
+      The second agent must then make his finalization.
+      Each agent can make a single finalization for the entire game, hence the name.
 
       4) In order for both agents to agree, the finalizations must be complementary. If no agreement is reached between the two agents with the two finalizations, both agents will receive zero points. If agreement is reached, the agents will receive the coins corresponding to the finalizations.
 
@@ -169,7 +169,7 @@ prompt_blocks:
 
       1) All of your responses must be within <finalize></finalize> tags.
 
-      2) The division must be in a JSON-parsable format. Formatting: Final division: <finalize> {"i_take": {"coins": x}, "other_player_gets": {"coins": y}} </finalize> where "i_take" represents your share and "other_player_gets" represents the other player's share of the coins.
+      2) The division must be in a JSON-parsable format. Formatting: Final division: <finalize> {"i_take": {"coins": x}, "other_agent_gets": {"coins": y}} </finalize> where "i_take" represents your share and "other_agent_gets" represents the other agent's share of the coins.
 
   barebone_ultimatum2: |
 
@@ -179,7 +179,7 @@ prompt_blocks:
 
       1) Two agents divide 10 coins.
 
-      2) Each player proposes a division of the coins.
+      2) Each agent proposes a division of the coins.
 
       3) Both agents must agree on a division to receive the coins. If not, both receive zero coins.
 
@@ -189,7 +189,7 @@ prompt_blocks:
 
       1) Responses must be within <finalize> </finalize> tags.
 
-      2) Use JSON format: <finalize> {"i_take": {"coins": x}, "other_player_gets": {"coins": y}} </finalize>.
+      2) Use JSON format: <finalize> {"i_take": {"coins": x}, "other_agent_gets": {"coins": y}} </finalize>.
 
   dond_game: |
 
@@ -199,13 +199,13 @@ prompt_blocks:
 
       1) In this game, two agents divide {quantities} among themselves.
 
-      2) The points each player obtains is the number of items they get at the end of the game.
+      2) The points each agent obtains is the number of items they get at the end of the game.
 
-      3) After the number of items and values have been shown, the first player will make a finalization. A finalization is proposed division of the items between the two agents.
+      3) After the number of items and values have been shown, the first agent will make a finalization. A finalization is proposed division of the items between the two agents.
 
-      4) The second player must then make his finalization.
+      4) The second agent must then make his finalization.
 
-      5) Each player can make a single finalization for the entire game, hence the name.
+      5) Each agent can make a single finalization for the entire game, hence the name.
 
       6) In order for both agents to agree, the finalizations must be complementary. If no agreement is reached between the two agents with the two finalizations, both agents will receive zero points.
 
@@ -213,23 +213,23 @@ prompt_blocks:
 
       1) All of your responses must be within <finalize></finalize> tags.
 
-      2) The division must be in a JSON-parsable format. Formatting: Final division: <finalize>{ "i_take": {"item_category1": x, "item_category2": y}, "other_player_gets": {"item_category1": y, "item_category2": x} }</finalize> where 'i_take' represents your share and 'other_player_gets' represents the other player's share of the item categories.
+      2) The division must be in a JSON-parsable format. Formatting: Final division: <finalize>{ "i_take": {"item_category1": x, "item_category2": y}, "other_agent_gets": {"item_category1": y, "item_category2": x} }</finalize> where 'i_take' represents your share and 'other_agent_gets' represents the other agent's share of the item categories.
 
   barebone_round_prompt: |
     ""
 
   initial_play_prompt: |
-    You are the first player. It is your turn to play.
+    You are the first agent. It is your turn to play.
 
   ongoing_play_prompt: |
-    The other player sent you this message: <message>{last_message}</message>
+    The other agent sent you this message: <message>{last_message}</message>
 
   visible_finalization_prompt: |
-    The other player's finalization was {other_player_finalization}.
-    You are the second player. It is your turn to play.
+    The other agent's finalization was {other_agent_finalization}.
+    You are the second agent. It is your turn to play.
 
-  second_player_finalization_prompt: |
-    The other player's finalization was {other_player_finalization}.
+  second_agent_finalization_prompt: |
+    The other agent's finalization was {other_agent_finalization}.
     It is your turn to play.
 
   unbiased_goal: null
@@ -242,12 +242,12 @@ prompt_blocks:
 
   agressive_pair_goal: |
     Your goal is to get as many coins as possible.
-    This is also the goal of the other player.
+    This is also the goal of the other agent.
 
   fair_goal: |
-    Goal: Aim to be fair with both the other player and yourself.
+    Goal: Aim to be fair with both the other agent and yourself.
 
   submitted_goal: |
-    Goal: Your goal is to do exactly what the other player wants. You must make the other player happy.
+    Goal: Your goal is to do exactly what the other agent wants. You must make the other agent happy.
 
 

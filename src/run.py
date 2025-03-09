@@ -7,7 +7,7 @@ from omegaconf import OmegaConf
 from experiments.generate_and_train import generate_and_train
 from experiments.arithmetic_test import arithmetic_test
 
-@hydra.main(config_path="conf", config_name="ipd")
+@hydra.main(config_path="configs", config_name="ipd")
 def main(cfg):
 
     # Get Hydra's runtime directory

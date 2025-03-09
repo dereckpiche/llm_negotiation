@@ -1,6 +1,4 @@
-from typing import Dict, Any, List, Tuple, Optional, Callable
 import numpy as np
-from llm_negotiation.src.environments.ipd.ipd_statistics_funcs import calculate_ipd_scores
 
 
 def generate_training_data_from_raw(
@@ -190,3 +188,5 @@ def subtract_rolling_baseline(
         processed_returns.append(r - baseline)
     
     return processed_returns 
+    
+    return processed_returns from typing import Dict, Any, List, Tuple, Optional, Callable

@@ -4,7 +4,7 @@ import json
 import random
 
 
-class IPDPlayer:
+class IPDAgent:
     """
     Agent handler for the Iterated Prisoner's Dilemma environment.
     
@@ -26,7 +26,7 @@ class IPDPlayer:
         max_reasoning_chars: int = 500,
     ):
         """
-        Initialize the IPD player.
+        Initialize the IPD agent.
         
         Args:
             agent_id: Identifier for the agent
@@ -91,7 +91,7 @@ class IPDPlayer:
         self.total_reward = observation_from_env.get("total_reward", self.total_reward)
         self.payoff_matrix = observation_from_env.get("payoff_matrix", self.payoff_matrix)
         
-        # Determine opponent's ID (for a two-player game)
+        # Determine opponent's ID (for a two-agent game)
         if self.opponent_id is None and self.agent_id == "alice":
             self.opponent_id = "bob"
         elif self.opponent_id is None and self.agent_id == "bob":
@@ -182,10 +182,10 @@ class IPDPlayer:
         if self.payoff_matrix:
             prompts.append(
                 f"Payoff Matrix:\n"
-                f"- If both players cooperate, both receive {self.payoff_matrix['reward']} points\n"
-                f"- If both players defect, both receive {self.payoff_matrix['punishment']} points\n"
-                f"- If you cooperate and the other player defects, you receive {self.payoff_matrix['sucker']} points\n"
-                f"- If you defect and the other player cooperates, you receive {self.payoff_matrix['temptation']} points"
+                f"- If both agents cooperate, both receive {self.payoff_matrix['reward']} points\n"
+                f"- If both agents defect, both receive {self.payoff_matrix['punishment']} points\n"
+                f"- If you cooperate and the other agent defects, you receive {self.payoff_matrix['sucker']} points\n"
+                f"- If you defect and the other agent cooperates, you receive {self.payoff_matrix['temptation']} points"
             )
         
         # Add history information
@@ -217,7 +217,7 @@ class IPDPlayer:
         # Combine all prompts
         full_prompt = "\n\n".join(prompts)
         
-        return {"prompt": full_prompt}
+        return [{"role": "user", "content": full_prompt}]
     
     def _parse_policy_output(self, policy_output: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """

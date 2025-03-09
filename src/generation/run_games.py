@@ -5,8 +5,6 @@ def run_matches(
     matches,
     models,
     iteration,
-    log_func,
-    log_func_args,
     export_path,
     nb_parallel_matches,
     seed_offset=0
@@ -16,12 +14,12 @@ def run_matches(
 
     Args:
         matches (list): List of match dictionaries, each containing:
-            - 'env': NegotiationEnvironment instance
+            - 'env': Environment instance
             - 'agents': Dictionary mapping agent IDs to AgentState instances
+            - 'log_func': Function object to use for logging this match
+            - 'log_func_args': Dictionary of arguments for the log_func
         models (dict): Dictionary of models to use for generating outputs.
         iteration (int): Iteration number
-        log_func (str): Name of the function to use for logging results.
-        log_func_args (dict): Arguments for the log function.
         export_path (str): Base folder to save game contexts.
         nb_parallel_matches (int): Number of matches to run in parallel.
 
@@ -47,7 +45,9 @@ def run_matches(
             'agents': match['agents'],
             'observations': initial_observations,
             'pending_actions': {},
-            'policy_outputs': {agent_id: None for agent_id in match['agents']}
+            'policy_outputs': {agent_id: None for agent_id in match['agents']},
+            'log_func': match['log_func'],
+            'log_func_args': match['log_func_args']
         }
     
     # Main simulation loop
@@ -120,7 +120,9 @@ def run_matches(
                 if done:
                     env_info = env.get_log_info()
                     agent_infos = [agent.get_log_info() for agent in match_data['agents'].values()]
-                    globals()[log_func](export_path, agent_infos, env_info, **log_func_args)
+                    
+                    # Use the match-specific log function and args
+                    match_data['log_func'](export_path, agent_infos, env_info, **match_data['log_func_args'])
                     completed_matches.append(match_id)
         
         # Remove completed matches and add new ones
@@ -139,7 +141,9 @@ def run_matches(
                     'agents': new_match['agents'],
                     'observations': initial_observations,
                     'pending_actions': {},
-                    'policy_outputs': {agent_id: None for agent_id in new_match['agents']}
+                    'policy_outputs': {agent_id: None for agent_id in new_match['agents']},
+                    'log_func': new_match['log_func'],
+                    'log_func_args': new_match['log_func_args']
                 }
     
     return None

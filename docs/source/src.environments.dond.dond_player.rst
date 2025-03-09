@@ -1,7 +1,7 @@
-src.environments.dond.dond\_player module
+src.environments.dond.dond\_agent module
 =========================================
 
-.. automodule:: src.environments.dond.dond_player
+.. automodule:: src.environments.dond.dond_agent
    :members:
    :undoc-members:
    :show-inheritance:

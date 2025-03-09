@@ -1,6 +1,6 @@
 hydra:
   run:
-    dir: "/home/mila/d/dereck.piche/scratch/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}"
+    dir: "/home/mila/d/dereck.piche/llm_negotiation/outputs/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}"
   job:
     chdir: false
 
@@ -22,23 +22,24 @@ experiment:
 matches:
   env_class: "IPDEnv"
   agent_class: "IPDAgent"
-
+  log_func: ipd_log_raw_conversations
+  log_func_args:
+    metrics_func: gather_ipd_statistics
+    metrics_func_args:
+      stats_to_log: [
+        "cooperation_rate",
+        "mutual_cooperation_rate",
+        "mutual_defection_rate",
+        "total_rewards",
+        "average_round_reward"
+      ]
+      
   stop_condition: game_over_condition
   stop_condition_kwargs: {}
 
   run_matches_args:
     nb_parallel_matches: -1
-    log_func: log_raw_conversations
-    log_func_args:
-      metrics_func: gather_ipd_statistics
-      metrics_func_args:
-        stats_to_log: [
-          "cooperation_rate",
-          "mutual_cooperation_rate",
-          "mutual_defection_rate",
-          "total_rewards",
-          "average_round_reward"
-        ]
+
 
   env_kwargs:
     rounds_per_game: 10
@@ -46,12 +47,11 @@ matches:
     punishment: 1.0      # Both defect payoff
     temptation: 5.0      # Defector's reward when other cooperates
     sucker: 0.0          # Cooperator's reward when other defects
-    seed: 42
 
   agents:
     alice:
       kwargs:
-        policy_id: 'llama/ad_alice'
+        policy_id: 'dummy_llm/ad_alice'
         max_errors: 2
         allow_reasoning: true
         max_reasoning_chars: 400
@@ -61,7 +61,7 @@ matches:
 
     bob:
       kwargs:
-        policy_id: 'llama/ad_bob'
+        policy_id: 'dummy_llm/ad_bob'
         max_errors: 2
         allow_reasoning: true
         max_reasoning_chars: 400
@@ -110,9 +110,11 @@ models:
       train_with: "hf"
 
   dummy_llm:
-    class: dummy_hf
+    class: dummy_llm
     init_args:
       name: 'dummy_llm'
+      adapter_names: ['ad_alice', 'ad_bob']
+
 
 
 ####################################################################################################
@@ -123,7 +125,7 @@ models:
 training:
   keep_error_messages: False
   
-  # Player-specific training data processing
+  # agent-specific training data processing
   agents:
     alice:
       training_data_func: generate_training_data_from_raw
@@ -168,23 +170,23 @@ prompt_blocks:
     Welcome to the Iterated Prisoner's Dilemma game!
     
     Game Rules:
-    1. You and another player will play multiple rounds of the Prisoner's Dilemma.
-    2. In each round, both players simultaneously choose to either Cooperate (C) or Defect (D).
+    1. You and another agent will play multiple rounds of the Prisoner's Dilemma.
+    2. In each round, both agents simultaneously choose to either Cooperate (C) or Defect (D).
     3. The payoffs for each round are as follows:
-       - If both players cooperate, both receive 3 points.
-       - If both players defect, both receive 1 point.
-       - If one player cooperates and the other defects, the cooperator receives 0 points and the defector receives 5 points.
+       - If both agents cooperate, both receive 3 points.
+       - If both agents defect, both receive 1 point.
+       - If one agent cooperates and the other defects, the cooperator receives 0 points and the defector receives 5 points.
     4. The goal is to maximize your total points over all rounds.
-    5. You will see the history of previous rounds, including both players' choices and points earned.
+    5. You will see the history of previous rounds, including both agents' choices and points earned.
 
   ipd_selfish_goal: |
     Your goal is to maximize your own total points over all rounds. Choose the actions that will give you the highest score possible.
 
   ipd_cooperative_goal: |
-    Your goal is to find a cooperative strategy with the other player that maximizes the total points for both players combined. Try to establish mutual cooperation that benefits both players.
+    Your goal is to find a cooperative strategy with the other agent that maximizes the total points for both agents combined. Try to establish mutual cooperation that benefits both agents.
 
   ipd_tit_for_tat_strategy: |
-    A good strategy in this game is "tit-for-tat": Start by cooperating, then copy what the other player did in the previous round. This strategy is simple but effective in encouraging cooperation while protecting against exploitation.
+    A good strategy in this game is "tit-for-tat": Start by cooperating, then copy what the other agent did in the previous round. This strategy is simple but effective in encouraging cooperation while protecting against exploitation.
 
   ipd_forgiving_strategy: |
-    A good strategy is to be forgiving: Start by cooperating, and if the other player defects, give them another chance to cooperate rather than immediately retaliating. This can help establish mutual cooperation even after mistakes or misunderstandings. 
+    A good strategy is to be forgiving: Start by cooperating, and if the other agent defects, give them another chance to cooperate rather than immediately retaliating. This can help establish mutual cooperation even after mistakes or misunderstandings. 

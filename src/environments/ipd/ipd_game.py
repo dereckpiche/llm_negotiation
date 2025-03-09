@@ -3,7 +3,7 @@ import numpy as np
 import random
 
 
-class IPDGame:
+class IPDEnv:
     """
     Iterated Prisoner's Dilemma environment following the MarlEnvironment standard.
     
@@ -24,7 +24,7 @@ class IPDGame:
         punishment: float = 1.0,       # Both defect
         temptation: float = 5.0,       # Defector's reward when other cooperates
         sucker: float = 0.0,           # Cooperator's reward when other defects
-        seed: Optional[int] = None,
+        random_seed: Optional[int] = None,
     ):
         """
         Initialize the Iterated Prisoner's Dilemma environment.
@@ -44,9 +44,9 @@ class IPDGame:
         self.sucker = sucker
         
         # Set random seed if provided
-        if seed is not None:
-            random.seed(seed)
-            np.random.seed(seed)
+        if random_seed is not None:
+            random.seed(random_seed)
+            np.random.seed(random_seed)
         
         # Initialize game state
         self.current_round = 0
