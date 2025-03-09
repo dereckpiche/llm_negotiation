@@ -191,24 +191,24 @@ def generate_frequency_counts(input_path):
     with open(output_path, 'w') as f:
         json.dump(freq_stats, f, indent=4)
 
-def plot_seed_averaged_stats(root_path, player_names):
+def plot_seed_averaged_stats(root_path, agent_names):
     """
     Plots seed-averaged statistics for given agents.
 
     Args:
         root_path (str): Path to the directory containing seed data.
-        player_names (list): List of player names to process.
+        agent_names (list): List of player names to process.
     """
 
     # Initialize data structure for storing statistics
-    player_stats = {player: {} for player in player_names}
+    player_stats = {player: {} for player in agent_names}
 
     seed_dirs = []
     # Identify all seed directories
     for date_dir in os.listdir(root_path):
         seed_dirs.extend([os.path.join(root_path, date_dir, dir_name) for dir_name in os.listdir(os.path.join(root_path, date_dir)) if dir_name.startswith("seed")])
 
-    for player in player_names:
+    for player in agent_names:
         # Create output directory for averaged stats
         avg_stats_dir = os.path.join(root_path, "avg_seed_stats", player)
         os.makedirs(avg_stats_dir, exist_ok=True)

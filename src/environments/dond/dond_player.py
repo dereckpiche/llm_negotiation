@@ -8,7 +8,7 @@ from utils.common_imports import *
 class DondAgent:
     def __init__(
         self,
-        player_name,
+        agent_name,
         allow_reasoning,
         max_errors,
         policy_id,
@@ -29,7 +29,7 @@ class DondAgent:
         Initializes the DondAgent.
 
         Args:
-            player_name (str): The name of the player.
+            agent_name (str): The name of the player.
             allow_reasoning (bool): Whether reasoning is allowed.
             max_errors (int): Maximum number of retries allowed.
             policy_id (str): The model adapter id to use.
@@ -46,7 +46,7 @@ class DondAgent:
             dond_version_specificities (str, optional): DOND-specific game instructions.
             reasoning_mechanics_prompt (str, optional): Instructions for reasoning mechanics.
         """
-        self.player_name = player_name
+        self.agent_name = agent_name
         self.allow_reasoning = allow_reasoning
         self.max_errors = max_errors
         self.policy_id = policy_id
@@ -151,7 +151,7 @@ class DondAgent:
             log_info (dict): Information about the agent required to log a trajectory.
         """
         return {
-            "player_name": self.player_name, 
+            "agent_name": self.agent_name, 
             "chat_history": self.chat_history,
             "augmented_chat_history": self.augmented_chat_history   
         }
@@ -192,7 +192,7 @@ class DondAgent:
 
         # Use the new move information to decide on the prompts.
         # If the current player has not yet made any move in the game, prepend the introductory prompts.
-        if state["game_moves"].get(self.player_name, 0) == 0:
+        if state["game_moves"].get(self.agent_name) == 0:
             user_message += self.format_prompt(self.intro_prompt, state)
             if self.message_mechanics_prompt:
                 user_message += "\n\n" + self.format_prompt(self.message_mechanics_prompt, state)
@@ -204,7 +204,7 @@ class DondAgent:
                 user_message += "\n\n" + self.format_prompt(self.goal_prompt, state)
 
         # If the current player has not yet made any move in this round, add round instructions.
-        if state["round_moves"].get(self.player_name, 0) == 0:
+        if state["round_moves"].get(self.agent_name, 0) == 0:
             if state["round_number"] == 0 and self.first_round_prompt:
                 user_message += "\n\n" + self.format_prompt(self.first_round_prompt, state)
             elif self.new_round_prompt:
@@ -266,7 +266,7 @@ class DondAgent:
 
         # 2.5) Check if this response is a message and would exceed per-player allowed messages.
         max_msgs = state.get("max_messages", None)
-        player_messages = state.get("round_messages", {}).get(self.player_name, 0)
+        player_messages = state.get("round_messages", {}).get(self.agent_name, 0)
         if max_msgs is not None and has_message:
             if player_messages == max_msgs:
                 errors.append("You must finalize because you reached the maximum number of messages!")
@@ -387,10 +387,10 @@ class DondAgent:
                 last_round_points = 0
 
             # Retrieve message-related values from the state.
-            remaining_msgs = state['messages_remaining'][self.player_name]
+            remaining_msgs = state['messages_remaining'][self.agent_name]
             max_msgs = state.get("max_messages", 0)
             min_msgs = state.get("min_messages", 0)
-            current_sent = state["round_messages"].get(self.player_name, 0)
+            current_sent = state["round_messages"].get(self.agent_name, 0)
 
             # Format finalize samples using actual item names
             items = state.get("items", [])
@@ -408,12 +408,12 @@ class DondAgent:
                 last_agreement = state["round_agreements_reached"][-1]
                 last_arch_roles = state["round_player_roles"][-1]  # mapping: player -> role for that round
                 # Determine current player's role in the last round
-                my_role = last_arch_roles.get(self.player_name, None)
+                my_role = last_arch_roles.get(self.agent_name, None)
                 # Determine the other player's name and role
-                other_player_name, other_role = None, None
+                other_agent_name, other_role = None, None
                 for p, role in last_arch_roles.items():
-                    if p != self.player_name:
-                        other_player_name = p
+                    if p != self.agent_name:
+                        other_agent_name = p
                         other_role = role
                         break
                 if not last_agreement:
@@ -454,13 +454,13 @@ class DondAgent:
             cumulative_your_points = 0
             cumulative_coplayer_points = 0
             for mapping, rp in zip(rounds_roles, rounds_points):
-                if self.player_name in mapping:
-                    your_role = mapping[self.player_name]
+                if self.agent_name in mapping:
+                    your_role = mapping[self.agent_name]
                     cumulative_your_points += rp.get(your_role, 0)
                     # Determine the coplayer's name from the round mapping
-                    coplayer_names = [p for p in mapping if p != self.player_name]
-                    if coplayer_names:
-                        cp = coplayer_names[0]
+                    coagent_names = [p for p in mapping if p != self.agent_name]
+                    if coagent_names:
+                        cp = coagent_names[0]
                         cp_role = mapping[cp]
                         cumulative_coplayer_points += rp.get(cp_role, 0)
 

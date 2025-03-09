@@ -21,7 +21,7 @@ def gather_dond_statistics(player_info, info, stats_to_log):
         dict: A dictionary (formatted like JSONL) containing the specified game statistics.
     """
     statistics = {}
-    player_name = player_info['player_name']
+    agent_name = player_info['agent_name']
     total_points_player = 0
     total_points_coplayer = 0
     total_coop_player = 0
@@ -35,7 +35,7 @@ def gather_dond_statistics(player_info, info, stats_to_log):
 
     # for each round
     for i, state in enumerate(info['round_player_roles']):
-        player_role = state.get(player_name)
+        player_role = state.get(agent_name)
         if player_role is None:
             continue
 

@@ -39,9 +39,9 @@ def generate_training_data_from_raw(raw_data_folder, training_data_folder, disco
 
         # Calculate scores for each round
         game_info = chat_history[-1].get("game_info")
-        player_name = chat_history[-1].get("player_name")
+        agent_name = chat_history[-1].get("agent_name")
         scores = globals()[score_shaping_function](game_info=game_info, 
-                                                   player_name=player_name, 
+                                                   agent_name=agent_name, 
                                                    discount_factor=discount_factor, 
                                                    **(score_shaping_function_args or {}))
 
@@ -58,7 +58,7 @@ def generate_training_data_from_raw(raw_data_folder, training_data_folder, disco
             json.dump(chat_history, f, indent=4)
 
 def calculate_discounted_scores(game_info, 
-                                player_name, 
+                                agent_name, 
                                 discount_factor, 
                                 normalize_func=None):
     """
@@ -66,7 +66,7 @@ def calculate_discounted_scores(game_info,
 
     Args:
         game_info (dict): Game information including player roles.
-        player_name (str): Name of the player.
+        agent_name (str): Name of the player.
         discount_factor (float): The discount factor to apply to future scores.
         normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
     
@@ -78,7 +78,7 @@ def calculate_discounted_scores(game_info,
     round_points = game_info.get("round_points")
 
     for i in reversed(range(len(round_points))):
-        role = game_info['round_player_roles'][i].get(player_name)
+        role = game_info['round_player_roles'][i].get(agent_name)
         round_value = round_points[i].get(role)
         cumulative_return = round_value + discount_factor * cumulative_return
         scores.insert(0, cumulative_return)
@@ -90,7 +90,7 @@ def calculate_discounted_scores(game_info,
 
   
 def calculate_advantage_alignment_scores(game_info, 
-                                         player_name, 
+                                         agent_name, 
                                          discount_factor=0.99, 
                                          beta=1, 
                                          normalize_func=None):
@@ -99,7 +99,7 @@ def calculate_advantage_alignment_scores(game_info,
 
     Args:
         game_info (dict): Game information including player roles.
-        player_name (str): Name of the player.
+        agent_name (str): Name of the player.
         discount_factor (float): The discount factor to apply to future scores.
         beta (float): Weight for the opponent shaping term.
         normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
@@ -113,7 +113,7 @@ def calculate_advantage_alignment_scores(game_info,
     ordered_points_other = np.zeros(nb_rounds)
 
     for i in range(nb_rounds):
-        role = game_info['round_player_roles'][i].get(player_name)
+        role = game_info['round_player_roles'][i].get(agent_name)
         ordered_points_self[i] = round_points[i].get(role, 0)
 
         other_role = next(r for r in game_info['round_player_roles'][i].values() if r != role)
@@ -148,7 +148,7 @@ def calculate_advantage_alignment_scores(game_info,
     return scores
 
 def calculate_sum_scores(game_info, 
-                         player_name=None, 
+                         agent_name=None, 
                          discount_factor=0.99, 
                          normalize_func=None):
     """
@@ -156,7 +156,7 @@ def calculate_sum_scores(game_info,
 
     Args:
         game_info (dict): Game information including round points.
-        player_name (str, optional): Name of the player (not used in this function but included for signature consistency).
+        agent_name (str, optional): Name of the player (not used in this function but included for signature consistency).
         discount_factor (float): The discount factor to apply to future scores.
         normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
     

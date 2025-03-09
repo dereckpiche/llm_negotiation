@@ -75,9 +75,9 @@ def last_completion(cfg):
     NB_SAMPLES = cfg['NB_SAMPLES']
 
     agent = LocalLLM(**cfg['models']['llama']['init_args'])
-    player_0 = DondAgent(player_name="player_a", **cfg['agents']['player_a']['dond_player_args'])
+    player_0 = DondAgent(agent_name="player_a", **cfg['agents']['player_a']['dond_player_args'])
     player_0.game_id = 0
-    player_1 = DondAgent(player_name="player_b", **cfg['agents']['player_b']['dond_player_args'])
+    player_1 = DondAgent(agent_name="player_b", **cfg['agents']['player_b']['dond_player_args'])
     player_1.game_id = 1
 
     dond_game = DondEnv(**cfg['dond_game_args'])

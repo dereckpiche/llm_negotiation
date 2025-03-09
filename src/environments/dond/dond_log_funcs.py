@@ -15,11 +15,11 @@ def agents_logging_and_html(
         ):
 
     for player_info in player_infos:
-        player_name = player_info["player_name"]
+        agent_name = player_info["agent_name"]
 
         # Define paths for training and statistics subfolders
-        training_path = os.path.join(path, player_name, "training")
-        statistics_path = os.path.join(path, player_name, "statistics")
+        training_path = os.path.join(path, agent_name, "training")
+        statistics_path = os.path.join(path, agent_name, "statistics")
 
         # Ensure directories exist
         os.makedirs(training_path, exist_ok=True)
@@ -129,15 +129,15 @@ def agents_logging_and_html(
     """
 
     for player_info in player_infos:
-        player_name = player_info["player_name"]
-        player_class = "alice" if player_name.lower() == "alice" else "bob"
+        agent_name = player_info["agent_name"]
+        player_class = "alice" if agent_name.lower() == "alice" else "bob"
         html_content += f"""
             <div class="column {player_class}">
-                <div class="player-name">{player_name}</div>
+                <div class="player-name">{agent_name}</div>
         """
         player_data = globals()[training_data_func](player_info, info, **training_data_func_args)
         for message in player_data:
-            role = "Intermediary ⚙️" if message["role"] == "user" else f"LLM ({player_name}) 🤖"
+            role = "Intermediary ⚙️" if message["role"] == "user" else f"LLM ({agent_name}) 🤖"
             role_class = "user" if message["role"] == "user" else "assistant"
 
             # Escape < and > in the message content
@@ -188,11 +188,11 @@ def independant_agents_logging(
     Logs the training data and metrics independently for each player in a match.
     """
     for player_info in player_infos:
-        player_name = player_info["player_name"]
+        agent_name = player_info["agent_name"]
 
         # Define paths for training and statistics subfolders
-        training_path = os.path.join(path, player_name, "training")
-        statistics_path = os.path.join(path, player_name, "statistics")
+        training_path = os.path.join(path, agent_name, "training")
+        statistics_path = os.path.join(path, agent_name, "statistics")
 
         # Ensure directories exist
         os.makedirs(training_path, exist_ok=True)
@@ -238,11 +238,11 @@ def log_raw_conversations(
         metrics_func_args (dict, optional): Arguments for the metrics function.
     """
     for player_info in player_infos:
-        player_name = player_info["player_name"]
+        agent_name = player_info["agent_name"]
 
         # Define paths for raw data and statistics subfolders
-        raw_data_path = os.path.join(path, player_name, "raw_data")
-        statistics_path = os.path.join(path, player_name, "statistics")
+        raw_data_path = os.path.join(path, agent_name, "raw_data")
+        statistics_path = os.path.join(path, agent_name, "statistics")
 
         # Ensure directories exist
         os.makedirs(raw_data_path, exist_ok=True)
@@ -259,7 +259,7 @@ def log_raw_conversations(
         
         # Add game info to the chat history for later processing
         chat_history_with_info = chat_history.copy()
-        game_info_message = {"role": "system", "game_info": info, "player_name": player_name}
+        game_info_message = {"role": "system", "game_info": info, "agent_name": agent_name}
         chat_history_with_info.append(game_info_message)
         
         with open(raw_file, "w") as f:

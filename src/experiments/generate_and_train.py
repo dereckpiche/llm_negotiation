@@ -72,7 +72,7 @@ def generate_and_train(cfg, base_seed):
         for i in range(nb_matches):
             matches.append(create_blank_match(cfg, seed_offset=(iteration * nb_matches) + i))
         agents = matches[0]["agents"]
-        player_names = agents.keys()
+        agent_names = agents.keys()
         
         # Run matches to collect raw conversation data
         run_matches(
@@ -89,17 +89,17 @@ def generate_and_train(cfg, base_seed):
         logging_start_time = time.time()
 
         # Process raw data into training data using the specified functions for each player
-        for player_name in player_names:
+        for agent_name in agent_names:
             # Create training data directory
-            training_data_path = os.path.join(it_folder, player_name, "training")
+            training_data_path = os.path.join(it_folder, agent_name, "training")
             os.makedirs(training_data_path, exist_ok=True)
             
             # Get the raw data path
-            raw_data_path = os.path.join(it_folder, player_name, "raw_data")
+            raw_data_path = os.path.join(it_folder, agent_name, "raw_data")
             
             # Process the raw data using the specified training data function
-            if player_name in cfg["training"]["agents"]:
-                player_cfg = cfg["training"]["agents"][player_name]
+            if agent_name in cfg["training"]["agents"]:
+                player_cfg = cfg["training"]["agents"][agent_name]
                 training_data_func = player_cfg.get("training_data_func")
                 training_data_func_args = player_cfg.get("training_data_func_args", {})
                 globals()[training_data_func](
@@ -109,12 +109,12 @@ def generate_and_train(cfg, base_seed):
                 )
             
             # Update player statistics
-            player_stats_folder = os.path.join(output_directory, "statistics", player_name)
+            player_stats_folder = os.path.join(output_directory, "statistics", agent_name)
             os.makedirs(player_stats_folder, exist_ok=True)
-            player_stats_file = os.path.join(player_stats_folder, f"{player_name}_stats.jsonl")
+            player_stats_file = os.path.join(player_stats_folder, f"{agent_name}_stats.jsonl")
             
             update_player_statistics(
-                input_path=os.path.join(it_folder, player_name, "statistics"),
+                input_path=os.path.join(it_folder, agent_name, "statistics"),
                 output_file=player_stats_file
             )
 
@@ -139,7 +139,7 @@ def generate_and_train(cfg, base_seed):
                     data_paths = []
                     for player in agents.values():
                         if player.policy_id == policy_id:
-                            player_export_path = os.path.join(it_folder, player.player_name, "training")
+                            player_export_path = os.path.join(it_folder, player.agent_name, "training")
                             data_paths.append(player_export_path)
 
                     if data_paths:
@@ -246,10 +246,10 @@ def create_blank_match(cfg, seed_offset=0):
         dict: A match dictionary.
     """
     agents = {}
-    for player_name in cfg["matches"]["agents"].keys():
-        agents[player_name] = DondAgent(
-            player_name,
-            **cfg["matches"]["agents"][player_name]["dond_player_args"]
+    for agent_name in cfg["matches"]["agents"].keys():
+        agents[agent_name] = DondAgent(
+            agent_name,
+            **cfg["matches"]["agents"][agent_name]["dond_player_args"]
         )
 
     # Build a fresh copy of game args to safely update random setup parameters.
