@@ -5,10 +5,11 @@ hydra:
     chdir: false
 
 experiment:
+  name: "diplomacy_dummy_test"
   method: generate_and_train
   description: "diplomacy_dummy_test"
   nb_epochs: 500
-  nb_matches_per_iteration: 16
+  nb_matches_per_iteration: 32
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: true
@@ -84,10 +85,9 @@ models:
 matches:
   env_class: "DiplomacyEnv"
   env_kwargs:
-    max_turns: 100
-    points_per_supply_centre: true
-    forced_draw_probability: 0.05
-    min_years_forced_draw: 35
+    map_name: "standard"
+    game_id: "test"
+    rules: "standard"
 
   log_func: "diplomacy_log_match"
   log_func_args: {}
@@ -95,54 +95,47 @@ matches:
   agent_class: "DiplomacyAgent"
 
   agents:
-    aus:
+    AUSTRIA:
       kwargs:
         policy_id: "dummy/ad_austria"
         power_name: "AUSTRIA"
-        use_text_interface: true
-        system_prompt: "You are a diplomat from Austria."
+        random_valid_move: true
 
-    eng:
+    ENGLAND:
       kwargs:
         policy_id: "dummy/ad_england"
         power_name: "ENGLAND"
-        use_text_interface: true
-        system_prompt: "You are a diplomat from England."
+        random_valid_move: true
 
-    fra:
+    FRANCE:
       kwargs:
         policy_id: "dummy/ad_france"
         power_name: "FRANCE"
-        use_text_interface: true
-        system_prompt: "You are a diplomat from France."
+        random_valid_move: true
       
-    ger:
+    GERMANY:
       kwargs:
         policy_id: "dummy/ad_germany"
         power_name: "GERMANY"
-        use_text_interface: true
-        system_prompt: "You are a diplomat from Germany."
-      
-    ita:
+        random_valid_move: true
+
+    ITALY:
       kwargs:
         policy_id: "dummy/ad_italy"
         power_name: "ITALY"
-        use_text_interface: true
-        system_prompt: "You are a diplomat from Italy."
+        random_valid_move: true
 
-    rus:
+    RUSSIA:
       kwargs:
         policy_id: "dummy/ad_russia"
         power_name: "RUSSIA"
-        use_text_interface: true
-        system_prompt: "You are a diplomat from Russia."
+        random_valid_move: true
 
-    tur:
+    TURKEY:
       kwargs:
         policy_id: "dummy/ad_turkey"
         power_name: "TURKEY"
-        use_text_interface: true
-        system_prompt: "You are a diplomat from Turkey."
-      
+        random_valid_move: true
+
   run_batched_matches_args: 
     nb_parallel_matches: -1

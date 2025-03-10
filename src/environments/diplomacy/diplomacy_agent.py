@@ -1,44 +1,37 @@
 from typing import Dict, List, Tuple, Optional, Any
+import copy
 
 class DiplomacyAgent:
-    """
-    Agent handler for Diplomacy, implementing the AgentState interface
-    for the multi-agent negotiation standard.
+    """Agent handler for Diplomacy game that follows the MARL standard.
+    
+    This class is responsible for parsing LLM output into valid Diplomacy orders,
+    managing the agent state, and providing information for logging.
     """
     
-    def __init__(self, 
-                 policy_id: str,
-                 power_name: str,
-                 use_text_interface: bool = True,
-                 system_prompt: Optional[str] = None):
-        """Initialize the Diplomacy agent handler.
+    def __init__(self, policy_id: str, power_name: str, random_valid_move=False):
+        """Initialize the agent handler for a power in the Diplomacy game.
         
         Args:
-            power_name: Name of the power this agent controls
-            use_text_interface: Whether to use text-based interface (vs. structured)
-            system_prompt: Optional system prompt to use for the LLM
+            power_name: The name of the power this agent controls (e.g., 'FRANCE', 'ENGLAND')
+            policy_id: The identifier for the policy this agent uses
+            random_valid_move: If True, will select random valid moves instead of using LLM (default: False)
         """
         self.policy_id = policy_id
         self.power_name = power_name
-        self.use_text_interface = use_text_interface
-        self.system_prompt = system_prompt
-        
-        # Track the agent's conversation history
-        self.conversation_history = []
-        
-        # Track if the agent has committed to an action
-        self.action_ready = False
-        self.current_action = None
-        
-        # Store the latest observation
-        self.current_observation = None
+        self.orders = []
+        self.wait = True
+        self.processing_state = "WAITING_FOR_ORDERS"
+        self.parsed_orders = []
+        self.order_status = {}
+        self.message_history = []
+        self.random_valid_move = random_valid_move
         
     def step(self, observation_from_env, policy_output=None):
-        """Update the agent state based on the observation and action.
+        """Update the agent state based on the observation and LLM output.
         
         Args:
             observation_from_env: The observation from the environment
-            policy_output: The output of the policy (LLM response)
+            policy_output: The output from the LLM
             
         Returns:
             policy_id: The policy identifier
@@ -47,27 +40,178 @@ class DiplomacyAgent:
             done: Whether the LLM action is ready to be sent to the environment
             info: Additional information about the agent
         """
-        # Store the current observation
-        self.current_observation = observation_from_env
+        info = {}
         
-        # If no policy output yet, we need to generate the initial prompt
+        # If random_valid_move is enabled, select random valid moves
+        if self.random_valid_move:
+            valid_orders = self._select_random_valid_moves(observation_from_env)
+            self.orders = valid_orders
+            self.wait = False
+            action = {
+                "orders": valid_orders,
+                "wait": False
+            }
+            return self.policy_id, {}, action, True, info
+        
+        # If no policy output, this is the initial step - prepare prompt
         if policy_output is None:
-            # Generate the initial prompt
-            policy_input = self._generate_initial_prompt()
-            return  self.policy_id, policy_input, None, False, {}
+            # Create initial prompt for the LLM
+            phase = observation_from_env.get('phase', '')
+            units = observation_from_env.get('units', {}).get(self.power_name, [])
+            centers = observation_from_env.get('centers', {}).get(self.power_name, [])
+            orderable_locations = observation_from_env.get('orderable_locations', {})
+            
+            prompt = self._create_prompt(phase, units, centers, orderable_locations)
+            
+            return self.policy_id, {"prompt": prompt}, None, False, info
+            
+        # Process the LLM output to extract orders
+        success, parsed_orders = self._parse_llm_output(policy_output)
+        self.parsed_orders = parsed_orders
         
-        # Process the policy output to see if it contains a valid action
-        action, is_valid = self._process_policy_output(policy_output)
+        if not success:
+            # Need more information from LLM
+            clarification_prompt = self._create_clarification_prompt(policy_output, parsed_orders)
+            return self.policy_id, {"prompt": clarification_prompt}, None, False, info
         
-        if is_valid:
-            # If the action is valid, we're done
-            self.action_ready = True
-            self.current_action = action
-            return  self.policy_id, None, action, True, {"valid_action": True}
+        # Validate if the orders are valid for the current phase
+        valid_orders = self._validate_orders(parsed_orders, observation_from_env)
+        
+        if valid_orders:
+            # Orders are valid, prepare action for environment
+            self.orders = valid_orders
+            self.wait = False
+            action = {
+                "orders": valid_orders,
+                "wait": False
+            }
+            return self.policy_id, {}, action, True, info
         else:
-            # If the action is not valid, we need to ask for clarification
-            policy_input = self._generate_clarification_prompt(policy_output)
-            return self.policy_id, policy_input, None, False, {"valid_action": False}
+            # Orders are invalid, ask for new ones
+            error_prompt = self._create_error_prompt(parsed_orders, observation_from_env)
+            return self.policy_id, {"prompt": error_prompt}, None, False, info
+    
+    def _create_prompt(self, phase, units, centers, orderable_locations):
+        """Create the initial prompt for the LLM.
+        
+        Args:
+            phase: The current game phase
+            units: List of units controlled by this power
+            centers: List of supply centers controlled by this power
+            orderable_locations: List of locations where orders can be issued
+            
+        Returns:
+            A prompt string for the LLM
+        """
+        prompt = f"You are playing as {self.power_name} in Diplomacy. The current phase is {phase}.\n\n"
+        prompt += f"Your units: {', '.join(units)}\n"
+        prompt += f"Your supply centers: {', '.join(centers)}\n"
+        prompt += f"Locations you can order: {', '.join(orderable_locations)}\n\n"
+        
+        if phase.endswith('M'):  # Movement phase
+            prompt += "Please provide orders for your units in the form:\n"
+            prompt += "- A LON H (hold)\n"
+            prompt += "- F NTH - NWY (move)\n"
+            prompt += "- A WAL S F LON (support)\n"
+            prompt += "- F NWG C A NWY - EDI (convoy)\n"
+        elif phase.endswith('R'):  # Retreat phase
+            prompt += "Please provide retreat orders for your dislodged units:\n"
+            prompt += "- A PAR R MAR (retreat to MAR)\n"
+            prompt += "- A PAR D (disband)\n"
+        elif phase.endswith('A'):  # Adjustment phase
+            if len(units) < len(centers):
+                prompt += "You can build units. Please provide build orders:\n"
+                prompt += "- A PAR B (build army in PAR)\n"
+                prompt += "- F BRE B (build fleet in BRE)\n"
+                prompt += "- WAIVE (waive a build)\n"
+            elif len(units) > len(centers):
+                prompt += "You must remove units. Please provide disbandment orders:\n"
+                prompt += "- A PAR D (disband army in PAR)\n"
+                prompt += "- F BRE D (disband fleet in BRE)\n"
+        
+        prompt += "\nProvide your orders as a list, one per line."
+        return prompt
+    
+    def _parse_llm_output(self, llm_output):
+        """Parse the LLM output to extract orders.
+        
+        Args:
+            llm_output: The raw output from the LLM
+            
+        Returns:
+            success: Whether parsing was successful
+            parsed_orders: List of parsed orders
+        """
+        # Simple parsing for now - extract lines that look like orders
+        lines = llm_output.strip().split('\n')
+        orders = []
+        
+        for line in lines:
+            # Remove list markers, hyphens, etc.
+            line = line.strip('- *•').strip()
+            
+            # Skip empty lines and lines that don't look like orders
+            if not line or line.startswith('I ') or line.startswith('Let\'s'):
+                continue
+                
+            # Check if it looks like a Diplomacy order
+            if (' H' in line or ' -' in line or ' S ' in line or ' C ' in line or 
+                ' R ' in line or ' D' in line or ' B' in line or line == 'WAIVE'):
+                orders.append(line)
+        
+        return len(orders) > 0, orders
+    
+    def _validate_orders(self, orders, observation):
+        """Validate if the orders are valid for the current phase.
+        
+        Args:
+            orders: List of orders to validate
+            observation: Current observation from the environment
+            
+        Returns:
+            List of valid orders or None if invalid
+        """
+        # For simplicity, we'll assume all parsed orders are valid
+        # In a real implementation, we would use the game's validation logic
+        return orders
+    
+    def _create_clarification_prompt(self, previous_output, parsed_orders):
+        """Create a prompt asking for clarification when orders couldn't be parsed.
+        
+        Args:
+            previous_output: The previous LLM output
+            parsed_orders: Any orders that were successfully parsed
+            
+        Returns:
+            A prompt string for the LLM
+        """
+        prompt = f"I couldn't fully understand your orders for {self.power_name}. "
+        
+        if parsed_orders:
+            prompt += f"I understood these orders:\n"
+            for order in parsed_orders:
+                prompt += f"- {order}\n"
+                
+        prompt += "\nPlease provide clear, valid Diplomacy orders in the format:\n"
+        prompt += "- A LON H\n- F NTH - NWY\n- etc.\n"
+        return prompt
+    
+    def _create_error_prompt(self, invalid_orders, observation):
+        """Create a prompt when orders are invalid.
+        
+        Args:
+            invalid_orders: The invalid orders
+            observation: Current observation from the environment
+            
+        Returns:
+            A prompt string for the LLM
+        """
+        prompt = f"The following orders for {self.power_name} are invalid:\n"
+        for order in invalid_orders:
+            prompt += f"- {order}\n"
+            
+        prompt += "\nPlease provide valid orders for your units."
+        return prompt
     
     def get_log_info(self):
         """Get information about the agent required to log a trajectory.
@@ -75,182 +219,41 @@ class DiplomacyAgent:
         Returns:
             log_info: Information about the agent required to log a trajectory.
         """
-        log_info = {
+        return {
             "power_name": self.power_name,
-            "conversation_history": self.conversation_history,
-            "current_action": self.current_action,
+            "orders": self.orders,
+            "wait": self.wait,
+            "parsing_state": self.processing_state,
+            "message_history": self.message_history
         }
-        return log_info
     
     def render(self):
         """Render the current state of the agent."""
-        # Implementation not shown for brevity
-        pass
+        print(f"Power: {self.power_name}")
+        print(f"Orders: {self.orders}")
+        print(f"Wait: {self.wait}")
     
     def close(self):
         """Perform any necessary cleanup."""
         pass
-    
-    def _generate_initial_prompt(self):
-        """Generate the initial prompt for the LLM.
-        
-        Returns:
-            dict: The input to the policy (LLM)
-        """
-        # Start with the system prompt if provided
-        system_message = self.system_prompt or self._get_default_system_prompt()
-        
-        # Create the user message describing the current game state
-        user_message = self._create_game_state_description()
-        
-        # Add to conversation history
-        self.conversation_history.append({"role": "system", "content": system_message})
-        self.conversation_history.append({"role": "user", "content": user_message})
-        
-        return {
-            "messages": [
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": user_message}
-            ]
-        }
-    
-    def _get_default_system_prompt(self):
-        """Get the default system prompt.
-        
-        Returns:
-            str: The default system prompt
-        """
-        return f"""You are playing the role of {self.power_name} in a game of Diplomacy. 
-Your goal is to control as many supply centers as possible. 
-You can negotiate with other players and form alliances, but remember that 
-these alliances are not binding. When you need to submit orders for your units,
-write them in the correct format, with each order on a new line."""
-    
-    def _create_game_state_description(self):
-        """Create a description of the current game state.
-        
-        Returns:
-            str: A description of the current game state
-        """
-        if not self.current_observation:
-            return "The game is about to begin. You are playing as {self.power_name}."
-        
-        obs = self.current_observation
-        
-        # Get current season and year
-        season = obs.get("current_season", "UNKNOWN")
-        year = obs.get("year", 1901)
-        
-        # Get supply center information
-        supply_centers = obs.get("supply_centers", [])
-        num_supply_centers = len(supply_centers)
-        
-        # Get unit information
-        units = obs.get("units", [])
-        
-        # Get possible actions in human-readable format
-        possible_actions = obs.get("human_readable_actions", [])
-        
-        # Create the description
-        description = f"""
-Year: {year}, Season: {season}
-You are playing as {self.power_name}.
-You currently control {num_supply_centers} supply centers: {', '.join(supply_centers) or 'none'}.
-Your units are: {', '.join(str(unit) for unit in units) or 'none'}.
 
-Please provide orders for your units. Here are your possible actions:
-{chr(10).join(possible_actions)}
-
-Submit your orders, one per line, in the format like: "A MUN - BER" or "F NTH C A LON - BEL"
-"""
-        return description
-    
-    def _process_policy_output(self, policy_output):
-        """Process the policy output to extract actions.
+    def _select_random_valid_moves(self, observation):
+        """Select random valid moves for all units.
         
         Args:
-            policy_output: The output from the policy (LLM)
+            observation: Current observation from the environment
             
         Returns:
-            tuple: (action, is_valid) where action is the extracted action and is_valid is a boolean
+            List of valid orders
         """
-        # Add the policy output to the conversation history
-        self.conversation_history.append({"role": "assistant", "content": policy_output})
+        import random
         
-        # Parse the policy output to extract actions
-        # This would use pattern matching or similar to find action statements
-        extracted_actions = self._extract_actions_from_text(policy_output)
+        possible_orders = observation.get('possible_orders', {})
+        valid_orders = []
         
-        if not extracted_actions:
-            return None, False
+        # For each location with possible orders, select one randomly
+        for location, orders in possible_orders.items():
+            if orders:  # If there are any possible orders for this location
+                valid_orders.append(random.choice(orders))
         
-        # Validate the actions against the possible actions
-        valid_actions = self._validate_actions(extracted_actions)
-        
-        if valid_actions:
-            return valid_actions, True
-        else:
-            return None, False
-    
-    def _extract_actions_from_text(self, text):
-        """Extract actions from text output.
-        
-        Args:
-            text: The text to extract actions from
-            
-        Returns:
-            list: List of extracted actions
-        """
-        # This would implement pattern matching to find action text
-        # Placeholder implementation - would be more sophisticated in reality
-        actions = []
-        
-        # For example, split by lines and look for action patterns
-        lines = text.split('\n')
-        for line in lines:
-            line = line.strip()
-            if line and any(keyword in line for keyword in ['A ', 'F ', 'BUILD', 'REMOVE']):
-                actions.append(line)
-        
-        return actions
-    
-    def _validate_actions(self, extracted_actions):
-        """Validate the extracted actions against possible actions.
-        
-        Args:
-            extracted_actions: List of actions extracted from text
-            
-        Returns:
-            list: List of valid actions in the format expected by the environment
-        """
-        # This would validate the extracted actions against the possible actions
-        # and convert them to the format expected by the environment
-        # Placeholder implementation
-        
-        # In a real implementation, this would use the mila_actions.py module
-        # to convert text actions to integer actions
-        
-        return extracted_actions
-    
-    def _generate_clarification_prompt(self, previous_output):
-        """Generate a prompt asking for clarification on invalid actions.
-        
-        Args:
-            previous_output: The previous output from the policy
-            
-        Returns:
-            dict: The input to the policy (LLM)
-        """
-        # Create a message asking for clarification
-        clarification_message = """I couldn't understand your orders. Please provide your orders in the correct format, with each order on a new line. For example:
-A MUN - BER
-F NTH C A LON - BEL
-"""
-        
-        # Add to conversation history
-        self.conversation_history.append({"role": "user", "content": clarification_message})
-        
-        # Return the updated conversation
-        return {
-            "messages": self.conversation_history
-        }
+        return valid_orders
