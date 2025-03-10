@@ -16,6 +16,104 @@ of movement phases, retreat phases, and build phases.
 Our implementation adapts DeepMind's Diplomacy code to the Multi-Agent Negotiation Environment standard, allowing it 
 to be used with LLM agents through a text-based interface.
 
+Game Rules
+----------
+
+### Game Board and Powers
+
+Diplomacy is played on a map of Europe divided into provinces. The game features seven Great Powers that players can control:
+
+- England (blue)
+- France (light blue)
+- Germany (black)
+- Italy (green)
+- Austria-Hungary (red)
+- Russia (white)
+- Turkey (yellow)
+
+Each power begins with three supply centers (except Russia, which starts with four) and an equal number of units.
+
+### Units and Movement
+
+There are two types of units in Diplomacy:
+- **Armies (A)**: Can move to adjacent land provinces or be convoyed across water by fleets
+- **Fleets (F)**: Can move to adjacent coastal provinces and sea regions
+
+During movement phases, each unit can execute one of these orders:
+- **Hold**: The unit remains in its current province (e.g., "A PAR H")
+  - Format: [Unit Type] [Province] H
+  - Example: "A PAR H" means "Army in Paris holds its position"
+
+- **Move**: The unit attempts to move to an adjacent province (e.g., "A PAR - BUR")
+  - Format: [Unit Type] [Current Province] - [Destination Province]
+  - Example: "A PAR - BUR" means "Army in Paris moves to Burgundy"
+  - Example: "F BRE - ENG" means "Fleet in Brest moves to the English Channel"
+
+- **Support**: The unit supports another unit's move or hold (e.g., "A PAR S A MAR - BUR")
+  - Format for supporting a move: [Unit Type] [Province] S [Unit Type] [Province] - [Destination]
+  - Format for supporting a hold: [Unit Type] [Province] S [Unit Type] [Province]
+  - Example: "A PAR S A MAR - BUR" means "Army in Paris supports the Army in Marseille's move to Burgundy"
+  - Example: "F LON S F NTH" means "Fleet in London supports the Fleet in North Sea holding its position"
+
+- **Convoy**: A fleet can convoy an army across water (e.g., "F ENG C A LON - BRE")
+  - Format: [Fleet] [Sea Province] C [Army] [Coastal Province] - [Coastal Province]
+  - Example: "F ENG C A LON - BRE" means "Fleet in English Channel convoys the Army in London to Brest"
+
+All orders are executed simultaneously, and conflicts are resolved based on strength (number of supporting units).
+
+### Common Province Abbreviations
+
+Diplomacy uses three-letter abbreviations for provinces. Some common ones include:
+- **PAR**: Paris
+- **LON**: London
+- **BER**: Berlin
+- **MUN**: Munich
+- **BUR**: Burgundy
+- **MAR**: Marseilles
+- **BRE**: Brest
+- **ENG**: English Channel
+- **NTH**: North Sea
+- **VIE**: Vienna
+- **ROM**: Rome
+- **VEN**: Venice
+- **MOW**: Moscow
+- **CON**: Constantinople
+
+### Example: Movement and Conflicts
+
+For example, if France orders "A PAR - BUR" and Germany orders "A MUN - BUR", neither move succeeds as they have equal strength. However, if France also orders "A MAR S A PAR - BUR", then the French army from Paris would successfully move to Burgundy with strength of 2 against Germany's strength of 1.
+
+### Turn Structure
+
+A game year consists of five phases:
+1. **Spring Movement**: All powers submit orders for their units
+2. **Spring Retreat**: Units dislodged in the movement phase must retreat or be disbanded
+3. **Fall Movement**: Another round of movement orders
+4. **Fall Retreat**: Retreat orders for dislodged units
+5. **Winter Adjustment**: Powers gain or lose units based on the number of supply centers they control
+
+### Supply Centers and Building
+
+Supply centers (marked on the map) are key to victory. When a power occupies a supply center during a Fall turn, they gain control of it. During the Winter Adjustment phase:
+- If you control more supply centers than you have units, you can build new units in your home supply centers
+- If you control fewer supply centers than you have units, you must remove excess units
+
+### Example: Building and Removing Units
+
+If France controls 5 supply centers but only has 4 units, during the Winter phase they can build one new unit in an unoccupied home supply center (Paris, Marseilles, or Brest). Conversely, if France controls only 3 supply centers but has 4 units, they must remove one unit of their choice.
+
+### Negotiation
+
+A critical component of Diplomacy is the negotiation between players. Before submitting orders, players can communicate freely to form alliances, coordinate attacks, or mislead opponents. These negotiations are not binding, and betrayal is a common strategy.
+
+### Example: Alliance and Betrayal
+
+England and France might agree to an alliance against Germany, with England promising to support France's move into Belgium. However, England could secretly order their fleet to move into Belgium themselves or support a German move instead.
+
+### Victory Conditions
+
+The game ends when one power controls 18 or more supply centers (majority of the 34 total centers), or when players agree to a draw. In tournament settings, games may also end after a predetermined number of game years.
+
 DiplomacyEnv
 ------------
 

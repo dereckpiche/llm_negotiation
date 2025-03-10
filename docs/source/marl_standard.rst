@@ -1,5 +1,5 @@
 =================
-Environments
+Abstract Standard for Multi-Agent Negotiation Environments
 =================
 
 Multi-Agent Negotiation Environments require more features than gymnasium environments in order to be used as interfaces in general game running code. 

@@ -1,5 +1,5 @@
 =================
-Environments
+MARL Environments
 =================
 
 This section provides detailed documentation for the multi-agent negotiation environments included in the library.
@@ -11,9 +11,9 @@ dynamics, and implementation details.
    :maxdepth: 2
    :caption: Available Environments:
 
-   ipd
-   diplomacy
-   dond
+   environments/ipd
+   environments/diplomacy
+   environments/dond
 
 Overview
 --------
@@ -24,7 +24,7 @@ The library currently includes the following environments:
 
 2. **Diplomacy**: An adaptation of the board game Diplomacy, where seven European powers compete for control of supply centers through strategic moves and alliances.
 
-3. **Deal or No Deal (DOND)**: A negotiation environment inspired by the TV show, where agents negotiate over the distribution of a set of prizes.
+3. **Deal or No Deal (DOND)**: A negotiation environment based on `the paper Deal or No Deal? End-to-End Learning for Negotiation Dialogues <https://arxiv.org/pdf/1706.05125>`_ in which agents negotiate over the distribution of a set of prizes.
 
 Each environment documentation includes:
 
