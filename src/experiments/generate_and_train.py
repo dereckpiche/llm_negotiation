@@ -15,7 +15,7 @@ from utils.log_statistics import *
 from utils.log_statistics import update_agent_statistics, generate_agent_stats_plots
 from utils.update_start_epoch import update_start_epoch
 from training.train_main import *
-from generation.run_games import run_matches
+from generation.run_games import run_batched_matches
 import torch
 import numpy as np
 import random
@@ -82,12 +82,12 @@ def generate_and_train(cfg, base_seed):
         agent_names = agents.keys()
         
         # Run matches to collect raw conversation data
-        run_matches(
+        run_batched_matches(
             export_path=it_folder,
             matches=matches,
             iteration=iteration,
             models=models,
-            **cfg['matches']['run_matches_args']
+            **cfg['matches']['run_batched_matches_args']
         )
         del matches
 

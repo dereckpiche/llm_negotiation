@@ -15,6 +15,8 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx.ext.autosummary',
     'sphinx.ext.intersphinx',
+    'sphinx.ext.mathjax',
+    'sphinxcontrib.mermaid',
     'sphinx_rtd_theme',
 ]
 

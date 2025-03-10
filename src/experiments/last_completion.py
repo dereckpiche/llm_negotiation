@@ -5,7 +5,7 @@ import time
 from omegaconf import OmegaConf
 import random
 # local imports
-from environments.dond_run_matches import run_matches
+from environments.dond_run_batched_matches import run_batched_matches
 from environments.dond.dond_game import DondEnv
 from models.local_llm import LocalLLM
 from models.dummy_local_llm import DummyLocalLLM

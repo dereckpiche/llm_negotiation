@@ -1,7 +1,7 @@
 from utils.common_imports import *
 from environments.dond.dond_log_funcs import *
 
-def run_matches(
+def run_batched_matches(
     matches,
     models,
     iteration,
