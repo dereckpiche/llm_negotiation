@@ -20,13 +20,13 @@ import torch
 import numpy as np
 import random
 import pickle
-from environments.ipd.ipd_game import IPDEnv
-from environments.ipd.ipd_agent import IPDAgent
-from environments.dond.dond_game import DondEnv
-from environments.dond.dond_agent import DondAgent
-from environments.ipd.ipd_log_funcs import *
-from environments.dond.dond_log_funcs import *
-
+# from environments.ipd.ipd_game import IPDEnv
+# from environments.ipd.ipd_agent import IPDAgent
+# from environments.dond.dond_game import DondEnv
+# from environments.dond.dond_agent import DondAgent
+# from environments.ipd.ipd_log_funcs import *
+# from environments.dond.dond_log_funcs import *
+from environments.environment_imports import *
 
 compute_logger = logging.getLogger("compute_logger")
 
@@ -227,12 +227,12 @@ def generate_and_train(cfg, base_seed):
 def init_models(cfg, base_seed, output_directory):
     models = {}
     for model_name in cfg["models"].keys():
-        if cfg["models"][model_name]["class"] == "hf":
+        if cfg["models"][model_name]["class"] == "local_llm":
             models[model_name] = LocalLLM(**cfg["models"][model_name]["init_args"], base_seed=base_seed * cfg["experiment"]["nb_epochs"],
                                          output_directory=output_directory)
-        elif cfg["models"][model_name]["class"] == "dummy_llm":
+        elif cfg["models"][model_name]["class"] == "dummy_local_llm":
             models[model_name] = DummyLocalLLM(**cfg["models"][model_name]["init_args"])
-        elif cfg["models"][model_name]["class"] == "oai":
+        elif cfg["models"][model_name]["class"] == "server_llm":
             models[model_name] = ServerLLM(**cfg["models"][model_name]["init_args"])
         else:
             raise ValueError(f"Model class {cfg['models'][model_name]['class']} not found.")
@@ -259,7 +259,6 @@ def create_blank_match(cfg, seed_offset=0):
     
     for agent_name in cfg["matches"]["agents"].keys():
         agents[agent_name] = AgentClass(
-            agent_name,
             **cfg["matches"]["agents"][agent_name]["kwargs"]
         )
 

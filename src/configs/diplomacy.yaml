@@ -1,0 +1,149 @@
+hydra:
+  job:
+    chdir: false
+    name: diplomacy
+  run:
+    dir: ${oc.env:EXP_OUT}/${hydra.job.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+
+experiment:
+  method: generate_and_train
+  description: "Diplomacy negotiation experiment with LLM agents"
+  nb_epochs: 500
+  nb_matches_per_iteration: 16
+  reinit_matches_each_it: true
+  start_epoch: 0
+  resume_experiment: true
+  base_seed: 42
+
+training:
+  keep_error_messages: False
+  llama:
+    adapters:
+      # Define an adapter for each of the 7 powers in Diplomacy
+      ad_austria:
+        train_func: train_reinforce_main
+        train_func_args:
+          temperature: 1
+          learning_rate: 1e-6
+          entropy_coef: 0
+          
+      ad_england:
+        train_func: train_reinforce_main
+        train_func_args:
+          temperature: 1
+          learning_rate: 1e-6
+          entropy_coef: 0
+          
+      ad_france:
+        train_func: train_reinforce_main
+        train_func_args:
+          temperature: 1
+          learning_rate: 1e-6
+          entropy_coef: 0
+          
+      ad_germany:
+        train_func: train_reinforce_main
+        train_func_args:
+          temperature: 1
+          learning_rate: 1e-6
+          entropy_coef: 0
+          
+      ad_italy:
+        train_func: train_reinforce_main
+        train_func_args:
+          temperature: 1
+          learning_rate: 1e-6
+          entropy_coef: 0
+          
+      ad_russia:
+        train_func: train_reinforce_main
+        train_func_args:
+          temperature: 1
+          learning_rate: 1e-6
+          entropy_coef: 0
+          
+      ad_turkey:
+        train_func: train_reinforce_main
+        train_func_args:
+          temperature: 1
+          learning_rate: 1e-6
+          entropy_coef: 0
+
+models:
+  llama:
+    class: local_llm
+    init_args: {}
+
+  dummy:
+    class: dummy_local_llm
+    init_args:
+      name: 'dummy'
+      adapter_names: ['ad_austria', 'ad_england', 'ad_france', 'ad_germany', 'ad_italy', 'ad_russia', 'ad_turkey']
+
+
+
+matches:
+  env_class: "DiplomacyEnv"
+  env_kwargs:
+    max_turns: 100
+    points_per_supply_centre: true
+    forced_draw_probability: 0.05
+    min_years_forced_draw: 35
+
+  log_func: "diplomacy_log_match"
+  log_func_args: {}
+  
+  agent_class: "DiplomacyAgent"
+
+  agents:
+    aus:
+      kwargs:
+        policy_id: "dummy/ad_austria"
+        power_name: "AUSTRIA"
+        use_text_interface: true
+        system_prompt: "You are a diplomat from Austria."
+
+    eng:
+      kwargs:
+        policy_id: "dummy/ad_england"
+        power_name: "ENGLAND"
+        use_text_interface: true
+        system_prompt: "You are a diplomat from England."
+
+    fra:
+      kwargs:
+        policy_id: "dummy/ad_france"
+        power_name: "FRANCE"
+        use_text_interface: true
+        system_prompt: "You are a diplomat from France."
+      
+    ger:
+      kwargs:
+        policy_id: "dummy/ad_germany"
+        power_name: "GERMANY"
+        use_text_interface: true
+        system_prompt: "You are a diplomat from Germany."
+      
+    ita:
+      kwargs:
+        policy_id: "dummy/ad_italy"
+        power_name: "ITALY"
+        use_text_interface: true
+        system_prompt: "You are a diplomat from Italy."
+
+    rus:
+      kwargs:
+        policy_id: "dummy/ad_russia"
+        power_name: "RUSSIA"
+        use_text_interface: true
+        system_prompt: "You are a diplomat from Russia."
+
+    tur:
+      kwargs:
+        policy_id: "dummy/ad_turkey"
+        power_name: "TURKEY"
+        use_text_interface: true
+        system_prompt: "You are a diplomat from Turkey."
+      
+  run_batched_matches_args: 
+    nb_parallel_matches: -1

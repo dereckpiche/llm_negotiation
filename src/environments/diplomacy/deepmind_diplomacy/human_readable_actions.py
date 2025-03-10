@@ -19,9 +19,9 @@ from typing import Optional, Union
 
 import numpy as np
 
-from diplomacy.environment import action_utils
-from diplomacy.environment import observation_utils as utils
-from diplomacy.environment import province_order
+from environments.diplomacy.deepmind_diplomacy import action_utils
+from environments.diplomacy.deepmind_diplomacy import observation_utils as utils
+from environments.diplomacy.deepmind_diplomacy import province_order
 
 
 tag_to_id = province_order.province_name_to_id()

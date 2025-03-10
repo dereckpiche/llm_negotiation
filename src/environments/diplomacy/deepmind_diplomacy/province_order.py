@@ -25,7 +25,7 @@ import enum
 from typing import Dict, Sequence
 import numpy as np
 
-from diplomacy.environment import observation_utils as utils
+from environments.diplomacy.deepmind_diplomacy import observation_utils as utils
 
 
 class MapMDF(enum.Enum):

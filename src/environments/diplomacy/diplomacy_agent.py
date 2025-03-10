@@ -7,6 +7,7 @@ class DiplomacyAgent:
     """
     
     def __init__(self, 
+                 policy_id: str,
                  power_name: str,
                  use_text_interface: bool = True,
                  system_prompt: Optional[str] = None):
@@ -17,6 +18,7 @@ class DiplomacyAgent:
             use_text_interface: Whether to use text-based interface (vs. structured)
             system_prompt: Optional system prompt to use for the LLM
         """
+        self.policy_id = policy_id
         self.power_name = power_name
         self.use_text_interface = use_text_interface
         self.system_prompt = system_prompt
@@ -52,7 +54,7 @@ class DiplomacyAgent:
         if policy_output is None:
             # Generate the initial prompt
             policy_input = self._generate_initial_prompt()
-            return "llm_policy", policy_input, None, False, {}
+            return  self.policy_id, policy_input, None, False, {}
         
         # Process the policy output to see if it contains a valid action
         action, is_valid = self._process_policy_output(policy_output)
@@ -61,11 +63,11 @@ class DiplomacyAgent:
             # If the action is valid, we're done
             self.action_ready = True
             self.current_action = action
-            return "llm_policy", None, action, True, {"valid_action": True}
+            return  self.policy_id, None, action, True, {"valid_action": True}
         else:
             # If the action is not valid, we need to ask for clarification
             policy_input = self._generate_clarification_prompt(policy_output)
-            return "llm_policy", policy_input, None, False, {"valid_action": False}
+            return self.policy_id, policy_input, None, False, {"valid_action": False}
     
     def get_log_info(self):
         """Get information about the agent required to log a trajectory.

@@ -2,10 +2,10 @@ import gymnasium as gym
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
 
-from src.environments.diplomacy.deepmind_diplomacy.diplomacy_state import DiplomacyState
-from src.environments.diplomacy.deepmind_diplomacy import observation_utils
-from src.environments.diplomacy.deepmind_diplomacy import human_readable_actions
-from src.environments.diplomacy.deepmind_diplomacy import mila_actions
+from environments.diplomacy.deepmind_diplomacy.diplomacy_state import DiplomacyState
+from environments.diplomacy.deepmind_diplomacy import observation_utils
+from environments.diplomacy.deepmind_diplomacy import human_readable_actions
+from environments.diplomacy.deepmind_diplomacy import mila_actions
 
 
 class DiplomacyEnv():
@@ -14,6 +14,7 @@ class DiplomacyEnv():
     to the MarlEnvironment standard.
     """
     def __init__(self, 
+                 random_seed= 0,
                  initial_state: Optional[DiplomacyState] = None,
                  max_turns: int = 100,
                  points_per_supply_centre: bool = True,
@@ -28,6 +29,7 @@ class DiplomacyEnv():
             forced_draw_probability: Probability of forcing a draw after min_years_forced_draw
             min_years_forced_draw: Minimum years before considering a forced draw
         """
+        self.random_seed = random_seed
         self.state = initial_state
         self.max_turns = max_turns
         self.points_per_supply_centre = points_per_supply_centre

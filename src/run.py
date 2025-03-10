@@ -7,7 +7,7 @@ from omegaconf import OmegaConf
 from experiments.generate_and_train import generate_and_train
 from experiments.arithmetic_test import arithmetic_test
 
-@hydra.main(config_path="configs", config_name="dond")
+@hydra.main(config_path="configs", config_name="diplomacy")
 def main(cfg):
 
     # Get Hydra's runtime directory

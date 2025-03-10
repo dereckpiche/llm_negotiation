@@ -17,8 +17,8 @@
 from typing import Sequence, Tuple, Union
 import numpy as np
 
-from diplomacy.environment import action_list
-from diplomacy.environment import observation_utils as utils
+from environments.diplomacy.deepmind_diplomacy import action_list
+from environments.diplomacy.deepmind_diplomacy import observation_utils as utils
 
 # Actions are represented using 64 bit integers. In particular bits 0-31 contain
 # the action order, represented using the following format:
