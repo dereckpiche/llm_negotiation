@@ -1,13 +1,12 @@
 hydra:
+  run:
+    dir: "/home/mila/d/dereck.piche/llm_negotiation/outputs/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}"
   job:
     chdir: false
-    name: diplomacy
-  run:
-    dir: ${oc.env:EXP_OUT}/${hydra.job.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
 
 experiment:
   method: generate_and_train
-  description: "Diplomacy negotiation experiment with LLM agents"
+  description: "diplomacy_dummy_test"
   nb_epochs: 500
   nb_matches_per_iteration: 16
   reinit_matches_each_it: true
