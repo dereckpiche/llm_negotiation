@@ -22,3 +22,4 @@ Submodules
    :maxdepth: 4
 
    src.environments.env_imports
+   src.environments.environment_imports
