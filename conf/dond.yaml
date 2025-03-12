@@ -5,8 +5,8 @@ hydra:
     chdir: false
 
 experiment:
-  name: "dond_4_rounds_normal_independent_discounted_scores"
-  method: dond_run_train
+  name: "dond_baseline_test"
+  method: generate_and_train
   description: "no description"
   nb_epochs: 1000
   nb_matches_per_iteration: 32
@@ -26,7 +26,7 @@ matches:
 
   run_matches_args:
     nb_parallel_matches: -1
-    log_func: players_logging_and_html
+    log_func: log_raw_conversations
     log_func_args:
       metrics_func: gather_dond_statistics
       metrics_func_args:
@@ -51,15 +51,12 @@ matches:
         "total_coop_points_difference_player",
         "total_coop_points_difference_coplayer"
         ]
-      training_data_func: set_discounted_scores
-      training_data_func_args:
-        discount_factor: 0.99
 
   dond_game_args:
-    rounds_per_game: 4
+    rounds_per_game: 2
     max_messages: 2
     min_messages: 1
-    max_chars_per_message: 400
+    max_chars_per_message: 200
     mode: basic
     random_setup_func: bicameral_vals_assignator
     random_setup_kwargs:
@@ -78,7 +75,7 @@ matches:
     alice:
 
       dond_player_args:
-        mod_adpt_id: 'llama/ad_alice'
+        policy_id: 'llama/ad_alice'
         max_errors: 2
         allow_reasoning: true
         max_reasoning_chars: 400
@@ -96,7 +93,7 @@ matches:
     bob:
 
       dond_player_args:
-        mod_adpt_id: 'llama/ad_bob'
+        policy_id: 'llama/ad_bob'
         max_errors: 2
         allow_reasoning: true
         max_reasoning_chars: 400
@@ -161,9 +158,27 @@ models:
 
 training:
   keep_error_messages: False
+  
+  # New section for player-specific training data processing
+  players:
+    alice:
+      training_data_func: generate_training_data_from_raw
+      training_data_func_args:
+        discount_factor: 0.99
+        exclude_errors: True
+        score_shaping_function: calculate_discounted_scores
+        score_shaping_function_args:
+          normalize_func: subtract_rloo_baseline
+    bob:
+      training_data_func: generate_training_data_from_raw
+      training_data_func_args:
+        discount_factor: 0.99
+        exclude_errors: True
+        score_shaping_function: calculate_discounted_scores
+        score_shaping_function_args:
+          normalize_func: subtract_rloo_baseline
   llama:
     adapters:
-
       ad_alice:
         train_func: train_reinforce_main
         train_func_args:
