@@ -22,7 +22,7 @@ experiment:
 matches:
   env_class: "DondEnv"
   agent_class: "DondAgent"
-  log_func: log_raw_conversations_with_html
+  log_func: dond_log_match
   log_func_args:
     metrics_func: gather_dond_statistics
     metrics_func_args:
@@ -77,7 +77,8 @@ matches:
   agents:
     alice:
       kwargs:
-        policy_id: 'llama/ad_alice'
+        agent_name: "alice"
+        policy_id: "dummy_llm/ad_alice"
         max_errors: 2
         allow_reasoning: true
         max_reasoning_chars: 400
@@ -94,7 +95,8 @@ matches:
 
     bob:
       kwargs:
-        policy_id: 'llama/ad_bob'
+        agent_name: "bob"
+        policy_id: 'dummy_llm/ad_bob'
         max_errors: 2
         allow_reasoning: true
         max_reasoning_chars: 400
@@ -113,7 +115,7 @@ matches:
 models:
 
   llama:
-    class: hf
+    class: local_llm
     init_args:
       name: 'llama'
       adapter_names: ['ad_alice', 'ad_bob']
@@ -152,7 +154,7 @@ models:
       train_with: "hf"
 
   dummy_llm:
-    class: dummy_llm
+    class: dummy_local_llm
     init_args:
       name: 'dummy_llm'
 

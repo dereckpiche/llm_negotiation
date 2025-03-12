@@ -256,7 +256,7 @@ def create_blank_match(cfg, seed_offset=0):
     # Create agents using the class specified in config
     agent_class_name = cfg["matches"]["agent_class"]
     AgentClass = globals()[agent_class_name]
-    
+    # import pdb; pdb.set_trace()
     for agent_name in cfg["matches"]["agents"].keys():
         agents[agent_name] = AgentClass(
             **cfg["matches"]["agents"][agent_name]["kwargs"]
