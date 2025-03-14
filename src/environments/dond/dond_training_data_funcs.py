@@ -1,10 +1,9 @@
 import os
 import json
 import numpy as np
+from collections import defaultdict
 
-
-
-def generate_training_data_from_raw(raw_data_folder, training_data_folder, discount_factor=0.99, exclude_errors=False, score_shaping_function=None, score_shaping_function_args=None):
+def generate_training_data_from_raw(raw_data_folder, training_data_folder, discount_factor=0.99, exclude_errors=False, score_shaping_function=None, score_normalize_func=None):
     """
     Generates training data from raw conversation data by calculating scores.
 
@@ -13,22 +12,24 @@ def generate_training_data_from_raw(raw_data_folder, training_data_folder, disco
         training_data_folder (str): Path to save the processed training data.
         discount_factor (float): The discount factor to apply to future scores.
         exclude_errors (bool): If True, exclude messages with "is_error" set to True.
-        normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list 
+        score_normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list
             of shaped scores.
-        score_shaping_function_args (dict, optional): Additional arguments to pass to the normalize function.
     """
     # Create training data directory if it doesn't exist
     os.makedirs(training_data_folder, exist_ok=True)
 
     # Step 1: Collect all raw data files
-    raw_files = [f for f in os.listdir(raw_data_folder) if f.startswith("conversation_") and f.endswith(".json")]
+    raw_files = {f: None for f in os.listdir(raw_data_folder) if f.startswith("conversation_") and f.endswith(".json")}
+
+    n_games = len(raw_files)
 
     if not raw_files:
         print(f"No raw data files found in {raw_data_folder}")
         return
 
     # Step 2: Process each raw data file
-    for raw_file in raw_files:
+    total_score_sum = defaultdict(int)
+    for raw_file in raw_files.keys():
         raw_file_path = os.path.join(raw_data_folder, raw_file)
         with open(raw_file_path, 'r') as f:
             chat_history = json.load(f)
@@ -40,27 +41,48 @@ def generate_training_data_from_raw(raw_data_folder, training_data_folder, disco
         # Calculate scores for each round
         game_info = chat_history[-1].get("game_info")
         player_name = chat_history[-1].get("player_name")
-        scores = globals()[score_shaping_function](game_info=game_info, 
-                                                   player_name=player_name, 
-                                                   discount_factor=discount_factor, 
-                                                   **(score_shaping_function_args or {}))
+        scores = globals()[score_shaping_function](game_info=game_info,
+                                                   player_name=player_name,
+                                                   discount_factor=discount_factor)
 
         # Update chat history with scores
         for message in chat_history:
-            if message.get("role") != "user":
+            if message.get("role") == "assistant":
                 round_number = message.get("round_nb")
                 if round_number is not None and round_number < len(scores):
                     message["score"] = scores[round_number]
+                    total_score_sum[round_number] += scores[round_number]
 
-        # Save the processed data
+        # Store updated chat history in a dictionary with
+        # key as filename and value as the chat history
+        # Also, remove the data with role 'system' from
+        # training data
+        raw_files[raw_file] = [message for message in chat_history if message.get("role") != "system"]
+
+    # Loop in the dictionary and apply the baseline
+    if score_normalize_func:
+        for raw_file, chat_history in raw_files.items():
+            for message in chat_history:
+                if message.get("role") == "assistant":
+                    round_number = message.get("round_nb")
+                    baseline = globals()[score_normalize_func](message['score'], total_score_sum[round_number], n_games)
+                    message["score"] -= baseline
+
+    # Save the processed data
+    for raw_file, chat_history in raw_files.items():
         training_file = os.path.join(training_data_folder, raw_file.replace("conversation_", "training_data_"))
         with open(training_file, 'w') as f:
             json.dump(chat_history, f, indent=4)
 
-def calculate_discounted_scores(game_info, 
-                                player_name, 
-                                discount_factor, 
-                                normalize_func=None):
+    total_sum_file = os.path.join(raw_data_folder, '../', 'total_score_sum.json')
+    with open(total_sum_file, 'w') as f:
+        json.dump(total_score_sum, f, indent=4)
+
+    return
+
+def calculate_discounted_scores(game_info,
+                                player_name,
+                                discount_factor):
     """
     Calculates discounted scores for each round.
 
@@ -68,8 +90,6 @@ def calculate_discounted_scores(game_info,
         game_info (dict): Game information including player roles.
         player_name (str): Name of the player.
         discount_factor (float): The discount factor to apply to future scores.
-        normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
-    
     Returns:
         list: Discounted scores for each round.
     """
@@ -82,17 +102,12 @@ def calculate_discounted_scores(game_info,
         round_value = round_points[i].get(role)
         cumulative_return = round_value + discount_factor * cumulative_return
         scores.insert(0, cumulative_return)
-    
-    if normalize_func:
-        scores = globals()[normalize_func](scores)
     return scores
 
-
-  
-def calculate_advantage_alignment_scores(game_info, 
-                                         player_name, 
-                                         discount_factor=0.99, 
-                                         beta=1, 
+def calculate_advantage_alignment_scores(game_info,
+                                         player_name,
+                                         discount_factor=0.99,
+                                         beta=1,
                                          normalize_func=None):
     """
     Calculates advantage alignment scores for each round.
@@ -103,7 +118,7 @@ def calculate_advantage_alignment_scores(game_info,
         discount_factor (float): The discount factor to apply to future scores.
         beta (float): Weight for the opponent shaping term.
         normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
-    
+
     Returns:
         list: Advantage alignment scores for each round.
     """
@@ -143,13 +158,13 @@ def calculate_advantage_alignment_scores(game_info,
         scores[t] = score
 
     scores = scores.tolist()
-    if normalize_func:  
+    if normalize_func:
         scores = globals()[normalize_func](scores)
     return scores
 
-def calculate_sum_scores(game_info, 
-                         player_name=None, 
-                         discount_factor=0.99, 
+def calculate_sum_scores(game_info,
+                         player_name=None,
+                         discount_factor=0.99,
                          normalize_func=None):
     """
     Calculates the sum of rewards for both players for each round.
@@ -159,7 +174,7 @@ def calculate_sum_scores(game_info,
         player_name (str, optional): Name of the player (not used in this function but included for signature consistency).
         discount_factor (float): The discount factor to apply to future scores.
         normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
-    
+
     Returns:
         list: Sum scores for each round.
     """
@@ -189,28 +204,19 @@ def gaussian_normalization(scores):
         return scores  # Avoid division by zero; return original scores.
     return ((s_arr - mu) / sigma).tolist()
 
-def subtract_baseline(scores):
+def mean_baseline(total_sum, n):
     """
     Subtracts the baseline (mean of the scores) from each score.
     Each round score becomes score - mean(scores).
     """
-    s_arr = np.array(scores)
-    baseline = s_arr.mean()
-    return (s_arr - baseline).tolist()
+    baseline = total_sum / n
+    return baseline
 
-def subtract_rloo_baseline(scores):
+def rloo_baseline(score, total_sum, n):
     """
     Subtracts the Round Leave-One-Out (RLOO) baseline from each round score.
     For each round i, the baseline is computed as the mean of all scores excluding the current one.
     The transformed score is score_i - ((sum(scores)-score_i)/(n-1)).
     """
-    s_arr = np.array(scores)
-    n = len(s_arr)
-    if n <= 1:
-        return scores
-    total_sum = s_arr.sum()
-    shaped_scores = []
-    for i, score in enumerate(s_arr):
-        loo_baseline = (total_sum - score) / (n - 1)
-        shaped_scores.append(score - loo_baseline)
-    return shaped_scores
+    loo_baseline = (total_sum - score) / (n - 1)
+    return loo_baseline
