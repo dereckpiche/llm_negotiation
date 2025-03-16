@@ -12,11 +12,11 @@ pip install -e .
 
 ### Deal or No Deal (DoND)
 
-The DoND environment is a simple negotiation environment where two players take turns proposing deals. The player can either accept the deal or make a counter-proposal. The game ends when one of the players accepts the deal or the counter-proposal is accepted.
+The DoND environment is a simple negotiation environment where two agents take turns proposing deals. The agent can either accept the deal or make a counter-proposal. The game ends when one of the agents accepts the deal or the counter-proposal is accepted.
 
 ### Diplomacy
 
-The Diplomacy environment is a more complex negotiation environment where two players take turns proposing deals. The player can either accept the deal or make a counter-proposal. The game ends when one of the players accepts the deal or the counter-proposal is accepted.
+The Diplomacy environment is a more complex negotiation environment where two agents take turns proposing deals. The agent can either accept the deal or make a counter-proposal. The game ends when one of the agents accepts the deal or the counter-proposal is accepted.
 
 ### 
 
