@@ -3,7 +3,11 @@ import json
 import numpy as np
 
 
-def generate_training_data_from_raw(raw_data_folder, training_data_folder, discount_factor=0.99, exclude_errors=False, score_shaping_function=None, score_shaping_function_args=None):
+def generate_training_data_from_raw(raw_data_folder, 
+                                    metrics_data_folder,
+                                    training_data_folder,
+                                    discount_factor=0.99, 
+                                    exclude_errors=False, score_shaping_function=None, score_shaping_function_args=None):
     """
     Generates training data from raw conversation data by calculating scores.
 
@@ -20,14 +24,17 @@ def generate_training_data_from_raw(raw_data_folder, training_data_folder, disco
     os.makedirs(training_data_folder, exist_ok=True)
 
     # Step 1: Collect all raw data files
-    raw_files = [f for f in os.listdir(raw_data_folder) if f.startswith("conversation_") and f.endswith(".json")]
+    metrics_files = [f for f in os.listdir(metrics_data_folder)]
+    metrics = {}
 
+    # Step 2: Process each raw data file
+    raw_files = [f for f in os.listdir(raw_data_folder) if f.startswith("conversation_") and f.endswith(".json")]
     if not raw_files:
         print(f"No raw data files found in {raw_data_folder}")
         return
-
-    # Step 2: Process each raw data file
+    
     for raw_file in raw_files:
+
         raw_file_path = os.path.join(raw_data_folder, raw_file)
         with open(raw_file_path, 'r') as f:
             chat_history = json.load(f)
@@ -39,9 +46,10 @@ def generate_training_data_from_raw(raw_data_folder, training_data_folder, disco
         # Calculate scores for each round
         game_info = chat_history[-1].get("game_info")
         player_name = chat_history[-1].get("player_name")
-        scores = globals()[score_shaping_function](game_info=game_info, 
-                                                   player_name=player_name, 
-                                                   discount_factor=discount_factor, 
+        scores = globals()[score_shaping_function](game_info, 
+                                                   player_name,
+                                                   discount_factor,
+                                                   metrics,
                                                    **(score_shaping_function_args or {}))
 
         # Update chat history with scores
