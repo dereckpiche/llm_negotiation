@@ -329,6 +329,7 @@ prompt_blocks:
   dond_hidden_alternating_starting_agent: |
     In this version of the game, your finalization proposal (enclosed in <finalize> tags) will be hidden to your coagent. The values attributed to the items by other agents are hidden as well. However, there are no restrictions to what the agents are allowed to reveal themselves in their messages! Furthermore, in this version, agents alternate turns and the agent with the first move changes each round.
 
+<<<<<<<< HEAD:src/configs/dond.yaml
   dond_visible_alternating_starting_agent: |
     In this version of the game, your finalization proposal (enclosed in <finalize> tags) will be shown to your coagent. However, the values attributed to the items by other agents are hidden. However, there are no restrictions to what the agents are allowed to reveal themselves in their messages.Furthermore, in this version, agents alternate turns and the agent with the first move changes each round.
 
@@ -336,3 +337,7 @@ prompt_blocks:
 
 
 
+========
+  dond_visible_alternating_starting_player: |
+    In this version of the game, your finalization proposal (enclosed in <finalize> tags) will be shown to your coplayer. However, the values attributed to the items by other players are hidden. However, there are no restrictions to what the players are allowed to reveal themselves in their messages.Furthermore, in this version, players alternate turns and the player with the first move changes each round.
+>>>>>>>> main:conf/dond.yaml
