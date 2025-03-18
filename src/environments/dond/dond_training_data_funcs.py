@@ -3,8 +3,7 @@ import json
 import numpy as np
 from collections import defaultdict
 
-
-def generate_training_data_from_raw(raw_data_folder, training_data_folder, discount_factor=0.99, exclude_errors=False, score_shaping_function=None, score_shaping_function_args=None):
+def generate_training_data_from_raw(raw_data_folder, training_data_folder, discount_factor=0.99, exclude_errors=False, score_shaping_function=None, score_normalize_func=None):
     """
     Generates training data from raw conversation data by calculating scores.
 

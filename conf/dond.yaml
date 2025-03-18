@@ -323,8 +323,3 @@ prompt_blocks:
 
   dond_visible_alternating_starting_player: |
     In this version of the game, your finalization proposal (enclosed in <finalize> tags) will be shown to your coplayer. However, the values attributed to the items by other players are hidden. However, there are no restrictions to what the players are allowed to reveal themselves in their messages.Furthermore, in this version, players alternate turns and the player with the first move changes each round.
-
-
-
-
-

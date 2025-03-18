@@ -82,7 +82,3 @@ def paths_to_rl_data(tokenizer, paths):
     for path in paths:
         conversations.extend(get_conversations(path))
     return conversations_to_rl_data(tokenizer, conversations)
-
-
-
-
