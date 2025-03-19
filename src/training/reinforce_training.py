@@ -24,6 +24,7 @@ def reinforce_train(
         learning_rate=1e-5,
         output_path=None,
         tokenizer=None,
+        gradient_checkpointing=False,
         entropy_coef=0,
         temperature=1.0  # new hyperparameter to control softmax temperature during training
         ):
@@ -47,6 +48,9 @@ def reinforce_train(
         float: The total loss value for the training step.
     """
     model.train()
+    if gradient_checkpointing == True:
+        model.gradient_checkpointing_enable(dict(use_reentrant=False))
+        
     if output_path:
         output_train_data_debug(output_path,
                                 contexts_list,

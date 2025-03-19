@@ -54,6 +54,7 @@ class LocalLLM:
         keep_hf_during_training=True,
         keep_hf_during_eval=False,
         keep_vllm_during_eval=True,
+        vllm_enforce_eager=False,
         eval_with="vllm",
         train_with="hf",
         output_directory=None,
@@ -63,6 +64,8 @@ class LocalLLM:
         Initializes the LocalLLM.
         """
         super().__init__()
+        self.vllm_enforce_eager = vllm_enforce_eager
+
         self.name = name
         self.device = torch.device(device) if device else torch.device("cuda")
         self.model_name = model_name
@@ -180,6 +183,7 @@ class LocalLLM:
                 print("Seed used for generation: ", self.base_seed+seed_offset)
                 start_time = time.time()
                 self.vllm_model = LLM(self.model_name,
+                                        enforce_eager=self.vllm_enforce_eager,
                                         enable_lora=True,
                                         max_lora_rank=256,
                                         seed=self.base_seed+seed_offset,

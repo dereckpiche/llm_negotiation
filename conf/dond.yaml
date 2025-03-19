@@ -53,9 +53,9 @@ matches:
         ]
 
   dond_game_args:
-    rounds_per_game: 2
+    rounds_per_game: 16
     max_messages: 2
-    min_messages: 1
+    min_messages: 2
     max_chars_per_message: 200
     mode: basic
     random_setup_func: bicameral_vals_assignator
@@ -77,6 +77,7 @@ matches:
       dond_player_args:
         policy_id: 'llama/ad_alice'
         max_errors: 2
+        
         allow_reasoning: true
         max_reasoning_chars: 400
         intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
@@ -116,7 +117,7 @@ models:
     init_args:
       name: 'llama'
       adapter_names: ['ad_alice', 'ad_bob']
-      max_model_length: 8000
+      max_model_length: 10000
       include_value_head: false
       device: "cuda"
       model_name: "meta-llama/Llama-3.1-8B-Instruct"
@@ -180,12 +181,14 @@ training:
       ad_alice:
         train_func: train_reinforce_main
         train_func_args:
+          gradient_checkpointing: true
           temperature: 1
           learning_rate: 1e-6
           entropy_coef: 0.0
       ad_bob:
         train_func: train_reinforce_main
         train_func_args:
+          gradient_checkpointing: true
           temperature: 1
           learning_rate: 1e-6
           entropy_coef: 0.0
