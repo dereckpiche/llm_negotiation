@@ -58,14 +58,15 @@ class LocalLLM:
         eval_with="vllm",
         train_with="hf",
         output_directory=None,
-        base_seed: int = 42
+        base_seed: int = 42,
+        vllm_params = {}
     ) -> None:
         """
         Initializes the LocalLLM.
         """
         super().__init__()
         self.vllm_enforce_eager = vllm_enforce_eager
-
+        self.vllm_params = vllm_params
         self.name = name
         self.device = torch.device(device) if device else torch.device("cuda")
         self.model_name = model_name
@@ -187,8 +188,8 @@ class LocalLLM:
                                         enable_lora=True,
                                         max_lora_rank=256,
                                         seed=self.base_seed+seed_offset,
-                                        max_model_len=self.max_model_length,
-                                        dtype=self.pretrained_args["torch_dtype"]
+                                        dtype=torch.bfloat16,
+                                        **self.vllm_params
                                         )
                 end_time = time.time()
                 compute_logger.info(f"VLLM model loading time: {end_time - start_time:.2f} seconds.")

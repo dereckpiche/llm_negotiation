@@ -9,7 +9,7 @@ experiment:
   method: generate_and_train
   description: "no description"
   nb_epochs: 1000
-  nb_matches_per_iteration: 32
+  nb_matches_per_iteration: 16
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: false
@@ -54,9 +54,9 @@ matches:
 
   dond_game_args:
     rounds_per_game: 16
-    max_messages: 2
-    min_messages: 2
-    max_chars_per_message: 200
+    max_messages: 1
+    min_messages: 1
+    max_chars_per_message: 480
     mode: basic
     random_setup_func: bicameral_vals_assignator
     random_setup_kwargs:
@@ -76,9 +76,9 @@ matches:
 
       dond_player_args:
         policy_id: 'llama/ad_alice'
-        max_errors: 2
+        max_errors: 0
         
-        allow_reasoning: true
+        allow_reasoning: false
         max_reasoning_chars: 400
         intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
         message_mechanics_prompt: ${prompt_blocks.dond_message_mechanics}
@@ -94,9 +94,9 @@ matches:
     bob:
 
       dond_player_args:
-        policy_id: 'llama/ad_bob'
-        max_errors: 2
-        allow_reasoning: true
+        policy_id: 'llama2/ad_bob'
+        max_errors: 0
+        allow_reasoning: false
         max_reasoning_chars: 400
         intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
         message_mechanics_prompt: ${prompt_blocks.dond_message_mechanics}
@@ -111,6 +111,7 @@ matches:
 
 
 models:
+
 
   llama:
     class: hf
@@ -144,12 +145,21 @@ models:
         top_p: 1.0
         repetition_penalty: 0.0
 
+      vllm_params:
+        max_model_len : 13e3
+        gpu_memory_utilization: 0.45
+        enable_prefix_caching: True
+
       keep_vllm_during_training: False
       keep_hf_during_training: True
       keep_hf_during_eval: False
       keep_vllm_during_eval: True
       eval_with: "vllm"
       train_with: "hf"
+
+  llama2: ${models.llama}
+    
+    
 
 
 ####################################################################################################
@@ -192,6 +202,8 @@ training:
           temperature: 1
           learning_rate: 1e-6
           entropy_coef: 0.0
+  llama2: ${training.llama}
+
 
 ####################################################################################################
 # PROMPT DEFINITIONS
