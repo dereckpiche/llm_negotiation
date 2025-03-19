@@ -271,6 +271,7 @@ class HfAgent:
             str: The generated response from the model.
         """
         # adapter_path = self.adapters[self.current_adapter_name]
+        # TODO: add assert statement?
         if len(contexts) == 0:
             return []
         # print(f"one context: {contexts[0]} from length {len(contexts)}")

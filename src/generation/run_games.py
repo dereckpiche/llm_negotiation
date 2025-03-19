@@ -29,6 +29,7 @@ def run_matches(
 
     # Use the provided list of match dictionaries directly (no deep copy)
     all_matches = matches
+    # we are mutating all_matches  as we use while loop with it, pop takes the first element from the list
     parallel_matches = [all_matches.pop(0) for _ in range(min(nb_parallel_matches, len(all_matches)))]
 
     # Get all the adapter names used by the players
@@ -50,7 +51,6 @@ def run_matches(
             prompt_batches[current_player.mod_adpt_id].append(
                 current_player.get_chat_history()  # No deep copy needed here
             )
-
         # Process prompts for each model
         for mod_adpt_id in mod_adpt_ids:
             model_name = mod_adpt_id.split("/")[0]
@@ -84,7 +84,7 @@ def run_matches(
                     globals()[log_func](export_path, player_infos, info, **log_func_args)
                     match["game"].reset()
 
-                    # Remove the completed match
+                    # Remove the completed match, pop doesn't work here
                     parallel_matches.remove(match)
 
                     # Add a new match if available

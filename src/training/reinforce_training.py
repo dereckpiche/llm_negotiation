@@ -54,6 +54,7 @@ def reinforce_train(
                                 tokenizer)
 
     # Create optimizer if not provided
+    # TODO: double check if lora is one we are training  
     if optimizer is None:
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 

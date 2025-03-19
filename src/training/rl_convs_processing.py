@@ -83,6 +83,7 @@ def conversations_to_rl_data(tokenizer, conversations):
     return contexts, returns, output_masks
 
 def paths_to_rl_data(tokenizer, paths):
+    # TODO: paths is directory, we can remame
     conversations = []
     for path in paths:
         conversations.extend(get_conversations(path))

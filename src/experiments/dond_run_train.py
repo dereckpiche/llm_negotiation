@@ -262,4 +262,4 @@ def dond_run_train(cfg, random_seed):
 
     total_end_time = time.time()
     total_duration = total_end_time - total_start_time
-    compute_logger.info(f"Total time taken for the entire run: {format_time(total_duration)}")
+    compute__logger.info(f"Total time taken for the entire run: {format_time(total_duration)}")

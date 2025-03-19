@@ -172,7 +172,6 @@ def generate_frequency_counts(input_path):
                 data = json.load(f)
 
             for rounds, values in data.items():
-
                 agreement_percent_values.append(values['agreement_percentage'])
                 items_given_to_self_values.append(values['items_given_to_self'])
 
