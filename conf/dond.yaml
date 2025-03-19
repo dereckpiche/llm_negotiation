@@ -150,7 +150,8 @@ models:
         gpu_memory_utilization: 0.45
         enable_prefix_caching: True
 
-      keep_vllm_during_training: False
+      offload_vllm_to_cpu: True
+      keep_vllm_during_training: True
       keep_hf_during_training: True
       keep_hf_during_eval: False
       keep_vllm_during_eval: True

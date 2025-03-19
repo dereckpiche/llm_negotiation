@@ -51,6 +51,7 @@ class LocalLLM:
         generation_args=None,
         include_value_head=True,
         keep_vllm_during_training=False,
+        offload_vllm_to_cpu=False,
         keep_hf_during_training=True,
         keep_hf_during_eval=False,
         keep_vllm_during_eval=True,
@@ -67,6 +68,7 @@ class LocalLLM:
         super().__init__()
         self.vllm_enforce_eager = vllm_enforce_eager
         self.vllm_params = vllm_params
+        self.offload_vllm_to_cpu = offload_vllm_to_cpu
         self.name = name
         self.device = torch.device(device) if device else torch.device("cuda")
         self.model_name = model_name
@@ -121,6 +123,10 @@ class LocalLLM:
         if not self.keep_hf_during_training:
             self.destroy_hf()
 
+        if self.offload_vllm_to_cpu:
+            self.vllm_model.llm_engine.model_executor.driver_worker.offload_cpu()
+
+
         self.log_gpu_usage(f"Before loading HF model with adapter {adapter_name} for training.")
 
         model_logger.info(f"Preparing adapter {adapter_name} for training.")
@@ -173,6 +179,8 @@ class LocalLLM:
             self.destroy_hf()
         if not self.keep_vllm_during_eval:
             self.destroy_vllm()
+        if self.offload_vllm_to_cpu and self.vllm_model is not None:
+            self.vllm_model.llm_engine.model_executor.driver_worker.load_gpu()
 
         model_logger.info(f"Preparing adapter {adapter_name} for evaluation.")
 
