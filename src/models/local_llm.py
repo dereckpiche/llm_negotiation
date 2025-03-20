@@ -63,11 +63,9 @@ class LocalLLM:
                         "repetition_penalty": 0.0},
         include_value_head=False,
         keep_vllm_during_training=False,
-        offload_vllm_to_cpu=False,
         keep_hf_during_training=True,
         keep_hf_during_eval=False,
         keep_vllm_during_eval=True,
-        vllm_enforce_eager=False,
         eval_with="vllm",
         train_with="hf",
         output_directory=None,
@@ -78,9 +76,7 @@ class LocalLLM:
         Initializes the LocalLLM.
         """
         super().__init__()
-        self.vllm_enforce_eager = vllm_enforce_eager
         self.vllm_params = vllm_params
-        self.offload_vllm_to_cpu = offload_vllm_to_cpu
         self.name = name
         self.device = torch.device(device) if device else torch.device("cuda")
         self.model_name = model_name
@@ -132,11 +128,9 @@ class LocalLLM:
         self.destroy_hf()
         if not self.keep_vllm_during_training:
             self.destroy_vllm()
+            
         if not self.keep_hf_during_training:
             self.destroy_hf()
-
-        if self.offload_vllm_to_cpu:
-            self.vllm_model.llm_engine.model_executor.driver_worker.offload_cpu()
 
 
         self.log_gpu_usage(f"Before loading HF model with adapter {adapter_name} for training.")
@@ -189,10 +183,9 @@ class LocalLLM:
         """
         if not self.keep_hf_during_eval:
             self.destroy_hf()
+
         if not self.keep_vllm_during_eval:
             self.destroy_vllm()
-        if self.offload_vllm_to_cpu and self.vllm_model is not None:
-            self.vllm_model.llm_engine.model_executor.driver_worker.load_gpu()
 
         model_logger.info(f"Preparing adapter {adapter_name} for evaluation.")
 
@@ -204,7 +197,6 @@ class LocalLLM:
                 print("Seed used for generation: ", self.base_seed+seed_offset)
                 start_time = time.time()
                 self.vllm_model = LLM(self.model_name,
-                                        enforce_eager=self.vllm_enforce_eager,
                                         enable_lora=True,
                                         max_lora_rank=256,
                                         seed=self.base_seed+seed_offset,

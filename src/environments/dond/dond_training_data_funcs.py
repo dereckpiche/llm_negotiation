@@ -40,9 +40,9 @@ def generate_training_data_from_raw(raw_data_folder, training_data_folder, disco
 
         # Calculate scores for each round
         game_info = chat_history[-1].get("game_info")
-        player_name = chat_history[-1].get("player_name")
+        agent_name = chat_history[-1].get("agent_name")
         scores = globals()[score_shaping_function](game_info=game_info,
-                                                   player_name=player_name,
+                                                   agent_name=agent_name,
                                                    discount_factor=discount_factor)
 
         # Update chat history with scores
@@ -87,14 +87,14 @@ def generate_training_data_from_raw(raw_data_folder, training_data_folder, disco
     return
 
 def calculate_discounted_scores(game_info,
-                                player_name,
+                                agent_name,
                                 discount_factor):
     """
     Calculates discounted scores for each round.
 
     Args:
-        game_info (dict): Game information including player roles.
-        player_name (str): Name of the player.
+        game_info (dict): Game information including agent roles.
+        agent_name (str): Name of the agent.
         discount_factor (float): The discount factor to apply to future scores.
     Returns:
         list: Discounted scores for each round.
@@ -104,14 +104,14 @@ def calculate_discounted_scores(game_info,
     round_points = game_info.get("round_points")
 
     for i in reversed(range(len(round_points))):
-        role = game_info['round_player_roles'][i].get(player_name)
+        role = game_info['round_agent_roles'][i].get(agent_name)
         round_value = round_points[i].get(role)
         cumulative_return = round_value + discount_factor * cumulative_return
         scores.insert(0, cumulative_return)
     return scores
 
 def calculate_advantage_alignment_scores(game_info,
-                                         player_name,
+                                         agent_name,
                                          discount_factor=0.99,
                                          beta=1,
                                          normalize_func=None):
@@ -184,6 +184,7 @@ def calculate_sum_scores(game_info,
     Returns:
         list: Sum scores for each round.
     """
+    import pdb; pdb.set_trace()
     round_points = game_info.get("round_points")
     nb_rounds = len(round_points)
     total_rewards = [sum(points.values()) for points in round_points]

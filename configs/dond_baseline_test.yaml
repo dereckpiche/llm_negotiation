@@ -1,6 +1,6 @@
 hydra:
   run:
-    dir: "/home/mila/d/dereck.piche/llm_negotiation/outputs/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}"
+    dir: "${oc.env:HOME}/llm_negotiation/results/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}"
   job:
     chdir: false
 
@@ -58,9 +58,9 @@ matches:
   env_kwargs:
     agents: ['alice', 'bob']
     rounds_per_game: 1
-    max_messages: 2
+    max_messages: 1
     min_messages: 1
-    max_chars_per_message: 200
+    max_chars_per_message: 450
     mode: basic
     random_setup_func: bicameral_vals_assignator
     random_setup_kwargs:
@@ -78,8 +78,8 @@ matches:
     alice:
       kwargs:
         agent_name: "alice"
-        policy_id: "dummy_llm/ad_alice"
-        max_errors: 2
+        policy_id: "llama/ad_alice"
+        max_errors: 0
         allow_reasoning: true
         max_reasoning_chars: 400
         intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
@@ -96,8 +96,8 @@ matches:
     bob:
       kwargs:
         agent_name: "bob"
-        policy_id: 'dummy_llm/ad_bob'
-        max_errors: 2
+        policy_id: "llama2/ad_bob"
+        max_errors: 0
         allow_reasoning: true
         max_reasoning_chars: 400
         intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
@@ -152,8 +152,7 @@ models:
         gpu_memory_utilization: 0.45
         enable_prefix_caching: True
 
-      offload_vllm_to_cpu: True
-      keep_vllm_during_training: True
+      keep_vllm_during_training: False
       keep_hf_during_training: True
       keep_hf_during_eval: False
       keep_vllm_during_eval: True
