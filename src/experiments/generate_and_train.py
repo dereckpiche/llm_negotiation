@@ -6,91 +6,30 @@ from utils.common_imports import *
 
 # Local imports
 from models.local_llm import LocalLLM
-from environments.dond.dond_player import DondPlayerHandler
-from environments.dond.dond_game import DondGame
+from environments.dond.dond_agent import DondAgent
+from environments.dond.dond_game import DondEnv
 from environments.dond.dond_training_data_funcs import *
 from models.dummy_local_llm import DummyLocalLLM
 from models.server_llm import ServerLLM
 from utils.log_statistics import *
-from utils.log_statistics import update_player_statistics, generate_player_stats_plots
+from utils.log_statistics import update_agent_statistics, generate_agent_stats_plots
 from utils.update_start_epoch import update_start_epoch
 from training.train_main import *
-from generation.run_games import run_matches
+from generation.run_games import run_batched_matches
 import torch
 import numpy as np
 import random
 import pickle
+# from environments.ipd.ipd_game import IPDEnv
+# from environments.ipd.ipd_agent import IPDAgent
+# from environments.dond.dond_game import DondEnv
+# from environments.dond.dond_agent import DondAgent
+# from environments.ipd.ipd_log_funcs import *
+# from environments.dond.dond_log_funcs import *
+from environments.environment_imports import *
 
 compute_logger = logging.getLogger("compute_logger")
 
-def init_models(cfg, base_seed, output_directory):
-    models = {}
-    for model_name in cfg["models"].keys():
-        if cfg["models"][model_name]["class"] == "hf":
-            models[model_name] = LocalLLM(**cfg["models"][model_name]["init_args"], base_seed=base_seed * cfg["experiment"]["nb_epochs"],
-                                         output_directory=output_directory)
-        elif cfg["models"][model_name]["class"] == "dummy_hf":
-            models[model_name] = DummyLocalLLM(**cfg["models"][model_name]["init_args"])
-        elif cfg["models"][model_name]["class"] == "oai":
-            models[model_name] = ServerLLM(**cfg["models"][model_name]["init_args"])
-    return models
-
-
-def create_blank_match(cfg, seed_offset=0):
-    """
-    Initializes the match for the game, ensuring that each game instance
-    receives a unique random_seed passed to the DondGame, which in turn is used
-    by the random generation functions for quantities and values.
-
-    Args:
-        cfg (omegaconf.DictConfig): Configuration object containing all necessary parameters.
-        seed_offset (int): An offset to uniquely adjust the seed for each match.
-
-    scores:
-        dict: A match dictionary.
-    """
-    players = {}
-    for player_name in cfg["matches"]["players"].keys():
-        players[player_name] = DondPlayerHandler(
-            player_name,
-            **cfg["matches"]["players"][player_name]["dond_player_args"]
-        )
-
-    # Build a fresh copy of game args to safely update random setup parameters.
-    game_args = dict(cfg["matches"]["dond_game_args"])
-    setup_kwargs = game_args.get("random_setup_kwargs", {})
-    setup_kwargs = dict(setup_kwargs)  # shallow copy
-
-    # Determine the base seed.
-    if "seed" in setup_kwargs:
-        base_seed = setup_kwargs.pop("seed")  # Remove it from kwargs so that DondGame controls randomness.
-        random_seed_value = base_seed + seed_offset
-    else:
-        random_seed_value = random.randint(1, 10**9) + seed_offset
-
-    # Put back the cleaned up random_setup_kwargs (without any seed key).
-    game_args["random_setup_kwargs"] = setup_kwargs
-
-    blank_match = {
-        "players": players,
-        "game": DondGame(
-            players=list(players.keys()),
-            random_seed=random_seed_value,  # Pass the unique seed here.
-            **game_args
-        ),
-        "game_state": None,
-        "stop_condition": cfg["matches"]["stop_condition"],
-        "stop_condition_kwargs": cfg["matches"]["stop_condition_kwargs"]
-    }
-    return blank_match
-
-def format_time(seconds):
-    if seconds >= 3600:
-        return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m {int(seconds % 60)}s"
-    elif seconds >= 60:
-        return f"{int(seconds // 60)}m {int(seconds % 60)}s"
-    else:
-        return f"{int(seconds)}s"
 
 
 def generate_and_train(cfg, base_seed):
@@ -98,7 +37,6 @@ def generate_and_train(cfg, base_seed):
     Executes a negotiation cycle for the Deal or No Deal (DoND) game.
     """
     total_start_time = time.time()
-
     # Get Hydra's runtime output directory which includes date and config info.
     hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
     output_directory = f"{hydra_cfg['runtime']['output_dir']}/seed_{base_seed}"
@@ -140,16 +78,16 @@ def generate_and_train(cfg, base_seed):
         nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
         for i in range(nb_matches):
             matches.append(create_blank_match(cfg, seed_offset=(iteration * nb_matches) + i))
-        players = matches[0]["players"]
-        player_names = players.keys()
+        agents = matches[0]["agents"]
+        agent_names = agents.keys()
         
         # Run matches to collect raw conversation data
-        run_matches(
+        run_batched_matches(
             export_path=it_folder,
             matches=matches,
             iteration=iteration,
             models=models,
-            **cfg['matches']['run_matches_args']
+            **cfg['matches']['run_batched_matches_args']
         )
         del matches
 
@@ -157,41 +95,41 @@ def generate_and_train(cfg, base_seed):
 
         logging_start_time = time.time()
 
-        # Process raw data into training data using the specified functions for each player
-        for player_name in player_names:
+        # Process raw data into training data using the specified functions for each agent
+        for agent_name in agent_names:
             # Create training data directory
-            training_data_path = os.path.join(it_folder, player_name, "training")
+            training_data_path = os.path.join(it_folder, agent_name, "training")
             os.makedirs(training_data_path, exist_ok=True)
             
             # Get the raw data path
-            raw_data_path = os.path.join(it_folder, player_name, "raw_data")
+            raw_data_path = os.path.join(it_folder, agent_name, "raw_data")
             
             # Process the raw data using the specified training data function
-            if player_name in cfg["training"]["players"]:
-                player_cfg = cfg["training"]["players"][player_name]
-                training_data_func = player_cfg.get("training_data_func")
-                training_data_func_args = player_cfg.get("training_data_func_args", {})
+            if agent_name in cfg["training"]["agents"]:
+                agent_cfg = cfg["training"]["agents"][agent_name]
+                training_data_func = agent_cfg.get("training_data_func")
+                training_data_func_args = agent_cfg.get("training_data_func_args", {})
                 globals()[training_data_func](
                     raw_data_folder=raw_data_path,
                     training_data_folder=training_data_path,
                     **training_data_func_args
                 )
             
-            # Update player statistics
-            player_stats_folder = os.path.join(output_directory, "statistics", player_name)
-            os.makedirs(player_stats_folder, exist_ok=True)
-            player_stats_file = os.path.join(player_stats_folder, f"{player_name}_stats.jsonl")
+            # Update agent statistics
+            agent_stats_folder = os.path.join(output_directory, "statistics", agent_name)
+            os.makedirs(agent_stats_folder, exist_ok=True)
+            agent_stats_file = os.path.join(agent_stats_folder, f"{agent_name}_stats.jsonl")
             
-            update_player_statistics(
-                input_path=os.path.join(it_folder, player_name, "statistics"),
-                output_file=player_stats_file
+            update_agent_statistics(
+                input_path=os.path.join(it_folder, agent_name, "statistics"),
+                output_file=agent_stats_file
             )
 
-            generate_player_stats_plots(
-                global_stats_path=player_stats_file,
-                matplotlib_log_dir=os.path.join(player_stats_folder, "matplotlib"),
-                tensorboard_log_dir=os.path.join(player_stats_folder, "tensorboard"),
-                wandb_log_dir=os.path.join(player_stats_folder, "wandb"),
+            generate_agent_stats_plots(
+                global_stats_path=agent_stats_file,
+                matplotlib_log_dir=os.path.join(agent_stats_folder, "matplotlib"),
+                tensorboard_log_dir=os.path.join(agent_stats_folder, "tensorboard"),
+                wandb_log_dir=os.path.join(agent_stats_folder, "wandb"),
             )
 
         logging_end_time = time.time()
@@ -206,10 +144,10 @@ def generate_and_train(cfg, base_seed):
                     model.prepare_adapter_train(adapter_name)
 
                     data_paths = []
-                    for player in players.values():
-                        if player.policy_id == policy_id:
-                            player_export_path = os.path.join(it_folder, player.player_name, "training")
-                            data_paths.append(player_export_path)
+                    for agent in agents.values():
+                        if agent.policy_id == policy_id:
+                            agent_export_path = os.path.join(it_folder, agent.agent_name, "training")
+                            data_paths.append(agent_export_path)
 
                     if data_paths:
                         train_func_args = cfg["training"][model_name]["adapters"][adapter_name]["train_func_args"]
@@ -283,3 +221,82 @@ def generate_and_train(cfg, base_seed):
     total_end_time = time.time()
     total_duration = total_end_time - total_start_time
     compute_logger.info(f"Total time taken for the entire run: {format_time(total_duration)}")
+
+
+
+def init_models(cfg, base_seed, output_directory):
+    models = {}
+    for model_name in cfg["models"].keys():
+        if cfg["models"][model_name]["class"] == "local_llm":
+            models[model_name] = LocalLLM(**cfg["models"][model_name]["init_args"], base_seed=base_seed * cfg["experiment"]["nb_epochs"],
+                                         output_directory=output_directory)
+        elif cfg["models"][model_name]["class"] == "dummy_local_llm":
+            models[model_name] = DummyLocalLLM(**cfg["models"][model_name]["init_args"])
+        elif cfg["models"][model_name]["class"] == "server_llm":
+            models[model_name] = ServerLLM(**cfg["models"][model_name]["init_args"])
+        else:
+            raise ValueError(f"Model class {cfg['models'][model_name]['class']} not found.")
+    return models
+
+
+def create_blank_match(cfg, seed_offset=0):
+    """
+    Initializes a match for any game, using a functional approach to instantiate 
+    environment and agent classes based on configuration.
+
+    Args:
+        cfg (omegaconf.DictConfig): Configuration object containing all necessary parameters.
+        seed_offset (int): An offset to uniquely adjust the seed for each match.
+
+    Returns:
+        dict: A match dictionary containing environment and agents.
+    """
+    agents = {}
+    
+    # Create agents using the class specified in config
+    agent_class_name = cfg["matches"]["agent_class"]
+    AgentClass = globals()[agent_class_name]
+    # import pdb; pdb.set_trace()
+    for agent_name in cfg["matches"]["agents"].keys():
+        agents[agent_name] = AgentClass(
+            **cfg["matches"]["agents"][agent_name]["kwargs"]
+        )
+
+    # Get environment class from config
+    env_class_name = cfg["matches"]["env_class"]
+    EnvClass = globals()[env_class_name]
+    
+    # Build a fresh copy of game args to safely update random setup parameters
+    env_kwargs = dict(cfg["matches"]["env_kwargs"])
+    
+    # Handle random setup kwargs if they exist in the config
+    if "random_setup_kwargs" in env_kwargs:
+        setup_kwargs = env_kwargs.get("random_setup_kwargs", {})
+        setup_kwargs = dict(setup_kwargs)  # shallow copy
+        # Put back the cleaned up random_setup_kwargs
+        env_kwargs["random_setup_kwargs"] = setup_kwargs
+
+    # Create match with instantiated environment and agents
+    env = EnvClass(
+        random_seed=seed_offset,  # Pass the unique seed here
+        **env_kwargs
+    )
+    
+    
+    # Add the logging function and args to the match dictionary
+    match = {
+        'env': env,
+        'agents': agents,
+        'log_func': globals()[cfg['matches']['log_func']],  
+        'log_func_args': cfg['matches']['log_func_args']  
+    }
+    
+    return match
+
+def format_time(seconds):
+    if seconds >= 3600:
+        return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m {int(seconds % 60)}s"
+    elif seconds >= 60:
+        return f"{int(seconds // 60)}m {int(seconds % 60)}s"
+    else:
+        return f"{int(seconds)}s"

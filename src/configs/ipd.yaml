@@ -1,0 +1,192 @@
+hydra:
+  run:
+    dir: "/home/mila/d/dereck.piche/llm_negotiation/outputs/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}"
+  job:
+    chdir: false
+
+experiment:
+  name: "ipd_baseline_test"
+  method: generate_and_train
+  description: "Iterated Prisoner's Dilemma baseline test"
+  nb_epochs: 50
+  nb_matches_per_iteration: 32
+  reinit_matches_each_it: true
+  start_epoch: 0
+  resume_experiment: false
+  base_seed: 1
+
+####################################################################################################
+#                                           GENERATION
+####################################################################################################
+
+matches:
+  env_class: "IPDEnv"
+  agent_class: "IPDAgent"
+  log_func: ipd_log_raw_conversations
+  log_func_args:
+    metrics_func: gather_ipd_statistics
+    metrics_func_args:
+      stats_to_log: [
+        "cooperation_rate",
+        "mutual_cooperation_rate",
+        "mutual_defection_rate",
+        "total_rewards",
+        "average_round_reward"
+      ]
+      
+  stop_condition: game_over_condition
+  stop_condition_kwargs: {}
+
+  run_batched_matches_args:
+    nb_parallel_matches: -1
+
+
+  env_kwargs:
+    rounds_per_game: 10
+    reward: 3.0          # Both cooperate payoff
+    punishment: 1.0      # Both defect payoff
+    temptation: 5.0      # Defector's reward when other cooperates
+    sucker: 0.0          # Cooperator's reward when other defects
+
+  agents:
+    alice:
+      kwargs:
+        policy_id: 'dummy_llm/ad_alice'
+        max_errors: 2
+        allow_reasoning: true
+        max_reasoning_chars: 400
+        intro_prompt: ${prompt_blocks.ipd_game_intro}
+        goal_prompt: ${prompt_blocks.ipd_selfish_goal}
+        strategy_prompt: null
+
+    bob:
+      kwargs:
+        policy_id: 'dummy_llm/ad_bob'
+        max_errors: 2
+        allow_reasoning: true
+        max_reasoning_chars: 400
+        intro_prompt: ${prompt_blocks.ipd_game_intro}
+        goal_prompt: ${prompt_blocks.ipd_selfish_goal}
+        strategy_prompt: null
+
+
+models:
+
+  llama:
+    class: hf
+    init_args:
+      name: 'llama'
+      adapter_names: ['ad_alice', 'ad_bob']
+      max_model_length: 8000
+      include_value_head: false
+      device: "cuda"
+      model_name: "meta-llama/Llama-3.1-8B-Instruct"
+      pretrained_args:
+        pretrained_model_name_or_path: ${models.llama.init_args.model_name}
+        torch_dtype: "bfloat16"
+        device_map: "auto"
+        attn_implementation: "flash_attention_2"
+      bits_and_bytes_args: null
+      lora_args:
+        task_type: TaskType.CAUSAL_LM
+        r: 64
+        lora_alpha: 32
+        lora_dropout: 0.0
+        target_modules: "all-linear"
+
+      generation_args:
+        max_new_tokens: 300
+        do_sample: True
+        temperature: 1.0
+        top_k: 1
+        top_p: 1.0
+        repetition_penalty: 0.0
+
+      keep_vllm_during_training: False
+      keep_hf_during_training: True
+      keep_hf_during_eval: False
+      keep_vllm_during_eval: True
+      eval_with: "vllm"
+      train_with: "hf"
+
+  dummy_llm:
+    class: dummy_llm
+    init_args:
+      name: 'dummy_llm'
+      adapter_names: ['ad_alice', 'ad_bob']
+
+
+
+####################################################################################################
+# TRAINING
+####################################################################################################
+
+
+training:
+  keep_error_messages: False
+  
+  # agent-specific training data processing
+  agents:
+    alice:
+      training_data_func: generate_training_data_from_raw
+      training_data_func_args:
+        discount_factor: 0.99
+        exclude_errors: True
+        score_shaping_function: calculate_discounted_scores
+        score_shaping_function_args:
+          normalize_func: subtract_rolling_baseline
+          window_size: 5
+    bob:
+      training_data_func: generate_training_data_from_raw
+      training_data_func_args:
+        discount_factor: 0.99
+        exclude_errors: True
+        score_shaping_function: calculate_discounted_scores
+        score_shaping_function_args:
+          normalize_func: subtract_rolling_baseline
+          window_size: 5
+  llama:
+    adapters:
+      ad_alice:
+        train_func: train_reinforce_main
+        train_func_args:
+          temperature: 1
+          learning_rate: 1e-6
+          entropy_coef: 0.1
+      ad_bob:
+        train_func: train_reinforce_main
+        train_func_args:
+          temperature: 1
+          learning_rate: 1e-6
+          entropy_coef: 0.1
+
+####################################################################################################
+# PROMPT DEFINITIONS
+####################################################################################################
+
+prompt_blocks:
+
+  ipd_game_intro: |
+    Welcome to the Iterated Prisoner's Dilemma game!
+    
+    Game Rules:
+    1. You and another agent will play multiple rounds of the Prisoner's Dilemma.
+    2. In each round, both agents simultaneously choose to either Cooperate (C) or Defect (D).
+    3. The payoffs for each round are as follows:
+       - If both agents cooperate, both receive 3 points.
+       - If both agents defect, both receive 1 point.
+       - If one agent cooperates and the other defects, the cooperator receives 0 points and the defector receives 5 points.
+    4. The goal is to maximize your total points over all rounds.
+    5. You will see the history of previous rounds, including both agents' choices and points earned.
+
+  ipd_selfish_goal: |
+    Your goal is to maximize your own total points over all rounds. Choose the actions that will give you the highest score possible.
+
+  ipd_cooperative_goal: |
+    Your goal is to find a cooperative strategy with the other agent that maximizes the total points for both agents combined. Try to establish mutual cooperation that benefits both agents.
+
+  ipd_tit_for_tat_strategy: |
+    A good strategy in this game is "tit-for-tat": Start by cooperating, then copy what the other agent did in the previous round. This strategy is simple but effective in encouraging cooperation while protecting against exploitation.
+
+  ipd_forgiving_strategy: |
+    A good strategy is to be forgiving: Start by cooperating, and if the other agent defects, give them another chance to cooperate rather than immediately retaliating. This can help establish mutual cooperation even after mistakes or misunderstandings. 

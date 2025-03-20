@@ -119,12 +119,12 @@ def calculate_advantage_alignment_scores(game_info,
     Calculates advantage alignment scores for each round.
 
     Args:
-        game_info (dict): Game information including player roles.
-        player_name (str): Name of the player.
+        game_info (dict): Game information including agent roles.
+        agent_name (str): Name of the agent.
         discount_factor (float): The discount factor to apply to future scores.
         beta (float): Weight for the opponent shaping term.
         normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
-
+    
     Returns:
         list: Advantage alignment scores for each round.
     """
@@ -134,10 +134,10 @@ def calculate_advantage_alignment_scores(game_info,
     ordered_points_other = np.zeros(nb_rounds)
 
     for i in range(nb_rounds):
-        role = game_info['round_player_roles'][i].get(player_name)
+        role = game_info['round_agent_roles'][i].get(agent_name)
         ordered_points_self[i] = round_points[i].get(role, 0)
 
-        other_role = next(r for r in game_info['round_player_roles'][i].values() if r != role)
+        other_role = next(r for r in game_info['round_agent_roles'][i].values() if r != role)
         ordered_points_other[i] = round_points[i].get(other_role, 0)
 
     discounted_scores_self = np.zeros(nb_rounds)
@@ -164,23 +164,23 @@ def calculate_advantage_alignment_scores(game_info,
         scores[t] = score
 
     scores = scores.tolist()
-    if normalize_func:
+    if normalize_func:  
         scores = globals()[normalize_func](scores)
     return scores
 
-def calculate_sum_scores(game_info,
-                         player_name=None,
-                         discount_factor=0.99,
+def calculate_sum_scores(game_info, 
+                         agent_name=None, 
+                         discount_factor=0.99, 
                          normalize_func=None):
     """
-    Calculates the sum of rewards for both players for each round.
+    Calculates the sum of rewards for both agents for each round.
 
     Args:
         game_info (dict): Game information including round points.
-        player_name (str, optional): Name of the player (not used in this function but included for signature consistency).
+        agent_name (str, optional): Name of the agent (not used in this function but included for signature consistency).
         discount_factor (float): The discount factor to apply to future scores.
         normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list of shaped scores.
-
+    
     Returns:
         list: Sum scores for each round.
     """
@@ -194,8 +194,6 @@ def calculate_sum_scores(game_info,
         cumulative_return = total_rewards[i] + discount_factor * cumulative_return
         scores.insert(0, cumulative_return)
 
-    if normalize_func:
-        scores = globals()[normalize_func](scores)
     return scores
 
 def gaussian_normalization(scores):
