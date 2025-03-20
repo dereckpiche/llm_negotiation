@@ -25,7 +25,9 @@ class DondAgent:
         message_mechanics_prompt=None,
         finalization_mechanics_prompt=None,
         dond_version_specificities=None,
-        reasoning_mechanics_prompt=None
+        reasoning_mechanics_prompt=None,
+        time_to_finalize_prompt=None,
+        time_to_send_message_prompt=None
     ):
         """
         Initializes the DondAgent.
@@ -49,6 +51,8 @@ class DondAgent:
             finalization_mechanics_prompt (str, optional): Instructions for finalization mechanics.
             dond_version_specificities (str, optional): DOND-specific game instructions.
             reasoning_mechanics_prompt (str, optional): Instructions for reasoning mechanics.
+            time_to_finalize_prompt (str, optional): Prompt for time to finalize.
+            time_to_send_message_prompt (str, optional): Prompt for time to send message.
         """
         self.agent_name = agent_name
         self.allow_reasoning = allow_reasoning
@@ -71,6 +75,8 @@ class DondAgent:
         self.finalization_mechanics_prompt = finalization_mechanics_prompt
         self.dond_version_specificities = dond_version_specificities  # New prompt for version specificities
         self.reasoning_mechanics_prompt = reasoning_mechanics_prompt
+        self.time_to_finalize_prompt = time_to_finalize_prompt
+        self.time_to_send_message_prompt = time_to_send_message_prompt
 
         self.game_id = None  # ID of the agent in the game
         self.reset()
@@ -234,6 +240,16 @@ class DondAgent:
                 user_message += self.format_prompt(self.received_message_prompt, state)
         else:
             user_message += self.format_prompt(self.received_message_prompt, state)
+        
+        # Append timing prompts based on the number of remaining messages.
+        # Here we use the precomputed remaining_msgs from the state.
+        min_msgs = state.get("min_messages", None)
+        max_msgs = state.get("max_messages", None)
+        agent_messages = state.get("round_messages", {}).get(self.agent_name, 0)
+        if agent_messages == max_msgs and self.time_to_finalize_prompt:
+            user_message += "\n\n" + self.format_prompt(self.time_to_finalize_prompt, state)
+        elif agent_messages < min_msgs and self.time_to_send_message_prompt:
+            user_message += "\n\n" + self.format_prompt(self.time_to_send_message_prompt, state)
 
         usr_prompt = {
             "role": "user",

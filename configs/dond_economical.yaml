@@ -25,7 +25,7 @@ common_agent_kwargs: &common_agent_kwargs
   max_reasoning_chars: 0
   intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
   message_mechanics_prompt: "Your messages must be sent in the <message>Your message...</message> format, with no content outside the tags. They should be concise - less than 300 characters."
-  finalization_mechanics_prompt: "Your finalizations must be sent in a <finalize> {\"i_take\": { {finalize_sample_i_take} }, \"other_agent_gets\": { {finalize_sample_other} }} </finalize> format, with no content outside the tags. If the finalization of the second player is not complementary to the first player's finalization, it is equivalent to a rejection. It is paramount to follow the formatting requirements perfectly"
+  finalization_mechanics_prompt: "Your finalizations must be sent in a <finalize> {\"i_take\": { {finalize_sample_i_take} }, \"other_agent_gets\": { {finalize_sample_other} }} </finalize> format, with no content outside the tags. If the finalization of the second player is not complementary to the first player's finalization, it is equivalent to a rejection. It is paramount to follow the formatting requirements perfectly in order to submit a valid finalization."
   dond_version_specificities: |
     In this specific version of the game, each round is played as follows: 
 
@@ -37,16 +37,20 @@ common_agent_kwargs: &common_agent_kwargs
 
     At each round, the starting player assignation alternates. 
 
-    The finalization of the starting player will be shown to the second player. It is suggested that the messages are used to discuss values.
+    Also, this implies that each player only has 1 message per round. 
+
+    Also, the finalization of the starting player will be shown to the second player, but the values will not be shown. Given this and the fact that each player only has 1 message per round, it is suggested that the message is used primarily to discuss values.
 
   reasoning_mechanics_prompt: ${prompt_blocks.dond_reasoning_mechanics}
   goal_prompt: "Your goal is to maximize your sum of points across rounds."
   first_round_prompt: ${prompt_blocks.first_round_prompt}
   new_round_prompt: ${prompt_blocks.new_round_prompt_with_values}
-  agent_with_first_move_prompt: "You are the starting player. You must send your message."
-  agent_with_second_move_prompt: "You are the second player. You must send your reply message."
-  received_message_prompt: "The other player has sent this message: \" {last_message}\"."
+  agent_with_first_move_prompt: "You are the starting player. You must send your message (in <message>...</message> tags)."
+  agent_with_second_move_prompt: "You are the second player. You must send your reply message (in <message>...</message> tags)."
+  received_message_prompt: "The other player has sent this message: \"{last_message}\"."
   other_agent_finalized_prompt: "The other player has finalized with {other_agent_finalization}. You must now accept or reject."
+  time_to_finalize_prompt: "(You must now finalize in aforementioned format.)"
+  time_to_send_message_prompt: "(You must now send a message in aforementioned format.)"
 
 matches:
   env_class: "DondEnv"
@@ -93,7 +97,7 @@ matches:
     mode: basic
     random_setup_func: bicameral_vals_assignator
     random_setup_kwargs:
-      items: ['books'] # ['hats', 'balls', 'books']
+      items: ['balls'] # ['hats', 'balls', 'books']
       min_quant: 1
       max_quant: 10
       low_val_mean: 4
@@ -298,8 +302,8 @@ prompt_blocks:
       2) In each round, the available items of each category ({items}) and their corresponding quantities will be dynamically specified.
       3) In each round, the different item categories will have different values for each agent.
       4) The points of each agent in each round is determined by multiplying the number of items they receive by the value they assign to each item.
-      5) Both agents must submit a finalization proposal indicating how they wish to split the items.
-      6) If the finalization proposals of both agents do not match, neither agent earns points for that round.
+      5) Both agents must submit a finalization, indicating how they wish to split the items.
+      6) If the finalization of both agents do not match, neither agent earns points for that round.
 
 
   dond_normal_goal: |
