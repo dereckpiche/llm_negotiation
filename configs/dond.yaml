@@ -9,7 +9,7 @@ experiment:
   method: generate_and_train
   description: "no description"
   nb_epochs: 1000
-  nb_matches_per_iteration: 16
+  nb_matches_per_iteration: 32
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: false
@@ -57,7 +57,7 @@ matches:
 
   env_kwargs:
     agents: ['alice', 'bob']
-    rounds_per_game: 1
+    rounds_per_game: 16
     max_messages: 1
     min_messages: 1
     max_chars_per_message: 450

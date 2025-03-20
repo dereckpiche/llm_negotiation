@@ -19,9 +19,11 @@ class DondAgent:
         first_round_prompt=None,
         new_round_prompt=None,
         agent_with_first_move_prompt=None,
+        agent_with_second_move_prompt=None,
         received_message_prompt=None,
         other_agent_finalized_prompt=None,
         message_mechanics_prompt=None,
+        finalization_mechanics_prompt=None,
         dond_version_specificities=None,
         reasoning_mechanics_prompt=None
     ):
@@ -40,9 +42,11 @@ class DondAgent:
             first_round_prompt (str): Prompt for the first round.
             new_round_prompt (str): Prompt for the new round.
             agent_with_first_move_prompt (str): Prompt when the agent is assigned the first move.
+            agent_with_second_move_prompt (str): Prompt when the agent is assigned the second move.
             received_message_prompt (str): Prompt when a message is received from the other agent.
             other_agent_finalized_prompt (str): Prompt to indicate that the other agent has finalized.
             message_mechanics_prompt (str, optional): Instructions for message mechanics.
+            finalization_mechanics_prompt (str, optional): Instructions for finalization mechanics.
             dond_version_specificities (str, optional): DOND-specific game instructions.
             reasoning_mechanics_prompt (str, optional): Instructions for reasoning mechanics.
         """
@@ -58,11 +62,13 @@ class DondAgent:
         self.first_round_prompt = first_round_prompt
         self.new_round_prompt = new_round_prompt
         self.agent_with_first_move_prompt = agent_with_first_move_prompt
+        self.agent_with_second_move_prompt = agent_with_second_move_prompt
         self.received_message_prompt = received_message_prompt
         self.other_agent_finalized_prompt = other_agent_finalized_prompt
 
         # Set the new mechanics prompts.
         self.message_mechanics_prompt = message_mechanics_prompt
+        self.finalization_mechanics_prompt = finalization_mechanics_prompt
         self.dond_version_specificities = dond_version_specificities  # New prompt for version specificities
         self.reasoning_mechanics_prompt = reasoning_mechanics_prompt
 
@@ -119,9 +125,15 @@ class DondAgent:
                 
                 # Too many mistakes were made: force dummy message
                 if self.retries > self.max_errors:
-                    self.error_message = False
-                    action = (False, "-------")
                     self.retries = 0
+                    # If the policy output indicates a finalization move via the <finalize> tag,
+                    # we keep the fallback as "-------". Otherwise (it was time to send a message),
+                    # we generate a fallback message truncated to the maximum allowed characters.
+                    fallback = "[ERROR]"
+                    if policy_output and "<finalize>" not in policy_output:
+                        max_chars = state.get("max_chars_per_message", 300)
+                        fallback = policy_output[:max_chars]
+                    action = (False, fallback)
                     return None, None, action, True, self.get_log_info()
                 
                 # Set error user message
@@ -193,6 +205,8 @@ class DondAgent:
             user_message += self.format_prompt(self.intro_prompt, state)
             if self.message_mechanics_prompt:
                 user_message += "\n\n" + self.format_prompt(self.message_mechanics_prompt, state)
+            if self.finalization_mechanics_prompt:
+                user_message += "\n\n" + self.format_prompt(self.finalization_mechanics_prompt, state)
             if self.dond_version_specificities:
                 user_message += "\n\n" + self.format_prompt(self.dond_version_specificities, state)
             if self.allow_reasoning and self.reasoning_mechanics_prompt:
@@ -207,11 +221,17 @@ class DondAgent:
             elif self.new_round_prompt:
                 user_message += self.format_prompt(self.new_round_prompt, state)
 
-        # Then add the appropriate message based on the finalization state.
+        # Then add the appropriate message based on the finalization state and move count.
         if state["has_finalized"]:
             user_message += self.format_prompt(self.other_agent_finalized_prompt, state)
         elif state["last_message"] is None:
-            user_message += self.agent_with_first_move_prompt
+            current_round_moves = state["round_moves"].get(self.agent_name, 0)
+            if current_round_moves == 0:
+                user_message += self.agent_with_first_move_prompt
+            elif current_round_moves == 1 and self.agent_with_second_move_prompt:
+                user_message += self.agent_with_second_move_prompt
+            else:
+                user_message += self.format_prompt(self.received_message_prompt, state)
         else:
             user_message += self.format_prompt(self.received_message_prompt, state)
 

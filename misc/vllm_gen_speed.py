@@ -86,6 +86,9 @@ if 2 in experiments_to_run:
 
     etime = time.time()
     print(f"Experiment 2 took {(etime-stime)/60} minutes.")
+    import math
+    tokens_generated = total_games * nb_rounds * math.sum(response_lengths) 
+    print(f"Each model ran at an average of {tokens_generated/(etime-stime)/2} tokens/second.")
 
     # This took  7.545 minutes to run vllm default, total_games = 32, parallel_games = 32, nb_rounds = 16, nb_turns=2, intro_prompt_length=800, intermediary_length=100, response_lengths=[100, 100]
 

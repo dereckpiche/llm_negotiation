@@ -1,0 +1,5 @@
+- Good discount factor 
+- Good baseline substract 
+- Mention values are not shown 
+- Mention explicitely just one message
+- Remove proposal term, just finalize
