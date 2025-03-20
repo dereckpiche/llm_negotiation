@@ -46,12 +46,18 @@ def generate_training_data_from_raw(raw_data_folder, training_data_folder, disco
                                                    discount_factor=discount_factor)
 
         # Update chat history with scores
+        found_score = {}
         for message in chat_history:
             if message.get("role") == "assistant":
                 round_number = message.get("round_nb")
+
                 if round_number is not None and round_number < len(scores):
                     message["score"] = scores[round_number]
-                    total_score_sum[round_number] += scores[round_number]
+
+                    if not found_score.get(round_number, False):
+                        found_score[round_number] = True
+                        total_score_sum[round_number] += scores[round_number]
+
 
         # Store updated chat history in a dictionary with
         # key as filename and value as the chat history
