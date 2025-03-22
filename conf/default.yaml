@@ -8,7 +8,7 @@ hydra:
 experiment:
   method: generate_and_train
   description: "Easy. They should be learning."
-  nb_epochs: 500
+  nb_epochs: 1000
   nb_matches_per_iteration: 32
   reinit_matches_each_it: true
   start_epoch: 0
@@ -18,23 +18,35 @@ experiment:
 
 training:
   keep_error_messages: False
+  players:
+    alice:
+      training_data_func: generate_training_data_from_raw
+      training_data_func_args:
+        discount_factor: 0.99
+        exclude_errors: True
+        score_shaping_function: calculate_discounted_scores
+        score_normalize_func: rloo_baseline
+    bob:
+      training_data_func: generate_training_data_from_raw
+      training_data_func_args:
+        discount_factor: 0.99
+        exclude_errors: True
+        score_shaping_function: calculate_discounted_scores
+        score_normalize_func: rloo_baseline
   llama:
     adapters:
-
       ad_alice:
         train_func: train_reinforce_main
         train_func_args:
           temperature: 1
-          learning_rate: 1e-6
-          entropy_coef: 0 # Temperature parameter for entropy regularization
-
-
+          learning_rate: 3e-6
+          entropy_coef: 0.01
       ad_bob:
         train_func: train_reinforce_main
         train_func_args:
           temperature: 1
-          learning_rate: 1e-6
-          entropy_coef: 0 # Temperature parameter for entropy regularization
+          learning_rate: 3e-6
+          entropy_coef: 0.01
 
 models:
   llama:
@@ -83,7 +95,7 @@ matches:
 
   run_matches_args:
     nb_parallel_matches: -1
-    log_func: players_logging_and_html
+    log_func: log_raw_conversations
     log_func_args:
       metrics_func: gather_dond_statistics
       metrics_func_args:
@@ -93,9 +105,6 @@ matches:
         "points_on_agreement",
         "items_given_to_self"
         ]
-      training_data_func: set_discounted_scores
-      training_data_func_args:
-        discount_factor: 1.0
 
   dond_game_args:
     rounds_per_game: 1
