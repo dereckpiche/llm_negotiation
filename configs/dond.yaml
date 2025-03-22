@@ -1,6 +1,6 @@
 hydra:
   run:
-    dir: "/home/mila/d/dereck.piche/llm_negotiation/outputs/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}"
+    dir: "${oc.env:HOME}/llm_negotiation/results/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}.name}"
   job:
     chdir: false
 
@@ -199,14 +199,14 @@ training:
         train_func_args:
           gradient_checkpointing: true
           temperature: 1
-          learning_rate: 1e-6
+          learning_rate: 3e-6
           entropy_coef: 0.0
       ad_bob:
         train_func: train_reinforce_main
         train_func_args:
           gradient_checkpointing: true
           temperature: 1
-          learning_rate: 1e-6
+          learning_rate: 3e-6
           entropy_coef: 0.0
   llama2: ${training.llama}
 

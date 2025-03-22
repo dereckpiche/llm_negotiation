@@ -2,3 +2,4 @@
 - Create <finalize>{"hats":5}</finalize> and <finalize>True</finalize> option.
 - Verify that vllm is loading proper adapters -- use gradient magnitude trick
 - Fix double hugging face loading. Use yaml trick
+- Train on errors ( remove error skip in conversation processing )

@@ -1,6 +1,6 @@
 hydra:
   run:
-    dir: "${oc.env:HOME}/llm_negotiation/results/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}"
+    dir: "/home/mila/d/dereck.piche/llm_negotiation/results/2025-03-21___15-00-54___reg_16_rounds_rloo_no_ent"
   job:
     chdir: false
 
@@ -12,7 +12,7 @@ experiment:
   nb_matches_per_iteration: 16
   reinit_matches_each_it: true
   start_epoch: 0
-  resume_experiment: false
+  resume_experiment: true
   base_seed: 1
 
 ####################################################################################################
@@ -189,7 +189,6 @@ models:
 
 
 training:
-  keep_error_messages: False
   
   # New section for agent-specific training data processing
   agents:
@@ -197,14 +196,14 @@ training:
       training_data_func: generate_training_data_from_raw
       training_data_func_args:
         discount_factor: 0.9
-        exclude_errors: True
+        exclude_errors: False
         score_shaping_function: calculate_discounted_scores
         score_normalize_func: rloo_baseline
     bob:
       training_data_func: generate_training_data_from_raw
       training_data_func_args:
         discount_factor: 0.9
-        exclude_errors: True
+        exclude_errors: False
         score_shaping_function: calculate_discounted_scores
         score_normalize_func: rloo_baseline
   llama:

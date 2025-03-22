@@ -309,6 +309,7 @@ class LocalLLM:
             torch.cuda.device(0)
             torch.cuda.synchronize()
             torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
 
 
             self.log_gpu_usage("After destroying VLLM.")
