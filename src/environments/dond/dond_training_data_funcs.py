@@ -65,6 +65,7 @@ def generate_training_data_from_raw(raw_data_folder, training_data_folder, disco
         # training data
         raw_files[raw_file] = [message for message in chat_history if message.get("role") != "system"]
 
+
     # Loop in the dictionary and apply the baseline
     if score_normalize_func:
         for raw_file, chat_history in raw_files.items():
@@ -73,7 +74,8 @@ def generate_training_data_from_raw(raw_data_folder, training_data_folder, disco
                     round_number = message.get("round_nb")
                     baseline = globals()[score_normalize_func](message['score'], total_score_sum[round_number], n_games)
                     message["score"] -= baseline
-
+    
+    
     # Save the processed data
     for raw_file, chat_history in raw_files.items():
         training_file = os.path.join(training_data_folder, raw_file.replace("conversation_", "training_data_"))
@@ -85,6 +87,18 @@ def generate_training_data_from_raw(raw_data_folder, training_data_folder, disco
         json.dump(total_score_sum, f, indent=4)
 
     return
+
+# def get_round_reward_arrays(raw_data_folder):
+#     """
+#     Takes a raw_data_folder path, and generates a round reward array for both agents.
+#     Each row corresponds to a match. 
+#     """
+#     # TODO
+
+#     return rewards_agent, rewards_coagent
+
+
+
 
 def calculate_discounted_scores(game_info,
                                 agent_name,

@@ -1,3 +1,10 @@
+- Verify advantage alignment
+- Make code preemption resilient (fix new folder name issue on resume)
+- Launch with different betas
+
+
+
+
 - Good discount factor 
 - Create <finalize>{"hats":5}</finalize> and <finalize>True</finalize> option.
 - Verify that vllm is loading proper adapters -- use gradient magnitude trick

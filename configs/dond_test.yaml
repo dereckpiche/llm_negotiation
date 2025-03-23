@@ -5,11 +5,11 @@ hydra:
     chdir: false
 
 experiment:
-  name: "reg_16_rounds_rloo_no_ent"
+  name: "small_test_for_adv_align"
   method: generate_and_train
   description: "no description"
   nb_epochs: 1000
-  nb_matches_per_iteration: 16
+  nb_matches_per_iteration: 3
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: false
@@ -90,7 +90,7 @@ matches:
 
   env_kwargs:
     agents: ['alice', 'bob']
-    rounds_per_game: 16
+    rounds_per_game: 2
     max_messages: 1
     min_messages: 1
     max_chars_per_message: 300
