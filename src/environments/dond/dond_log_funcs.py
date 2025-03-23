@@ -12,7 +12,7 @@ def dond_log_match(
         metrics_func_args=None
         ):
     """
-    Logs the raw conversation data for each agent and generates HTML visualizations.
+    Logs the raw match data for each agent and generates HTML visualizations.
     
     Args:
         path (str): Base path to save the data.
@@ -21,7 +21,7 @@ def dond_log_match(
         metrics_func (str, optional): Name of the function to calculate metrics.
         metrics_func_args (dict, optional): Arguments for the metrics function.
     """
-    # First, perform the normal raw conversation logging
+    # First, perform the normal raw match logging
     for agent_info in agent_infos:
         agent_name = agent_info["agent_name"]
 
@@ -35,11 +35,11 @@ def dond_log_match(
 
         # Determine the next available file number for raw data
         raw_files = os.listdir(raw_data_path)
-        raw_numbers = [int(f.split('_')[-1].split('.')[0]) for f in raw_files if f.startswith("conversation_")]
+        raw_numbers = [int(f.split('_')[-1].split('.')[0]) for f in raw_files if f.startswith("match_")]
         next_raw_number = max(raw_numbers, default=0) + 1
-        raw_file = os.path.join(raw_data_path, f"conversation_{next_raw_number}.json")
+        raw_file = os.path.join(raw_data_path, f"match_{next_raw_number}.json")
 
-        # Log raw conversation data
+        # Log raw match data
         chat_history = agent_info.get("chat_history", [])
         
         # Add game info to the chat history for later processing

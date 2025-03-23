@@ -90,7 +90,7 @@ matches:
 
   env_kwargs:
     agents: ['alice', 'bob']
-    rounds_per_game: 2
+    rounds_per_game: 5
     max_messages: 1
     min_messages: 1
     max_chars_per_message: 300
@@ -177,7 +177,7 @@ models:
       name: 'llama2'
       adapter_names: ['ad_bob']
     
-  dummy_llm:
+  dummy:
     class: dummy_local_llm
     init_args:
       name: 'dummy_llm'
@@ -195,17 +195,21 @@ training:
     alice:
       training_data_func: generate_training_data_from_raw
       training_data_func_args:
-        discount_factor: 0.9
         exclude_errors: False
-        score_shaping_function: calculate_discounted_scores
-        score_normalize_func: rloo_baseline
+        debug_output: True
+        score_method: rloo_advantage_alignment_scores
+        score_method_kwargs: 
+          beta: 1.0
+          discount_factor: 0.9
     bob:
       training_data_func: generate_training_data_from_raw
       training_data_func_args:
-        discount_factor: 0.9
         exclude_errors: False
-        score_shaping_function: calculate_discounted_scores
-        score_normalize_func: rloo_baseline
+        debug_output: True
+        score_method: rloo_advantage_alignment_scores
+        score_method_kwargs: 
+          beta: 1.0
+          discount_factor: 0.9
   llama:
     adapters:
       ad_alice:
