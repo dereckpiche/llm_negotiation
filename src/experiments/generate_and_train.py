@@ -80,12 +80,12 @@ def generate_and_train(cfg, base_seed):
             matches.append(create_blank_match(cfg, seed_offset=(iteration * nb_matches) + i))
         agents = matches[0]["agents"]
         agent_names = agents.keys()
-        
+
         # Run matches to collect raw conversation data
         run_batched_matches(
             export_path=it_folder,
             matches=matches,
-            iteration=iteration,
+            seed_offset=iteration,
             models=models,
             **cfg['matches']['run_batched_matches_args']
         )
@@ -100,10 +100,10 @@ def generate_and_train(cfg, base_seed):
             # Create training data directory
             training_data_path = os.path.join(it_folder, agent_name, "training")
             os.makedirs(training_data_path, exist_ok=True)
-            
+
             # Get the raw data path
             raw_data_path = os.path.join(it_folder, agent_name, "raw_data")
-            
+
             # Process the raw data using the specified training data function
             if agent_name in cfg["training"]["agents"]:
                 agent_cfg = cfg["training"]["agents"][agent_name]
@@ -114,12 +114,12 @@ def generate_and_train(cfg, base_seed):
                     training_data_folder=training_data_path,
                     **training_data_func_args
                 )
-            
+
             # Update agent statistics
             agent_stats_folder = os.path.join(output_directory, "statistics", agent_name)
             os.makedirs(agent_stats_folder, exist_ok=True)
             agent_stats_file = os.path.join(agent_stats_folder, f"{agent_name}_stats.jsonl")
-            
+
             update_agent_statistics(
                 input_path=os.path.join(it_folder, agent_name, "statistics"),
                 output_file=agent_stats_file
@@ -241,7 +241,7 @@ def init_models(cfg, base_seed, output_directory):
 
 def create_blank_match(cfg, seed_offset=0):
     """
-    Initializes a match for any game, using a functional approach to instantiate 
+    Initializes a match for any game, using a functional approach to instantiate
     environment and agent classes based on configuration.
 
     Args:
@@ -252,7 +252,7 @@ def create_blank_match(cfg, seed_offset=0):
         dict: A match dictionary containing environment and agents.
     """
     agents = {}
-    
+
     # Create agents using the class specified in config
     agent_class_name = cfg["matches"]["agent_class"]
     AgentClass = globals()[agent_class_name]
@@ -265,10 +265,10 @@ def create_blank_match(cfg, seed_offset=0):
     # Get environment class from config
     env_class_name = cfg["matches"]["env_class"]
     EnvClass = globals()[env_class_name]
-    
+
     # Build a fresh copy of game args to safely update random setup parameters
     env_kwargs = dict(cfg["matches"]["env_kwargs"])
-    
+
     # Handle random setup kwargs if they exist in the config
     if "random_setup_kwargs" in env_kwargs:
         setup_kwargs = env_kwargs.get("random_setup_kwargs", {})
@@ -281,16 +281,16 @@ def create_blank_match(cfg, seed_offset=0):
         random_seed=seed_offset,  # Pass the unique seed here
         **env_kwargs
     )
-    
-    
+
+
     # Add the logging function and args to the match dictionary
     match = {
         'env': env,
         'agents': agents,
-        'log_func': globals()[cfg['matches']['log_func']],  
-        'log_func_args': cfg['matches']['log_func_args']  
+        'log_func': globals()[cfg['matches']['log_func']],
+        'log_func_args': cfg['matches']['log_func_args']
     }
-    
+
     return match
 
 def format_time(seconds):
