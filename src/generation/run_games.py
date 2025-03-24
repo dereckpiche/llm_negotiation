@@ -4,9 +4,9 @@ from environments.dond.dond_log_funcs import *
 def run_batched_matches(
     matches,
     models,
-    seed_offset=0,
     export_path,
-    nb_parallel_matches
+    nb_parallel_matches,
+    seed_offset=0
 ):
     """
     Runs multiple negotiation games in parallel and logs the results.
