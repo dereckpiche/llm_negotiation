@@ -1,6 +1,6 @@
 hydra:
   run:
-    dir: "${oc.env:HOME}/llm_negotiation/results/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}.name}"
+    dir: "${oc.env:SCRATCH}/llm_negotiation/results/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}.name}"
   job:
     chdir: false
 
@@ -34,22 +34,22 @@ common_agent_kwargs: &common_agent_kwargs
       If the finalization of both agents do not match, neither agent earns points for that round.
   message_mechanics_prompt: |
     Your messages must be sent in the <message>your-message-here</message> format, with no content outside the tags. They should be concise - less than 400 characters.
-  finalization_mechanics_prompt: | 
-    Your finalizations must be sent in a with the following format: 
+  finalization_mechanics_prompt: |
+    Your finalizations must be sent in a with the following format:
       <finalize> {"i_take": { {finalize_sample_i_take} }, "other_agent_gets": { {finalize_sample_other} }}</finalize>
     No content outside <finalize>your-finalization-here</finalize>. If the finalization of the second agent is not complementary to the first agent's finalization, it is equivalent to a rejection. It is paramount to follow the formatting requirements perfectly in order to submit a valid finalization.
   dond_version_specificities: |
-    In this specific version of the game, each round is played as follows: 
+    In this specific version of the game, each round is played as follows:
     1) One of the two agents is assigned as the starting agent.
-    2) The starting agent sends a message 
+    2) The starting agent sends a message
     3) The second agent sends a message
     4) The starting agent sends a finalization
-    5) The second agent sends a finalization 
+    5) The second agent sends a finalization
 
     Therefore, each agent can only send 1 message per round -- this is a strict rule.
-    At each round, the starting agent assignation alternates. 
+    At each round, the starting agent assignation alternates.
     The finalization of the starting agent will be shown automatically to the second agent.
-    The values will not be shown automatically. 
+    The values will not be shown automatically.
     It is therefore suggested that each of the 2 agents use their 1 message primarily to discuss their assigned values.
   reasoning_mechanics_prompt: |
     ${prompt_blocks.dond_reasoning_mechanics}
@@ -58,15 +58,15 @@ common_agent_kwargs: &common_agent_kwargs
   first_round_prompt: |
     For this new round, the items available are {quantities} and your assigned values for each item category are {values}.
   new_round_prompt: |
-    The previous round has ended. 
-    In the last round, you earned {last_round_points_computed}. 
-    The other agent earned {coagent_last_round_points_computed_other}. 
+    The previous round has ended.
+    In the last round, you earned {last_round_points_computed}.
+    The other agent earned {coagent_last_round_points_computed_other}.
     For this new round, the items available are {quantities} and your assigned values are {values}.
   agent_with_first_move_prompt: |
-   You are the starting agent. 
-  agent_with_second_move_prompt: | 
-    You are the second agent. 
-  received_message_prompt: | 
+   You are the starting agent.
+  agent_with_second_move_prompt: |
+    You are the second agent.
+  received_message_prompt: |
     The other agent has sent this message: "{last_message}".
   other_agent_finalized_prompt: |
     The other agent has finalized with {other_agent_finalization}. You must now accept or reject.
@@ -109,7 +109,7 @@ matches:
 
   run_batched_matches_args:
     nb_parallel_matches: -1
-    
+
 
   env_kwargs:
     agents: ['alice', 'bob']
@@ -129,14 +129,14 @@ matches:
       high_val_std: 1
     role_assignator_func: alternating_role_assignator
     role_assignator_func_kwargs: {}
-  
+
   agents:
     alice:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "alice"
         policy_id: "llama/ad_alice"
-        
+
     bob:
       kwargs:
         <<: *common_agent_kwargs
@@ -147,7 +147,7 @@ common_models_init_args: &common_models_init_args
   max_model_length: 10000
   include_value_head: false
   device: "cuda"
-  model_name: "meta-llama/Llama-3.1-8B-Instruct"
+  model_name: "/network/weights/llama.var/llama_3.1/Meta-Llama-3.1-8B-Instruct"
   pretrained_args:
     pretrained_model_name_or_path: ${models.llama.init_args.model_name}
     torch_dtype: "bfloat16"
@@ -157,7 +157,7 @@ common_models_init_args: &common_models_init_args
     #load_in_8bit: False
     #load_in_4bit: true
   lora_args:
-    task_type: TaskType.CAUSAL_LM
+    task_type: CAUSAL_LM
     r: 64
     lora_alpha: 32
     lora_dropout: 0.0
@@ -185,20 +185,20 @@ common_models_init_args: &common_models_init_args
 
 models:
 
-  llama: 
+  llama:
     class: local_llm
     init_args:
       <<: *common_models_init_args
       name: 'llama'
       adapter_names: ['ad_alice']
-      
-  llama2: 
+
+  llama2:
     class: local_llm
     init_args:
       <<: *common_models_init_args
       name: 'llama2'
       adapter_names: ['ad_bob']
-    
+
   dummy:
     class: dummy_local_llm
     init_args:
@@ -215,11 +215,11 @@ common_training_agent_kwargs: &common_training_agent_kwargs
     exclude_errors: False
     debug_output: True
     score_method: rloo_scores
-    score_method_kwargs: 
+    score_method_kwargs:
       discount_factor: 0.9
 
 training:
-  
+
   agents:
     alice:
       <<: *common_training_agent_kwargs
@@ -363,7 +363,7 @@ prompt_blocks:
 
   dond_message_mechanics: |
     In order to communicate with the other agent, you are allowed to send messages (distinct from finalizations). You cannot send a message and a finalization in the same response.
-    When sending a message, please follow these rules: 1) Enclose your message entirely within <message> and </message> tags. 2) Do not include any extraneous text outside these tags. 3) In each round, send at least {min_messages} and no more than {max_messages} messages, with each message containing up to {max_chars_per_message} characters. 4) You may send only one message per response. 5) Use your messages strategically. 
+    When sending a message, please follow these rules: 1) Enclose your message entirely within <message> and </message> tags. 2) Do not include any extraneous text outside these tags. 3) In each round, send at least {min_messages} and no more than {max_messages} messages, with each message containing up to {max_chars_per_message} characters. 4) You may send only one message per response. 5) Use your messages strategically.
 
   dond_reasoning_mechanics: |
     In order to think before you act, you are allowed to use {max_reasoning_chars} characters per round. When reasoning, please follow these rules; 1) Enclose your thought process within <think> and </think> tags. 2) Do not include extraneous content outside these tags. 3) Your reasoning is limited to {max_reasoning_chars} characters per response. 4) You are not obligated to reason at each response.
@@ -375,13 +375,13 @@ prompt_blocks:
     In this version of the game, your finalization proposal (enclosed in <finalize> tags) will be shown to your coagent. However, the values attributed to the items by other agents are hidden. However, there are no restrictions to what the agents are allowed to reveal themselves in their messages. Furthermore, in this version, agents alternate turns and the agent with the first move changes each round.
 
   dond_economic_version_specificities: |
-    In this specific version of the game, each round is played as follows: 
+    In this specific version of the game, each round is played as follows:
 
     1) One of the two agents is assigned as the starting agent.
-    2) Starting agent sends a message 
+    2) Starting agent sends a message
     3) Second agent sends a message
     4) Starting agent sends a finalization
-    5) Second agent sends a finalization 
+    5) Second agent sends a finalization
 
     At each round, the starting agent assignation alternates.
 
