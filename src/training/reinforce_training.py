@@ -124,7 +124,6 @@ def reinforce_train(
             loss = loss / nb_trajectories_we_train_on # we mean contributions across trajectories
 
             # Accumulate gradients
-            loss = loss / nb_trajectories_we_train_on  # scalar (averaged across trajectories)
             model_accelerator.backward(loss)
 
             # Update max GPU memory usage

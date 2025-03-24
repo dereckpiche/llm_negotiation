@@ -60,8 +60,7 @@ while true; do
     echo "Job completed successfully with exit code \$EXIT_CODE."
     break
   else
-    echo "Command failed with exit code \$EXIT_CODE. Relaunching in 10 seconds..."
-    sleep 10
+    echo "Command failed with exit code \$EXIT_CODE. Restarting..."
   fi
 done
 EOT
