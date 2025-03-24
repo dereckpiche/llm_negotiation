@@ -112,7 +112,7 @@ def r2g_scores(rewards_agent_1, rewards_agent_2, discount_factor):
     """
     return get_discounted_rewards_to_go(rewards_agent_1, discount_factor=1)
 
-def rloo_scores(rewards_a1, rewards_a2, discount_factor):
+def rloo_scores(rewards_agent_1, rewards_agent_2, discount_factor):
     """
     TODO: documentation
     """

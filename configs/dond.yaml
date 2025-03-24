@@ -5,19 +5,75 @@ hydra:
     chdir: false
 
 experiment:
-  name: "dond_baseline_test"
+  name: "small_test_for_adv_align"
   method: generate_and_train
   description: "no description"
   nb_epochs: 1000
-  nb_matches_per_iteration: 32
+  nb_matches_per_iteration: 16
   reinit_matches_each_it: true
   start_epoch: 0
-  resume_experiment: false
+  resume_experiment: true
   base_seed: 1
 
 ####################################################################################################
 #                                           GENERATION
 ####################################################################################################
+
+common_agent_kwargs: &common_agent_kwargs
+  max_errors: 0
+  allow_reasoning: false
+  max_reasoning_chars: 0
+  intro_prompt: |
+      Welcome, you are participating in a multi-round negotiation game.
+      Game Description:
+      In this game, two agents will divide a collection of items over multiple rounds.
+      In each round, the available items of each category ({items}) will be dynamically specified.
+      In each round, the different item categories will have different assigned values for each agent.
+      The points of each agent in each round is determined by multiplying the number of items they receive by the value assigned to each of their item.
+      Both agents must submit a finalization, indicating how they wish to split the items.
+      If the finalization of both agents do not match, neither agent earns points for that round.
+  message_mechanics_prompt: |
+    Your messages must be sent in the <message>your-message-here</message> format, with no content outside the tags. They should be concise - less than 400 characters.
+  finalization_mechanics_prompt: | 
+    Your finalizations must be sent in a with the following format: 
+      <finalize> {"i_take": { {finalize_sample_i_take} }, "other_agent_gets": { {finalize_sample_other} }}</finalize>
+    No content outside <finalize>your-finalization-here</finalize>. If the finalization of the second agent is not complementary to the first agent's finalization, it is equivalent to a rejection. It is paramount to follow the formatting requirements perfectly in order to submit a valid finalization.
+  dond_version_specificities: |
+    In this specific version of the game, each round is played as follows: 
+    1) One of the two agents is assigned as the starting agent.
+    2) The starting agent sends a message 
+    3) The second agent sends a message
+    4) The starting agent sends a finalization
+    5) The second agent sends a finalization 
+
+    Therefore, each agent can only send 1 message per round -- this is a strict rule.
+    At each round, the starting agent assignation alternates. 
+    The finalization of the starting agent will be shown automatically to the second agent.
+    The values will not be shown automatically. 
+    It is therefore suggested that each of the 2 agents use their 1 message primarily to discuss their assigned values.
+  reasoning_mechanics_prompt: |
+    ${prompt_blocks.dond_reasoning_mechanics}
+  goal_prompt: |
+    Your goal is to maximize your sum of points across rounds.
+  first_round_prompt: |
+    For this new round, the items available are {quantities} and your assigned values for each item category are {values}.
+  new_round_prompt: |
+    The previous round has ended. 
+    In the last round, you earned {last_round_points_computed}. 
+    The other agent earned {coagent_last_round_points_computed_other}. 
+    For this new round, the items available are {quantities} and your assigned values are {values}.
+  agent_with_first_move_prompt: |
+   You are the starting agent. 
+  agent_with_second_move_prompt: | 
+    You are the second agent. 
+  received_message_prompt: | 
+    The other agent has sent this message: "{last_message}".
+  other_agent_finalized_prompt: |
+    The other agent has finalized with {other_agent_finalization}. You must now accept or reject.
+  time_to_finalize_prompt: |
+    (You must now finalize in the aforementioned format.)
+  time_to_send_message_prompt: |
+    (You must now send a message in the aforementioned format.)
 
 matches:
   env_class: "DondEnv"
@@ -64,7 +120,7 @@ matches:
     mode: basic
     random_setup_func: bicameral_vals_assignator
     random_setup_kwargs:
-      items: ['coins'] # ['hats', 'balls', 'books']
+      items: ['balls'] # ['hats', 'balls', 'books']
       min_quant: 1
       max_quant: 10
       low_val_mean: 4
@@ -73,96 +129,77 @@ matches:
       high_val_std: 1
     role_assignator_func: alternating_role_assignator
     role_assignator_func_kwargs: {}
-
+  
   agents:
     alice:
       kwargs:
+        <<: *common_agent_kwargs
         agent_name: "alice"
-        policy_id: "dummy_llm/ad_alice"
-        max_errors: 0
-        allow_reasoning: true
-        max_reasoning_chars: 400
-        intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
-        message_mechanics_prompt: ${prompt_blocks.dond_message_mechanics}
-        dond_version_specificities: ${prompt_blocks.dond_visible_alternating_starting_agent}
-        reasoning_mechanics_prompt: ${prompt_blocks.dond_reasoning_mechanics}
-        goal_prompt: ${prompt_blocks.dond_agressive_pair_goal}
-        first_round_prompt: ${prompt_blocks.first_round_prompt}
-        new_round_prompt: ${prompt_blocks.new_round_prompt_with_values}
-        agent_with_first_move_prompt: "You are the first agent. It is your turn to play."
-        received_message_prompt: ${prompt_blocks.message_prompt}
-        other_agent_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
-
+        policy_id: "llama/ad_alice"
+        
     bob:
       kwargs:
+        <<: *common_agent_kwargs
         agent_name: "bob"
-        policy_id: 'dummy_llm/ad_bob'
-        max_errors: 0
-        allow_reasoning: true
-        max_reasoning_chars: 400
-        intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
-        message_mechanics_prompt: ${prompt_blocks.dond_message_mechanics}
-        dond_version_specificities: ${prompt_blocks.dond_visible_alternating_starting_agent}
-        reasoning_mechanics_prompt: ${prompt_blocks.dond_reasoning_mechanics}
-        goal_prompt: ${prompt_blocks.dond_agressive_pair_goal}
-        first_round_prompt: ${prompt_blocks.first_round_prompt}
-        new_round_prompt: ${prompt_blocks.new_round_prompt_with_values}
-        agent_with_first_move_prompt: "You are the first agent to make a move."
-        received_message_prompt: ${prompt_blocks.message_prompt}
-        other_agent_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
+        policy_id: "llama2/ad_bob"
 
+common_models_init_args: &common_models_init_args
+  max_model_length: 10000
+  include_value_head: false
+  device: "cuda"
+  model_name: "meta-llama/Llama-3.1-8B-Instruct"
+  pretrained_args:
+    pretrained_model_name_or_path: ${models.llama.init_args.model_name}
+    torch_dtype: "bfloat16"
+    device_map: "auto"
+    attn_implementation: "flash_attention_2"
+  bits_and_bytes_args: null
+    #load_in_8bit: False
+    #load_in_4bit: true
+  lora_args:
+    task_type: TaskType.CAUSAL_LM
+    r: 64
+    lora_alpha: 32
+    lora_dropout: 0.0
+    target_modules: "all-linear"
+
+  generation_args:
+    max_new_tokens: 120
+    do_sample: True
+    temperature: 1.0
+    top_k: 1
+    top_p: 1.0
+    repetition_penalty: 0.0
+
+  vllm_params:
+    max_model_len : 13e3
+    gpu_memory_utilization: 0.45
+    enable_prefix_caching: True
+
+  keep_vllm_during_training: False
+  keep_hf_during_training: True
+  keep_hf_during_eval: False
+  keep_vllm_during_eval: True
+  eval_with: "vllm"
+  train_with: "hf"
 
 models:
 
-
-  llama:
+  llama: 
     class: local_llm
     init_args:
+      <<: *common_models_init_args
       name: 'llama'
-      adapter_names: ['ad_alice', 'ad_bob']
-      max_model_length: 10000
-      include_value_head: false
-      device: "cuda"
-      model_name: "meta-llama/Llama-3.1-8B-Instruct"
-      pretrained_args:
-        pretrained_model_name_or_path: ${models.llama.init_args.model_name}
-        torch_dtype: "bfloat16"
-        device_map: "auto"
-        attn_implementation: "flash_attention_2"
-      bits_and_bytes_args: null
-        #load_in_8bit: False
-        #load_in_4bit: true
-      lora_args:
-        task_type: TaskType.CAUSAL_LM
-        r: 64
-        lora_alpha: 32
-        lora_dropout: 0.0
-        target_modules: "all-linear"
-
-      generation_args:
-        max_new_tokens: 300
-        do_sample: True
-        temperature: 1.0
-        top_k: 1
-        top_p: 1.0
-        repetition_penalty: 0.0
-
-      vllm_params:
-        max_model_len : 13e3
-        gpu_memory_utilization: 0.45
-        enable_prefix_caching: True
-
-      keep_vllm_during_training: False
-      keep_hf_during_training: True
-      keep_hf_during_eval: False
-      keep_vllm_during_eval: True
-      eval_with: "vllm"
-      train_with: "hf"
-
-  llama2: ${models.llama}
+      adapter_names: ['ad_alice']
+      
+  llama2: 
+    class: local_llm
+    init_args:
+      <<: *common_models_init_args
+      name: 'llama2'
+      adapter_names: ['ad_bob']
     
-    
-  dummy_llm:
+  dummy:
     class: dummy_local_llm
     init_args:
       name: 'dummy_llm'
@@ -172,26 +209,23 @@ models:
 # TRAINING
 ####################################################################################################
 
+common_training_agent_kwargs: &common_training_agent_kwargs
+  training_data_func: generate_training_data_from_raw
+  training_data_func_args:
+    exclude_errors: False
+    debug_output: True
+    score_method: rloo_scores
+    score_method_kwargs: 
+      discount_factor: 0.9
 
 training:
-  keep_error_messages: False
   
-  # New section for agent-specific training data processing
   agents:
     alice:
-      training_data_func: generate_training_data_from_raw
-      training_data_func_args:
-        discount_factor: 0.99
-        exclude_errors: True
-        score_shaping_function: calculate_discounted_scores
-        score_normalize_func: rloo_baseline
+      <<: *common_training_agent_kwargs
     bob:
-      training_data_func: generate_training_data_from_raw
-      training_data_func_args:
-        discount_factor: 0.99
-        exclude_errors: True
-        score_shaping_function: calculate_discounted_scores
-        score_normalize_func: rloo_baseline
+      <<: *common_training_agent_kwargs
+
   llama:
     adapters:
       ad_alice:
@@ -199,14 +233,14 @@ training:
         train_func_args:
           gradient_checkpointing: true
           temperature: 1
-          learning_rate: 3e-6
+          learning_rate: 2e-6
           entropy_coef: 0.0
       ad_bob:
         train_func: train_reinforce_main
         train_func_args:
           gradient_checkpointing: true
           temperature: 1
-          learning_rate: 3e-6
+          learning_rate: 2e-6
           entropy_coef: 0.0
   llama2: ${training.llama}
 
@@ -290,14 +324,9 @@ prompt_blocks:
       1) In this game, two agents will divide a collection of items over multiple rounds.
       2) In each round, the available items of each category ({items}) and their corresponding quantities will be dynamically specified.
       3) In each round, the different item categories will have different values for each agent.
-      4) The points of each agent in each round is determined by multiplying the number of items they receive by the value they assign to each item.
-      5) Both agents must submit a finalization proposal indicating how they wish to split the items.
-      6) If the finalization proposals of both agents do not match, neither agent earns points for that round.
-    Response Formatting:
-      1) Enclose your finalization proposal within <finalize></finalize> tags.
-      2) Provide your proposal in a JSON-parsable format ensuring that every expected item is included. For example:
-         <finalize> {"i_take": { {finalize_sample_i_take} }, "other_agent_gets": { {finalize_sample_other} }} </finalize>
-
+      4) The points of each agent in each round is determined by multiplying the number of items they receive by the value assigned to each of their item.
+      5) Both agents must submit a finalization, indicating how they wish to split the items.
+      6) If the finalization of both agents do not match, neither agent earns points for that round.
 
 
   dond_normal_goal: |
@@ -334,7 +363,7 @@ prompt_blocks:
 
   dond_message_mechanics: |
     In order to communicate with the other agent, you are allowed to send messages (distinct from finalizations). You cannot send a message and a finalization in the same response.
-    When sending a message, please follow these rules: 1) Enclose your message entirely within <message> and </message> tags. 2) Do not include any extraneous text outside these tags. 3) In each round, send at least {min_messages} and no more than {max_messages} messages, with each message containing up to {max_chars_per_message} characters. 4) You may send only one message per response. 5) Use your messages strategically.
+    When sending a message, please follow these rules: 1) Enclose your message entirely within <message> and </message> tags. 2) Do not include any extraneous text outside these tags. 3) In each round, send at least {min_messages} and no more than {max_messages} messages, with each message containing up to {max_chars_per_message} characters. 4) You may send only one message per response. 5) Use your messages strategically. 
 
   dond_reasoning_mechanics: |
     In order to think before you act, you are allowed to use {max_reasoning_chars} characters per round. When reasoning, please follow these rules; 1) Enclose your thought process within <think> and </think> tags. 2) Do not include extraneous content outside these tags. 3) Your reasoning is limited to {max_reasoning_chars} characters per response. 4) You are not obligated to reason at each response.
@@ -344,6 +373,17 @@ prompt_blocks:
 
   dond_visible_alternating_starting_agent: |
     In this version of the game, your finalization proposal (enclosed in <finalize> tags) will be shown to your coagent. However, the values attributed to the items by other agents are hidden. However, there are no restrictions to what the agents are allowed to reveal themselves in their messages. Furthermore, in this version, agents alternate turns and the agent with the first move changes each round.
+
+  dond_economic_version_specificities: |
+    In this specific version of the game, each round is played as follows: 
+
+    1) One of the two agents is assigned as the starting agent.
+    2) Starting agent sends a message 
+    3) Second agent sends a message
+    4) Starting agent sends a finalization
+    5) Second agent sends a finalization 
+
+    At each round, the starting agent assignation alternates.
 
 
 
