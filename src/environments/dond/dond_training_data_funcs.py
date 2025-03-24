@@ -118,13 +118,20 @@ def rloo_scores(rewards_a1, rewards_a2, discount_factor):
     """
     return rewards_to_rloo_advantages(rewards_agent_1, discount_factor=1)
 
-def rloo_advantage_alignment_scores(rewards_agent1, rewards_agent2, discount_factor, beta):
+def rloo_advantage_alignment_scores(rewards_agent1, 
+        rewards_agent2, 
+        discount_factor, 
+        beta, 
+        regulate_var=False):
     """
     TODO: documentation
     """
     a1 = rewards_to_rloo_advantages(rewards_agent1, discount_factor=1)
     a2 = rewards_to_rloo_advantages(rewards_agent2, discount_factor=1)
-    advantage_alignment_scores = advantages_to_aa_scores(a1, a2, beta=beta, gamma=discount_factor)
+    advantage_alignment_scores = advantages_to_aa_scores(a1, a2, 
+    beta=beta, 
+    gamma=discount_factor, 
+    regulate_var=regulate_var)
     return advantage_alignment_scores
 
 
@@ -154,7 +161,7 @@ def rewards_to_rloo_advantages(rewards, discount_factor=1):
     rloo_advantages = scores - (np.sum(scores, axis=0, keepdims=True) - scores) / (n-1) 
     return rloo_advantages
 
-def advantages_to_aa_scores(a1, a2, beta=1.0, gamma=0.9):
+def advantages_to_aa_scores(a1, a2, beta=1.0, gamma=0.9, regulate_var=False):
     """
     Calculate the advantage alignment scores with vectorization.
     Args:
@@ -175,7 +182,12 @@ def advantages_to_aa_scores(a1, a2, beta=1.0, gamma=0.9):
     discounted_a1 = a1 * (gamma*np.ones(shape=(1, T)))**(-np.arange(0, T, 1))
     discounted_sums_a1 =  discounted_a1 @ (np.triu(np.ones((T,T))) - np.identity(T))
     t_discounts = (gamma*np.ones(shape=(1, T)))**(np.arange(0, T, 1))
-    adv_align_terms = a1 + beta * gamma * t_discounts * discounted_sums_a1 * a2
+    alignment_terms = gamma * t_discounts * discounted_sums_a1 * a2
+    if regulate_var==True: 
+        reg_coef = np.std(a1[:, -1]) / (np.std(alignment_terms[:, -1]) + 1e-10)
+    else:
+        reg_coef = 1.0
+    adv_align_terms = a1 + reg_coef * beta * alignment_terms
     return adv_align_terms
 
 

@@ -12,7 +12,7 @@ experiment:
   nb_matches_per_iteration: 16
   reinit_matches_each_it: true
   start_epoch: 0
-  resume_experiment: false
+  resume_experiment: true
   base_seed: 1
 
 ####################################################################################################
@@ -23,34 +23,57 @@ common_agent_kwargs: &common_agent_kwargs
   max_errors: 0
   allow_reasoning: false
   max_reasoning_chars: 0
-  intro_prompt: ${prompt_blocks.dond_game_multiple_rounds}
-  message_mechanics_prompt: "Your messages must be sent in the <message>Your message...</message> format, with no content outside the tags. They should be concise - less than 300 characters."
-  finalization_mechanics_prompt: "Your finalizations must be sent in a <finalize> {\"i_take\": { {finalize_sample_i_take} }, \"other_agent_gets\": { {finalize_sample_other} }} </finalize> format, with no content outside the tags. If the finalization of the second player is not complementary to the first player's finalization, it is equivalent to a rejection. It is paramount to follow the formatting requirements perfectly in order to submit a valid finalization."
+  intro_prompt: |
+      Welcome, you are participating in a multi-round negotiation game.
+      Game Description:
+      In this game, two agents will divide a collection of items over multiple rounds.
+      In each round, the available items of each category ({items}) will be dynamically specified.
+      In each round, the different item categories will have different assigned values for each agent.
+      The points of each agent in each round is determined by multiplying the number of items they receive by the value assigned to each of their item.
+      Both agents must submit a finalization, indicating how they wish to split the items.
+      If the finalization of both agents do not match, neither agent earns points for that round.
+  message_mechanics_prompt: |
+    Your messages must be sent in the <message>your-message-here</message> format, with no content outside the tags. They should be concise - less than 400 characters.
+  finalization_mechanics_prompt: | 
+    Your finalizations must be sent in a with the following format: 
+      <finalize> {"i_take": { {finalize_sample_i_take} }, "other_agent_gets": { {finalize_sample_other} }}</finalize>
+    No content outside <finalize>your-finalization-here</finalize>. If the finalization of the second agent is not complementary to the first agent's finalization, it is equivalent to a rejection. It is paramount to follow the formatting requirements perfectly in order to submit a valid finalization.
   dond_version_specificities: |
     In this specific version of the game, each round is played as follows: 
+    1) One of the two agents is assigned as the starting agent.
+    2) The starting agent sends a message 
+    3) The second agent sends a message
+    4) The starting agent sends a finalization
+    5) The second agent sends a finalization 
 
-    1) One of the two players is assigned as the starting player.
-    2) Starting player sends a message 
-    3) Second player sends a message
-    4) Starting player sends a finalization
-    5) Second player sends a finalization 
-
-    At each round, the starting player assignation alternates. 
-
-    Also, this implies that each player only has 1 message per round. 
-
-    Also, the finalization of the starting player will be shown to the second player, but the values will not be shown. Given this and the fact that each player only has 1 message per round, it is suggested that the message is used primarily to discuss values.
-
-  reasoning_mechanics_prompt: ${prompt_blocks.dond_reasoning_mechanics}
-  goal_prompt: "Your goal is to maximize your sum of points across rounds."
-  first_round_prompt: ${prompt_blocks.first_round_prompt}
-  new_round_prompt: ${prompt_blocks.new_round_prompt_with_values}
-  agent_with_first_move_prompt: "You are the starting player. You must send your message (in <message>...</message> tags)."
-  agent_with_second_move_prompt: "You are the second player. You must send your reply message (in <message>...</message> tags)."
-  received_message_prompt: "The other player has sent this message: \"{last_message}\"."
-  other_agent_finalized_prompt: "The other player has finalized with {other_agent_finalization}. You must now accept or reject."
-  time_to_finalize_prompt: "(You must now finalize in aforementioned format.)"
-  time_to_send_message_prompt: "(You must now send a message in aforementioned format.)"
+    Therefore, each agent can only send 1 message per round -- this is a strict rule.
+    At each round, the starting agent assignation alternates. 
+    The finalization of the starting agent will be shown automatically to the second agent.
+    The values will not be shown automatically. 
+    It is therefore suggested that each of the 2 agents use their 1 message primarily to discuss their assigned values.
+  reasoning_mechanics_prompt: |
+    ${prompt_blocks.dond_reasoning_mechanics}
+  goal_prompt: |
+    Your goal is to maximize your sum of points across rounds.
+  first_round_prompt: |
+    For this new round, the items available are {quantities} and your assigned values for each item category are {values}.
+  new_round_prompt: |
+    The previous round has ended. 
+    In the last round, you earned {last_round_points_computed}. 
+    The other agent earned {coagent_last_round_points_computed_other}. 
+    For this new round, the items available are {quantities} and your assigned values are {values}.
+  agent_with_first_move_prompt: |
+   You are the starting agent. 
+  agent_with_second_move_prompt: | 
+    You are the second agent. 
+  received_message_prompt: | 
+    The other agent has sent this message: "{last_message}".
+  other_agent_finalized_prompt: |
+    The other agent has finalized with {other_agent_finalization}. You must now accept or reject.
+  time_to_finalize_prompt: |
+    (You must now finalize in the aforementioned format.)
+  time_to_send_message_prompt: |
+    (You must now send a message in the aforementioned format.)
 
 matches:
   env_class: "DondEnv"
@@ -169,7 +192,6 @@ models:
       name: 'llama'
       adapter_names: ['ad_alice']
       
-
   llama2: 
     class: local_llm
     init_args:
@@ -196,6 +218,7 @@ common_training_agent_kwargs: &common_training_agent_kwargs
     score_method_kwargs: 
       beta: 1.0
       discount_factor: 0.9
+      regulate_var: False
 
 training:
   
@@ -212,14 +235,14 @@ training:
         train_func_args:
           gradient_checkpointing: true
           temperature: 1
-          learning_rate: 1e-6
+          learning_rate: 2e-6
           entropy_coef: 0.0
       ad_bob:
         train_func: train_reinforce_main
         train_func_args:
           gradient_checkpointing: true
           temperature: 1
-          learning_rate: 1e-6
+          learning_rate: 2e-6
           entropy_coef: 0.0
   llama2: ${training.llama}
 
@@ -356,13 +379,13 @@ prompt_blocks:
   dond_economic_version_specificities: |
     In this specific version of the game, each round is played as follows: 
 
-    1) One of the two players is assigned as the starting player.
-    2) Starting player sends a message 
-    3) Second player sends a message
-    4) Starting player sends a finalization
-    5) Second player sends a finalization 
+    1) One of the two agents is assigned as the starting agent.
+    2) Starting agent sends a message 
+    3) Second agent sends a message
+    4) Starting agent sends a finalization
+    5) Second agent sends a finalization 
 
-    At each round, the starting player assignation alternates.
+    At each round, the starting agent assignation alternates.
 
 
 
