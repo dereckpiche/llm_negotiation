@@ -137,7 +137,7 @@ class DondGame:
                 self.agreement_reached = False
             else:
                 self.finalize(output)
-                if self.verify_finalizations_match():
+                if self.verify_finalizations_match() and self.is_valid_finalization(output):
                     self.set_points()
                     self.agreement_reached = True
                 else:
@@ -147,7 +147,7 @@ class DondGame:
 
         else:
             # If a player sends a finalization, record it.
-            if is_finalization:
+            if is_finalization and self.is_valid_finalization(output):
                 self.has_finalized = True
                 self.finalize(output)
             # Instead of using the global message_turn, check if any player has exceeded
@@ -208,6 +208,15 @@ class DondGame:
 
         elif self.mode == "basic":
             self.points = {role: utilities[role] for role in self.roles}
+
+    def is_valid_finalization(self, player_finalization):
+        i_take = player_finalization["i_take"]
+        other_player_gets = player_finalization["other_player_gets"]
+
+        for item in self.items:
+            if i_take.get(item, 0) + other_player_gets.get(item, 0) != self.quantities[item]:
+                return False
+        return True
 
     def finalize(self, finalization: list):
         """
@@ -402,7 +411,7 @@ def dond_random_setup(items, min_quant, max_quant, min_val, max_val, random_seed
         min_val (int): Minimum value per item.
         max_val (int): Maximum value per item.
         random_seed (int, optional): Seed for random generation.
-        
+
     scores:
         tuple: (items, quantities, (val_starting_negotiator, val_responding_negotiator))
             - quantities (dict): A dictionary mapping each item to an even quantity.
@@ -411,26 +420,26 @@ def dond_random_setup(items, min_quant, max_quant, min_val, max_val, random_seed
     """
     import numpy as np
     rng = np.random.default_rng(random_seed)
-    
+
     # Determine the possible even numbers in the given range.
     start = min_quant if min_quant % 2 == 0 else min_quant + 1
     end = max_quant if max_quant % 2 == 0 else max_quant - 1
     if start > end:
         raise ValueError("No even numbers available in the given quantity range.")
     even_numbers = np.arange(start, end + 1, 2)
-    
+
     # Generate quantities: for each item, randomly choose an even number.
     quantities = {item: int(rng.choice(even_numbers)) for item in items}
-    
+
     # Make sure there are enough distinct values available for each player's assignment.
     available_values = np.arange(min_val, max_val + 1)
     if len(available_values) < len(items):
         raise ValueError("Range of values is not sufficient to assign unique values for all items.")
-    
+
     # For each player, randomly assign a distinct value to each item.
     val_starting_negotiator = dict(zip(items, rng.choice(available_values, size=len(items), replace=False)))
     val_responding_negotiator = dict(zip(items, rng.choice(available_values, size=len(items), replace=False)))
-    
+
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
 def independent_random_vals(items, min_quant, max_quant, min_val, max_val, random_seed=None):

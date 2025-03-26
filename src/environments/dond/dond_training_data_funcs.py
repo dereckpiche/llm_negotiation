@@ -218,5 +218,7 @@ def rloo_baseline(score, total_sum, n):
     For each round i, the baseline is computed as the mean of all scores excluding the current one.
     The transformed score is score_i - ((sum(scores)-score_i)/(n-1)).
     """
+    if n <= 1:
+        return 0
     loo_baseline = (total_sum - score) / (n - 1)
     return loo_baseline

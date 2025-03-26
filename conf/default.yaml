@@ -3,7 +3,7 @@ hydra:
     chdir: false
     name: default
   run:
-    dir: ${oc.env:EXP_OUT}/${hydra.job.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: "${oc.env:SCRATCH}/outputs/${now:%Y-%m-%d/%H-%M-%S}"
 
 experiment:
   method: generate_and_train
@@ -41,12 +41,14 @@ training:
           temperature: 1
           learning_rate: 3e-6
           entropy_coef: 0.01
+          kl_loss_coef: 0.00
       ad_bob:
         train_func: train_reinforce_main
         train_func_args:
           temperature: 1
           learning_rate: 3e-6
           entropy_coef: 0.01
+          kl_loss_coef: 0.00
 
 models:
   llama:

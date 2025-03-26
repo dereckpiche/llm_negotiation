@@ -25,6 +25,7 @@ def reinforce_train(
         output_path=None,
         tokenizer=None,
         entropy_coef=0,
+        kl_loss_coef=0,
         temperature=1.0  # new hyperparameter to control softmax temperature during training
         ):
     """
@@ -105,19 +106,47 @@ def reinforce_train(
             # Forward pass
             outputs = model(input_ids=context_batch, attention_mask=attention_mask)
             logits = outputs[0]  # (B, S, V)
+
             # Apply temperature scaling before computing log probabilities
             assert temperature > 0, "Temperature must be greater than 0."
             scaled_logits = logits / temperature  # (B, S, V)
+
             # Compute new log probabilities
             log_probs = F.log_softmax(scaled_logits, dim=-1)
+
+            kl_div = 0
+            if kl_loss_coef != 0.0:
+
+                with model.disable_adapter():
+                    base_model_logits = model(input_ids=context_batch, attention_mask=attention_mask)[0]
+                    base_model_log_probs = F.log_softmax(base_model_logits, dim=-1)
+
+                # # Check if outputs are exactly equal
+                # test_logits = model(input_ids=context_batch, attention_mask=attention_mask)[0]
+                # test_model_log_probs = F.log_softmax(base_logits, dim=-1)
+
+                # print("Max absolute difference OUTSIDE with:", (logits - test_logits).abs().max().item())
+                # print("Are logits exactly the same OUTSIDE with?", torch.equal(logits, test_logits))
+
+                # kl_div = F.kl_div(
+                #         log_probs,
+                #         base_model_log_probs,
+                #         reduction="batchmean",
+                #         log_target=True
+                #     )
+                kl_div = torch.exp(base_model_log_probs - log_probs) - (base_model_log_probs - log_probs) - 1 # (B, S, V)
+                mean_kl = kl_div.mean(dim=-1) # (B, S)
+                mean_kl = (mean_kl * mask_batch).sum() / mask_batch.sum()
+                print('KL Divergence value: ', kl_div)
+
             action_log_probs = log_probs.gather(dim=-1, index=action_batch.unsqueeze(-1)).squeeze(-1)
             entropy = -log_probs * F.softmax(scaled_logits, dim=-1)  # (B, S, V)
             entropy = entropy.sum(dim=-1)  # (B, S)
 
             # Apply mask to log probabilities and values
-            rewarded_action_log_probs = action_log_probs * (return_batch * mask_batch) + entropy_coef * (entropy * mask_batch)
+            rewarded_action_log_probs = action_log_probs * (return_batch * mask_batch) + entropy_coef * (entropy * mask_batch) + kl_loss_coef * (kl_div * mask_batch)
             loss = -rewarded_action_log_probs.sum()
-            loss = loss / nb_trajectories_we_train_on # we mean contributions across trajectories
+            loss = loss / mb_size # we mean contributions across trajectories
 
             # Accumulate gradients
             loss = loss / nb_trajectories_we_train_on  # scalar (averaged across trajectories)
