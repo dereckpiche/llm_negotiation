@@ -19,7 +19,7 @@ COMMANDS=(
 
   "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=2 hydra.run.dir=/home/mila/d/dereck.piche/scratch/aa_tiny_beta training.agents.alice.training_data_func_args.score_method_kwargs.beta=0.25 training.agents.bob.training_data_func_args.score_method_kwargs.beta=0.25"
 
-  "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=3 hydra.run.dir/home/mila/d/dereck.piche/scratch/aa_small_beta training.agents.alice.training_data_func_args.score_method_kwargs.beta=0.5 training.agents.bob.training_data_func_args.score_method_kwargs.beta=0.5"
+  "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=3 hydra.run.dir=/home/mila/d/dereck.piche/scratch/aa_small_beta training.agents.alice.training_data_func_args.score_method_kwargs.beta=0.5 training.agents.bob.training_data_func_args.score_method_kwargs.beta=0.5"
 
   "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=4 hydra.run.dir=/home/mila/d/dereck.piche/scratch/aa_medium_beta training.agents.alice.training_data_func_args.score_method_kwargs.beta=0.8 training.agents.bob.training_data_func_args.score_method_kwargs.beta=0.8"
 
