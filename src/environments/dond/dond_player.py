@@ -219,8 +219,10 @@ class DondPlayerHandler:
                 if not isinstance(i_take, dict) or not isinstance(other_player_gets, dict):
                     errors.append('"i_take" and "other_player_gets" must be dictionaries.')
                 else:
-                    # Validate that the keys exactly match the expected items.
                     expected_items = set(state.get("items", []))
+                    expected_item_quantities = state.get("quantities", {})
+
+                    # Validate that the keys exactly match the expected items.
                     if set(i_take.keys()) != expected_items:
                         missing = expected_items - set(i_take.keys())
                         extra = set(i_take.keys()) - expected_items
@@ -230,6 +232,7 @@ class DondPlayerHandler:
                         if extra:
                             error_str += f" Unexpected keys: {', '.join(extra)}."
                         errors.append(error_str)
+
                     if set(other_player_gets.keys()) != expected_items:
                         missing = expected_items - set(other_player_gets.keys())
                         extra = set(other_player_gets.keys()) - expected_items
@@ -239,12 +242,27 @@ class DondPlayerHandler:
                         if extra:
                             error_str += f" Unexpected keys: {', '.join(extra)}."
                         errors.append(error_str)
-                    # Verify that every value for each key is an integer.
+
+                    # Verify that every value for each key is an integer and sums to total quantities.
                     for item in expected_items:
-                        if not isinstance(i_take.get(item), int):
+
+                        is_i_take_int = isinstance(i_take.get(item), int)
+                        is_other_player_gets_int = isinstance(other_player_gets.get(item), int)
+
+                        if not is_i_take_int:
                             errors.append(f'Value of "{item}" in "i_take" must be an integer.')
-                        if not isinstance(other_player_gets.get(item), int):
+
+                        if not is_other_player_gets_int:
                             errors.append(f'Value of "{item}" in "other_player_gets" must be an integer.')
+
+                        if (
+                            is_i_take_int
+                            and is_other_player_gets_int
+                            and i_take.get(item, 0) + other_player_gets.get(item, 0)
+                            != expected_item_quantities.get(item, 0)
+                        ):
+                            errors.append(f'Total {item} divided should sum to {expected_item_quantities.get(item, 0)}.')
+
             except json.JSONDecodeError:
                 errors.append("The content within <finalize> is not valid JSON.")
 

@@ -3,12 +3,12 @@ hydra:
     chdir: false
     name: default
   run:
-    dir: "${oc.env:SCRATCH}/outputs/${now:%Y-%m-%d/%H-%M-%S}"
+    dir: "${oc.env:SLURM_TMPDIR}/outputs/${now:%Y-%m-%d/%H-%M-%S}"
 
 experiment:
   method: generate_and_train
   description: "Easy. They should be learning."
-  nb_epochs: 1000
+  nb_epochs: 2000
   nb_matches_per_iteration: 32
   reinit_matches_each_it: true
   start_epoch: 0
