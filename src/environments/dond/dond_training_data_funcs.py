@@ -80,6 +80,7 @@ def get_round_points_arrays(raw_data_folder):
 
 
     # Get number of rounds
+    # TODO (Dereck): we should take role=system instead of indexing with -1s
     game_info = matches[0][-1].get("game_info")
     agent_name = matches[0][-1].get("agent_name")
 
@@ -110,13 +111,13 @@ def r2g_scores(rewards_agent_1, rewards_agent_2, discount_factor):
     Most basic RL scores. High variance.
         TODO documentation
     """
-    return get_discounted_rewards_to_go(rewards_agent_1, discount_factor=1)
+    return get_discounted_rewards_to_go(rewards_agent_1, discount_factor=discount_factor)
 
 def rloo_scores(rewards_agent_1, rewards_agent_2, discount_factor):
     """
     TODO: documentation
     """
-    return rewards_to_rloo_advantages(rewards_agent_1, discount_factor=1)
+    return rewards_to_rloo_advantages(rewards_agent_1, discount_factor=discount_factor)
 
 def rloo_advantage_alignment_scores(rewards_agent1, 
         rewards_agent2, 
@@ -126,8 +127,8 @@ def rloo_advantage_alignment_scores(rewards_agent1,
     """
     TODO: documentation
     """
-    a1 = rewards_to_rloo_advantages(rewards_agent1, discount_factor=1)
-    a2 = rewards_to_rloo_advantages(rewards_agent2, discount_factor=1)
+    a1 = rewards_to_rloo_advantages(rewards_agent1, discount_factor=discount_factor)
+    a2 = rewards_to_rloo_advantages(rewards_agent2, discount_factor=discount_factor)
     advantage_alignment_scores = advantages_to_aa_scores(a1, a2, 
     beta=beta, 
     gamma=discount_factor, 
@@ -140,7 +141,7 @@ def rloo_advantage_alignment_scores(rewards_agent1,
 ############################################################
 
 
-def get_discounted_rewards_to_go(rewards, discount_factor=1):
+def get_discounted_rewards_to_go(rewards, discount_factor):
     """
     Trajectories assumed to be same length.
     """
@@ -150,15 +151,15 @@ def get_discounted_rewards_to_go(rewards, discount_factor=1):
     for i in range(T-2, -1, -1): scores[:, i] = rewards[:, i] + discount_factor * scores[:, i+1]
     return scores
 
-def rewards_to_rloo_advantages(rewards, discount_factor=1):
+def rewards_to_rloo_advantages(rewards, discount_factor):
     """
     Args:
         rounds_points (np.array): Rows are different matches. Columns are rounds. Components are 
         rewards.
     """
-    n = rewards.shape[1]
+    n = rewards.shape[0]
     scores = get_discounted_rewards_to_go(rewards, discount_factor)
-    rloo_advantages = scores - (np.sum(scores, axis=0, keepdims=True) - scores) / (n-1) 
+    rloo_advantages = scores - (np.sum(scores, axis=0, keepdims=True) - scores) / (n-1)
     return rloo_advantages
 
 def advantages_to_aa_scores(a1, a2, beta=1.0, gamma=0.9, regulate_var=False):

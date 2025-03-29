@@ -122,10 +122,11 @@ def reinforce_train(
             entropy = entropy.sum(dim=-1)  # (B, S)
 
             # Apply mask to log probabilities and values
-            action_log_probs = log_probs.gather(dim=-1, index=action_batch.unsqueeze(-1)).squeeze(-1)
-            rewarded_action_log_probs = action_log_probs * (return_batch * mask_batch) + entropy_coef * (entropy * mask_batch)
-            loss = -rewarded_action_log_probs.sum()
-            loss = loss / mb_size # we mean contributions across mini batches
+            action_log_probs = log_probs.gather(dim=-1, index=action_batch.unsqueeze(-1)).squeeze(-1) # (B,S)
+            rewarded_action_log_probs = action_log_probs * (return_batch * mask_batch) + entropy_coef * (entropy * mask_batch) # (B,S)
+            loss = -rewarded_action_log_probs.sum(dim=1) / torch.sum(mask_batch, dim=1) # (B,)
+            loss = loss.sum()
+            loss = loss / nb_trajectories_we_train_on # we accumulate loss / nb_trajectories_we_train_on as we take sum over mini batches
 
             # Accumulate gradients
             model_accelerator.backward(loss)
