@@ -361,44 +361,52 @@ class DondAgent:
 
                     # Validate that the keys exactly match the expected items.
                     if set(i_take.keys()) != expected_items:
+
                         missing = expected_items - set(i_take.keys())
                         extra = set(i_take.keys()) - expected_items
                         error_str = "Invalid keys in 'i_take':"
+
                         if missing:
                             error_str += f" Missing keys: {', '.join(missing)}."
                         if extra:
                             error_str += f" Unexpected keys: {', '.join(extra)}."
+
                         errors.append(error_str)
 
                     if set(other_agent_gets.keys()) != expected_items:
+
                         missing = expected_items - set(other_agent_gets.keys())
                         extra = set(other_agent_gets.keys()) - expected_items
                         error_str = "Invalid keys in 'other_agent_gets':"
+
                         if missing:
                             error_str += f" Missing keys: {', '.join(missing)}."
                         if extra:
                             error_str += f" Unexpected keys: {', '.join(extra)}."
                         errors.append(error_str)
 
+                    i_take_valid_items = set(i_take.keys()) & expected_items
+                    other_agent_gets_valid_items = set(other_agent_gets.keys()) & expected_items
+
                     # Verify that every value for each key is an integer and sums to total quantities.
                     for item in expected_items:
+                        if item in i_take_valid_items and item in other_agent_gets_valid_items:
+                            is_i_take_int = isinstance(i_take.get(item), int)
+                            is_other_agent_gets_int = isinstance(other_agent_gets.get(item), int)
 
-                        is_i_take_int = isinstance(i_take.get(item), int)
-                        is_other_agent_gets_int = isinstance(other_agent_gets.get(item), int)
+                            if not is_i_take_int:
+                                errors.append(f'Value of "{item}" in "i_take" must be an integer.')
 
-                        if not is_i_take_int:
-                            errors.append(f'Value of "{item}" in "i_take" must be an integer.')
+                            if not is_other_agent_gets_int:
+                                errors.append(f'Value of "{item}" in "other_agent_gets" must be an integer.')
 
-                        if not is_other_agent_gets_int:
-                            errors.append(f'Value of "{item}" in "other_agent_gets" must be an integer.')
-
-                        if (
-                            is_i_take_int
-                            and is_other_agent_gets_int
-                            and i_take.get(item, 0) + other_agent_gets.get(item, 0)
-                            != expected_item_quantities.get(item, 0)
-                        ):
-                            errors.append(f'Total {item} divided should sum to {expected_item_quantities.get(item, 0)}.')
+                            if (
+                                is_i_take_int
+                                and is_other_agent_gets_int
+                                and i_take.get(item, 0) + other_agent_gets.get(item, 0)
+                                != expected_item_quantities.get(item, 0)
+                            ):
+                                errors.append(f'Total {item} divided should sum to {expected_item_quantities.get(item, 0)}.')
 
             except json.JSONDecodeError:
                 errors.append("The content within <finalize> is not valid JSON.")
