@@ -3,11 +3,12 @@ hydra:
     chdir: false
     name: default
   run:
-    dir: ${oc.env:EXP_OUT}/${hydra.job.name}/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: ${oc.env:EXP_OUT}/${hydra.job.name}/
 
 experiment:
   method: generate_and_train
   description: "Easy. They should be learning."
+  # TODO(Uday): change this to nb_simulations so as to not confuse with training 
   nb_epochs: 1000
   nb_matches_per_iteration: 32
   reinit_matches_each_it: true
@@ -25,14 +26,14 @@ training:
         discount_factor: 0.99
         exclude_errors: True
         score_shaping_function: calculate_discounted_scores
-        score_normalize_func: rloo_baseline
+        score_normalize_func: null
     bob:
       training_data_func: generate_training_data_from_raw
       training_data_func_args:
         discount_factor: 0.99
         exclude_errors: True
         score_shaping_function: calculate_discounted_scores
-        score_normalize_func: rloo_baseline
+        score_normalize_func: null
   llama:
     adapters:
       ad_alice:
