@@ -55,12 +55,12 @@ def plot_cumulative_points(json_path):
 
 
 
-def update_player_statistics(input_path, output_file):
+def update_agent_statistics(input_path, output_file):
     """
     Computes statistics for the current iteration and updates the global statistics file.
 
     Args:
-        input_path (str): Path to the folder containing player JSON files for the current iteration.
+        input_path (str): Path to the folder containing agent JSON files for the current iteration.
         output_file (str): Path to the JSON file where statistics are stored.
     """
 
@@ -219,7 +219,7 @@ if __name__ == "__main__":
     # # Sort the iterations to ensure they are processed in order
     # for iteration in sorted(os.listdir(folder)):
     #     if iteration.startswith("iteration_"):
-    #         update_player_statistics(os.path.join(folder, iteration, "alice", "statistics"), output_file)
+    #         update_agent_statistics(os.path.join(folder, iteration, "alice", "statistics"), output_file)
 
     # # create plots of the var_stats.json file
     # with open(output_file, 'r') as f:

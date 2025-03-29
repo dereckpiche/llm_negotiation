@@ -4,49 +4,64 @@ from utils.common_imports import *
 from .dond_statistics_funcs import *
 from .dond_training_data_funcs import *
 
-def players_logging_and_html(
+def dond_log_match(
         path,
-        player_infos,
+        agent_infos,
         info,
-        training_data_func,
-        training_data_func_args,
-        metrics_func,
-        metrics_func_args
+        metrics_func=None,
+        metrics_func_args=None
         ):
+    """
+    Logs the raw match data for each agent and generates HTML visualizations.
+    
+    Args:
+        path (str): Base path to save the data.
+        agent_infos (list): List of agent information dictionaries.
+        info (dict): Game information.
+        metrics_func (str, optional): Name of the function to calculate metrics.
+        metrics_func_args (dict, optional): Arguments for the metrics function.
+    """
+    # First, perform the normal raw match logging
+    for agent_info in agent_infos:
+        agent_name = agent_info["agent_name"]
 
-    for player_info in player_infos:
-        player_name = player_info["player_name"]
-
-        # Define paths for training and statistics subfolders
-        training_path = os.path.join(path, player_name, "training")
-        statistics_path = os.path.join(path, player_name, "statistics")
+        # Define paths for raw data and statistics subfolders
+        raw_data_path = os.path.join(path, agent_name, "raw_data")
+        statistics_path = os.path.join(path, agent_name, "statistics")
 
         # Ensure directories exist
-        os.makedirs(training_path, exist_ok=True)
+        os.makedirs(raw_data_path, exist_ok=True)
         os.makedirs(statistics_path, exist_ok=True)
 
-        # Determine the next available file number for training data
-        training_files = os.listdir(training_path)
-        training_numbers = [int(f.split('_')[-1].split('.')[0]) for f in training_files if f.startswith("training_data_")]
-        next_training_number = max(training_numbers, default=0) + 1
-        training_file = os.path.join(training_path, f"training_data_{next_training_number}.json")
+        # Determine the next available file number for raw data
+        raw_files = os.listdir(raw_data_path)
+        raw_numbers = [int(f.split('_')[-1].split('.')[0]) for f in raw_files if f.startswith("match_")]
+        next_raw_number = max(raw_numbers, default=0) + 1
+        raw_file = os.path.join(raw_data_path, f"match_{next_raw_number}.json")
 
-        # Log training data
-        training_data = globals()[training_data_func](player_info, info, **training_data_func_args)
-        with open(training_file, "w") as f:
-            json.dump(training_data, f, indent=4)
+        # Log raw match data
+        chat_history = agent_info.get("chat_history", [])
+        
+        # Add game info to the chat history for later processing
+        chat_history_with_info = chat_history.copy()
+        game_info_message = {"role": "system", "game_info": info, "agent_name": agent_name}
+        chat_history_with_info.append(game_info_message)
+        
+        with open(raw_file, "w") as f:
+            json.dump(chat_history_with_info, f, indent=4)
 
-        # Determine the next available file number for metrics
-        metrics_files = os.listdir(statistics_path)
-        metrics_numbers = [int(f.split('_')[-1].split('.')[0]) for f in metrics_files if f.startswith("metrics_")]
-        next_metrics_number = max(metrics_numbers, default=0) + 1
-        metrics_file = os.path.join(statistics_path, f"metrics_{next_metrics_number}.json")
+        # Log metrics if a metrics function is provided
+        if metrics_func:
+            metrics_files = os.listdir(statistics_path)
+            metrics_numbers = [int(f.split('_')[-1].split('.')[0]) for f in metrics_files if f.startswith("metrics_")]
+            next_metrics_number = max(metrics_numbers, default=0) + 1
+            metrics_file = os.path.join(statistics_path, f"metrics_{next_metrics_number}.json")
 
-        # Log metrics
-        metrics = globals()[metrics_func](player_info, info, **metrics_func_args)
-        with open(metrics_file, "w") as f:
-            json.dump(metrics, f, indent=4)
+            metrics = globals()[metrics_func](agent_info, info, **metrics_func_args)
+            with open(metrics_file, "w") as f:
+                json.dump(metrics, f, indent=4)
 
+    # Now generate the HTML visualization
     # Generate HTML content with a vertical split
     html_content = """
     <!DOCTYPE html>
@@ -103,7 +118,7 @@ def players_logging_and_html(
                 background: rgba(255, 255, 255, 0.9);
                 box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
             }
-            .player-name {
+            .agent-name {
                 text-align: center;
                 font-size: 1.4em;
                 margin-bottom: 15px;
@@ -128,16 +143,21 @@ def players_logging_and_html(
         <div class="container">
     """
 
-    for player_info in player_infos:
-        player_name = player_info["player_name"]
-        player_class = "alice" if player_name.lower() == "alice" else "bob"
+    for agent_info in agent_infos:
+        agent_name = agent_info["agent_name"]
+        agent_class = "alice" if agent_name.lower() == "alice" else "bob"
         html_content += f"""
-            <div class="column {player_class}">
-                <div class="player-name">{player_name}</div>
+            <div class="column {agent_class}">
+                <div class="agent-name">{agent_name}</div>
         """
-        player_data = globals()[training_data_func](player_info, info, **training_data_func_args)
-        for message in player_data:
-            role = "Intermediary ⚙️" if message["role"] == "user" else f"LLM ({player_name}) 🤖"
+        # Use chat_history directly instead of extracting via training_data_func
+        chat_history = agent_info.get("chat_history", [])
+        for message in chat_history:
+            # Skip system messages with game_info
+            if message.get("role") == "system" and "game_info" in message:
+                continue
+                
+            role = "Intermediary ⚙️" if message["role"] == "user" else f"LLM ({agent_name}) 🤖"
             role_class = "user" if message["role"] == "user" else "assistant"
 
             # Escape < and > in the message content
@@ -174,104 +194,4 @@ def players_logging_and_html(
     with open(html_file, "w") as f:
         f.write(html_content)
 
-
-def independant_players_logging(
-        path,
-        player_infos,
-        info,
-        training_data_func,
-        training_data_func_args,
-        metrics_func,
-        metrics_func_args
-        ):
-    """
-    Logs the training data and metrics independently for each player in a match.
-    """
-    for player_info in player_infos:
-        player_name = player_info["player_name"]
-
-        # Define paths for training and statistics subfolders
-        training_path = os.path.join(path, player_name, "training")
-        statistics_path = os.path.join(path, player_name, "statistics")
-
-        # Ensure directories exist
-        os.makedirs(training_path, exist_ok=True)
-        os.makedirs(statistics_path, exist_ok=True)
-
-        # Determine the next available file number for training data
-        training_files = os.listdir(training_path)
-        training_numbers = [int(f.split('_')[-1].split('.')[0]) for f in training_files if f.startswith("training_data_")]
-        next_training_number = max(training_numbers, default=0) + 1
-        training_file = os.path.join(training_path, f"training_data_{next_training_number}.json")
-
-        # Log training data
-        training_data = globals()[training_data_func](player_info, info, **training_data_func_args)
-        with open(training_file, "w") as f:
-            json.dump(training_data, f, indent=4)
-
-        # Determine the next available file number for metrics
-        metrics_files = os.listdir(statistics_path)
-        metrics_numbers = [int(f.split('_')[-1].split('.')[0]) for f in metrics_files if f.startswith("metrics_")]
-        next_metrics_number = max(metrics_numbers, default=0) + 1
-        metrics_file = os.path.join(statistics_path, f"metrics_{next_metrics_number}.json")
-
-        # Log metrics
-        metrics = globals()[metrics_func](player_info, info, **metrics_func_args)
-        with open(metrics_file, "w") as f:
-            json.dump(metrics, f, indent=4)
-
-def log_raw_conversations(
-        path,
-        player_infos,
-        info,
-        metrics_func=None,
-        metrics_func_args=None
-        ):
-    """
-    Logs only the raw conversation data for each player.
-    
-    Args:
-        path (str): Base path to save the data.
-        player_infos (list): List of player information dictionaries.
-        info (dict): Game information.
-        metrics_func (str, optional): Name of the function to calculate metrics.
-        metrics_func_args (dict, optional): Arguments for the metrics function.
-    """
-    for player_info in player_infos:
-        player_name = player_info["player_name"]
-
-        # Define paths for raw data and statistics subfolders
-        raw_data_path = os.path.join(path, player_name, "raw_data")
-        statistics_path = os.path.join(path, player_name, "statistics")
-
-        # Ensure directories exist
-        os.makedirs(raw_data_path, exist_ok=True)
-        os.makedirs(statistics_path, exist_ok=True)
-
-        # Determine the next available file number for raw data
-        raw_files = os.listdir(raw_data_path)
-        raw_numbers = [int(f.split('_')[-1].split('.')[0]) for f in raw_files if f.startswith("conversation_")]
-        next_raw_number = max(raw_numbers, default=0) + 1
-        raw_file = os.path.join(raw_data_path, f"conversation_{next_raw_number}.json")
-
-        # Log raw conversation data
-        chat_history = player_info.get("chat_history", [])
         
-        # Add game info to the chat history for later processing
-        chat_history_with_info = chat_history.copy()
-        game_info_message = {"role": "system", "game_info": info, "player_name": player_name}
-        chat_history_with_info.append(game_info_message)
-        
-        with open(raw_file, "w") as f:
-            json.dump(chat_history_with_info, f, indent=4)
-
-        # Log metrics if a metrics function is provided
-        if metrics_func:
-            metrics_files = os.listdir(statistics_path)
-            metrics_numbers = [int(f.split('_')[-1].split('.')[0]) for f in metrics_files if f.startswith("metrics_")]
-            next_metrics_number = max(metrics_numbers, default=0) + 1
-            metrics_file = os.path.join(statistics_path, f"metrics_{next_metrics_number}.json")
-
-            metrics = globals()[metrics_func](player_info, info, **metrics_func_args)
-            with open(metrics_file, "w") as f:
-                json.dump(metrics, f, indent=4)
