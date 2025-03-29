@@ -1,0 +1,11 @@
+hydra-core
+torch
+datasets
+transformers
+trl
+peft
+vllm
+matplotlib
+tensorboard
+flash-attn
+diplomacy

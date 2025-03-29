@@ -1,5 +1,10 @@
 # macOS generated files
 .DS_Store
+home/
+test_venv/
+home
+results
+.vscode/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

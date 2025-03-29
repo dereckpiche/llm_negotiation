@@ -5,6 +5,8 @@ from transformers import (
     AutoTokenizer,
     BitsAndBytesConfig
 )
+import hashlib
+
 import os
 import shutil
 from trl import (
@@ -26,7 +28,8 @@ from vllm.lora.request import LoRARequest
 import json
 from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
-
+import uuid
+from copy import deepcopy
 compute_logger = logging.getLogger("compute_logger")
 memory_logger = logging.getLogger("memory_logger")
 model_logger = logging.getLogger("model_logger")
@@ -40,16 +43,28 @@ class LocalLLM:
 
     def __init__(
         self,
-        name: str = "your_friendly_llm",
-        model_name: str = "meta-llama/Meta-Llama-3.1-8B-Instruct",
+        name: str = "llama",
+        model_name: str = "meta-llama/Llama-3.1-8B-Instruct",
         device: str = "cuda",
-        pretrained_args=None,
-        max_model_length=6000,
+        pretrained_args={"pretrained_model_name_or_path": "meta-llama/Llama-3.1-8B-Instruct", 
+                        "torch_dtype": "bfloat16", 
+                        "device_map": "auto", 
+                        "attn_implementation": "flash_attention_2"},
+        max_model_length=8000,
         bits_and_bytes_args=None,
-        lora_args=None,
-        adapter_names=None,
-        generation_args=None,
-        include_value_head=True,
+        lora_args={"task_type": "TaskType.CAUSAL_LM", 
+                  "r": 64, 
+                  "lora_alpha": 32, 
+                  "lora_dropout": 0.0, 
+                  "target_modules": "all-linear"},
+        adapter_names=["ad_alice", "ad_bob"],
+        generation_args={"max_new_tokens": 300, 
+                        "do_sample": True, 
+                        "temperature": 1.0, 
+                        "top_k": 1, 
+                        "top_p": 1.0, 
+                        "repetition_penalty": 0.0},
+        include_value_head=False,
         keep_vllm_during_training=False,
         keep_hf_during_training=True,
         keep_hf_during_eval=False,
@@ -57,12 +72,14 @@ class LocalLLM:
         eval_with="vllm",
         train_with="hf",
         output_directory=None,
-        base_seed: int = 42
+        base_seed: int = 42,
+        vllm_params = {}
     ) -> None:
         """
         Initializes the LocalLLM.
         """
         super().__init__()
+        self.vllm_params = vllm_params
         self.name = name
         self.device = torch.device(device) if device else torch.device("cuda")
         self.model_name = model_name
@@ -103,6 +120,13 @@ class LocalLLM:
             adapter_name: os.path.join(self.output_directory, adapter_name) if os.path.isdir(os.path.join(output_directory, adapter_name)) else None
             for adapter_name in adapter_names
         }
+        self.adapter_train_ids = {
+            adapter_name: uuid.uuid4() for adapter_name in adapter_names
+        }
+
+        self.adapter_eval_ids = deepcopy(self.adapter_train_ids)
+
+        self.lora_request=None
 
         # set random seeds
         self.base_seed = base_seed
@@ -114,8 +138,13 @@ class LocalLLM:
         self.destroy_hf()
         if not self.keep_vllm_during_training:
             self.destroy_vllm()
+            
         if not self.keep_hf_during_training:
             self.destroy_hf()
+
+        # Creating new model version, must change training id.
+        self.adapter_train_ids[adapter_name] = uuid.uuid4()
+
 
         self.log_gpu_usage(f"Before loading HF model with adapter {adapter_name} for training.")
 
@@ -167,10 +196,24 @@ class LocalLLM:
         """
         if not self.keep_hf_during_eval:
             self.destroy_hf()
+
         if not self.keep_vllm_during_eval:
             self.destroy_vllm()
 
         model_logger.info(f"Preparing adapter {adapter_name} for evaluation.")
+
+
+        if self.adapter_eval_ids[adapter_name] != self.adapter_train_ids[adapter_name]:
+            self.adapter_eval_ids[adapter_name] = self.adapter_train_ids[adapter_name]
+            uuid_obj = self.adapter_eval_ids[adapter_name]
+            hash_object = hashlib.sha256(uuid_obj.bytes)
+            hash_int = int(hash_object.hexdigest(), 16)
+            id = int(hash_int % 10000000)
+            adapter_path = self.adapters[adapter_name]
+            if os.path.isdir(adapter_path):
+                self.lora_request = LoRARequest(f"dond_lora_{adapter_name}", id, adapter_path)
+            else:
+                self.lora_request = None
 
         self.current_adapter_name = adapter_name
 
@@ -183,8 +226,8 @@ class LocalLLM:
                                         enable_lora=True,
                                         max_lora_rank=256,
                                         seed=self.base_seed+seed_offset,
-                                        max_model_len=self.max_model_length,
-                                        dtype=self.pretrained_args["torch_dtype"]
+                                        dtype=torch.bfloat16,
+                                        **self.vllm_params
                                         )
                 end_time = time.time()
                 compute_logger.info(f"VLLM model loading time: {end_time - start_time:.2f} seconds.")
@@ -266,6 +309,7 @@ class LocalLLM:
             torch.cuda.device(0)
             torch.cuda.synchronize()
             torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
 
 
             self.log_gpu_usage("After destroying VLLM.")
@@ -306,20 +350,18 @@ class LocalLLM:
         start_time = time.time()
 
         if self.eval_with == "vllm":
-            with torch.no_grad():
-                if adapter_path is not None:
-                    model_logger.info(f"Generating using VLLM with LoRA at {adapter_path}")
-                    self.vllm_id += 1
-                    decoded = self.vllm_model.generate(
-                        texts,
-                        sampling_params=self.vllm_sampling_params,
-                        lora_request=LoRARequest(f"dond_lora_{self.vllm_id}", self.vllm_id, adapter_path),
-                    )
-                else:
-                    model_logger.info("Generating using VLLM without LoRA")
-                    decoded = self.vllm_model.generate(
-                        texts, sampling_params=self.vllm_sampling_params
-                    )
+            if self.lora_request is not None:
+                model_logger.info(f"Generating using VLLM with LoRA. Current LoRA request ID is {self.lora_request.adapter_id}. Current LoRA adapter path is {self.lora_request.path}.")
+                decoded = self.vllm_model.generate(
+                    texts,
+                    sampling_params=self.vllm_sampling_params,
+                    lora_request=self.lora_request,
+                )
+            else:
+                model_logger.info("Generating using VLLM without LoRA.")
+                decoded = self.vllm_model.generate(
+                    texts, sampling_params=self.vllm_sampling_params
+                )
             responses = [d.outputs[0].text for d in decoded]
             del decoded
 

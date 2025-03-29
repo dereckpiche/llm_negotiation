@@ -7,6 +7,7 @@ from torch.nn.utils.rnn import pad_sequence
 import os
 import random
 import logging
+from contextlib import contextmanager, nullcontext
 
 compute_logger = logging.getLogger("compute_logger")
 memory_logger = logging.getLogger("memory_logger")
@@ -24,8 +25,8 @@ def reinforce_train(
         learning_rate=1e-5,
         output_path=None,
         tokenizer=None,
+        gradient_checkpointing=False,
         entropy_coef=0,
-        kl_loss_coef=0,
         temperature=1.0  # new hyperparameter to control softmax temperature during training
         ):
     """
@@ -48,6 +49,9 @@ def reinforce_train(
         float: The total loss value for the training step.
     """
     model.train()
+    if gradient_checkpointing == True:
+        model.gradient_checkpointing_enable(dict(use_reentrant=False))
+
     if output_path:
         output_train_data_debug(output_path,
                                 contexts_list,
@@ -105,51 +109,31 @@ def reinforce_train(
 
             # Forward pass
             outputs = model(input_ids=context_batch, attention_mask=attention_mask)
+
             logits = outputs[0]  # (B, S, V)
 
             # Apply temperature scaling before computing log probabilities
             assert temperature > 0, "Temperature must be greater than 0."
+
             scaled_logits = logits / temperature  # (B, S, V)
 
             # Compute new log probabilities
             log_probs = F.log_softmax(scaled_logits, dim=-1)
 
-            kl_div = 0
-            if kl_loss_coef != 0.0:
-
-                with model.disable_adapter():
-                    base_model_logits = model(input_ids=context_batch, attention_mask=attention_mask)[0]
-                    base_model_log_probs = F.log_softmax(base_model_logits, dim=-1)
-
-                # # Check if outputs are exactly equal
-                # test_logits = model(input_ids=context_batch, attention_mask=attention_mask)[0]
-                # test_model_log_probs = F.log_softmax(base_logits, dim=-1)
-
-                # print("Max absolute difference OUTSIDE with:", (logits - test_logits).abs().max().item())
-                # print("Are logits exactly the same OUTSIDE with?", torch.equal(logits, test_logits))
-
-                # kl_div = F.kl_div(
-                #         log_probs,
-                #         base_model_log_probs,
-                #         reduction="batchmean",
-                #         log_target=True
-                #     )
-                kl_div = torch.exp(base_model_log_probs - log_probs) - (base_model_log_probs - log_probs) - 1 # (B, S, V)
-                mean_kl = kl_div.mean(dim=-1) # (B, S)
-                mean_kl = (mean_kl * mask_batch).sum() / mask_batch.sum()
-                print('KL Divergence value: ', kl_div)
-
-            action_log_probs = log_probs.gather(dim=-1, index=action_batch.unsqueeze(-1)).squeeze(-1)
             entropy = -log_probs * F.softmax(scaled_logits, dim=-1)  # (B, S, V)
             entropy = entropy.sum(dim=-1)  # (B, S)
 
             # Apply mask to log probabilities and values
-            rewarded_action_log_probs = action_log_probs * (return_batch * mask_batch) + entropy_coef * (entropy * mask_batch) + kl_loss_coef * (kl_div * mask_batch)
-            loss = -rewarded_action_log_probs.sum()
-            loss = loss / mb_size # we mean contributions across trajectories
+            action_log_probs = log_probs.gather(dim=-1, index=action_batch.unsqueeze(-1)).squeeze(-1) # (B,S)
+            rewarded_action_log_probs = action_log_probs * (return_batch * mask_batch) + entropy_coef * (entropy * mask_batch) # (B,S)
+            loss = -rewarded_action_log_probs.sum(dim=1) / torch.sum(mask_batch, dim=1) # (B,)
+            loss = loss.sum()
+
+            # TODO (Muqeeth): This is only true when we take 1 gradient step.
+            # If mb_per_step == -1, the following is correct.
+            loss = loss / nb_trajectories_we_train_on # we accumulate loss / nb_trajectories_we_train_on as we take sum over mini batches
 
             # Accumulate gradients
-            loss = loss / nb_trajectories_we_train_on  # scalar (averaged across trajectories)
             model_accelerator.backward(loss)
 
             # Update max GPU memory usage
@@ -164,8 +148,8 @@ def reinforce_train(
                     optimizer.step()
                     optimizer.zero_grad()
             else:
-                # Perform optimizer step every mb_per_step minibatches
-                if (i // mb_size + 1) % mb_per_step == 0:
+                # Perform optimizer step every mb_per_step minibatches, i is divisible by mb_size
+                if (i // mb_size ) % mb_per_step == 0:
                     optimizer.step()
                     optimizer.zero_grad()
 
