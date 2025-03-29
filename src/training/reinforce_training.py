@@ -7,6 +7,7 @@ from torch.nn.utils.rnn import pad_sequence
 import os
 import random
 import logging
+from contextlib import contextmanager, nullcontext
 
 compute_logger = logging.getLogger("compute_logger")
 memory_logger = logging.getLogger("memory_logger")
@@ -108,20 +109,23 @@ def reinforce_train(
 
             # Forward pass
             outputs = model(input_ids=context_batch, attention_mask=attention_mask)
+            
             logits = outputs[0]  # (B, S, V)
             # Apply temperature scaling before computing log probabilities
             assert temperature > 0, "Temperature must be greater than 0."
+            # TODO (Muqeeth): check if we should scale by temperature
             scaled_logits = logits / temperature  # (B, S, V)
             # Compute new log probabilities
             log_probs = F.log_softmax(scaled_logits, dim=-1)
-            action_log_probs = log_probs.gather(dim=-1, index=action_batch.unsqueeze(-1)).squeeze(-1)
+
             entropy = -log_probs * F.softmax(scaled_logits, dim=-1)  # (B, S, V)
             entropy = entropy.sum(dim=-1)  # (B, S)
 
             # Apply mask to log probabilities and values
+            action_log_probs = log_probs.gather(dim=-1, index=action_batch.unsqueeze(-1)).squeeze(-1)
             rewarded_action_log_probs = action_log_probs * (return_batch * mask_batch) + entropy_coef * (entropy * mask_batch)
             loss = -rewarded_action_log_probs.sum()
-            loss = loss / nb_trajectories_we_train_on # we mean contributions across trajectories
+            loss = loss / mb_size # we mean contributions across mini batches
 
             # Accumulate gradients
             model_accelerator.backward(loss)
@@ -138,8 +142,8 @@ def reinforce_train(
                     optimizer.step()
                     optimizer.zero_grad()
             else:
-                # Perform optimizer step every mb_per_step minibatches
-                if (i // mb_size + 1) % mb_per_step == 0:
+                # Perform optimizer step every mb_per_step minibatches, i is divisible by mb_size
+                if (i // mb_size ) % mb_per_step == 0:
                     optimizer.step()
                     optimizer.zero_grad()
 
