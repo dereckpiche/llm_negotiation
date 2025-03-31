@@ -139,8 +139,14 @@ def reinforce_train(
 
             per_token_kl = kl_loss_coef * (kl_div * mask_batch)
 
-            rewarded_action_log_probs = action_log_probs * (return_batch * mask_batch) + entropy_coef * (entropy * mask_batch) - per_token_kl # (B,S)
-            loss = -rewarded_action_log_probs.sum(dim=1) / torch.sum(mask_batch, dim=1) # (B,)
+            rewarded_action_log_probs = action_log_probs * (return_batch * mask_batch) + entropy_coef * (entropy * mask_batch) # (B,S)
+
+            rewarded_action_log_probs = rewarded_action_log_probs - per_token_kl
+
+            # Avoid division by zero by adding a small epsilon value to the denominator
+            epsilon = 1e-8
+            loss = -rewarded_action_log_probs.sum(dim=1) / (torch.sum(mask_batch, dim=1) + epsilon)  # (B,)
+
             loss = loss.sum()
 
             # TODO (Muqeeth): This is only true when we take 1 gradient step.
@@ -173,9 +179,14 @@ def reinforce_train(
 
 def compute_kl_div(model, input_ids, attention_mask, action_log_probs, index, temperature):
 
+    model.eval()
+
     # Disable policy adapter to run inference on base model
-    with model.disable_adapter():
-        ref_model_logits = model(input_ids=input_ids, attention_mask=attention_mask)[0]
+    with torch.no_grad():
+        with model.disable_adapter():
+            ref_model_logits = model(input_ids=input_ids, attention_mask=attention_mask)[0]
+
+    model.train()
 
     ref_model_logits = ref_model_logits / temperature  # (B, S, V)
     ref_model_log_probs = F.log_softmax(ref_model_logits, dim=-1) # (B, S, V)
