@@ -27,6 +27,7 @@ def reinforce_train(
         tokenizer=None,
         gradient_checkpointing=False,
         entropy_coef=0,
+        kl_loss_coef=0,
         temperature=1.0  # new hyperparameter to control softmax temperature during training
         ):
     """
@@ -115,18 +116,37 @@ def reinforce_train(
             # Apply temperature scaling before computing log probabilities
             assert temperature > 0, "Temperature must be greater than 0."
 
-            scaled_logits = logits / temperature  # (B, S, V)
+            logits = logits / temperature  # (B, S, V)
 
             # Compute new log probabilities
-            log_probs = F.log_softmax(scaled_logits, dim=-1)
+            log_probs = F.log_softmax(logits, dim=-1) # (B, S, V)
 
-            entropy = -log_probs * F.softmax(scaled_logits, dim=-1)  # (B, S, V)
+            entropy = -log_probs * F.softmax(logits, dim=-1)  # (B, S, V)
             entropy = entropy.sum(dim=-1)  # (B, S)
 
             # Apply mask to log probabilities and values
             action_log_probs = log_probs.gather(dim=-1, index=action_batch.unsqueeze(-1)).squeeze(-1) # (B,S)
+
+            kl_div = 0
+            if kl_loss_coef != 0.0:
+                kl_div = compute_kl_div(model,
+                                input_ids=context_batch,
+                                attention_mask=attention_mask,
+                                action_log_probs=action_log_probs,
+                                index=action_batch,
+                                temperature=temperature
+                            )
+
+            per_token_kl = kl_loss_coef * (kl_div * mask_batch)
+
             rewarded_action_log_probs = action_log_probs * (return_batch * mask_batch) + entropy_coef * (entropy * mask_batch) # (B,S)
-            loss = -rewarded_action_log_probs.sum(dim=1) / torch.sum(mask_batch, dim=1) # (B,)
+
+            rewarded_action_log_probs = rewarded_action_log_probs - per_token_kl
+
+            # Avoid division by zero by adding a small epsilon value to the denominator
+            epsilon = 1e-8
+            loss = -rewarded_action_log_probs.sum(dim=1) / (torch.sum(mask_batch, dim=1) + epsilon)  # (B,)
+
             loss = loss.sum()
 
             # TODO (Muqeeth): This is only true when we take 1 gradient step.
@@ -157,6 +177,27 @@ def reinforce_train(
     memory_logger.info(f"Max GPU memory usage during training: {max_memory_usage / (1024 ** 2):.2f} MB")
     return loss.item()
 
+def compute_kl_div(model, input_ids, attention_mask, action_log_probs, index, temperature):
+
+    model.eval()
+
+    # Disable policy adapter to run inference on base model
+    with torch.no_grad():
+        with model.disable_adapter():
+            ref_model_logits = model(input_ids=input_ids, attention_mask=attention_mask)[0]
+
+    model.train()
+
+    ref_model_logits = ref_model_logits / temperature  # (B, S, V)
+    ref_model_log_probs = F.log_softmax(ref_model_logits, dim=-1) # (B, S, V)
+    ref_model_action_log_probs = ref_model_log_probs.gather(dim=-1, index=index.unsqueeze(-1)).squeeze(-1) # (B,S)
+
+    # Approximating KL Divergence
+    # Ref 1: http://joschu.net/blog/kl-approx.html
+    # Ref 2: https://github.dev/huggingface/trl/blob/main/trl/trainer/grpo_trainer.py#L945
+    kl_div = torch.exp(ref_model_action_log_probs - action_log_probs) - (ref_model_action_log_probs - action_log_probs) - 1
+
+    return kl_div
 
 def verify_reinforce_train_inputs(contexts_list, scores_list, output_masks_list):
     """
