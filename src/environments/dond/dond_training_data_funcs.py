@@ -5,11 +5,11 @@ from collections import defaultdict
 import pandas as pd
 
 def generate_training_data_from_raw(
-                    raw_data_folder, 
-                    training_data_folder, 
-                    exclude_errors=False, 
+                    raw_data_folder,
+                    training_data_folder,
+                    exclude_errors=False,
                     debug_output=True,
-                    score_method=None, 
+                    score_method=None,
                     score_method_kwargs=None):
     """
     Generates training data from raw match data by calculating scores.
@@ -60,7 +60,7 @@ def generate_training_data_from_raw(
 
         # Only keep conversation messages, not system info
         chat_history = [message for message in chat_history if message.get("role") != "system"]
-        
+
         # Save file to disk
         training_file = os.path.join(training_data_folder, match_file.replace("match_", "training_data_"))
         with open(training_file, 'w') as f: json.dump(chat_history, f, indent=4)
@@ -72,7 +72,7 @@ def generate_training_data_from_raw(
 def get_round_points_arrays(raw_data_folder):
     """
     Takes a raw_data_folder path, and generates a round reward array for both agents.
-    Each row corresponds to a match. 
+    Each row corresponds to a match.
     """
     match_files = [f for f in os.listdir(raw_data_folder) if f.startswith("match_") and f.endswith(".json")]
     match_files.sort(key=lambda x: int(x.split('_')[-1].split('.')[0]))
@@ -119,19 +119,19 @@ def rloo_scores(rewards_agent_1, rewards_agent_2, discount_factor):
     """
     return rewards_to_rloo_advantages(rewards_agent_1, discount_factor=discount_factor)
 
-def rloo_advantage_alignment_scores(rewards_agent1, 
-        rewards_agent2, 
-        discount_factor, 
-        beta, 
+def rloo_advantage_alignment_scores(rewards_agent1,
+        rewards_agent2,
+        discount_factor,
+        beta,
         regulate_var=False):
     """
     TODO: documentation
     """
     a1 = rewards_to_rloo_advantages(rewards_agent1, discount_factor=discount_factor)
     a2 = rewards_to_rloo_advantages(rewards_agent2, discount_factor=discount_factor)
-    advantage_alignment_scores = advantages_to_aa_scores(a1, a2, 
-    beta=beta, 
-    gamma=discount_factor, 
+    advantage_alignment_scores = advantages_to_aa_scores(a1, a2,
+    beta=beta,
+    gamma=discount_factor,
     regulate_var=regulate_var)
     return advantage_alignment_scores
 
@@ -154,7 +154,7 @@ def get_discounted_rewards_to_go(rewards, discount_factor):
 def rewards_to_rloo_advantages(rewards, discount_factor):
     """
     Args:
-        rounds_points (np.array): Rows are different matches. Columns are rounds. Components are 
+        rounds_points (np.array): Rows are different matches. Columns are rounds. Components are
         rewards.
     """
     n = rewards.shape[0]
@@ -174,8 +174,8 @@ def advantages_to_aa_scores(a1, a2, beta=1.0, gamma=0.9, regulate_var=False):
         adv_align_terms (np.ndarray): The advantage alignment terms.
     The advantage alignment score is calculated as:
     .. math::
-        A^*(s_t, a_t, b_t) = A^1(s_t, a_t, b_t) + \\beta \\gamma \\cdot 
-        \\left( \\sum_{k < t} \\gamma^{t-k} A^1(s_k, a_k, b_k) \\right) 
+        A^*(s_t, a_t, b_t) = A^1(s_t, a_t, b_t) + \\beta \\gamma \\cdot
+        \\left( \\sum_{k < t} \\gamma^{t-k} A^1(s_k, a_k, b_k) \\right)
         A^2(s_t, a_t, b_t)
     Refer to https://arxiv.org/abs/2406.14662
     """
@@ -184,7 +184,7 @@ def advantages_to_aa_scores(a1, a2, beta=1.0, gamma=0.9, regulate_var=False):
     discounted_sums_a1 =  discounted_a1 @ (np.triu(np.ones((T,T))) - np.identity(T))
     t_discounts = (gamma*np.ones(shape=(1, T)))**(np.arange(0, T, 1))
     alignment_terms = gamma * t_discounts * discounted_sums_a1 * a2
-    if regulate_var==True: 
+    if regulate_var==True:
         reg_coef = np.std(a1[:, -1]) / (np.std(alignment_terms[:, -1]) + 1e-10)
     else:
         reg_coef = 1.0
@@ -203,11 +203,3 @@ if __name__ == "__main__":
     print(f"Element 3 should be {a1[2] + beta * gamma * (gamma**(2-0)*a1[0]+ gamma**(2-1)*a1[1]) * a2[2]}")
     print(f"Element 4 should be {a1[3] + beta * gamma * (gamma**(3-0)*a1[0]+ gamma**(3-1)*a1[1]+ gamma**(3-2)*a1[2]) * a2[3]}")
     print(advantages_to_aa_scores(np.array([a1]), np.array([a2]), beta=beta, gamma=gamma))
-
-    # Test 
-
-
-
-
-
-

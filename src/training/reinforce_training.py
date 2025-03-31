@@ -51,7 +51,7 @@ def reinforce_train(
     model.train()
     if gradient_checkpointing == True:
         model.gradient_checkpointing_enable(dict(use_reentrant=False))
-        
+
     if output_path:
         output_train_data_debug(output_path,
                                 contexts_list,
@@ -109,12 +109,14 @@ def reinforce_train(
 
             # Forward pass
             outputs = model(input_ids=context_batch, attention_mask=attention_mask)
-            
+
             logits = outputs[0]  # (B, S, V)
+
             # Apply temperature scaling before computing log probabilities
             assert temperature > 0, "Temperature must be greater than 0."
-            # TODO (Muqeeth): check if we should scale by temperature
+
             scaled_logits = logits / temperature  # (B, S, V)
+
             # Compute new log probabilities
             log_probs = F.log_softmax(scaled_logits, dim=-1)
 
@@ -126,6 +128,9 @@ def reinforce_train(
             rewarded_action_log_probs = action_log_probs * (return_batch * mask_batch) + entropy_coef * (entropy * mask_batch) # (B,S)
             loss = -rewarded_action_log_probs.sum(dim=1) / torch.sum(mask_batch, dim=1) # (B,)
             loss = loss.sum()
+
+            # TODO (Muqeeth): This is only true when we take 1 gradient step.
+            # If mb_per_step == -1, the following is correct.
             loss = loss / nb_trajectories_we_train_on # we accumulate loss / nb_trajectories_we_train_on as we take sum over mini batches
 
             # Accumulate gradients

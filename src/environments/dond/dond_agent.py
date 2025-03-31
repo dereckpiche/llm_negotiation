@@ -90,7 +90,7 @@ class DondAgent:
             policy_output (str, optional): The output of the policy (LLM response).
 
         Returns:
-            policy_id (str): The policy identifier. 
+            policy_id (str): The policy identifier.
             policy_input (dict): The input to the policy.
             action : The official action to be sent to the environment.
             done (bool): Whether the LLM action is ready to be sent to the environment.
@@ -99,21 +99,21 @@ class DondAgent:
         state = observation_from_env
         is_error = False
         error_message = None
-        
+
         # If we don't have policy output, we always need to generate the user message and return policy input
         if policy_output is None:
             # Set the user message in chat history based on the current state
             user_message = self.get_user_message(state, is_error, error_message)
             self.add_to_chat_history(user_message)
             return self.policy_id, self.chat_history, None, False, self.get_log_info()
-        
+
         # If we have policy output, we need to process it and determine the action
         else:
             # Process the LLM output
             is_error, error_message, is_finalization, processed_response = self.process_response(
                 policy_output, state
             )
-            
+
             # Add the model response to chat history
             model_response = {
                 "role": "assistant",
@@ -123,12 +123,12 @@ class DondAgent:
                 "round_nb": state["round_number"],
             }
             self.add_to_chat_history(model_response)
-            
+
             # Handle errors
             if is_error:
                 self.retries += 1
                 self.error_message = error_message
-                
+
                 # Too many mistakes were made: force dummy message
                 if self.retries > self.max_errors:
                     self.retries = 0
@@ -141,34 +141,34 @@ class DondAgent:
                         fallback = policy_output[:max_chars]
                     action = (False, fallback)
                     return None, None, action, True, self.get_log_info()
-                
+
                 # Set error user message
                 user_message = self.get_user_message(state, is_error, error_message)
                 self.add_to_chat_history(user_message)
 
                 # Return with a request for policy output again (done = False)
                 return self.policy_id, self.chat_history, None, False, self.get_log_info()
-            
+
             # Reset retries on successful processing
             self.retries = 0
-            
-            
+
+
             # Create the action to be sent to the environment
             action = (is_finalization, processed_response)
-            
+
             # Action is ready to be sent to the environment
             return None, None, action, True, self.get_log_info()
 
     def get_log_info(self):
         """Get information about the agent required to log a trajectory.
-        
+
         Returns:
             log_info (dict): Information about the agent required to log a trajectory.
         """
         return {
-            "agent_name": self.agent_name, 
+            "agent_name": self.agent_name,
             "chat_history": self.chat_history,
-            "augmented_chat_history": self.augmented_chat_history   
+            "augmented_chat_history": self.augmented_chat_history
         }
 
     def render(self):
@@ -240,7 +240,7 @@ class DondAgent:
                 user_message += self.format_prompt(self.received_message_prompt, state)
         else:
             user_message += self.format_prompt(self.received_message_prompt, state)
-        
+
         # Append timing prompts based on the number of remaining messages.
         # Here we use the precomputed remaining_msgs from the state.
         min_msgs = state.get("min_messages", None)
@@ -352,35 +352,62 @@ class DondAgent:
                 else:
                     i_take = finalization_json.get("i_take", {})
                     other_agent_gets = finalization_json.get("other_agent_gets", {})
+
                 if not isinstance(i_take, dict) or not isinstance(other_agent_gets, dict):
                     errors.append('"i_take" and "other_agent_gets" must be dictionaries.')
                 else:
-                    # Validate that the keys exactly match the expected items.
                     expected_items = set(state.get("items", []))
+                    expected_item_quantities = state.get("quantities", {})
+
+                    # Validate that the keys exactly match the expected items.
                     if set(i_take.keys()) != expected_items:
+
                         missing = expected_items - set(i_take.keys())
                         extra = set(i_take.keys()) - expected_items
                         error_str = "Invalid keys in 'i_take':"
+
                         if missing:
                             error_str += f" Missing keys: {', '.join(missing)}."
                         if extra:
                             error_str += f" Unexpected keys: {', '.join(extra)}."
+
                         errors.append(error_str)
+
                     if set(other_agent_gets.keys()) != expected_items:
+
                         missing = expected_items - set(other_agent_gets.keys())
                         extra = set(other_agent_gets.keys()) - expected_items
                         error_str = "Invalid keys in 'other_agent_gets':"
+
                         if missing:
                             error_str += f" Missing keys: {', '.join(missing)}."
                         if extra:
                             error_str += f" Unexpected keys: {', '.join(extra)}."
                         errors.append(error_str)
-                    # Verify that every value for each key is an integer.
+
+                    i_take_valid_items = set(i_take.keys()) & expected_items
+                    other_agent_gets_valid_items = set(other_agent_gets.keys()) & expected_items
+
+                    # Verify that every value for each key is an integer and sums to total quantities.
                     for item in expected_items:
-                        if not isinstance(i_take.get(item), int):
-                            errors.append(f'Value of "{item}" in "i_take" must be an integer.')
-                        if not isinstance(other_agent_gets.get(item), int):
-                            errors.append(f'Value of "{item}" in "other_agent_gets" must be an integer.')
+                        if item in i_take_valid_items and item in other_agent_gets_valid_items:
+                            is_i_take_int = isinstance(i_take.get(item), int)
+                            is_other_agent_gets_int = isinstance(other_agent_gets.get(item), int)
+
+                            if not is_i_take_int:
+                                errors.append(f'Value of "{item}" in "i_take" must be an integer.')
+
+                            if not is_other_agent_gets_int:
+                                errors.append(f'Value of "{item}" in "other_agent_gets" must be an integer.')
+
+                            if (
+                                is_i_take_int
+                                and is_other_agent_gets_int
+                                and i_take.get(item, 0) + other_agent_gets.get(item, 0)
+                                != expected_item_quantities.get(item, 0)
+                            ):
+                                errors.append(f'Total {item} divided should sum to {expected_item_quantities.get(item, 0)}.')
+
             except json.JSONDecodeError:
                 errors.append("The content within <finalize> is not valid JSON.")
 
