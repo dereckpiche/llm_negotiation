@@ -11,9 +11,10 @@ def train_main(
         paths,
         train_func,
         train_func_args,
+        train_data_args={},
         output_path=None,
     ):
-    globals()[train_func](hf_model, paths, train_func_args, output_path=output_path)
+    globals()[train_func](hf_model, paths, train_func_args, train_data_args, output_path=output_path)
     hf_model.export_current_adapter()
 
 
@@ -26,17 +27,17 @@ def train_ppo_main(
     contexts_list, scores_list, output_masks_list = paths_to_rl_data(hf_model.tokenizer, paths)
 
     if isinstance(hf_model.hf_model, AutoModelForCausalLMWithValueHead):
-        ppo_train_value_head(model=hf_model.hf_model, 
-                ref_model=hf_model.hf_model, 
-                contexts_list=contexts_list, 
-                scores_list=scores_list, 
+        ppo_train_value_head(model=hf_model.hf_model,
+                ref_model=hf_model.hf_model,
+                contexts_list=contexts_list,
+                scores_list=scores_list,
                 output_masks_list=output_masks_list,
                 **train_ppo_args)
     else:
-        ppo_train(model=hf_model.hf_model, 
-                ref_model=hf_model.hf_model, 
-                contexts_list=contexts_list, 
-                scores_list=scores_list, 
+        ppo_train(model=hf_model.hf_model,
+                ref_model=hf_model.hf_model,
+                contexts_list=contexts_list,
+                scores_list=scores_list,
                 output_masks_list=output_masks_list,
                 **train_ppo_args)
 
@@ -44,13 +45,14 @@ def train_reinforce_main(
         hf_model,
         paths,
         train_reinforce_args={},
-        output_path=None,
+        train_data_args={},
+        output_path=None
     ):
-    contexts_list, scores_list, output_masks_list = paths_to_rl_data(hf_model.tokenizer, paths)
-    reinforce_train(model=hf_model.hf_model, 
-                    contexts_list=contexts_list, 
-                    scores_list=scores_list, 
-                    output_masks_list=output_masks_list, 
-                    **train_reinforce_args, 
-                    output_path=output_path, 
+    contexts_list, scores_list, output_masks_list = paths_to_rl_data(hf_model.tokenizer, paths, **train_data_args)
+    reinforce_train(model=hf_model.hf_model,
+                    contexts_list=contexts_list,
+                    scores_list=scores_list,
+                    output_masks_list=output_masks_list,
+                    **train_reinforce_args,
+                    output_path=output_path,
                     tokenizer=hf_model.tokenizer)

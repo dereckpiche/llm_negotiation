@@ -150,12 +150,13 @@ def generate_and_train(cfg, base_seed):
                             data_paths.append(agent_export_path)
 
                     if data_paths:
-                        train_func_args = cfg["training"][model_name]["adapters"][adapter_name]["train_func_args"]
+                        adapter_args = cfg["training"][model_name]["adapters"][adapter_name]
                         train_main(
                             hf_model=model,
                             paths=data_paths,
-                            train_func=cfg["training"][model_name]["adapters"][adapter_name]["train_func"],
-                            train_func_args=train_func_args,
+                            train_func=adapter_args["train_func"],
+                            train_func_args=adapter_args['train_func_args'],
+                            train_data_args=adapter_args['train_data_args'],
                             output_path=it_folder
                         )
 
