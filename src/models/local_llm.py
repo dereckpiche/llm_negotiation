@@ -1,12 +1,12 @@
 from utils.common_imports import *
 import torch
+from torch import optim
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig
 )
 import hashlib
-
 import os
 import shutil
 from trl import (
@@ -73,7 +73,9 @@ class LocalLLM:
         train_with="hf",
         output_directory=None,
         base_seed: int = 42,
-        vllm_params = {}
+        vllm_params = {},
+        optimizer_method=None,
+        optimizer_kwargs={}
     ) -> None:
         """
         Initializes the LocalLLM.
@@ -127,6 +129,10 @@ class LocalLLM:
         self.adapter_eval_ids = deepcopy(self.adapter_train_ids)
 
         self.lora_request=None
+        self.optimizer = None
+        self.optimizer_method = optimizer_method
+        self.optimizer_kwargs = optimizer_kwargs
+        self.optimizer_state_dict = None
 
         # set random seeds
         self.base_seed = base_seed
@@ -183,7 +189,12 @@ class LocalLLM:
             model_logger.info(f"Total Parameters: {total_params}")
             model_logger.info(f"Trainable Parameters: {trainable_params} ({trainable_params/total_params:.2%})")
 
-
+        # Get optimizer if was deleted.
+        if self.optimizer is None and self.optimizer_method is not None:
+            self.optimizer = getattr(optim, self.optimizer_method)(self.hf_model.parameters(), **self.optimizer_kwargs)
+            if self.optimizer_state_dict is not None:
+                self.optimizer.load_state_dict(self.optimizer_state_dict)
+        
         end_time = time.time()
         compute_logger.info(f"HF model loading time: {end_time - start_time:.2f} seconds.")
 
@@ -275,13 +286,14 @@ class LocalLLM:
         if self.hf_model is not None:
             self.log_gpu_usage("Before destroying HF.")
 
+            self.optimizer_state_dict = self.optimizer.state_dict()
             start_time = time.time()
-
             del self.hf_model
+            del self.optimizer
             gc.collect()
             torch.cuda.empty_cache()
             self.hf_model = None
-
+            self.optimizer = None
             end_time = time.time()
             compute_logger.info(f"HF model unloading time: {end_time - start_time:.2f} seconds.")
 

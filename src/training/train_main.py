@@ -51,6 +51,7 @@ def train_reinforce_main(
                     contexts_list=contexts_list, 
                     scores_list=scores_list, 
                     output_masks_list=output_masks_list, 
+                    optimizer=hf_model.optimizer,
                     **train_reinforce_args, 
                     output_path=output_path, 
                     tokenizer=hf_model.tokenizer)
