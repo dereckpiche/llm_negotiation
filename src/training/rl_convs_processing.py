@@ -14,6 +14,7 @@ def get_conversations(folder_path: str):
 
 def conversation_to_rl_data(tokenizer,
                             conversation,
+                            average_score_over_message
                             ):
 
     # Check if the tokenizer has an EOS token
@@ -49,17 +50,23 @@ def conversation_to_rl_data(tokenizer,
             next_position = len(tokens)
 
         if message.get('role', None) == "assistant":
-            mask_value = 1 
+            mask_value = 1
             # TODO: for Llama <|start_header_id|>assistant<|end_header_id|>\n\n takes 4 tokens, where mask is still zero
             segment_length = next_position - current_position
+
+            if average_score_over_message:
+                score_value = score_value / (segment_length - 4)
+
             score_values.extend([0] * 4 + [score_value] * (segment_length - 4))
             output_mask.extend([0] * 4 + [mask_value] * (segment_length - 4))
+
         else:
             mask_value = 0 # only train on messages from the assistant
             # Extend return values and output masks for the current segment
             segment_length = next_position - current_position
             score_values.extend([score_value] * segment_length)
             output_mask.extend([mask_value] * segment_length)
+
         current_position = next_position
 
     return_tensor = torch.tensor(score_values)
@@ -71,22 +78,22 @@ def conversation_to_rl_data(tokenizer,
 
     return tokens, return_tensor, output_mask_tensor
 
-def conversations_to_rl_data(tokenizer, conversations):
+def conversations_to_rl_data(tokenizer, conversations, average_score_over_message):
     contexts = []
     scores = []
     output_masks = []
 
     for conversation in conversations:
         if conversation:
-            context_tensor, return_tensor, output_mask_tensor = conversation_to_rl_data(tokenizer, conversation)
+            context_tensor, return_tensor, output_mask_tensor = conversation_to_rl_data(tokenizer, conversation, average_score_over_message)
             contexts.append(context_tensor)
             scores.append(return_tensor)
             output_masks.append(output_mask_tensor)
 
     return contexts, scores, output_masks
 
-def paths_to_rl_data(tokenizer, paths):
+def paths_to_rl_data(tokenizer, paths, average_score_over_message):
     conversations = []
     for path in paths:
         conversations.extend(get_conversations(path))
-    return conversations_to_rl_data(tokenizer, conversations)
+    return conversations_to_rl_data(tokenizer, conversations, average_score_over_message)
