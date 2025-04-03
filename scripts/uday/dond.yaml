@@ -211,15 +211,6 @@ common_training_agent_kwargs: &common_training_agent_kwargs
     score_method_kwargs:
       discount_factor: 0.9
 
-common_adapter_kwargs: &common_adapter_kwargs
-  train_func_args:
-    gradient_checkpointing: true
-    temperature: 1
-    learning_rate: 2e-6
-    entropy_coef: 0.0
-  train_data_args:
-    average_score_over_message: False
-
 training:
 
   agents:
@@ -232,11 +223,20 @@ training:
     adapters:
       ad_alice:
         train_func: train_reinforce_main
-        <<: *common_adapter_kwargs
+        train_func_args:
+          gradient_checkpointing: true
+          temperature: 1
+          learning_rate: 1e-6
+          entropy_coef: 0.00
+          kl_loss_coef: 0.00
       ad_bob:
         train_func: train_reinforce_main
-        <<: *common_adapter_kwargs
-
+        train_func_args:
+          gradient_checkpointing: true
+          temperature: 1
+          learning_rate: 1e-6
+          entropy_coef: 0.00
+          kl_loss_coef: 0.00
   llama2: ${training.llama}
 
 
