@@ -78,26 +78,22 @@ def get_round_points_arrays(raw_data_folder):
     match_files.sort(key=lambda x: int(x.split('_')[-1].split('.')[0]))
     matches = [json.load(open(os.path.join(raw_data_folder, f), 'r')) for f in match_files]
 
-
-    # Get number of rounds
-    # TODO (Dereck): we should take role=system instead of indexing with -1s
-    game_info = matches[0][-1].get("game_info")
-    agent_name = matches[0][-1].get("agent_name")
-
-    nb_games = len(match_files)
-    nb_rounds = len(game_info.get("round_agreements_reached"))
-
-    round_points_agent = np.ones(shape=(nb_games, nb_rounds))
-    round_points_coagent = np.ones(shape=(nb_games, nb_rounds))
+    # Determine the maximum number of rounds across all games
+    max_rounds = max([len(match[-1].get("game_info").get("round_agreements_reached")) for match in matches])
+    round_points_agent = np.full((len(matches), max_rounds), None)
+    round_points_coagent = np.full((len(matches), max_rounds), None)
 
     for i, match in enumerate(matches):
         game_info = match[-1].get("game_info")
         agent_name = match[-1].get("agent_name")
+        nb_rounds = len(game_info.get("round_agreements_reached"))
         for round in range(nb_rounds):
             agent_role = game_info.get("round_agent_roles", {})[round].get(agent_name)
-            coagent_role = next(role for role in game_info.get("round_agent_roles", {})[round].values() if role != agent_role)
-            round_points_agent[i, round] = game_info.get("round_points")[round].get(agent_role)
-            round_points_coagent[i, round] = game_info.get("round_points")[round].get(coagent_role)
+            coagent_role = next((role for role in game_info.get("round_agent_roles", {})[round].values() if role != agent_role), None)
+            if agent_role and coagent_role:
+                round_points_agent[i, round] = game_info.get("round_points")[round].get(agent_role)
+                round_points_coagent[i, round] = game_info.get("round_points")[round].get(coagent_role)
+
 
     return round_points_agent, round_points_coagent
 
@@ -147,8 +143,11 @@ def get_discounted_rewards_to_go(rewards, discount_factor):
     """
     T = rewards.shape[1]
     scores = np.zeros(shape=rewards.shape)
+    # TODO: temporarily set None items of rewards to 0 
+    rewards = np.where(rewards == None, 0, rewards)
     scores[:, -1] = rewards[:, -1]
-    for i in range(T-2, -1, -1): scores[:, i] = rewards[:, i] + discount_factor * scores[:, i+1]
+    for i in range(T-2, -1, -1): 
+        scores[:, i] = rewards[:, i] + discount_factor * scores[:, i+1]
     return scores
 
 def rewards_to_rloo_advantages(rewards, discount_factor):

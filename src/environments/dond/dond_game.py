@@ -11,7 +11,9 @@ class DondEnv:
         max_messages=None,
         min_messages=None,
         max_chars_per_message=None,
-        rounds_per_game=1,
+        min_nb_rounds_per_game=1,
+        max_nb_rounds_per_game=10,
+        continuation_probability=0.8,
         random_setup_func=None,
         random_setup_kwargs=None,
         role_assignator_func=None,
@@ -30,7 +32,9 @@ class DondEnv:
                                 allowed before finalization is forced.
             min_messages (int): Minimum number of conversation messages required before a agent can finalize.
             max_chars_per_message (int): Maximum number of characters allowed per message.
-            rounds_per_game (int): The number of rounds per game.
+            min_nb_rounds_per_game (int): Minimum number of rounds per game.
+            max_nb_rounds_per_game (int): Maximum number of rounds per game.
+            continuation_probability (float): Probability of the game continuing after min_nb_rounds_per_game.
             random_setup_func (str or callable): The function to use for random setup.
             random_setup_kwargs (dict): Keyword arguments for the random setup function.
             role_assignator_func (str or callable): The function to use for role assignment.
@@ -56,7 +60,9 @@ class DondEnv:
             self.random_setup_kwargs = {"random_seed": random_seed}
 
         self.finalization_visibility = finalization_visibility
-        self.rounds_per_game = rounds_per_game
+        self.min_nb_rounds_per_game = min_nb_rounds_per_game
+        self.max_nb_rounds_per_game = max_nb_rounds_per_game
+        self.continuation_probability = continuation_probability
         self.role_assignator_func = (
             globals()[role_assignator_func] if isinstance(role_assignator_func, str) else role_assignator_func
         )
@@ -67,7 +73,6 @@ class DondEnv:
             self.random_seed = random.randint(1, 10**9)
         else:
             self.random_seed = random_seed
-
         self.game_moves = {agent: 0 for agent in agents}
         self.round_moves = {agent: 0 for agent in agents}
         self.round_messages = {agent: 0 for agent in agents}
@@ -162,9 +167,9 @@ class DondEnv:
             self.role_deque.rotate(-1)
             if round_over:
                 self.new_round()
-            if self.round_nb > self.rounds_per_game - 1:
-                self.game_over = True
-
+                if self.round_nb >= self.min_nb_rounds_per_game:
+                    if self.round_nb >= self.max_nb_rounds_per_game or random.random() > self.continuation_probability:
+                        self.game_over = True
         else:
             raise ValueError(f"agent {current_agent} did not provide an action.")
 
@@ -215,8 +220,11 @@ class DondEnv:
             bool: True if the finalizations match, False otherwise.
         """
         for item in self.items:
-            total = sum(self.role_props[role][item] for role in self.roles)
-            if total != self.quantities[item]:
+            try:
+                total = sum(self.role_props[role][item] for role in self.roles)
+                if total != self.quantities[item]:
+                    return False
+            except KeyError:
                 return False
         return True
 
@@ -271,7 +279,7 @@ class DondEnv:
             "min_messages": self.min_messages,
             "current_agent": self.get_current_agent(),
             "round_number": self.round_nb,
-            "nb_rounds": self.rounds_per_game,
+            "nb_rounds": self.max_nb_rounds_per_game,
             "quantities": self.quantities,
             "has_finalized": self.has_finalized,
             "last_message": self.last_message,

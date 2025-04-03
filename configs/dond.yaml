@@ -113,7 +113,9 @@ matches:
 
   env_kwargs:
     agents: ['alice', 'bob']
-    rounds_per_game: 16
+    max_nb_rounds_per_game: 100
+    min_nb_rounds_per_game: 1
+    continuation_probability: 0.8
     max_messages: 1
     min_messages: 1
     max_chars_per_message: 450
@@ -214,9 +216,9 @@ common_training_agent_kwargs: &common_training_agent_kwargs
   training_data_func_args:
     exclude_errors: False
     debug_output: True
-    score_method: rloo_scores
+    score_method: r2g_scores
     score_method_kwargs:
-      discount_factor: 0.9
+      discount_factor: 1.0
 
 training:
 
