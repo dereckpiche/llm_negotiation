@@ -18,11 +18,10 @@ def reinforce_train(
         contexts_list,
         scores_list,
         output_masks_list,
-        optimizer=None,
+        optimizer,
         nb_epochs=1,
         mb_size=1,
         mb_per_step=-1,
-        learning_rate=1e-5,
         output_path=None,
         tokenizer=None,
         gradient_checkpointing=False,
@@ -60,9 +59,8 @@ def reinforce_train(
     #                             output_masks_list,
     #                             tokenizer)
 
-    # Create optimizer if not provided
     if optimizer is None:
-        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+        raise ValueError("Optimizer must be provided. Please pass an optimizer instance.")
 
     verify_reinforce_train_inputs(contexts_list, scores_list, output_masks_list)
 

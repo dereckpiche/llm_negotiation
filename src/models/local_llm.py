@@ -73,7 +73,9 @@ class LocalLLM:
         train_with="hf",
         output_directory=None,
         base_seed: int = 42,
-        vllm_params = {}
+        vllm_params = {},
+        optimizer_method = "adamw",
+        optimizer_kwargs = {"lr": 1e-5, "weight_decay": 0.0},
     ) -> None:
         """
         Initializes the LocalLLM.
@@ -137,6 +139,16 @@ class LocalLLM:
         )
         for adapter_name in adapter_names:
             self.hf_model.add_adapter(self.lora_config, adapter_name)
+        self.optimizer = None
+        self.adapter_optimizers = {}
+        for adapter_name in adapter_names:
+            self.hf_model.set_adapter(adapter_name)
+            # set_adapters has the correct trainable parameters. 
+            self.adapter_optimizers[adapter_name] = getattr(
+                torch.optim, optimizer_method)(
+                self.hf_model.parameters(),
+                **optimizer_kwargs
+            )
 
     def prepare_adapter_train(self, adapter_name: str):
         """
@@ -160,6 +172,8 @@ class LocalLLM:
         adapter_path = self.adapters[self.current_adapter_name]
         if self.train_with == "hf":
             self.hf_model.set_adapter(adapter_name)
+            # set the right optimizer for adapter_name
+            self.optimizer = self.adapter_optimizers[adapter_name]
             # Log trainable parameters
             total_params = sum(p.numel() for p in self.hf_model.parameters())
             trainable_params = sum(p.numel() for p in self.hf_model.parameters() if p.requires_grad)
