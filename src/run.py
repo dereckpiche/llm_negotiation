@@ -7,7 +7,7 @@ from omegaconf import OmegaConf
 from experiments.generate_and_train import generate_and_train
 from experiments.arithmetic_test import arithmetic_test
 
-@hydra.main(config_path="../configs", config_name="dond")
+@hydra.main()
 def main(cfg):
 
     # Get Hydra's runtime directory
@@ -33,10 +33,11 @@ def main(cfg):
         logger.addHandler(handler)
         logger.propagate = False  # Prevent duplicate logs
 
-    # Redirect stdout and stderr to root logger
-    root_logger = logging.getLogger(f"root")
-    sys.stdout = LoggerStream(root_logger.info)
-    sys.stderr = LoggerStream(root_logger.error)
+    # TODO (Muqeeth): This is causing ipdb to not work properly. There is a way to do simple logging with python. But I'm not sure how the correct path is set. 
+    # # Redirect stdout and stderr to root logger
+    # root_logger = logging.getLogger(f"root")
+    # sys.stdout = LoggerStream(root_logger.info)
+    # sys.stderr = LoggerStream(root_logger.error)
 
     # Run the experiment specified in the configuration
     globals()[cfg.experiment.method](OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict"), base_seed=cfg.experiment.base_seed)
