@@ -120,6 +120,7 @@ common_models_init_args: &common_models_init_args
     max_model_len : 13e3
     gpu_memory_utilization: 0.45
     enable_prefix_caching: True
+    enable_sleep_mode : True
 
   keep_vllm_during_training: False
   keep_hf_during_training: True

@@ -46,23 +46,23 @@ class LocalLLM:
         name: str = "llama",
         model_name: str = "meta-llama/Llama-3.1-8B-Instruct",
         device: str = "cuda",
-        pretrained_args={"pretrained_model_name_or_path": "meta-llama/Llama-3.1-8B-Instruct", 
-                        "torch_dtype": "bfloat16", 
-                        "device_map": "auto", 
+        pretrained_args={"pretrained_model_name_or_path": "meta-llama/Llama-3.1-8B-Instruct",
+                        "torch_dtype": "bfloat16",
+                        "device_map": "auto",
                         "attn_implementation": "flash_attention_2"},
         max_model_length=8000,
         bits_and_bytes_args=None,
-        lora_args={"task_type": "TaskType.CAUSAL_LM", 
-                  "r": 64, 
-                  "lora_alpha": 32, 
-                  "lora_dropout": 0.0, 
+        lora_args={"task_type": "TaskType.CAUSAL_LM",
+                  "r": 64,
+                  "lora_alpha": 32,
+                  "lora_dropout": 0.0,
                   "target_modules": "all-linear"},
         adapter_names=["ad_alice", "ad_bob"],
-        generation_args={"max_new_tokens": 300, 
-                        "do_sample": True, 
-                        "temperature": 1.0, 
-                        "top_k": 1, 
-                        "top_p": 1.0, 
+        generation_args={"max_new_tokens": 300,
+                        "do_sample": True,
+                        "temperature": 1.0,
+                        "top_k": 1,
+                        "top_p": 1.0,
                         "repetition_penalty": 0.0},
         include_value_head=False,
         keep_vllm_during_training=False,
@@ -196,13 +196,13 @@ class LocalLLM:
         if self.eval_with == "vllm":
             if self.vllm_model is None:
                 self.log_gpu_usage(f"Before loading VLLM model with {adapter_name}.")
-                print("Seed used for generation: ", self.base_seed+seed_offset)
+
                 start_time = time.time()
                 # TODO (Muqeeth): check if its okay to have seed fixed since we update lora parameters anyway.
                 self.vllm_model = LLM(self.model_name,
                                         enable_lora=True,
                                         max_lora_rank=256,
-                                        seed=self.base_seed+seed_offset,
+                                        seed=self.base_seed,
                                         dtype=torch.bfloat16,
                                         **self.vllm_params
                                         )
@@ -224,7 +224,7 @@ class LocalLLM:
         gpu_memory = (total_memory - free_memory) / (1024 ** 3)
         memory_logger.info(f"{message}: GPU memory allocated: {gpu_memory:.2f} GB")
 
-    def prompt(self, contexts) -> str:
+    def prompt(self, contexts, seed_offset=0) -> str:
         """
         Generates a response from the model based on the provided contexts.
 
@@ -245,6 +245,10 @@ class LocalLLM:
         start_time = time.time()
 
         if self.eval_with == "vllm":
+
+            self.vllm_sampling_params.seed = self.base_seed + seed_offset
+            print("Seed used for generation: ", self.vllm_sampling_params.seed)
+
             if self.lora_request is not None:
                 model_logger.info(f"Generating using VLLM with LoRA. Current LoRA request ID is {self.lora_request.adapter_id}. Current LoRA adapter path is {self.lora_request.path}.")
                 decoded = self.vllm_model.generate(
