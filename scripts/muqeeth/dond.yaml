@@ -1,11 +1,11 @@
 hydra:
-  run:
-    dir: "${oc.env:SCRATCH}/llm_negotiation/results/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}.name}"
   job:
     chdir: false
+    name: dond_simple_optim_debug
+  run:
+    dir: ${oc.env:EXP_OUT}/${hydra.job.name}/
 
 experiment:
-  name: "small_test_for_adv_align"
   method: generate_and_train
   description: "no description"
   nb_epochs: 1000
@@ -134,7 +134,7 @@ matches:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "bob"
-        policy_id: "llama2/ad_bob"
+        policy_id: "llama/ad_bob"
 
 common_models_init_args: &common_models_init_args
   max_model_length: 10000
@@ -160,15 +160,15 @@ common_models_init_args: &common_models_init_args
     max_new_tokens: 120
     do_sample: True
     temperature: 1.0
-    top_k: 1
+    top_k: 0.0
     top_p: 1.0
     repetition_penalty: 0.0
 
   vllm_params:
-    max_model_len : 13e3
+    max_model_len: 13e3
     gpu_memory_utilization: 0.45
     enable_prefix_caching: True
-    enable_sleep_mode : True
+    enable_sleep_mode: True
 
   keep_vllm_during_training: False
   keep_hf_during_training: True
@@ -176,28 +176,19 @@ common_models_init_args: &common_models_init_args
   keep_vllm_during_eval: True
   eval_with: "vllm"
   train_with: "hf"
+  optimizer_method: "AdamW"
+  optimizer_kwargs:
+    lr: 1e-6
+    weight_decay: 0.0
+
 
 models:
-
   llama:
     class: local_llm
     init_args:
       <<: *common_models_init_args
       name: 'llama'
-      adapter_names: ['ad_alice']
-
-  llama2:
-    class: local_llm
-    init_args:
-      <<: *common_models_init_args
-      name: 'llama2'
-      adapter_names: ['ad_bob']
-
-  dummy:
-    class: dummy_local_llm
-    init_args:
-      name: 'dummy_llm'
-
+      adapter_names: ['ad_alice', 'ad_bob']
 
 ####################################################################################################
 # TRAINING
@@ -212,17 +203,7 @@ common_training_agent_kwargs: &common_training_agent_kwargs
     score_method_kwargs:
       discount_factor: 0.9
 
-common_adapter_kwargs: &common_adapter_kwargs
-  train_func_args:
-    gradient_checkpointing: true
-    temperature: 1
-    learning_rate: 2e-6
-    entropy_coef: 0.0
-  train_data_args:
-    average_score_over_message: False
-
 training:
-
   agents:
     alice:
       <<: *common_training_agent_kwargs
@@ -233,13 +214,23 @@ training:
     adapters:
       ad_alice:
         train_func: train_reinforce_main
-        <<: *common_adapter_kwargs
+        train_func_args:
+          gradient_checkpointing: true
+          temperature: 1
+          entropy_coef: 0.00
+          kl_loss_coef: 0.00
+        train_data_args:
+          average_score_over_message: False
+
       ad_bob:
         train_func: train_reinforce_main
-        <<: *common_adapter_kwargs
-
-  llama2: ${training.llama}
-
+        train_func_args:
+          gradient_checkpointing: true
+          temperature: 1
+          entropy_coef: 0.00
+          kl_loss_coef: 0.00
+        train_data_args:
+          average_score_over_message: False
 
 ####################################################################################################
 # PROMPT DEFINITIONS
@@ -380,8 +371,3 @@ prompt_blocks:
     5) Second agent sends a finalization
 
     At each round, the starting agent assignation alternates.
-
-
-
-
-

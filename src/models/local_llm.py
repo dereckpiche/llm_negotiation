@@ -46,23 +46,23 @@ class LocalLLM:
         name: str = "llama",
         model_name: str = "meta-llama/Llama-3.1-8B-Instruct",
         device: str = "cuda",
-        pretrained_args={"pretrained_model_name_or_path": "meta-llama/Llama-3.1-8B-Instruct", 
-                        "torch_dtype": "bfloat16", 
-                        "device_map": "auto", 
+        pretrained_args={"pretrained_model_name_or_path": "meta-llama/Llama-3.1-8B-Instruct",
+                        "torch_dtype": "bfloat16",
+                        "device_map": "auto",
                         "attn_implementation": "flash_attention_2"},
         max_model_length=8000,
         bits_and_bytes_args=None,
-        lora_args={"task_type": "TaskType.CAUSAL_LM", 
-                  "r": 64, 
-                  "lora_alpha": 32, 
-                  "lora_dropout": 0.0, 
+        lora_args={"task_type": "TaskType.CAUSAL_LM",
+                  "r": 64,
+                  "lora_alpha": 32,
+                  "lora_dropout": 0.0,
                   "target_modules": "all-linear"},
         adapter_names=["ad_alice", "ad_bob"],
-        generation_args={"max_new_tokens": 300, 
-                        "do_sample": True, 
-                        "temperature": 1.0, 
-                        "top_k": 1, 
-                        "top_p": 1.0, 
+        generation_args={"max_new_tokens": 300,
+                        "do_sample": True,
+                        "temperature": 1.0,
+                        "top_k": 1,
+                        "top_p": 1.0,
                         "repetition_penalty": 0.0},
         include_value_head=False,
         keep_vllm_during_training=False,
@@ -73,7 +73,9 @@ class LocalLLM:
         train_with="hf",
         output_directory=None,
         base_seed: int = 42,
-        vllm_params = {}
+        vllm_params = {},
+        optimizer_method = "adamw",
+        optimizer_kwargs = {"lr": 1e-5, "weight_decay": 0.0},
     ) -> None:
         """
         Initializes the LocalLLM.
@@ -126,21 +128,34 @@ class LocalLLM:
 
         self.adapter_eval_ids = deepcopy(self.adapter_train_ids)
 
-        self.lora_request=None
+        self.lora_request = None
 
         # set random seeds
         self.base_seed = base_seed
+        self.adapter_names = adapter_names
+        self.hf_model = AutoModelForCausalLM.from_pretrained(
+            **self.pretrained_args,
+            quantization_config=self.bits_and_bytes_configs
+        )
+        for adapter_name in adapter_names:
+            self.hf_model.add_adapter(self.lora_config, adapter_name)
+        self.optimizer = None
+        self.adapter_optimizers = {}
+        for adapter_name in adapter_names:
+            self.hf_model.set_adapter(adapter_name)
+            # set_adapters has the correct trainable parameters. 
+            self.adapter_optimizers[adapter_name] = getattr(
+                torch.optim, optimizer_method)(
+                self.hf_model.parameters(),
+                **optimizer_kwargs
+            )
 
     def prepare_adapter_train(self, adapter_name: str):
         """
         Prepares the agent for training with the specified adapter.
         """
-        self.destroy_hf()
         if not self.keep_vllm_during_training:
-            self.destroy_vllm()
-            
-        if not self.keep_hf_during_training:
-            self.destroy_hf()
+            self.vllm_model.sleep()
 
         # Creating new model version, must change training id.
         self.adapter_train_ids[adapter_name] = uuid.uuid4()
@@ -156,27 +171,9 @@ class LocalLLM:
         self.current_adapter_name = adapter_name
         adapter_path = self.adapters[self.current_adapter_name]
         if self.train_with == "hf":
-            if adapter_path is None:
-                self.hf_model = AutoModelForCausalLM.from_pretrained(
-                    **self.pretrained_args,
-                    quantization_config=self.bits_and_bytes_configs
-                )
-                self.hf_model = get_peft_model(self.hf_model, self.lora_config)
-                self.hf_model.train()
-                model_logger.info(f"Adapter '{self.current_adapter_name}' added to HF.")
-            else:
-                self.hf_model = AutoModelForCausalLM.from_pretrained(
-                    **self.pretrained_args,
-                    quantization_config=self.bits_and_bytes_configs
-                )
-                self.hf_model = PeftModel.from_pretrained(
-                    model=self.hf_model,
-                    model_id=adapter_path,
-                    is_trainable=True
-                )
-                self.hf_model.train()
-                model_logger.info(f"Adapter '{self.current_adapter_name}' loaded to HF from {adapter_path}.")
-
+            self.hf_model.set_adapter(adapter_name)
+            # set the right optimizer for adapter_name
+            self.optimizer = self.adapter_optimizers[adapter_name]
             # Log trainable parameters
             total_params = sum(p.numel() for p in self.hf_model.parameters())
             trainable_params = sum(p.numel() for p in self.hf_model.parameters() if p.requires_grad)
@@ -189,28 +186,21 @@ class LocalLLM:
 
         self.log_gpu_usage(f"After loading HF model with adapter {adapter_name} for training.")
 
-
     def prepare_adapter_eval(self, adapter_name: str, seed_offset: int = 0):
         """
         Prepares the agent for evaluation with the specified adapter.
         """
-        if not self.keep_hf_during_eval:
-            self.destroy_hf()
-
-        if not self.keep_vllm_during_eval:
-            self.destroy_vllm()
-
         model_logger.info(f"Preparing adapter {adapter_name} for evaluation.")
 
-
         if self.adapter_eval_ids[adapter_name] != self.adapter_train_ids[adapter_name]:
+            # TODO: Check with Dereck on the logic behind the following code
             self.adapter_eval_ids[adapter_name] = self.adapter_train_ids[adapter_name]
             uuid_obj = self.adapter_eval_ids[adapter_name]
             hash_object = hashlib.sha256(uuid_obj.bytes)
             hash_int = int(hash_object.hexdigest(), 16)
             id = int(hash_int % 10000000)
             adapter_path = self.adapters[adapter_name]
-            if os.path.isdir(adapter_path):
+            if os.path.exists(adapter_path):
                 self.lora_request = LoRARequest(f"dond_lora_{adapter_name}", id, adapter_path)
             else:
                 self.lora_request = None
@@ -220,102 +210,22 @@ class LocalLLM:
         if self.eval_with == "vllm":
             if self.vllm_model is None:
                 self.log_gpu_usage(f"Before loading VLLM model with {adapter_name}.")
-                print("Seed used for generation: ", self.base_seed+seed_offset)
+
                 start_time = time.time()
+                # TODO (Muqeeth): check if its okay to have seed fixed since we update lora parameters anyway.
                 self.vllm_model = LLM(self.model_name,
                                         enable_lora=True,
                                         max_lora_rank=256,
-                                        seed=self.base_seed+seed_offset,
+                                        seed=self.base_seed,
                                         dtype=torch.bfloat16,
                                         **self.vllm_params
                                         )
                 end_time = time.time()
                 compute_logger.info(f"VLLM model loading time: {end_time - start_time:.2f} seconds.")
                 self.log_gpu_usage(f"After loading VLLM model with {adapter_name}.")
-
-        elif self.eval_with == "hf":
-            if self.hf_model is None:
-                start_time = time.time()
-                model_logger.info("Loading HF model for evaluation.")
-
-                adapter_path = self.adapters[self.current_adapter_name]
-
-                if adapter_path is None:
-                    self.hf_model = AutoModelForCausalLM.from_pretrained(
-                        **self.pretrained_args,
-                        quantization_config=self.bits_and_bytes_configs
-                    )
-                    self.hf_model = get_peft_model(self.hf_model, self.lora_config)
-                    model_logger.info(f"HF model prepared with new LoRA configuration.")
-                else:
-                    self.hf_model = AutoModelForCausalLM.from_pretrained(
-                        **self.pretrained_args,
-                        quantization_config=self.bits_and_bytes_configs
-                    )
-                    self.hf_model = PeftModel.from_pretrained(
-                        model=self.hf_model,
-                        model_id=adapter_path
-                    )
-                    model_logger.info(f"HF model loaded with LoRA weights from {adapter_path}.")
-
-                self.hf_model.eval()
-
-                end_time = time.time()
-                compute_logger.info(f"HF model loading time: {end_time - start_time:.2f} seconds.")
-                self.log_gpu_usage("After loading HF model.")
-
-
-
-    def destroy_hf(self):
-        """
-        Destroys the Hugging Face model to free up memory.
-        """
-        model_logger.info("Destroying HF model.")
-
-        if self.hf_model is not None:
-            self.log_gpu_usage("Before destroying HF.")
-
-            start_time = time.time()
-
-            del self.hf_model
-            gc.collect()
-            torch.cuda.empty_cache()
-            self.hf_model = None
-
-            end_time = time.time()
-            compute_logger.info(f"HF model unloading time: {end_time - start_time:.2f} seconds.")
-
-            self.log_gpu_usage("After destroying HF.")
-
-
-    def destroy_vllm(self):
-        """
-        Destroys the VLLM model to free up memory.
-        """
-        start_time = time.time()
-
-        if self.vllm_model is not None:
-
-            self.log_gpu_usage("Before destroying VLLM")
-
-            del self.vllm_model
-            gc.collect()
-            torch.cuda.empty_cache()
-            self.vllm_model = None
-
-            torch.cuda.reset_peak_memory_stats()
-            torch.cuda.synchronize()
-
-            torch.cuda.device(0)
-            torch.cuda.synchronize()
-            torch.cuda.empty_cache()
-            torch.cuda.ipc_collect()
-
-
-            self.log_gpu_usage("After destroying VLLM.")
-
-        end_time = time.time()
-        compute_logger.info(f"VLLM model unloading time: {end_time - start_time:.2f} seconds.")
+            else:
+                if seed_offset != 0:
+                    self.vllm_model.wake_up()
 
     def log_gpu_usage(self, message: str) -> None:
         """
@@ -324,12 +234,11 @@ class LocalLLM:
         Args:
             message (str): A message to include in the log.
         """
-        gpu_memory = torch.cuda.memory_allocated() / (1024 ** 3)
+        free_memory, total_memory = torch.cuda.mem_get_info()
+        gpu_memory = (total_memory - free_memory) / (1024 ** 3)
         memory_logger.info(f"{message}: GPU memory allocated: {gpu_memory:.2f} GB")
 
-
-
-    def prompt(self, contexts) -> str:
+    def prompt(self, contexts, seed_offset=0) -> str:
         """
         Generates a response from the model based on the provided contexts.
 
@@ -350,6 +259,10 @@ class LocalLLM:
         start_time = time.time()
 
         if self.eval_with == "vllm":
+
+            self.vllm_sampling_params.seed = self.base_seed + seed_offset
+            print("Seed used for generation: ", self.vllm_sampling_params.seed)
+
             if self.lora_request is not None:
                 model_logger.info(f"Generating using VLLM with LoRA. Current LoRA request ID is {self.lora_request.adapter_id}. Current LoRA adapter path is {self.lora_request.path}.")
                 decoded = self.vllm_model.generate(
@@ -365,35 +278,6 @@ class LocalLLM:
             responses = [d.outputs[0].text for d in decoded]
             del decoded
 
-        elif self.eval_with == "hf":
-            if self.hf_model is None:
-                model_logger.error("HF model is not loaded. Cannot proceed with generation.")
-                return []
-
-            with torch.no_grad():
-                model_logger.info("Generating using HF.")
-                self.log_gpu_usage("Before HF generation")
-
-                encoded_inputs = self.tokenizer(
-                    texts, return_tensors="pt", padding=True, truncation=True
-                ).to(self.device)
-
-                output_tokens = self.hf_model.generate(
-                    **encoded_inputs,
-                    max_new_tokens=self.hf_sampling_params["max_new_tokens"],
-                    temperature=self.hf_sampling_params["temperature"],
-                    top_k=self.hf_sampling_params["top_k"],
-                    top_p=self.hf_sampling_params["top_p"],
-                )
-
-                responses = self.tokenizer.batch_decode(
-                    output_tokens, skip_special_tokens=True
-                )
-
-                gc.collect()
-                torch.cuda.empty_cache()
-                self.log_gpu_usage("After HF generation")
-
         else:
             model_logger.error(f"Unsupported generation method: {self.eval_with}")
             return []
@@ -405,14 +289,11 @@ class LocalLLM:
 
         return responses
 
-
-
     def export_current_adapter(self) -> None:
         """
         Saves only the LoRA weights to a specified directory. If the directory
         already exists, it deletes the existing directory before saving.
         """
-        #self.hf_id += 1
         adapter_path = os.path.join(self.output_directory, f"{self.current_adapter_name}")
 
         # if os.path.exists(adapter_path):
@@ -420,15 +301,12 @@ class LocalLLM:
         #     logging.info(f"Existing directory '{adapter_path}' deleted.")
 
         os.makedirs(adapter_path, exist_ok=True)
-
-        # Save only the LoRA weights
-        if isinstance(self.hf_model, PeftModel) or isinstance(self.hf_model, AutoModelForCausalLMWithValueHead):
-            self.hf_model.save_pretrained(adapter_path)
-            model_logger.info(f"LoRA weights saved to {adapter_path}")
-        else:
-            model_logger.warning("Model is not a LoraModel or ValueHead, skipping LoRA weights saving.")
+        # # Save only the LoRA weights
+        self.hf_model.save_pretrained(adapter_path)
+        model_logger.info(f"LoRA weights saved to {adapter_path}")
 
         # For vllm
+        # TODO (Muqeeth): check with Dereck if this is needed.
         with open(os.path.join(adapter_path, "config.json"), "w") as f:
             json.dump({"model_type": "llama"}, f)
 

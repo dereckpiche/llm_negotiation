@@ -49,12 +49,11 @@ def run_batched_matches(
             'log_func': match['log_func'],
             'log_func_args': match['log_func_args']
         }
-    policy_inputs = {}  # {policy_id: {match_id: {agent_id: input}}}
 
+    policy_inputs = {}  # {policy_id: {match_id: {agent_id: input}}}
 
     # Main simulation loop
     while active_matches or pending_matches:
-
 
         for match_id, match_data in active_matches.items():
             env = match_data['env']
@@ -88,12 +87,13 @@ def run_batched_matches(
         # Get policy outputs for the agents -- in a batched and efficient way
 
         policy_outputs = process_policy_inputs(models, policy_inputs, seed_offset=seed_offset)
+
         for match_id, match_data in active_matches.items():
             if match_id in policy_outputs:  # Add this check to prevent KeyError
                 for agent_id, policy_output in policy_outputs[match_id].items():
                     match_data['policy_outputs'][agent_id] = policy_output
-        policy_inputs = {}
 
+        policy_inputs = {}
 
         # Step environments forward with collected actions - only when all agents are ready
         completed_matches = []
@@ -182,7 +182,7 @@ def process_policy_inputs(models, policy_inputs, seed_offset=0):
                 input_mapping.append((match_id, agent_id))
 
         # Get batch outputs
-        batch_outputs = model.prompt(flat_inputs)
+        batch_outputs = model.prompt(flat_inputs, seed_offset)
 
         # Reconstruct nested structure
         for (match_id, agent_id), output in zip(input_mapping, batch_outputs):

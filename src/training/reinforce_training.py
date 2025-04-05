@@ -18,11 +18,10 @@ def reinforce_train(
         contexts_list,
         scores_list,
         output_masks_list,
-        optimizer=None,
+        optimizer,
         nb_epochs=1,
         mb_size=1,
         mb_per_step=-1,
-        learning_rate=1e-5,
         output_path=None,
         tokenizer=None,
         gradient_checkpointing=False,
@@ -53,16 +52,15 @@ def reinforce_train(
     if gradient_checkpointing == True:
         model.gradient_checkpointing_enable(dict(use_reentrant=False))
 
-    if output_path:
-        output_train_data_debug(output_path,
-                                contexts_list,
-                                scores_list,
-                                output_masks_list,
-                                tokenizer)
+    # if output_path:
+    #     output_train_data_debug(output_path,
+    #                             contexts_list,
+    #                             scores_list,
+    #                             output_masks_list,
+    #                             tokenizer)
 
-    # Create optimizer if not provided
     if optimizer is None:
-        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+        raise ValueError("Optimizer must be provided. Please pass an optimizer instance.")
 
     verify_reinforce_train_inputs(contexts_list, scores_list, output_masks_list)
 
@@ -175,6 +173,8 @@ def reinforce_train(
 
     # Log max GPU memory usage after training
     memory_logger.info(f"Max GPU memory usage during training: {max_memory_usage / (1024 ** 2):.2f} MB")
+    model, optimizer = model_accelerator.clear(model, optimizer)
+    del model, optimizer 
     return loss.item()
 
 def compute_kl_div(model, input_ids, attention_mask, action_log_probs, index, temperature):
