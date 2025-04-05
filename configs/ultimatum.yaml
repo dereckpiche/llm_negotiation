@@ -128,6 +128,10 @@ common_models_init_args: &common_models_init_args
   keep_vllm_during_eval: True
   eval_with: "vllm"
   train_with: "hf"
+  optimizer_method: "AdamW"
+  optimizer_kwargs:
+    lr: 3e-6
+    weight_decay: 0.0
 
 models:
   llama:
@@ -154,7 +158,6 @@ common_adapter_kwargs: &common_adapter_kwargs
   train_func_args:
     gradient_checkpointing: true
     temperature: 1
-    learning_rate: 3e-6
     entropy_coef: 0.01
     kl_loss_coef: 0.01
   train_data_args:

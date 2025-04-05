@@ -74,8 +74,8 @@ class LocalLLM:
         output_directory=None,
         base_seed: int = 42,
         vllm_params = {},
-        optimizer_method = "adamw",
-        optimizer_kwargs = {"lr": 1e-5, "weight_decay": 0.0},
+        optimizer_method = "AdamW",
+        optimizer_kwargs = {"lr": 1e-6, "weight_decay": 0.0},
     ) -> None:
         """
         Initializes the LocalLLM.
@@ -143,7 +143,7 @@ class LocalLLM:
         self.adapter_optimizers = {}
         for adapter_name in adapter_names:
             self.hf_model.set_adapter(adapter_name)
-            # set_adapters has the correct trainable parameters. 
+            # set_adapters has the correct trainable parameters.
             self.adapter_optimizers[adapter_name] = getattr(
                 torch.optim, optimizer_method)(
                 self.hf_model.parameters(),
