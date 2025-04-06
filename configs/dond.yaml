@@ -27,53 +27,49 @@ common_agent_kwargs: &common_agent_kwargs
       Welcome, you are participating in a multi-round negotiation game.
       Game Description:
       In this game, two agents will divide a collection of items over multiple rounds.
-      In each round, the available items of each category ({items}) will be dynamically specified.
-      In each round, the different item categories will have different assigned values for each agent.
-      The points of each agent in each round is determined by multiplying the number of items they receive by the value assigned to each of their item.
-      Both agents must submit a finalization, indicating how they wish to split the items.
-      If the finalization of both agents do not match, neither agent earns points for that round.
+      In each round, the available items of each category ({items}) and their quantities will be specified. Each item category will have different utility scores for each agent.
+      The points of each agent in every round is determined by multiplying the number of items they receive by the utility score of each of their items.
+      At the end of each round, both agents must submit a finalization specifying how they wish to split the items. If the two finalizations do not match, neither agent earns points for that round.
   message_mechanics_prompt: |
     Your messages must be sent in the <message>your-message-here</message> format, with no content outside the tags. They should be concise - less than 400 characters.
   finalization_mechanics_prompt: |
-    Your finalizations must be sent in a with the following format:
-      <finalize> {"i_take": { {finalize_sample_i_take} }, "other_agent_gets": { {finalize_sample_other} }}</finalize>
-    No content outside <finalize>your-finalization-here</finalize>. If the finalization of the second agent is not complementary to the first agent's finalization, it is equivalent to a rejection. It is paramount to follow the formatting requirements perfectly in order to submit a valid finalization.
+    Your finalizations must be sent in this exact format:
+      <finalize> {"i_take": { {finalize_sample_i_take} }, "other_agent_gets": { {finalize_sample_other} }}</finalize>, with no content outside the tags. If the second agent's finalization is not complementary to the first agent's finalization, it is equivalent to a rejection. It is paramount to follow the formatting requirements perfectly in order to submit a valid finalization.
   dond_version_specificities: |
-    In this specific version of the game, each round is played as follows:
+    In this version of the game, each round is played as follows:
     1) One of the two agents is assigned as the starting agent.
     2) The starting agent sends a message
     3) The second agent sends a message
     4) The starting agent sends a finalization
     5) The second agent sends a finalization
 
-    Therefore, each agent can only send 1 message per round -- this is a strict rule.
-    At each round, the starting agent assignation alternates.
-    The finalization of the starting agent will be shown automatically to the second agent.
-    The values will not be shown automatically.
-    It is therefore suggested that each of the 2 agents use their 1 message primarily to discuss their assigned values.
+    Each agent can only send 1 message per round -- this is a strict rule.
+    At each round, the starting agent alternates.
+    The finalization of the starting agent will be automatically shown to the second agent.
+    However, utility scores are not shared automatically. Thus, it is recommended that each agent use their 1 message to communicate their utility scores to the other agent.
   reasoning_mechanics_prompt: |
     ${prompt_blocks.dond_reasoning_mechanics}
   goal_prompt: |
     Your goal is to maximize your sum of points across rounds.
   first_round_prompt: |
-    For this new round, the items available are {quantities} and your assigned values for each item category are {values}.
+    For this new round, the items available are {quantities} and your utility scores for each item category are {values}.
   new_round_prompt: |
     The previous round has ended.
     In the last round, you earned {last_round_points_computed}.
     The other agent earned {coagent_last_round_points_computed_other}.
-    For this new round, the items available are {quantities} and your assigned values are {values}.
+    For this new round, the items available are {quantities} and your utility scores for each item category are {values}.
   agent_with_first_move_prompt: |
    You are the starting agent.
   agent_with_second_move_prompt: |
     You are the second agent.
   received_message_prompt: |
-    The other agent has sent this message: "{last_message}".
+    The other agent sent the following message: "{last_message}".
   other_agent_finalized_prompt: |
-    The other agent has finalized with {other_agent_finalization}. You must now accept or reject.
+    The other agent has finalized: {other_agent_finalization}. You must accept or reject now.
   time_to_finalize_prompt: |
-    (You must now finalize in the aforementioned format.)
+    (You must finalize now in the aforementioned format.)
   time_to_send_message_prompt: |
-    (You must now send a message in the aforementioned format.)
+    (You must send a message now in the aforementioned format.)
 
 matches:
   env_class: "DondEnv"
@@ -118,15 +114,12 @@ matches:
     min_messages: 1
     max_chars_per_message: 450
     mode: basic
-    random_setup_func: bicameral_vals_assignator
+    random_setup_func: fixed_manual
     random_setup_kwargs:
-      items: ['balls'] # ['hats', 'balls', 'books']
-      min_quant: 1
-      max_quant: 10
-      low_val_mean: 4
-      low_val_std: 1
-      high_val_mean: 15
-      high_val_std: 1
+      items: ['coins'] # ['hats', 'balls', 'books']
+      quantities: [10]
+      val_starting_negotiator: [1]
+      val_responding_negotiator: [10]
     role_assignator_func: alternating_role_assignator
     role_assignator_func_kwargs: {}
 
@@ -141,7 +134,7 @@ matches:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "bob"
-        policy_id: "llama2/ad_bob"
+        policy_id: "llama/ad_bob"
 
 common_models_init_args: &common_models_init_args
   max_model_length: 10000
@@ -167,7 +160,7 @@ common_models_init_args: &common_models_init_args
     max_new_tokens: 120
     do_sample: True
     temperature: 1.0
-    top_k: 1
+    top_k: 0
     top_p: 1.0
     repetition_penalty: 0.0
 
@@ -183,6 +176,10 @@ common_models_init_args: &common_models_init_args
   keep_vllm_during_eval: True
   eval_with: "vllm"
   train_with: "hf"
+  optimizer_method: "AdamW"
+  optimizer_kwargs:
+    lr: 1e-6
+    weight_decay: 0.0
 
 models:
 
@@ -191,19 +188,7 @@ models:
     init_args:
       <<: *common_models_init_args
       name: 'llama'
-      adapter_names: ['ad_alice']
-
-  llama2:
-    class: local_llm
-    init_args:
-      <<: *common_models_init_args
-      name: 'llama2'
-      adapter_names: ['ad_bob']
-
-  dummy:
-    class: dummy_local_llm
-    init_args:
-      name: 'dummy_llm'
+      adapter_names: ['ad_alice', 'ad_bob']
 
 
 ####################################################################################################
@@ -223,8 +208,8 @@ common_adapter_kwargs: &common_adapter_kwargs
   train_func_args:
     gradient_checkpointing: true
     temperature: 1
-    learning_rate: 2e-6
     entropy_coef: 0.0
+    kl_loss_coef: 0.0
   train_data_args:
     average_score_over_message: False
 
@@ -244,8 +229,6 @@ training:
       ad_bob:
         train_func: train_reinforce_main
         <<: *common_adapter_kwargs
-
-  llama2: ${training.llama}
 
 
 ####################################################################################################
