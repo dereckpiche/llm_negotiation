@@ -269,9 +269,11 @@ class LocalLLM:
             str: The generated response from the model.
         """
         adapter_path = self.adapter_paths[self.current_adapter_name]
+        # print(f"len of contexts and current adapter : {len(contexts), self.current_adapter_name}")
         if len(contexts) == 0:
             return []
 
+        # TODO (Muqeeth): Vllm has issue with repeating bos_token twice (https://github.com/vllm-project/vllm/pull/15695/files)
         texts = self.tokenizer.apply_chat_template(
             contexts, tokenize=False, add_generation_prompt=True
         )
@@ -279,8 +281,10 @@ class LocalLLM:
         start_time = time.time()
 
         if self.eval_with == "vllm":
-            self.vllm_sampling_params.seed = self.base_seed + seed_offset
-            print("Seed used for generation: ", self.vllm_sampling_params.seed)
+            # Seeding vllm is causing it to be determinisitc acoross prompts, but if we seed earlier then we can replicate generations
+            # self.vllm_sampling_params.seed = self.base_seed + seed_offset
+            # print("Seed used for generation: ", self.vllm_sampling_params.seed)
+            self.vllm_sampling_params.seed = None
 
             if self.lora_request is not None:
                 model_logger.info(

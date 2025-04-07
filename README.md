@@ -12,7 +12,7 @@ pip install -e .
 ## Development
 ```bash
 pip install -r requirements_dev.txt
-.pre-commit install
+pre-commit install
 ```
 
 ## Environments
