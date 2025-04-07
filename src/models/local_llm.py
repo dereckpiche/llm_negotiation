@@ -257,7 +257,7 @@ class LocalLLM:
         gpu_memory = (total_memory - free_memory) / (1024**3)
         memory_logger.info(f"{message}: GPU memory allocated: {gpu_memory:.2f} GB")
 
-    def prompt(self, contexts, seed_offset=0) -> str:
+    def prompt(self, contexts) -> str:
         """
         Generates a response from the model based on the provided contexts.
 
@@ -278,17 +278,6 @@ class LocalLLM:
         start_time = time.time()
 
         if self.eval_with == "vllm":
-            gen_seed = self.base_seed + seed_offset
-
-            # Ref: https://github.com/vllm-project/vllm/issues/7812
-            random.seed(gen_seed)  # Python random
-            np.random.seed(gen_seed)  # NumPy
-            torch.manual_seed(gen_seed)  # PyTorch (CPU)
-            torch.cuda.manual_seed(gen_seed)  # PyTorch (GPU)
-            torch.cuda.manual_seed_all(gen_seed)  # If using multi-GPU
-
-            print("Seed used for generation: ", gen_seed)
-
             if self.lora_request is not None:
                 model_logger.info(
                     f"Generating using VLLM with LoRA. Current LoRA request ID is {self.lora_request.adapter_id}. Current LoRA adapter path is {self.lora_request.path}."
