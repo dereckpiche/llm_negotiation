@@ -159,6 +159,10 @@ def rewards_to_rloo_advantages(rewards, discount_factor):
     """
     n = rewards.shape[0]
     scores = get_discounted_rewards_to_go(rewards, discount_factor)
+
+    if n <= 1:
+        return scores
+
     rloo_advantages = scores - (np.sum(scores, axis=0, keepdims=True) - scores) / (n-1)
     return rloo_advantages
 

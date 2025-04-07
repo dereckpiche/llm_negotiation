@@ -53,9 +53,9 @@ class LocalLLM:
             "max_new_tokens": 300,
             "do_sample": True,
             "temperature": 1.0,
-            "top_k": 1,
+            "top_k": 0,
             "top_p": 1.0,
-            "repetition_penalty": 0.0,
+            "repetition_penalty": 1.0,
         },
         include_value_head=False,
         keep_vllm_during_training=False,
@@ -235,7 +235,6 @@ class LocalLLM:
                     self.model_name,
                     enable_lora=True,
                     max_lora_rank=256,
-                    seed=self.base_seed,
                     dtype=torch.bfloat16,
                     **self.vllm_params,
                 )
@@ -279,8 +278,17 @@ class LocalLLM:
         start_time = time.time()
 
         if self.eval_with == "vllm":
-            self.vllm_sampling_params.seed = self.base_seed + seed_offset
-            print("Seed used for generation: ", self.vllm_sampling_params.seed)
+
+            gen_seed = self.base_seed + seed_offset
+
+            # Ref: https://github.com/vllm-project/vllm/issues/7812
+            random.seed(gen_seed)  # Python random
+            np.random.seed(gen_seed)  # NumPy
+            torch.manual_seed(gen_seed)  # PyTorch (CPU)
+            torch.cuda.manual_seed(gen_seed)  # PyTorch (GPU)
+            torch.cuda.manual_seed_all(gen_seed)  # If using multi-GPU
+
+            print("Seed used for generation: ", gen_seed)
 
             if self.lora_request is not None:
                 model_logger.info(

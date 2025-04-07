@@ -13,7 +13,7 @@ def dond_log_match(
         ):
     """
     Logs the raw match data for each agent and generates HTML visualizations.
-    
+
     Args:
         path (str): Base path to save the data.
         agent_infos (list): List of agent information dictionaries.
@@ -41,12 +41,12 @@ def dond_log_match(
 
         # Log raw match data
         chat_history = agent_info.get("chat_history", [])
-        
+
         # Add game info to the chat history for later processing
         chat_history_with_info = chat_history.copy()
         game_info_message = {"role": "system", "game_info": info, "agent_name": agent_name}
         chat_history_with_info.append(game_info_message)
-        
+
         with open(raw_file, "w") as f:
             json.dump(chat_history_with_info, f, indent=4)
 
@@ -111,6 +111,14 @@ def dond_log_match(
                 margin-bottom: 5px;
                 color: #333333;
             }
+            .round-divider {
+                text-align: center;
+                font-weight: bold;
+                color: #666;
+                margin: 10px 0;
+                border-top: 2px dashed #ccc;
+                padding-top: 5px;
+            }
             .game-info {
                 margin-top: 20px;
                 padding: 15px;
@@ -152,11 +160,22 @@ def dond_log_match(
         """
         # Use chat_history directly instead of extracting via training_data_func
         chat_history = agent_info.get("chat_history", [])
+        prev_round_nb = 1
+
         for message in chat_history:
             # Skip system messages with game_info
             if message.get("role") == "system" and "game_info" in message:
                 continue
-                
+
+            round_nb = message.get("round_nb")
+
+            # Add round divider if round number increases
+            if round_nb is not None and round_nb + 1 != prev_round_nb:
+                html_content += f"""
+                <div class="round-divider">End of Round {prev_round_nb}</div>
+                """
+                prev_round_nb = round_nb + 1
+
             role = "Intermediary ⚙️" if message["role"] == "user" else f"LLM ({agent_name}) 🤖"
             role_class = "user" if message["role"] == "user" else "assistant"
 
@@ -193,5 +212,3 @@ def dond_log_match(
     # Save the HTML content to a file
     with open(html_file, "w") as f:
         f.write(html_content)
-
-        
