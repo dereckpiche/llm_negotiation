@@ -1,19 +1,16 @@
-import os
 import json
+import os
+
 from utils.common_imports import *
+
 from .dond_statistics_funcs import *
 from .dond_training_data_funcs import *
 
-def dond_log_match(
-        path,
-        agent_infos,
-        info,
-        metrics_func=None,
-        metrics_func_args=None
-        ):
+
+def dond_log_match(path, agent_infos, info, metrics_func=None, metrics_func_args=None):
     """
     Logs the raw match data for each agent and generates HTML visualizations.
-    
+
     Args:
         path (str): Base path to save the data.
         agent_infos (list): List of agent information dictionaries.
@@ -35,27 +32,41 @@ def dond_log_match(
 
         # Determine the next available file number for raw data
         raw_files = os.listdir(raw_data_path)
-        raw_numbers = [int(f.split('_')[-1].split('.')[0]) for f in raw_files if f.startswith("match_")]
+        raw_numbers = [
+            int(f.split("_")[-1].split(".")[0])
+            for f in raw_files
+            if f.startswith("match_")
+        ]
         next_raw_number = max(raw_numbers, default=0) + 1
         raw_file = os.path.join(raw_data_path, f"match_{next_raw_number}.json")
 
         # Log raw match data
         chat_history = agent_info.get("chat_history", [])
-        
+
         # Add game info to the chat history for later processing
         chat_history_with_info = chat_history.copy()
-        game_info_message = {"role": "system", "game_info": info, "agent_name": agent_name}
+        game_info_message = {
+            "role": "system",
+            "game_info": info,
+            "agent_name": agent_name,
+        }
         chat_history_with_info.append(game_info_message)
-        
+
         with open(raw_file, "w") as f:
             json.dump(chat_history_with_info, f, indent=4)
 
         # Log metrics if a metrics function is provided
         if metrics_func:
             metrics_files = os.listdir(statistics_path)
-            metrics_numbers = [int(f.split('_')[-1].split('.')[0]) for f in metrics_files if f.startswith("metrics_")]
+            metrics_numbers = [
+                int(f.split("_")[-1].split(".")[0])
+                for f in metrics_files
+                if f.startswith("metrics_")
+            ]
             next_metrics_number = max(metrics_numbers, default=0) + 1
-            metrics_file = os.path.join(statistics_path, f"metrics_{next_metrics_number}.json")
+            metrics_file = os.path.join(
+                statistics_path, f"metrics_{next_metrics_number}.json"
+            )
 
             metrics = globals()[metrics_func](agent_info, info, **metrics_func_args)
             with open(metrics_file, "w") as f:
@@ -111,6 +122,14 @@ def dond_log_match(
                 margin-bottom: 5px;
                 color: #333333;
             }
+            .round-divider {
+                text-align: center;
+                font-weight: bold;
+                color: #666;
+                margin: 10px 0;
+                border-top: 2px dashed #ccc;
+                padding-top: 5px;
+            }
             .game-info {
                 margin-top: 20px;
                 padding: 15px;
@@ -152,16 +171,33 @@ def dond_log_match(
         """
         # Use chat_history directly instead of extracting via training_data_func
         chat_history = agent_info.get("chat_history", [])
+        prev_round_nb = 1
+
         for message in chat_history:
             # Skip system messages with game_info
             if message.get("role") == "system" and "game_info" in message:
                 continue
-                
-            role = "Intermediary ⚙️" if message["role"] == "user" else f"LLM ({agent_name}) 🤖"
+
+            round_nb = message.get("round_nb")
+
+            # Add round divider if round number increases
+            if round_nb is not None and round_nb + 1 != prev_round_nb:
+                html_content += f"""
+                <div class="round-divider">End of Round {prev_round_nb}</div>
+                """
+                prev_round_nb = round_nb + 1
+
+            role = (
+                "Intermediary ⚙️"
+                if message["role"] == "user"
+                else f"LLM ({agent_name}) 🤖"
+            )
             role_class = "user" if message["role"] == "user" else "assistant"
 
             # Escape < and > in the message content
-            message_content = message["content"].replace("<", "&lt;").replace(">", "&gt;")
+            message_content = (
+                message["content"].replace("<", "&lt;").replace(">", "&gt;")
+            )
             message_content = message_content.replace("\n", "<br>")
 
             html_content += f"""
@@ -186,12 +222,14 @@ def dond_log_match(
 
     # Determine the next available file number for HTML
     html_files = os.listdir(html_path)
-    html_numbers = [int(f.split('_')[-1].split('.')[0]) for f in html_files if f.startswith("game_context_")]
+    html_numbers = [
+        int(f.split("_")[-1].split(".")[0])
+        for f in html_files
+        if f.startswith("game_context_")
+    ]
     next_html_number = max(html_numbers, default=0) + 1
     html_file = os.path.join(html_path, f"game_context_{next_html_number}.html")
 
     # Save the HTML content to a file
     with open(html_file, "w") as f:
         f.write(html_content)
-
-        

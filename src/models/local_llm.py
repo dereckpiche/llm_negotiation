@@ -53,9 +53,9 @@ class LocalLLM:
             "max_new_tokens": 300,
             "do_sample": True,
             "temperature": 1.0,
-            "top_k": 1,
+            "top_k": 0,
             "top_p": 1.0,
-            "repetition_penalty": 0.0,
+            "repetition_penalty": 1.0,
         },
         include_value_head=False,
         keep_vllm_during_training=False,
@@ -97,6 +97,7 @@ class LocalLLM:
             top_k=-1 if generation_args["top_k"] == 0.0 else generation_args["top_k"],
             top_p=generation_args["top_p"],
             max_tokens=generation_args["max_new_tokens"],
+            repetition_penalty=generation_args["repetition_penalty"],
         )
         self.lora_config = LoraConfig(**lora_args)
         self.active_adapters = {adapter_name: False for adapter_name in adapter_names}
@@ -258,7 +259,7 @@ class LocalLLM:
         gpu_memory = (total_memory - free_memory) / (1024**3)
         memory_logger.info(f"{message}: GPU memory allocated: {gpu_memory:.2f} GB")
 
-    def prompt(self, contexts, seed_offset=0) -> str:
+    def prompt(self, contexts) -> str:
         """
         Generates a response from the model based on the provided contexts.
 
