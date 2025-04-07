@@ -186,7 +186,7 @@ def process_policy_inputs(models, policy_inputs, seed_offset=0):
                 input_mapping.append((match_id, agent_id))
 
         # Get batch outputs
-        batch_outputs = model.prompt(flat_inputs, seed_offset)
+        batch_outputs = model.prompt(flat_inputs)
 
         # Reconstruct nested structure
         for (match_id, agent_id), output in zip(input_mapping, batch_outputs):
