@@ -278,7 +278,6 @@ class LocalLLM:
         start_time = time.time()
 
         if self.eval_with == "vllm":
-
             gen_seed = self.base_seed + seed_offset
 
             # Ref: https://github.com/vllm-project/vllm/issues/7812

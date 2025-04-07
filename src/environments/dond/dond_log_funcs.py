@@ -1,16 +1,13 @@
-import os
 import json
+import os
+
 from utils.common_imports import *
+
 from .dond_statistics_funcs import *
 from .dond_training_data_funcs import *
 
-def dond_log_match(
-        path,
-        agent_infos,
-        info,
-        metrics_func=None,
-        metrics_func_args=None
-        ):
+
+def dond_log_match(path, agent_infos, info, metrics_func=None, metrics_func_args=None):
     """
     Logs the raw match data for each agent and generates HTML visualizations.
 
@@ -35,7 +32,11 @@ def dond_log_match(
 
         # Determine the next available file number for raw data
         raw_files = os.listdir(raw_data_path)
-        raw_numbers = [int(f.split('_')[-1].split('.')[0]) for f in raw_files if f.startswith("match_")]
+        raw_numbers = [
+            int(f.split("_")[-1].split(".")[0])
+            for f in raw_files
+            if f.startswith("match_")
+        ]
         next_raw_number = max(raw_numbers, default=0) + 1
         raw_file = os.path.join(raw_data_path, f"match_{next_raw_number}.json")
 
@@ -44,7 +45,11 @@ def dond_log_match(
 
         # Add game info to the chat history for later processing
         chat_history_with_info = chat_history.copy()
-        game_info_message = {"role": "system", "game_info": info, "agent_name": agent_name}
+        game_info_message = {
+            "role": "system",
+            "game_info": info,
+            "agent_name": agent_name,
+        }
         chat_history_with_info.append(game_info_message)
 
         with open(raw_file, "w") as f:
@@ -53,9 +58,15 @@ def dond_log_match(
         # Log metrics if a metrics function is provided
         if metrics_func:
             metrics_files = os.listdir(statistics_path)
-            metrics_numbers = [int(f.split('_')[-1].split('.')[0]) for f in metrics_files if f.startswith("metrics_")]
+            metrics_numbers = [
+                int(f.split("_")[-1].split(".")[0])
+                for f in metrics_files
+                if f.startswith("metrics_")
+            ]
             next_metrics_number = max(metrics_numbers, default=0) + 1
-            metrics_file = os.path.join(statistics_path, f"metrics_{next_metrics_number}.json")
+            metrics_file = os.path.join(
+                statistics_path, f"metrics_{next_metrics_number}.json"
+            )
 
             metrics = globals()[metrics_func](agent_info, info, **metrics_func_args)
             with open(metrics_file, "w") as f:
@@ -176,11 +187,17 @@ def dond_log_match(
                 """
                 prev_round_nb = round_nb + 1
 
-            role = "Intermediary ⚙️" if message["role"] == "user" else f"LLM ({agent_name}) 🤖"
+            role = (
+                "Intermediary ⚙️"
+                if message["role"] == "user"
+                else f"LLM ({agent_name}) 🤖"
+            )
             role_class = "user" if message["role"] == "user" else "assistant"
 
             # Escape < and > in the message content
-            message_content = message["content"].replace("<", "&lt;").replace(">", "&gt;")
+            message_content = (
+                message["content"].replace("<", "&lt;").replace(">", "&gt;")
+            )
             message_content = message_content.replace("\n", "<br>")
 
             html_content += f"""
@@ -205,7 +222,11 @@ def dond_log_match(
 
     # Determine the next available file number for HTML
     html_files = os.listdir(html_path)
-    html_numbers = [int(f.split('_')[-1].split('.')[0]) for f in html_files if f.startswith("game_context_")]
+    html_numbers = [
+        int(f.split("_")[-1].split(".")[0])
+        for f in html_files
+        if f.startswith("game_context_")
+    ]
     next_html_number = max(html_numbers, default=0) + 1
     html_file = os.path.join(html_path, f"game_context_{next_html_number}.html")
 
