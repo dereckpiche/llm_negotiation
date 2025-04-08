@@ -1,7 +1,7 @@
 hydra:
   job:
     chdir: false
-    name: dond_simple_optim_debug
+    name: dond_lr1e6
   run:
     dir: ${oc.env:EXP_OUT}/${hydra.job.name}/
 
@@ -31,10 +31,10 @@ common_agent_kwargs: &common_agent_kwargs
       The points of each agent in every round is determined by multiplying the number of items they receive by the utility score of each of their items.
       At the end of each round, both agents must submit a finalization specifying how they wish to split the items. If the two finalizations do not match, neither agent earns points for that round.
   message_mechanics_prompt: |
-    Your messages must be sent in the <message>your-message-here</message> format, with no content outside the tags. They should be concise - less than 400 characters.
+    Your messages must be sent in the <message> your-message-here </message> format, with no content outside the tags. They should be concise - less than 400 characters.
   finalization_mechanics_prompt: |
     Your finalizations must be sent in this exact format:
-      <finalize> {"i_take": { {finalize_sample_i_take} }, "other_agent_gets": { {finalize_sample_other} }}</finalize>, with no content outside the tags. If the second agent's finalization is not complementary to the first agent's finalization, it is equivalent to a rejection. It is paramount to follow the formatting requirements perfectly in order to submit a valid finalization.
+      <finalize> {"i_take": { {finalize_sample_i_take} }, "other_agent_gets": { {finalize_sample_other} }} </finalize>, with no content outside the tags. If the second agent's finalization is not complementary to the first agent's finalization, it is equivalent to a rejection. It is paramount to follow the formatting requirements perfectly in order to submit a valid finalization.
   dond_version_specificities: |
     In this version of the game, each round is played as follows:
     1) One of the two agents is assigned as the starting agent.
@@ -57,6 +57,7 @@ common_agent_kwargs: &common_agent_kwargs
     The previous round has ended.
     In the last round, you earned {last_round_points_computed}.
     The other agent earned {coagent_last_round_points_computed_other}.
+
     For this new round, the items available are {quantities} and your utility scores for each item category are {values}.
   agent_with_first_move_prompt: |
    You are the starting agent.

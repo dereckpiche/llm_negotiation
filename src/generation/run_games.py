@@ -35,7 +35,7 @@ def run_batched_matches(
         match_id = id(match)
 
         env = match["env"]
-        initial_observations = env.reset()
+        initial_observations = env.reset(iteration_number=i)
 
         active_matches[match_id] = {
             "env": env,
