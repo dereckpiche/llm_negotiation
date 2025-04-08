@@ -159,16 +159,18 @@ common_models_init_args: &common_models_init_args
   generation_args:
     max_new_tokens: 120
     do_sample: True
-    temperature: 1.0
+    # TODO: remember to tie the temperature to the training temperature
+    temperature: 0.7
     top_k: 0.0
     top_p: 1.0
-    repetition_penalty: 0.0
+    repetition_penalty: 1.0
 
   vllm_params:
     max_model_len: 13e3
     gpu_memory_utilization: 0.45
     enable_prefix_caching: True
     enable_sleep_mode: True
+    # enforce_eager: True
 
   keep_vllm_during_training: False
   keep_hf_during_training: True
@@ -216,10 +218,10 @@ training:
         train_func: train_reinforce_main
         train_func_args:
           gradient_checkpointing: false
-          temperature: 1
+          temperature: 0.7
           entropy_coef: 0.00
           kl_loss_coef: 0.00
-          mb_size: 4
+          mb_size: 1
         train_data_args:
           average_score_over_message: False
 
@@ -227,10 +229,10 @@ training:
         train_func: train_reinforce_main
         train_func_args:
           gradient_checkpointing: false
-          temperature: 1
+          temperature: 0.7
           entropy_coef: 0.00
           kl_loss_coef: 0.00
-          mb_size: 4
+          mb_size: 1
         train_data_args:
           average_score_over_message: False
 

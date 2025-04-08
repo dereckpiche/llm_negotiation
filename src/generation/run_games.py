@@ -26,6 +26,7 @@ def run_batched_matches(
         nb_parallel_matches = len(matches)
 
     pending_matches = matches.copy()
+    # it seems matches is not used anywhere else, we can just use matches inplace of pending_matches
     active_matches = {}
 
     # Initial population of active matches
@@ -101,11 +102,11 @@ def run_batched_matches(
             ready_agents = set(pending_actions.keys())
 
             # Only step when all agents (with action required) are ready
-
             if action_required_agents == ready_agents:
                 # Take step
                 env = match_data["env"]
                 new_observations, done, info = env.step(pending_actions)
+                # print(f"new observations: {new_observations}")
                 match_data["observations"] = new_observations
                 match_data["action_required_agents"] = list(new_observations.keys())
                 match_data["pending_actions"] = {}
@@ -129,10 +130,12 @@ def run_batched_matches(
         # Remove completed matches and add new ones
         for match_id in completed_matches:
             del active_matches[match_id]
+            # print(f"finished match {match_id}")
 
             if pending_matches:
                 new_match = pending_matches.pop(0)
                 new_match_id = id(new_match)
+                # print(f"adding new match {new_match_id} to active matches")
 
                 env = new_match["env"]
                 initial_observations = env.reset()
@@ -150,6 +153,7 @@ def run_batched_matches(
                     "log_func_args": new_match["log_func_args"],
                 }
 
+    # print(f"Finished running {len(matches)} matches.")
     return None
 
 

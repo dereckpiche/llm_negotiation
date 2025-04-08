@@ -188,7 +188,7 @@ def reinforce_train(
     model_logger.info(f"loss: {np.mean(loss_dict['loss']):.4f}")
     model, optimizer = model_accelerator.clear(model, optimizer)
     del model, optimizer
-    return
+    return {"loss": np.mean(loss_dict["loss"])}
 
 
 def compute_kl_div(

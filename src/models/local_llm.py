@@ -271,6 +271,7 @@ class LocalLLM:
         """
         adapter_path = self.adapter_paths[self.current_adapter_name]
         # print(f"len of contexts and current adapter : {len(contexts), self.current_adapter_name}")
+        # print(f"sample context : {contexts[0]}")
         if len(contexts) == 0:
             return []
 

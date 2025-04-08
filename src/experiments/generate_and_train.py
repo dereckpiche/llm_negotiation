@@ -122,32 +122,11 @@ def generate_and_train(cfg, base_seed):
                     **training_data_func_args,
                 )
 
-            # Update agent statistics
-            agent_stats_folder = os.path.join(
-                output_directory, "statistics", agent_name
-            )
-            os.makedirs(agent_stats_folder, exist_ok=True)
-            agent_stats_file = os.path.join(
-                agent_stats_folder, f"{agent_name}_stats.jsonl"
-            )
-
-            update_agent_statistics(
-                input_path=os.path.join(it_folder, agent_name, "statistics"),
-                output_file=agent_stats_file,
-            )
-
-            generate_agent_stats_plots(
-                global_stats_path=agent_stats_file,
-                matplotlib_log_dir=os.path.join(agent_stats_folder, "matplotlib"),
-                tensorboard_log_dir=os.path.join(agent_stats_folder, "tensorboard"),
-                wandb_log_dir=os.path.join(agent_stats_folder, "wandb"),
-            )
-
         logging_end_time = time.time()
 
         # Train models
         training_start_time = time.time()
-
+        train_output_dict = {}
         for model_name, model in models.items():
             if hasattr(model, "adapter_paths"):
                 for adapter_name in model.adapter_paths.keys():
@@ -166,7 +145,7 @@ def generate_and_train(cfg, base_seed):
                         adapter_args = cfg["training"][model_name]["adapters"][
                             adapter_name
                         ]
-                        train_main(
+                        train_output = train_main(
                             hf_model=model,
                             paths=data_paths,
                             train_func=adapter_args["train_func"],
@@ -174,15 +153,55 @@ def generate_and_train(cfg, base_seed):
                             train_data_args=adapter_args["train_data_args"],
                             output_path=it_folder,
                         )
+                        train_output_dict[policy_id] = train_output
 
         training_end_time = time.time()
+
+        initial_logging_time = logging_end_time - logging_start_time
+        logging_start_time = time.time()
+        # Moving it here is better since we can plot for every k steps to speedup training
+        for agent in agents.values():
+            train_output = train_output_dict[agent.policy_id]
+            agent_name = agent.agent_name
+            # Update agent statistics
+            agent_stats_folder = os.path.join(
+                output_directory, "statistics", agent_name
+            )
+            os.makedirs(agent_stats_folder, exist_ok=True)
+            agent_stats_file = os.path.join(
+                agent_stats_folder, f"{agent_name}_stats.jsonl"
+            )
+
+            update_agent_statistics(
+                input_path=os.path.join(it_folder, agent_name, "statistics"),
+                output_file=agent_stats_file,
+            )
+            with open(agent_stats_file, "r") as f:
+                agent_stats = json.load(f)
+            for key in train_output:
+                if key in agent_stats:
+                    agent_stats[key].append(train_output[key])
+                else:
+                    agent_stats[key] = [train_output[key]]
+            with open(agent_stats_file, "w") as f:
+                json.dump(agent_stats, f, indent=4)
+
+            generate_agent_stats_plots(
+                global_stats_path=agent_stats_file,
+                matplotlib_log_dir=os.path.join(agent_stats_folder, "matplotlib"),
+                tensorboard_log_dir=os.path.join(agent_stats_folder, "tensorboard"),
+                wandb_log_dir=os.path.join(agent_stats_folder, "wandb"),
+            )
+        logging_end_time = time.time()
 
         iteration_end_time = time.time()
 
         # Timing calculations
         iteration_duration = iteration_end_time - iteration_start_time
         generation_duration = generation_end_time - generation_start_time
-        logging_duration = logging_end_time - logging_start_time
+        logging_duration = (
+            logging_end_time - logging_start_time
+        ) + initial_logging_time
         training_duration = training_end_time - training_start_time
 
         generation_percentage = (generation_duration / iteration_duration) * 100
