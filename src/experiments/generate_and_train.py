@@ -161,6 +161,7 @@ def generate_and_train(cfg, base_seed):
 
         initial_logging_time = logging_end_time - logging_start_time
         logging_start_time = time.time()
+
         # TODO: Moving it here is better since we can plot for every k steps to speedup training
         for agent in agents.values():
             train_output = train_output_dict[agent.policy_id]
@@ -178,22 +179,19 @@ def generate_and_train(cfg, base_seed):
                 input_path=os.path.join(it_folder, agent_name, "statistics"),
                 output_file=agent_stats_file,
             )
+
             with open(agent_stats_file, "r") as f:
                 agent_stats = json.load(f)
+
             for key in train_output:
                 if key in agent_stats:
                     agent_stats[key].append(train_output[key])
                 else:
                     agent_stats[key] = [train_output[key]]
+
             with open(agent_stats_file, "w") as f:
                 json.dump(agent_stats, f, indent=4)
 
-            generate_agent_stats_plots(
-                global_stats_path=agent_stats_file,
-                matplotlib_log_dir=os.path.join(agent_stats_folder, "matplotlib"),
-                tensorboard_log_dir=os.path.join(agent_stats_folder, "tensorboard"),
-                wandb_log_dir=os.path.join(agent_stats_folder, "wandb"),
-            )
         logging_end_time = time.time()
 
         iteration_end_time = time.time()
@@ -254,6 +252,26 @@ def generate_and_train(cfg, base_seed):
             pickle.dump(random_state_dict, f)
 
         print("Saved random states!")
+
+    plotting_start_time = time.time()
+
+    for agent_name in cfg["matches"]["env_kwargs"]["agents"]:
+        agent_stats_folder = os.path.join(output_directory, "statistics", agent_name)
+
+        agent_stats_file = os.path.join(agent_stats_folder, f"{agent_name}_stats.jsonl")
+
+        generate_agent_stats_plots(
+            global_stats_path=agent_stats_file,
+            matplotlib_log_dir=os.path.join(agent_stats_folder, "matplotlib"),
+            tensorboard_log_dir=os.path.join(agent_stats_folder, "tensorboard"),
+            wandb_log_dir=os.path.join(agent_stats_folder, "wandb"),
+        )
+
+    plotting_end_time = time.time()
+
+    plotting_time = plotting_end_time - plotting_start_time
+
+    compute_logger.info(f"Total time taken for plotting: {format_time(plotting_time)}")
 
     total_end_time = time.time()
     total_duration = total_end_time - total_start_time

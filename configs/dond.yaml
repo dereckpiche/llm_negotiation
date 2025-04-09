@@ -136,6 +136,8 @@ matches:
         agent_name: "bob"
         policy_id: "llama/ad_bob"
 
+temperature: 1
+
 common_models_init_args: &common_models_init_args
   max_model_length: 10000
   include_value_head: false
@@ -159,7 +161,7 @@ common_models_init_args: &common_models_init_args
   generation_args:
     max_new_tokens: 120
     do_sample: True
-    temperature: 1.0
+    temperature: ${temperature}
     top_k: 0
     top_p: 1.0
     repetition_penalty: 1
@@ -207,7 +209,7 @@ common_training_agent_kwargs: &common_training_agent_kwargs
 common_adapter_kwargs: &common_adapter_kwargs
   train_func_args:
     gradient_checkpointing: true
-    temperature: 1
+    temperature: ${temperature}
     entropy_coef: 0.0
     kl_loss_coef: 0.0
   train_data_args:
