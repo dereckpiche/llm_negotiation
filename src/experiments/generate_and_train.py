@@ -83,7 +83,9 @@ def generate_and_train(cfg, base_seed):
         nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
         for i in range(nb_matches):
             matches.append(
-                create_blank_match(cfg, seed_offset=(iteration * nb_matches) + i)
+                create_blank_match(
+                    cfg, seed_offset=(iteration * nb_matches) + i, game_index=i
+                )
             )
         agents = matches[0]["agents"]
         agent_names = agents.keys()
@@ -159,7 +161,7 @@ def generate_and_train(cfg, base_seed):
 
         initial_logging_time = logging_end_time - logging_start_time
         logging_start_time = time.time()
-        # Moving it here is better since we can plot for every k steps to speedup training
+        # TODO: Moving it here is better since we can plot for every k steps to speedup training
         for agent in agents.values():
             train_output = train_output_dict[agent.policy_id]
             agent_name = agent.agent_name
@@ -280,7 +282,7 @@ def init_models(cfg, base_seed, output_directory):
     return models
 
 
-def create_blank_match(cfg, seed_offset=0):
+def create_blank_match(cfg, seed_offset=0, game_index=0):
     """
     Initializes a match for any game, using a functional approach to instantiate
     environment and agent classes based on configuration.
@@ -297,7 +299,6 @@ def create_blank_match(cfg, seed_offset=0):
     # Create agents using the class specified in config
     agent_class_name = cfg["matches"]["agent_class"]
     AgentClass = globals()[agent_class_name]
-    # import pdb; pdb.set_trace()
     for agent_name in cfg["matches"]["agents"].keys():
         agents[agent_name] = AgentClass(
             **cfg["matches"]["agents"][agent_name]["kwargs"]
@@ -318,7 +319,9 @@ def create_blank_match(cfg, seed_offset=0):
         env_kwargs["random_setup_kwargs"] = setup_kwargs
 
     # Create match with instantiated environment and agents
-    env = EnvClass(random_seed=seed_offset, **env_kwargs)  # Pass the unique seed here
+    env = EnvClass(
+        game_index=game_index, random_seed=seed_offset, **env_kwargs
+    )  # Pass the unique seed here
 
     # Add the logging function and args to the match dictionary
     match = {
