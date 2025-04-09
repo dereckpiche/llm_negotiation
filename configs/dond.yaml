@@ -1,15 +1,15 @@
 hydra:
   run:
-    dir: "${oc.env:SCRATCH}/llm_negotiation/results/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}.name}"
+    dir: "${oc.env:SCRATCH}/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}"
   job:
     chdir: false
 
 experiment:
-  name: "small_test_for_adv_align"
+  name: "debug_trainer"
   method: generate_and_train
   description: "no description"
   nb_epochs: 1000
-  nb_matches_per_iteration: 16
+  nb_matches_per_iteration: 32
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: true
@@ -109,7 +109,7 @@ matches:
 
   env_kwargs:
     agents: ['alice', 'bob']
-    rounds_per_game: 16
+    rounds_per_game: 1
     max_messages: 1
     min_messages: 1
     max_chars_per_message: 450
@@ -128,19 +128,19 @@ matches:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "alice"
-        policy_id: "llama/ad_alice"
+        policy_id: "llama/full"
 
     bob:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "bob"
-        policy_id: "llama/ad_bob"
+        policy_id: "llama/full"
 
 common_models_init_args: &common_models_init_args
   max_model_length: 10000
   include_value_head: false
   device: "cuda"
-  model_name: "/network/weights/llama.var/llama_3.1/Meta-Llama-3.1-8B-Instruct"
+  model_name: "google/gemma-3-4b-it"
   pretrained_args:
     pretrained_model_name_or_path: ${models.llama.init_args.model_name}
     torch_dtype: "bfloat16"
@@ -152,7 +152,7 @@ common_models_init_args: &common_models_init_args
   lora_args:
     task_type: CAUSAL_LM
     r: 64
-    lora_alpha: 32
+    lora_alpha: 128
     lora_dropout: 0.0
     target_modules: "all-linear"
 
@@ -178,7 +178,7 @@ common_models_init_args: &common_models_init_args
   train_with: "hf"
   optimizer_method: "AdamW"
   optimizer_kwargs:
-    lr: 1e-6
+    lr: 1e-3
     weight_decay: 0.0
 
 models:
@@ -188,7 +188,7 @@ models:
     init_args:
       <<: *common_models_init_args
       name: 'llama'
-      adapter_names: ['ad_alice', 'ad_bob']
+      adapter_names: ['full', 'ad_alice', 'ad_bob']
 
 
 ####################################################################################################
@@ -223,6 +223,9 @@ training:
 
   llama:
     adapters:
+      full:
+        train_func: train_reinforce_main
+        <<: *common_adapter_kwargs
       ad_alice:
         train_func: train_reinforce_main
         <<: *common_adapter_kwargs

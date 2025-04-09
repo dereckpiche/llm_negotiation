@@ -55,10 +55,10 @@ def conversation_to_rl_data(tokenizer,
             segment_length = next_position - current_position
 
             if average_score_over_message:
-                score_value = score_value / (segment_length - 4)
+                score_value = score_value / (segment_length )
 
-            score_values.extend([0] * 4 + [score_value] * (segment_length - 4))
-            output_mask.extend([0] * 4 + [mask_value] * (segment_length - 4))
+            score_values.extend( [score_value] * (segment_length ))
+            output_mask.extend(  [mask_value] * (segment_length ))
 
         else:
             mask_value = 0 # only train on messages from the assistant

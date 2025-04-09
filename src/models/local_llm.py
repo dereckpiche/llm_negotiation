@@ -100,6 +100,11 @@ class LocalLLM:
             repetition_penalty=generation_args["repetition_penalty"],
         )
         self.lora_config = LoraConfig(**lora_args)
+        
+        # Add 'full' to adapter_names if not already present
+        if "full" not in adapter_names:
+            adapter_names = adapter_names + ["full"]
+            
         self.active_adapters = {adapter_name: False for adapter_name in adapter_names}
         self.current_adapter_name = None
         self.hf_model = None
@@ -132,7 +137,14 @@ class LocalLLM:
         self.hf_model = AutoModelForCausalLM.from_pretrained(
             **self.pretrained_args, quantization_config=self.bits_and_bytes_configs
         )
+        
+        # Setup adapters
         for adapter_name in adapter_names:
+            if adapter_name == "full":
+                # For the 'full' adapter, we don't add a LoRA adapter 
+                # as we'll be training the whole model
+                continue
+                
             adapter_path = self.adapter_paths[adapter_name]
             if os.path.exists(adapter_path):
                 model_logger.info(f"Loading adapter {adapter_name} from {adapter_path}")
@@ -141,9 +153,30 @@ class LocalLLM:
                 self.adapter_eval_ids[adapter_name] = None
             else:
                 self.hf_model.add_adapter(self.lora_config, adapter_name)
+                
         self.optimizer = None
         self.adapter_optimizers = {}
+        
         for adapter_name in adapter_names:
+            if adapter_name == "full":
+                # For the 'full' adapter, we create an optimizer for all model parameters
+                full_model_optimizer = getattr(torch.optim, optimizer_method)(
+                    self.hf_model.parameters(), **optimizer_kwargs
+                )
+                self.adapter_optimizers[adapter_name] = full_model_optimizer
+                # Check if there's a saved optimizer state for the full model
+                optimizer_state_path = os.path.join(
+                    self.adapter_paths[adapter_name], "optimizer.pt"
+                )
+                if os.path.exists(optimizer_state_path):
+                    model_logger.info(
+                        f"Loading optimizer state for full model from {optimizer_state_path}"
+                    )
+                    self.adapter_optimizers[adapter_name].load_state_dict(
+                        torch.load(optimizer_state_path)
+                    )
+                continue
+                
             self.hf_model.set_adapter(adapter_name)
             # set_adapters has the correct trainable parameters.
             self.adapter_optimizers[adapter_name] = getattr(
@@ -180,10 +213,20 @@ class LocalLLM:
 
         self.current_adapter_name = adapter_name
         adapter_path = self.adapter_paths[self.current_adapter_name]
+        
         if self.train_with == "hf":
-            self.hf_model.set_adapter(adapter_name)
-            # set the right optimizer for adapter_name
+            if adapter_name == "full":
+                # For full adapter, set all parameters to be trainable
+                model_logger.info("Setting up full model training (no LoRA)")
+                for param in self.hf_model.parameters():
+                    param.requires_grad = True
+            else:
+                # For LoRA adapters, use the usual approach
+                self.hf_model.set_adapter(adapter_name)
+                
+            # Set the right optimizer for adapter_name
             self.optimizer = self.adapter_optimizers[adapter_name]
+            
             # Log trainable parameters
             total_params = sum(p.numel() for p in self.hf_model.parameters())
             trainable_params = sum(
@@ -209,7 +252,7 @@ class LocalLLM:
         """
         model_logger.info(f"Preparing adapter {adapter_name} for evaluation.")
 
-        if self.adapter_eval_ids[adapter_name] != self.adapter_train_ids[adapter_name]:
+        if adapter_name != "full" and self.adapter_eval_ids[adapter_name] != self.adapter_train_ids[adapter_name]:
             # TODO: Check with Dereck on the logic behind the following code
             self.adapter_eval_ids[adapter_name] = self.adapter_train_ids[adapter_name]
             uuid_obj = self.adapter_eval_ids[adapter_name]
@@ -223,6 +266,9 @@ class LocalLLM:
                 )
             else:
                 self.lora_request = None
+        elif adapter_name == "full":
+            # For the full adapter, we don't use LoRA
+            self.lora_request = None
 
         self.current_adapter_name = adapter_name
 
@@ -234,7 +280,7 @@ class LocalLLM:
                 # TODO (Muqeeth): check if its okay to have seed fixed since we update lora parameters anyway.
                 self.vllm_model = LLM(
                     self.model_name,
-                    enable_lora=True,
+                    enable_lora=adapter_name != "full",
                     max_lora_rank=256,
                     seed=self.base_seed,
                     dtype=torch.bfloat16,
@@ -288,7 +334,7 @@ class LocalLLM:
             # print("Seed used for generation: ", self.vllm_sampling_params.seed)
             self.vllm_sampling_params.seed = None
 
-            if self.lora_request is not None:
+            if self.lora_request is not None and self.current_adapter_name != "full":
                 model_logger.info(
                     f"Generating using VLLM with LoRA. Current LoRA request ID is {self.lora_request.adapter_id}. Current LoRA adapter path is {self.lora_request.path}."
                 )
@@ -298,7 +344,7 @@ class LocalLLM:
                     lora_request=self.lora_request,
                 )
             else:
-                model_logger.info("Generating using VLLM without LoRA.")
+                model_logger.info(f"Generating using VLLM {'with full model' if self.current_adapter_name == 'full' else 'without LoRA'}.")
                 decoded = self.vllm_model.generate(
                     texts, sampling_params=self.vllm_sampling_params
                 )
@@ -322,15 +368,17 @@ class LocalLLM:
         already exists, it deletes the existing directory before saving.
         """
         adapter_path = self.adapter_paths[self.current_adapter_name]
-
-        # if os.path.exists(adapter_path):
-        #     shutil.rmtree(adapter_path)
-        #     logging.info(f"Existing directory '{adapter_path}' deleted.")
-
         os.makedirs(adapter_path, exist_ok=True)
-        # Save only the LoRA weights
-        self.hf_model.save_pretrained(adapter_path)
-        model_logger.info(f"LoRA weights saved to {adapter_path}")
+        
+        if self.current_adapter_name == "full":
+            # For the full adapter, save the entire model
+            model_logger.info(f"Saving full model to {adapter_path}")
+            self.hf_model.save_pretrained(adapter_path)
+        else:
+            # For LoRA adapters, save only the adapter weights
+            model_logger.info(f"Saving LoRA weights to {adapter_path}")
+            self.hf_model.save_pretrained(adapter_path)
+            
         # Save optimizer state
         optimizer_state_path = os.path.join(adapter_path, "optimizer.pt")
         torch.save(self.optimizer.state_dict(), optimizer_state_path)
