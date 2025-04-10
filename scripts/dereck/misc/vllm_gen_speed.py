@@ -8,7 +8,7 @@ vllm_params = {
     "dtype": torch.bfloat16,
     "enable_lora": True,
     "max_model_len": 13000,
-    "gpu_memory_utilization": 0.45,
+    "gpu_memory_utilization": 0.9,
     "device": torch.device("cuda:0"),
     "enforce_eager": False,  # Default False
     "block_size": 128,  # Default: 128
@@ -19,7 +19,7 @@ vllm_params = {
 }
 
 
-experiments_to_run = [3]
+experiments_to_run = [4]
 
 ##############################################################################
 # Experiment 3: single vLLM instance
@@ -103,7 +103,8 @@ if 2 in experiments_to_run:
 
     # This took 1.40 minutes to run vllm WITH "enable_prefix_caching": True, total_games = 16, parallel_games = 16, nb_rounds = 16, nb_turns=2, intro_prompt_length=800, intermediary_length=200, response_lengths=[100, 20]
 
-    # This took 2.09 minutes to run vllm WITH "enable_prefix_caching": True, total_games = 32, parallel_games = 32, nb_rounds = 16, nb_turns=2, intro_prompt_length=800, intermediary_length=200, response_lengths=[100, 20]
+    # This took 2.09 minutes to run vllm WITH "enable_prefix_caching": True, total_games = 32, parallel_games = 32, nb_rounds = 16, nb_turns=2, intro_prompt_length=800, intermediary_length=200, response_lengths=[100, 20]ef
+    
 
 
 ##############################################################################
@@ -184,6 +185,115 @@ if 3 in experiments_to_run:
     import math
     tokens_generated = total_games * nb_rounds * sum(response_lengths)
     print(f"Each adapter ran at an average of {tokens_generated / (etime - stime) / 2} tokens/second.")
+
+##############################################################################
+# Experiment 4: Two vLLM instances on different GPUs using multiprocessing
+##############################################################################
+
+if 4 in experiments_to_run:
+    print("=" * 150)
+    print("Experiment 4: Conversation Speeds with two vLLM instances on different GPUs, running...")
+    
+    import multiprocessing
+    import os
+    import numpy as np
+    
+    # Function to run vLLM on a specific GPU
+    def run_vllm_process(gpu_id, queue_in, queue_out):
+        # Set environment variable to restrict GPU visibility
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+        
+        # Create vLLM instance with modified parameters for this GPU
+        local_vllm_params = vllm_params.copy()
+        local_vllm_params["device"] = torch.device("cuda:0")  # Always cuda:0 in isolated process
+        
+        # Initialize vLLM
+        llm_agent = LLM(**local_vllm_params)
+        
+        # Wait for and process requests
+        while True:
+            task = queue_in.get()
+            if task is None:  # Poison pill to terminate
+                break
+                
+            task_id, contexts, max_tokens = task
+            
+            # Generate responses
+            responses = llm_agent.generate(contexts, sampling_params=SamplingParams(
+                skip_special_tokens=True, 
+                max_tokens=max_tokens
+            ))
+            responses = [r.outputs[0].text for r in responses]
+            
+            # Send results back
+            queue_out.put((task_id, responses))
+    
+    # Set up experiment parameters
+    total_games = 32
+    parallel_games = 32
+    nb_rounds = 16
+    nb_turns = 2
+    intro_prompt_length = 800
+    intermediary_length = 200
+    response_lengths = [100, 20]
+    
+    # Create initial contexts
+    full_contexts_1 = [str(i) + intro_prompt_length*"0" for i in range(total_games)]
+    full_contexts_2 = [str(i) + intro_prompt_length*"1" for i in range(total_games)]
+    
+    # Create queues for inter-process communication
+    q1_in = multiprocessing.Queue()
+    q1_out = multiprocessing.Queue()
+    q2_in = multiprocessing.Queue()
+    q2_out = multiprocessing.Queue()
+    
+    # Start processes on separate GPUs
+    p1 = multiprocessing.Process(target=run_vllm_process, args=(0, q1_in, q1_out))
+    p2 = multiprocessing.Process(target=run_vllm_process, args=(1, q2_in, q2_out))
+    
+    p1.start()
+    p2.start()
+    
+    print("Experiment 4 running")
+    stime = time.time()
+    
+    for i in range(0, int(total_games/parallel_games)):
+        contexts_1 = full_contexts_1[i*parallel_games: (i+1)*parallel_games]
+        contexts_2 = full_contexts_2[i*parallel_games: (i+1)*parallel_games]
+        
+        for j in range(nb_rounds):
+            for k in range(nb_turns):
+                # Send requests to both processes
+                q1_in.put((f"r{j}t{k}", contexts_1, response_lengths[k]))
+                q2_in.put((f"r{j}t{k}", contexts_2, response_lengths[k]))
+                
+                # Get responses from both processes
+                _, responses_1 = q1_out.get()
+                _, responses_2 = q2_out.get()
+                
+                # Update contexts
+                contexts_1 = [c+r for c,r in zip(contexts_1, responses_1)]
+                contexts_1 = [c+intermediary_length*"0" for c in contexts_1]
+                
+                contexts_2 = [c+r for c,r in zip(contexts_2, responses_2)]
+                contexts_2 = [c+intermediary_length*"1" for c in contexts_2]
+    
+    # Send poison pills to terminate processes
+    q1_in.put(None)
+    q2_in.put(None)
+    
+    # Join processes
+    p1.join()
+    p2.join()
+    
+    etime = time.time()
+    print(f"Experiment 4 took {(etime-stime)/60} minutes.")
+    
+    tokens_generated = total_games * nb_rounds * sum(response_lengths)
+    print(f"Each model ran at an average of {tokens_generated/(etime-stime)/2} tokens/second.")
+
+# Update list of available experiments
+experiments_to_run = [4]  # Change this to run the new experiment
 
 
 
