@@ -6,11 +6,12 @@ import os
 import numpy as np
 from transformers import AutoModelForCausalLM
 
+
 # see https://docs.vllm.ai/en/latest/serving/engine_args.html
 vllm_params = {
     "model": "google/gemma-3-4b-it",
     "dtype": torch.bfloat16,
-    "enable_lora": True,
+    "enable_sleep_mode": True,
     "max_model_len": 13000,
     "gpu_memory_utilization": 0.9,
     "device": torch.device("cuda:0"),
@@ -26,7 +27,7 @@ vllm_params = {
 # Set up experiment parameters
 total_games = 32
 parallel_games = 32
-nb_rounds = 4
+nb_rounds = 1
 nb_turns = 2
 intro_prompt_length = 800
 intermediary_length = 200
@@ -37,6 +38,7 @@ num_inference_iterations = 3  # Define number of iterations
 def run_vllm_process(gpu_id, queue_in, queue_out):
     # Set environment variable to restrict GPU visibility
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+    os.environ["VLLM_USE_V1"] = '0'
     
     # Create vLLM instance with modified parameters for this GPU
     local_vllm_params = vllm_params.copy()
@@ -159,6 +161,9 @@ for k in range(num_inference_iterations):
     print("Moving HuggingFace models back to CPU")
     hf_model1.to("cpu")
     hf_model2.to("cpu")
+
+    print(f"GPU 0 memory after HF operations: {torch.cuda.memory_allocated(0) / (1024**3):.2f} GB")
+    print(f"GPU 1 memory after HF operations: {torch.cuda.memory_allocated(1) / (1024**3):.2f} GB")
 
     # Transfer HF model weights to vLLM instances
     print("Transferring weights from HuggingFace models to vLLM instances")
