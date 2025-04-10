@@ -122,8 +122,6 @@ class LocalLLM:
             adapter_name: uuid.uuid4() for adapter_name in adapter_names
         }
 
-        self.adapter_eval_ids = deepcopy(self.adapter_train_ids)
-
         self.lora_request = None
 
         # set random seeds
@@ -137,8 +135,6 @@ class LocalLLM:
             if os.path.exists(adapter_path):
                 model_logger.info(f"Loading adapter {adapter_name} from {adapter_path}")
                 self.hf_model.load_adapter(adapter_path, adapter_name)
-                # UUID is None if the adapter is loaded to set lora_request properly.
-                self.adapter_eval_ids[adapter_name] = None
             else:
                 self.hf_model.add_adapter(self.lora_config, adapter_name)
         self.optimizer = None
@@ -209,20 +205,17 @@ class LocalLLM:
         """
         model_logger.info(f"Preparing adapter {adapter_name} for evaluation.")
 
-        if self.adapter_eval_ids[adapter_name] != self.adapter_train_ids[adapter_name]:
-            # TODO: Check with Dereck on the logic behind the following code
-            self.adapter_eval_ids[adapter_name] = self.adapter_train_ids[adapter_name]
-            uuid_obj = self.adapter_eval_ids[adapter_name]
-            hash_object = hashlib.sha256(uuid_obj.bytes)
-            hash_int = int(hash_object.hexdigest(), 16)
-            id = int(hash_int % 10000000)
-            adapter_path = self.adapter_paths[adapter_name]
-            if os.path.exists(adapter_path):
-                self.lora_request = LoRARequest(
-                    f"dond_lora_{adapter_name}", id, adapter_path
-                )
-            else:
-                self.lora_request = None
+        uuid_obj = self.adapter_train_ids[adapter_name]
+        hash_object = hashlib.sha256(uuid_obj.bytes)
+        hash_int = int(hash_object.hexdigest(), 16)
+        id = int(hash_int % 10000000)
+        adapter_path = self.adapter_paths[adapter_name]
+        if os.path.exists(adapter_path):
+            self.lora_request = LoRARequest(
+                f"dond_lora_{adapter_name}", id, adapter_path
+            )
+        else:
+            self.lora_request = None
 
         self.current_adapter_name = adapter_name
 
