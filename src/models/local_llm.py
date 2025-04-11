@@ -144,6 +144,9 @@ class LocalLLM:
             adapter_name: self.short_id_generator() for adapter_name in self.adapter_names
         }
         self.adapter_eval_ids = deepcopy(self.adapter_train_ids)
+
+        self.current_vllm_name = None
+        self.vllm_ids = deepcopy(self.adapter_train_ids)
  
      
     def prepare_adapter_train(self, adapter_name: str):
@@ -236,9 +239,9 @@ class LocalLLM:
         model_logger.info(f"Preparing adapter {adapter_name} for evaluation.")
         adapter_type = self.adapter_types[adapter_name]
         adapter_path = self.adapter_paths[adapter_name]
-        is_adapter_changed = self.current_adapter_name != adapter_name
-        self.vllm_id = self.adapter_train_ids[adapter_name]
-        is_adapter_updated = self.adapter_train_ids[self.current_adapter_name] != self.vllm_id
+        self.current_adapter_name = adapter_name
+        is_adapter_changed = self.current_adapter_name != self.current_vllm_name
+        is_adapter_updated = self.vllm_ids[self.current_adapter_name] != self.adapter_train_ids[self.current_adapter_name]
         is_full_adapter = adapter_type == "full"
         weight_merge_required = is_adapter_changed and is_adapter_updated and is_full_adapter
 
@@ -263,7 +266,7 @@ class LocalLLM:
                     self.vllm_model = LLM(
                         self.model_name,
                         **self.vllm_params,
-                        worker_extension=UpdatableWorkerExtension()
+                        worker_extension_cls='models.updatable_worker.UpdatableWorkerExtension'
                     )
                 else:
                     self.vllm_model = LLM(
@@ -273,6 +276,12 @@ class LocalLLM:
                 end_time = time.time()
                 compute_logger.info(f"VLLM model loading time: {end_time - start_time:.2f} seconds.")
                 self.log_gpu_usage(f"After loading VLLM model with {adapter_name}.")
+
+            # Update vllm name and id
+            if is_adapter_changed:
+                self.current_vllm_name = adapter_name
+            if is_adapter_updated:
+                self.vllm_ids[adapter_name] = self.adapter_train_ids[adapter_name]
 
             # Full weight switch    
             if weight_merge_required:
@@ -286,6 +295,7 @@ class LocalLLM:
                 self.current_lora_request = LoRARequest(
                     adapter_name, self.adapter_train_ids[adapter_name], adapter_path
                 )
+
             else:
                 self.current_lora_request = None
 

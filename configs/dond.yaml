@@ -147,12 +147,13 @@ common_models_init_args: &common_models_init_args
 
   adapter_configs:
 
-    full:
-      type: full
-      optimizer_method: "AdamW"
-      optimizer_kwargs:
-        lr: 1e-3
-        weight_decay: 0.0
+    # full:
+    #   type: full
+    #   optimizer_method: "AdamW"
+    #   optimizer_kwargs:
+    #     lr: 1e-3
+    #     weight_decay: 0.0
+    #   lora_kwargs: {}
 
     alice:
       type: lora
