@@ -109,7 +109,7 @@ matches:
 
   env_kwargs:
     agents: ['alice', 'bob']
-    rounds_per_game: 1
+    rounds_per_game: 2
     max_messages: 1
     min_messages: 1
     max_chars_per_message: 450
@@ -140,21 +140,37 @@ common_models_init_args: &common_models_init_args
   max_model_length: 10000
   include_value_head: false
   device: "cuda"
-  model_name: "google/gemma-3-4b-it"
-  pretrained_args:
-    pretrained_model_name_or_path: ${models.llama.init_args.model_name}
-    torch_dtype: "bfloat16"
-    device_map: "auto"
-    attn_implementation: "flash_attention_2"
+  model_name: "google/gemma-3-1b-it"
+  
   bits_and_bytes_args: null
     #load_in_8bit: False
     #load_in_4bit: true
-  lora_args:
-    task_type: CAUSAL_LM
-    r: 64
-    lora_alpha: 128
-    lora_dropout: 0.0
-    target_modules: "all-linear"
+
+  adapter_configs:
+
+    alice:
+      type: lora
+      optimizer_method: "AdamW"
+      optimizer_kwargs:
+        lr: 1e-3
+        weight_decay: 0.0
+      lora_kwargs:
+        r: 64
+        lora_alpha: 128
+        lora_dropout: 0.0
+        target_modules: "all-linear"
+
+    bob:
+      type: lora
+      optimizer_method: "AdamW"
+      optimizer_kwargs:
+        lr: 1e-3
+        weight_decay: 0.0
+      lora_kwargs:
+        r: 64
+        lora_alpha: 128
+        lora_dropout: 0.0
+        target_modules: "all-linear"
 
   generation_args:
     max_new_tokens: 120
@@ -169,6 +185,12 @@ common_models_init_args: &common_models_init_args
     gpu_memory_utilization: 0.45
     enable_prefix_caching: True
     enable_sleep_mode : True
+
+  hf_model_init_kwargs:
+    pretrained_model_name_or_path: ${models.llama.init_args.model_name}
+    torch_dtype: "bfloat16"
+    device_map: "auto"
+    attn_implementation: "flash_attention_2"
 
   keep_vllm_during_training: False
   keep_hf_during_training: True
