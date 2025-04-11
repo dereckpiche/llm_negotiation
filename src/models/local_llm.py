@@ -64,32 +64,29 @@ class LocalLLM:
             "top_p": 1.0,
             "repetition_penalty": 1.0,
         },
-        optimizer_on_gpu_during_training=False,
+        eval_with="vllm",
+        train_with="hf",
+        optimizer_on_gpu_during_training=True,
         merge_weights_vllm_during_training=False,
-        include_value_head=False,
         sleep_vllm_during_training=False,
         wake_vllm_during_eval=True,
         keep_vllm_during_training=False,
         keep_hf_during_training=True,
         keep_hf_during_eval=False,
         keep_vllm_during_eval=True,
-        eval_with="vllm",
-        train_with="hf",
         output_directory=None,
         base_seed: int = 42,
         vllm_params={},
-        optimizer_method="AdamW",
-        optimizer_kwargs={"lr": 1e-6, "weight_decay": 0.0},
     ) -> None:
         """
         Initializes the LocalLLM.
         """
         super().__init__()
+        self.output_directory = output_directory
         self.vllm_params = vllm_params
         self.name = name
         self.device = torch.device(device) if device else torch.device("cuda")
         self.model_name = model_name
-        self.include_value_head = include_value_head
         self.hf_model_init_kwargs = hf_model_init_kwargs
         self.max_model_length = max_model_length
         self.tokenizer = AutoTokenizer.from_pretrained(
@@ -101,7 +98,6 @@ class LocalLLM:
         self.bits_and_bytes_configs = (
             BitsAndBytesConfig(**bits_and_bytes_args) if bits_and_bytes_args else None
         )
-        self.lora_args = lora_args
         self.hf_sampling_params = generation_args
         self.vllm_sampling_params = SamplingParams(
             temperature=generation_args["temperature"],
@@ -110,13 +106,12 @@ class LocalLLM:
             max_tokens=generation_args["max_new_tokens"],
             repetition_penalty=generation_args["repetition_penalty"],
         )
-        self.lora_config = LoraConfig(**lora_args)
 
         self.optimizer_on_gpu_during_training = optimizer_on_gpu_during_training
         self.merge_weights_vllm_before_eval = merge_weights_vllm_during_training
         self.sleep_vllm_during_training = sleep_vllm_during_training
         self.wake_vllm_during_eval = wake_vllm_during_eval
-         self.keep_vllm_during_training = keep_vllm_during_training
+        self.keep_vllm_during_training = keep_vllm_during_training
         self.keep_hf_during_training = keep_hf_during_training
         self.keep_hf_during_eval = keep_hf_during_eval
         self.keep_vllm_during_eval = keep_vllm_during_eval
@@ -131,21 +126,22 @@ class LocalLLM:
         self.adapter_configs = adapter_configs
         self.adapter_names = self.adapter_configs.keys()
         self.active_adapters = {adapter_name: False for adapter_name in self.adapter_names}
+        self.adapter_types = {item[0]: item[1]["type"] for item in self.adapter_configs.items()}
         self.current_adapter_name = None
         self.optimizer_paths = {adapter_name: os.path.join(self.output_directory, adapter_name, "optimizer.pt") for adapter_name in self.adapter_names}
         self.optimizer_methods = {item[0]: item[1]["optimizer_method"] for item in self.adapter_configs.items()}
         self.optimizer_kwargs = {item[0]: item[1]["optimizer_kwargs"] for item in self.adapter_configs.items()}
+        self.lora_kwargs = {item[0]: item[1]["lora_kwargs"] for item in self.adapter_configs.items()}
 
-        self.output_directory = output_directory
 
         self.base_seed = base_seed
-        self.at_least_one_full_adapter = pass # TODO: obtain
+        self.at_least_one_full_adapter = any(config["type"] == "full" for config in self.adapter_configs.values())
         self.adapter_paths = {
             adapter_name: os.path.join(self.output_directory, adapter_name)
             for adapter_name in self.adapter_names
         }
         self.adapter_train_ids = {  
-            adapter_name: uuid.uuid4() for adapter_name in self.adapter_names
+            adapter_name: self.short_id_generator() for adapter_name in self.adapter_names
         }
         self.adapter_eval_ids = deepcopy(self.adapter_train_ids)
  
@@ -156,7 +152,10 @@ class LocalLLM:
         """
 
         if not self.keep_vllm_during_training:
-            # TODO: delete vllm model from GPU memory 
+            self.vllm_model = None
+            import gc
+            gc.collect()
+            torch.cuda.empty_cache()
 
         if self.sleep_vllm_during_training:
             self.vllm_model.sleep()
@@ -198,7 +197,7 @@ class LocalLLM:
             elif os.path.exists(adapter_path):
                 self.hf_model.load_adapter(adapter_path)
             else:
-                self.hf_model.add_adapter(adapter_path)
+                self.hf_model.add_adapter(adapter_name, lora_config=LoraConfig(**self.lora_kwargs[adapter_name]))
             
         # Load the optimizer
         self.current_optimizer = self.optimizer_methods[adapter_name](
@@ -242,6 +241,14 @@ class LocalLLM:
         is_adapter_updated = self.adapter_train_ids[self.current_adapter_name] != self.vllm_id
         is_full_adapter = adapter_type == "full"
         weight_merge_required = is_adapter_changed and is_adapter_updated and is_full_adapter
+
+        if not self.keep_hf_during_eval:
+            model_logger.info(f"Deleting HF model for evaluation with {adapter_name}.")
+            del self.hf_model
+            import gc
+            gc.collect()
+            torch.cuda.empty_cache()
+            self.hf_model = None
 
         if self.eval_with == "vllm":
 
@@ -377,4 +384,9 @@ class LocalLLM:
         #     json.dump({"model_type": "llama"}, f)
 
     def short_id_generator(self):
-        return int(str(uuid.uuid4())[:8])
+        """
+        Generates a unique random short 8-digit number.
+        """
+        return str(uuid.uuid4().int)[:8]
+
+        

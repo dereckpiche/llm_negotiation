@@ -128,17 +128,16 @@ matches:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "alice"
-        policy_id: "llama/full"
+        policy_id: "llama/alice"
 
     bob:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "bob"
-        policy_id: "llama/full"
+        policy_id: "llama/bob"
 
 common_models_init_args: &common_models_init_args
   max_model_length: 10000
-  include_value_head: false
   device: "cuda"
   model_name: "google/gemma-3-1b-it"
   
@@ -148,6 +147,13 @@ common_models_init_args: &common_models_init_args
 
   adapter_configs:
 
+    full:
+      type: full
+      optimizer_method: "AdamW"
+      optimizer_kwargs:
+        lr: 1e-3
+        weight_decay: 0.0
+
     alice:
       type: lora
       optimizer_method: "AdamW"
@@ -155,8 +161,8 @@ common_models_init_args: &common_models_init_args
         lr: 1e-3
         weight_decay: 0.0
       lora_kwargs:
-        r: 64
-        lora_alpha: 128
+        r: 16
+        lora_alpha: 32
         lora_dropout: 0.0
         target_modules: "all-linear"
 
@@ -167,8 +173,8 @@ common_models_init_args: &common_models_init_args
         lr: 1e-3
         weight_decay: 0.0
       lora_kwargs:
-        r: 64
-        lora_alpha: 128
+        r: 16
+        lora_alpha: 32
         lora_dropout: 0.0
         target_modules: "all-linear"
 
@@ -192,16 +198,16 @@ common_models_init_args: &common_models_init_args
     device_map: "auto"
     attn_implementation: "flash_attention_2"
 
-  keep_vllm_during_training: False
+  eval_with: "vllm"
+  train_with: "hf"
+  optimizer_on_gpu_during_training: True
+  merge_weights_vllm_during_training: False
+  sleep_vllm_during_training: True
+  wake_vllm_during_eval: True
+  keep_vllm_during_training: True
   keep_hf_during_training: True
   keep_hf_during_eval: False
   keep_vllm_during_eval: True
-  eval_with: "vllm"
-  train_with: "hf"
-  optimizer_method: "AdamW"
-  optimizer_kwargs:
-    lr: 1e-3
-    weight_decay: 0.0
 
 models:
 
@@ -210,7 +216,6 @@ models:
     init_args:
       <<: *common_models_init_args
       name: 'llama'
-      adapter_names: ['full', 'ad_alice', 'ad_bob']
 
 
 ####################################################################################################
@@ -245,9 +250,6 @@ training:
 
   llama:
     adapters:
-      full:
-        train_func: train_reinforce_main
-        <<: *common_adapter_kwargs
       ad_alice:
         train_func: train_reinforce_main
         <<: *common_adapter_kwargs
