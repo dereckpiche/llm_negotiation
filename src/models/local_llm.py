@@ -249,7 +249,9 @@ class LocalLLM:
         is_adapter_changed = self.current_adapter_name != self.current_vllm_name
         is_adapter_updated = self.vllm_ids[self.current_adapter_name] != self.adapter_train_ids[self.current_adapter_name]
         is_full_adapter = adapter_type == "full"
-        weight_merge_required = is_adapter_changed and is_adapter_updated and is_full_adapter
+        weight_merge_required = (is_adapter_changed or is_adapter_updated) and is_full_adapter 
+        if weight_merge_required and self.hf_model is None:
+            model_logger.warning(f"HF model is not loaded. Cannot merge weights for {adapter_name}.")
 
         if not self.keep_hf_during_eval:
             model_logger.info(f"Deleting HF model for evaluation with {adapter_name}.")
@@ -263,11 +265,15 @@ class LocalLLM:
 
             if self.vllm_model is None:
 
+                if weight_merge_required:
+                    import os
+                    os.environ["VLLM_USE_V1"] = '0'
+                    assert self.vllm_params.get("enable_lora", False) == False, "VLLM weight merging is not supported with LoRA-enabled vLLM engine instances."
+
                 self.log_gpu_usage(f"Before loading VLLM model with {adapter_name}.")
                 start_time = time.time()
 
                 if self.at_least_one_full_adapter:
-                    os.environ["VLLM_USE_V1"] = '0'
                     self.vllm_model = LLM(
                         self.model_name,
                         **self.vllm_params,
@@ -282,6 +288,9 @@ class LocalLLM:
                 compute_logger.info(f"VLLM model loading time: {end_time - start_time:.2f} seconds.")
                 self.log_gpu_usage(f"After loading VLLM model with {adapter_name}.")
 
+            if self.wake_vllm_during_eval:
+                self.vllm_model.wake_up()
+
             # Update vllm name and id
             if is_adapter_changed:
                 self.current_vllm_name = adapter_name
@@ -289,9 +298,9 @@ class LocalLLM:
                 self.vllm_ids[adapter_name] = self.adapter_train_ids[adapter_name]
 
             # Full weight switch    
-            if weight_merge_required:
+            if weight_merge_required and self.hf_model is not None:
                 model_logger.info(f"Merging weights for {adapter_name} from {adapter_path} to vLLM model.")
-                assert self.hf_model is not None, "HF model is not loaded. Cannot merge weights."
+                self.hf_model.eval()
                 for name, param in self.hf_model.named_parameters():
                     self.vllm_model.collective_rpc('update_weight', args=(name, param.data))
 
@@ -304,8 +313,7 @@ class LocalLLM:
             else:
                 self.current_lora_request = None
 
-            if self.wake_vllm_during_eval:
-                self.vllm_model.wake_up()
+            
 
         self.current_adapter_name = adapter_name
 
