@@ -143,9 +143,8 @@ def get_discounted_rewards_to_go(rewards, discount_factor):
     """
     T = rewards.shape[1]
     scores = np.zeros(shape=rewards.shape)
-    # TODO: temporarily set None items of rewards to 0 
     rewards = np.where(rewards == None, 0, rewards)
-    scores[:, -1] = rewards[:, -1]
+    scores[:, -1] = rewards[:, -1] 
     for i in range(T-2, -1, -1): 
         scores[:, i] = rewards[:, i] + discount_factor * scores[:, i+1]
     return scores
