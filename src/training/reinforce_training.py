@@ -31,6 +31,9 @@ def reinforce_train(
     entropy_coef=0,
     kl_loss_coef=0,
     temperature=1.0,  # new hyperparameter to control softmax temperature during training
+    use_accelerate_gradaccum=False,
+    use_accelerate=True,
+    device="cuda:0",
 ):
     """
     Args:
@@ -82,16 +85,24 @@ def reinforce_train(
     else:
         gradient_accumulation_steps = mb_per_step
 
-    # Initialize the accelerators (https://huggingface.co/docs/accelerate/en/usage_guides/gradient_accumulation)
-    model_accelerator = Accelerator(
-        gradient_accumulation_steps=gradient_accumulation_steps
-    )
-    model, optimizer = model_accelerator.prepare(model, optimizer)
+    if use_accelerate:
+        if use_accelerate_gradaccum:
+            # Initialize the accelerators (https://huggingface.co/docs/accelerate/en/usage_guides/gradient_accumulation)
+            model_accelerator = Accelerator(
+                gradient_accumulation_steps=gradient_accumulation_steps
+            )
+        else:
+            model_accelerator = Accelerator()
+        model, optimizer = model_accelerator.prepare(model, optimizer)
 
     loss_dict = defaultdict(list)
     for epoch in range(nb_epochs):
         for i in range(0, len(contexts_list), mb_size):
-            with model_accelerator.accumulate(model):
+            if use_accelerate_gradaccum:
+                context_manager = model_accelerator.accumulate(model)
+            else:
+                context_manager = nullcontext()
+            with context_manager:
                 # Get the minibatch
                 context_batch = contexts_list[i : i + mb_size]
                 return_batch = scores_list[i : i + mb_size]
@@ -113,12 +124,14 @@ def reinforce_train(
                     context_batch != 0
                 ).long()  # context_batch: (B, S) -> attention_mask: (B, S)
 
+                if use_accelerate:
+                    device = model_accelerator.device
                 # Move data to the appropriate device
-                action_batch = action_batch.to(model_accelerator.device)  # (B, S)
-                context_batch = context_batch.to(model_accelerator.device)  # (B, S)
-                return_batch = return_batch.to(model_accelerator.device)  # (B, S)
-                mask_batch = mask_batch.to(model_accelerator.device)  # (B, S)
-                attention_mask = attention_mask.to(model_accelerator.device)  # (B, S)
+                action_batch = action_batch.to(device)  # (B, S)
+                context_batch = context_batch.to(device)  # (B, S)
+                return_batch = return_batch.to(device)  # (B, S)
+                mask_batch = mask_batch.to(device)  # (B, S)
+                attention_mask = attention_mask.to(device)  # (B, S)
 
                 # Forward pass
                 outputs = model(input_ids=context_batch, attention_mask=attention_mask)
@@ -168,26 +181,34 @@ def reinforce_train(
                     torch.sum(mask_batch, dim=1) + epsilon
                 )  # (B,)
                 loss = loss.mean()
-                model_accelerator.backward(loss)
                 loss_dict["loss"].append(loss.item())
 
+                if use_accelerate_gradaccum:
+                    model_accelerator.backward(loss)
+                    optimizer.step()
+                    optimizer.zero_grad()
+                else:
+                    loss = loss / gradient_accumulation_steps
+                    if use_accelerate:
+                        model_accelerator.backward(loss)
+                    else:
+                        loss.backward()
+                    if ((i + mb_size) // mb_size) % gradient_accumulation_steps == 0:
+                        optimizer.step()
+                        optimizer.zero_grad()
+
                 # Update max GPU memory usage
-                current_memory_usage = torch.cuda.max_memory_allocated(
-                    model_accelerator.device
-                )
+                current_memory_usage = torch.cuda.max_memory_allocated(device)
                 if current_memory_usage > max_memory_usage:
                     max_memory_usage = current_memory_usage
-
-                optimizer.step()
-                optimizer.zero_grad()
 
     # Log max GPU memory usage after training
     memory_logger.info(
         f"Max GPU memory usage during training: {max_memory_usage / (1024 ** 2):.2f} MB"
     )
     model_logger.info(f"loss: {np.mean(loss_dict['loss']):.4f}")
-    model, optimizer = model_accelerator.clear(model, optimizer)
-    del model, optimizer
+    if use_accelerate:
+        model_accelerator.clear(model, optimizer)
     return {"loss": np.mean(loss_dict["loss"])}
 
 

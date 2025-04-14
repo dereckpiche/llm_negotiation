@@ -83,7 +83,9 @@ def generate_and_train(cfg, base_seed):
         nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
         for i in range(nb_matches):
             matches.append(
-                create_blank_match(cfg, seed_offset=(iteration * nb_matches) + i)
+                create_blank_match(
+                    cfg, seed_offset=(iteration * nb_matches) + i, game_index=i
+                )
             )
         agents = matches[0]["agents"]
         agent_names = agents.keys()
@@ -159,7 +161,8 @@ def generate_and_train(cfg, base_seed):
 
         initial_logging_time = logging_end_time - logging_start_time
         logging_start_time = time.time()
-        # Moving it here is better since we can plot for every k steps to speedup training
+
+        # TODO: Moving it here is better since we can plot for every k steps to speedup training
         for agent in agents.values():
             train_output = train_output_dict[agent.policy_id]
             agent_name = agent.agent_name
@@ -176,22 +179,19 @@ def generate_and_train(cfg, base_seed):
                 input_path=os.path.join(it_folder, agent_name, "statistics"),
                 output_file=agent_stats_file,
             )
+
             with open(agent_stats_file, "r") as f:
                 agent_stats = json.load(f)
+
             for key in train_output:
                 if key in agent_stats:
                     agent_stats[key].append(train_output[key])
                 else:
                     agent_stats[key] = [train_output[key]]
+
             with open(agent_stats_file, "w") as f:
                 json.dump(agent_stats, f, indent=4)
 
-            generate_agent_stats_plots(
-                global_stats_path=agent_stats_file,
-                matplotlib_log_dir=os.path.join(agent_stats_folder, "matplotlib"),
-                tensorboard_log_dir=os.path.join(agent_stats_folder, "tensorboard"),
-                wandb_log_dir=os.path.join(agent_stats_folder, "wandb"),
-            )
         logging_end_time = time.time()
 
         iteration_end_time = time.time()
@@ -253,6 +253,26 @@ def generate_and_train(cfg, base_seed):
 
         print("Saved random states!")
 
+    plotting_start_time = time.time()
+
+    for agent_name in cfg["matches"]["env_kwargs"]["agents"]:
+        agent_stats_folder = os.path.join(output_directory, "statistics", agent_name)
+
+        agent_stats_file = os.path.join(agent_stats_folder, f"{agent_name}_stats.jsonl")
+
+        generate_agent_stats_plots(
+            global_stats_path=agent_stats_file,
+            matplotlib_log_dir=os.path.join(agent_stats_folder, "matplotlib"),
+            tensorboard_log_dir=os.path.join(agent_stats_folder, "tensorboard"),
+            wandb_log_dir=os.path.join(agent_stats_folder, "wandb"),
+        )
+
+    plotting_end_time = time.time()
+
+    plotting_time = plotting_end_time - plotting_start_time
+
+    compute_logger.info(f"Total time taken for plotting: {format_time(plotting_time)}")
+
     total_end_time = time.time()
     total_duration = total_end_time - total_start_time
     compute_logger.info(
@@ -280,7 +300,7 @@ def init_models(cfg, base_seed, output_directory):
     return models
 
 
-def create_blank_match(cfg, seed_offset=0):
+def create_blank_match(cfg, seed_offset=0, game_index=0):
     """
     Initializes a match for any game, using a functional approach to instantiate
     environment and agent classes based on configuration.
@@ -297,7 +317,6 @@ def create_blank_match(cfg, seed_offset=0):
     # Create agents using the class specified in config
     agent_class_name = cfg["matches"]["agent_class"]
     AgentClass = globals()[agent_class_name]
-    # import pdb; pdb.set_trace()
     for agent_name in cfg["matches"]["agents"].keys():
         agents[agent_name] = AgentClass(
             **cfg["matches"]["agents"][agent_name]["kwargs"]
@@ -318,7 +337,9 @@ def create_blank_match(cfg, seed_offset=0):
         env_kwargs["random_setup_kwargs"] = setup_kwargs
 
     # Create match with instantiated environment and agents
-    env = EnvClass(random_seed=seed_offset, **env_kwargs)  # Pass the unique seed here
+    env = EnvClass(
+        game_index=game_index, random_seed=seed_offset, **env_kwargs
+    )  # Pass the unique seed here
 
     # Add the logging function and args to the match dictionary
     match = {

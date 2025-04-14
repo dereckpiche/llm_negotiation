@@ -7,7 +7,9 @@ from utils.common_imports import *
 class DondEnv:
     def __init__(
         self,
-        agents,
+        game_index,
+        random_seed,
+        agents=["alice", "bob"],
         mode="coop",
         max_messages=None,
         min_messages=None,
@@ -19,7 +21,6 @@ class DondEnv:
         role_assignator_func_kwargs=None,
         finalization_visibility=False,
         other_values_visibility=False,
-        random_seed=None,
     ):
         """
         Initializes the DoND game.
@@ -66,9 +67,10 @@ class DondEnv:
             else role_assignator_func
         )
         self.role_assignator_func_kwargs = role_assignator_func_kwargs or {}
+        self.role_assignator_func_kwargs["game_index"] = game_index
         self.other_values_visibility = other_values_visibility
 
-        # Random seed should be tied to the sytem random seed.
+        # TODO: Random seed should be tied to the sytem random seed.
         if random_seed is None:
             self.random_seed = random.randint(1, 10**9)
         else:
@@ -361,7 +363,7 @@ class DondEnv:
         self.assign_roles()
         self.role_deque = deque(self.roles)
 
-    def reset(self, iteration_number=0, checkpoint=None):
+    def reset(self, checkpoint=None):
         """
         Resets the game to its initial state or to a checkpoint if provided.
 
@@ -397,8 +399,6 @@ class DondEnv:
             self.round_agreements_reached = []
             self.round_points = []
             self.set_new_setup()
-            # TODO (Muqeeth): Figure out a cleaner way
-            self.role_assignator_func_kwargs["iteration_number"] = iteration_number
             self.assign_roles()
             # Initialize move tracking dictionaries for a fresh game.
             self.game_moves = {agent: 0 for agent in self.agents}
@@ -597,8 +597,8 @@ def alternating_role_assignator(state, **kwargs):
     round_number = state["round_number"]
     agents = state["agents"]
     roles = ["starting_negotiator", "responding_negotiator"]
-    offset = kwargs.get("iteration_number", 0)
-    round_number += offset
+    game_index = kwargs.get("game_index", 0)
+    round_number += game_index
 
     if round_number % 2 == 0:
         # Even rounds: agent_0 is "starting_negotiator"
