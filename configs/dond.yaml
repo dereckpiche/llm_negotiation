@@ -204,7 +204,7 @@ common_models_init_args: &common_models_init_args
   eval_with: "vllm"
   train_with: "hf"
   optimizer_on_gpu_during_training: True
-  merge_weights_vllm_during_training: True
+  fully_switch_vllm_weights_after_training: True
   sleep_vllm_during_training: True
   wake_vllm_during_eval: True
   keep_vllm_during_training: True
