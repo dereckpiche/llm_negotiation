@@ -10,3 +10,4 @@ export WANDB_PROJECT=llm_negotiation
 export DATA_CACHE=/network/scratch/m/mohammed.muqeeth/llm_negotiation/datasets_offline
 export EXP_OUT=/network/scratch/m/mohammed.muqeeth/llm_negotiation/exp_out
 export HYDRA_FULL_ERROR=1
+export VLLM_WORKER_MULTIPROC_METHOD=spawn

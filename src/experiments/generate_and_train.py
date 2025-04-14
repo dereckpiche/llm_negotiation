@@ -1,25 +1,17 @@
-import hydra
-import os
 import logging
+import os
+import pickle
+import random
 import time
-from utils.common_imports import *
 
-# Local imports
-from models.local_llm import LocalLLM
+import hydra
+import numpy as np
+import torch
+
 from environments.dond.dond_agent import DondAgent
 from environments.dond.dond_game import DondEnv
 from environments.dond.dond_training_data_funcs import *
-from models.dummy_local_llm import DummyLocalLLM
-from models.server_llm import ServerLLM
-from utils.log_statistics import *
-from utils.log_statistics import update_agent_statistics, generate_agent_stats_plots
-from utils.update_start_epoch import update_start_epoch
-from training.train_main import *
-from generation.run_games import run_batched_matches
-import torch
-import numpy as np
-import random
-import pickle
+
 # from environments.ipd.ipd_game import IPDEnv
 # from environments.ipd.ipd_agent import IPDAgent
 # from environments.dond.dond_game import DondEnv
@@ -27,9 +19,20 @@ import pickle
 # from environments.ipd.ipd_log_funcs import *
 # from environments.dond.dond_log_funcs import *
 from environments.environment_imports import *
+from generation.run_games import run_batched_matches
+from models.dummy_local_llm import DummyLocalLLM
 
+# Local imports
+from models.local_llm import LocalLLM
+from models.server_llm import ServerLLM
+from training.train_main import *
+from utils.common_imports import *
+from utils.log_statistics import *
+from utils.log_statistics import generate_agent_stats_plots, update_agent_statistics
+from utils.update_start_epoch import update_start_epoch
+
+# TODO (Muqeeth): * might cause circular import errors. Check with Dereck what methods we should actually import
 compute_logger = logging.getLogger("compute_logger")
-
 
 
 def generate_and_train(cfg, base_seed):
@@ -42,9 +45,6 @@ def generate_and_train(cfg, base_seed):
     output_directory = f"{hydra_cfg['runtime']['output_dir']}/seed_{base_seed}"
     os.makedirs(output_directory, exist_ok=True)
 
-    # Initialize models
-    models = init_models(cfg, base_seed=base_seed, output_directory=output_directory)
-
     update_start_epoch(cfg=cfg, output_directory=output_directory)
     print("Start iteration: ", cfg["experiment"]["start_epoch"])
 
@@ -54,18 +54,23 @@ def generate_and_train(cfg, base_seed):
     torch.cuda.manual_seed(base_seed)  # PyTorch (GPU)
     torch.cuda.manual_seed_all(base_seed)  # If using multi-GPU
 
-    random_state_dir = f'{output_directory}/random_state.pkl'
+    random_state_dir = f"{output_directory}/random_state.pkl"
     # Load saved states
     if os.path.exists(random_state_dir):
         with open(random_state_dir, "rb") as f:
             random_state_dict = pickle.load(f)
+        print(f"Loaded random states from {random_state_dir}")
         random.setstate(random_state_dict["python"])
         np.random.set_state(random_state_dict["numpy"])
         torch.set_rng_state(random_state_dict["torch"])
         torch.cuda.set_rng_state_all(random_state_dict["torch_cuda"])
 
-    for iteration in range(cfg["experiment"]["start_epoch"], cfg["experiment"]["nb_epochs"]):
+    # Initialize models
+    models = init_models(cfg, base_seed=base_seed, output_directory=output_directory)
 
+    for iteration in range(
+        cfg["experiment"]["start_epoch"], cfg["experiment"]["nb_epochs"]
+    ):
         iteration_start_time = time.time()
 
         it_folder = os.path.join(output_directory, f"iteration_{iteration:03}")
@@ -77,7 +82,11 @@ def generate_and_train(cfg, base_seed):
         matches = []
         nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
         for i in range(nb_matches):
-            matches.append(create_blank_match(cfg, seed_offset=(iteration * nb_matches) + i))
+            matches.append(
+                create_blank_match(
+                    cfg, seed_offset=(iteration * nb_matches) + i, game_index=i
+                )
+            )
         agents = matches[0]["agents"]
         agent_names = agents.keys()
 
@@ -87,7 +96,7 @@ def generate_and_train(cfg, base_seed):
             matches=matches,
             seed_offset=iteration,
             models=models,
-            **cfg['matches']['run_batched_matches_args']
+            **cfg["matches"]["run_batched_matches_args"],
         )
         del matches
 
@@ -112,62 +121,87 @@ def generate_and_train(cfg, base_seed):
                 globals()[training_data_func](
                     raw_data_folder=raw_data_path,
                     training_data_folder=training_data_path,
-                    **training_data_func_args
+                    **training_data_func_args,
                 )
-
-            # Update agent statistics
-            agent_stats_folder = os.path.join(output_directory, "statistics", agent_name)
-            os.makedirs(agent_stats_folder, exist_ok=True)
-            agent_stats_file = os.path.join(agent_stats_folder, f"{agent_name}_stats.jsonl")
-
-            update_agent_statistics(
-                input_path=os.path.join(it_folder, agent_name, "statistics"),
-                output_file=agent_stats_file
-            )
-
-            generate_agent_stats_plots(
-                global_stats_path=agent_stats_file,
-                matplotlib_log_dir=os.path.join(agent_stats_folder, "matplotlib"),
-                tensorboard_log_dir=os.path.join(agent_stats_folder, "tensorboard"),
-                wandb_log_dir=os.path.join(agent_stats_folder, "wandb"),
-            )
 
         logging_end_time = time.time()
 
         # Train models
         training_start_time = time.time()
-
+        train_output_dict = {}
         for model_name, model in models.items():
-            if hasattr(model, 'adapters'):
-                for adapter_name in model.adapters.keys():
+            if hasattr(model, "adapter_paths"):
+                for adapter_name in model.adapter_paths.keys():
                     policy_id = f"{model_name}/{adapter_name}"
                     model.prepare_adapter_train(adapter_name)
 
                     data_paths = []
                     for agent in agents.values():
                         if agent.policy_id == policy_id:
-                            agent_export_path = os.path.join(it_folder, agent.agent_name, "training")
+                            agent_export_path = os.path.join(
+                                it_folder, agent.agent_name, "training"
+                            )
                             data_paths.append(agent_export_path)
 
                     if data_paths:
-                        adapter_args = cfg["training"][model_name]["adapters"][adapter_name]
-                        train_main(
+                        adapter_args = cfg["training"][model_name]["adapters"][
+                            adapter_name
+                        ]
+                        train_output = train_main(
                             hf_model=model,
                             paths=data_paths,
                             train_func=adapter_args["train_func"],
-                            train_func_args=adapter_args['train_func_args'],
-                            train_data_args=adapter_args['train_data_args'],
-                            output_path=it_folder
+                            train_func_args=adapter_args["train_func_args"],
+                            train_data_args=adapter_args["train_data_args"],
+                            output_path=it_folder,
                         )
+                        train_output_dict[policy_id] = train_output
 
         training_end_time = time.time()
+
+        initial_logging_time = logging_end_time - logging_start_time
+        logging_start_time = time.time()
+
+        # TODO: Moving it here is better since we can plot for every k steps to speedup training
+        for agent in agents.values():
+            train_output = train_output_dict[agent.policy_id]
+            agent_name = agent.agent_name
+            # Update agent statistics
+            agent_stats_folder = os.path.join(
+                output_directory, "statistics", agent_name
+            )
+            os.makedirs(agent_stats_folder, exist_ok=True)
+            agent_stats_file = os.path.join(
+                agent_stats_folder, f"{agent_name}_stats.jsonl"
+            )
+
+            update_agent_statistics(
+                input_path=os.path.join(it_folder, agent_name, "statistics"),
+                output_file=agent_stats_file,
+            )
+
+            with open(agent_stats_file, "r") as f:
+                agent_stats = json.load(f)
+
+            for key in train_output:
+                if key in agent_stats:
+                    agent_stats[key].append(train_output[key])
+                else:
+                    agent_stats[key] = [train_output[key]]
+
+            with open(agent_stats_file, "w") as f:
+                json.dump(agent_stats, f, indent=4)
+
+        logging_end_time = time.time()
 
         iteration_end_time = time.time()
 
         # Timing calculations
         iteration_duration = iteration_end_time - iteration_start_time
         generation_duration = generation_end_time - generation_start_time
-        logging_duration = logging_end_time - logging_start_time
+        logging_duration = (
+            logging_end_time - logging_start_time
+        ) + initial_logging_time
         training_duration = training_end_time - training_start_time
 
         generation_percentage = (generation_duration / iteration_duration) * 100
@@ -219,28 +253,54 @@ def generate_and_train(cfg, base_seed):
 
         print("Saved random states!")
 
+    plotting_start_time = time.time()
+
+    for agent_name in cfg["matches"]["env_kwargs"]["agents"]:
+        agent_stats_folder = os.path.join(output_directory, "statistics", agent_name)
+
+        agent_stats_file = os.path.join(agent_stats_folder, f"{agent_name}_stats.jsonl")
+
+        generate_agent_stats_plots(
+            global_stats_path=agent_stats_file,
+            matplotlib_log_dir=os.path.join(agent_stats_folder, "matplotlib"),
+            tensorboard_log_dir=os.path.join(agent_stats_folder, "tensorboard"),
+            wandb_log_dir=os.path.join(agent_stats_folder, "wandb"),
+        )
+
+    plotting_end_time = time.time()
+
+    plotting_time = plotting_end_time - plotting_start_time
+
+    compute_logger.info(f"Total time taken for plotting: {format_time(plotting_time)}")
+
     total_end_time = time.time()
     total_duration = total_end_time - total_start_time
-    compute_logger.info(f"Total time taken for the entire run: {format_time(total_duration)}")
-
+    compute_logger.info(
+        f"Total time taken for the entire run: {format_time(total_duration)}"
+    )
 
 
 def init_models(cfg, base_seed, output_directory):
     models = {}
     for model_name in cfg["models"].keys():
         if cfg["models"][model_name]["class"] == "local_llm":
-            models[model_name] = LocalLLM(**cfg["models"][model_name]["init_args"], base_seed=base_seed * cfg["experiment"]["nb_epochs"],
-                                         output_directory=output_directory)
+            models[model_name] = LocalLLM(
+                **cfg["models"][model_name]["init_args"],
+                base_seed=base_seed * cfg["experiment"]["nb_epochs"],
+                output_directory=output_directory,
+            )
         elif cfg["models"][model_name]["class"] == "dummy_local_llm":
             models[model_name] = DummyLocalLLM(**cfg["models"][model_name]["init_args"])
         elif cfg["models"][model_name]["class"] == "server_llm":
             models[model_name] = ServerLLM(**cfg["models"][model_name]["init_args"])
         else:
-            raise ValueError(f"Model class {cfg['models'][model_name]['class']} not found.")
+            raise ValueError(
+                f"Model class {cfg['models'][model_name]['class']} not found."
+            )
     return models
 
 
-def create_blank_match(cfg, seed_offset=0):
+def create_blank_match(cfg, seed_offset=0, game_index=0):
     """
     Initializes a match for any game, using a functional approach to instantiate
     environment and agent classes based on configuration.
@@ -257,7 +317,6 @@ def create_blank_match(cfg, seed_offset=0):
     # Create agents using the class specified in config
     agent_class_name = cfg["matches"]["agent_class"]
     AgentClass = globals()[agent_class_name]
-    # import pdb; pdb.set_trace()
     for agent_name in cfg["matches"]["agents"].keys():
         agents[agent_name] = AgentClass(
             **cfg["matches"]["agents"][agent_name]["kwargs"]
@@ -279,20 +338,19 @@ def create_blank_match(cfg, seed_offset=0):
 
     # Create match with instantiated environment and agents
     env = EnvClass(
-        random_seed=seed_offset,  # Pass the unique seed here
-        **env_kwargs
-    )
-
+        game_index=game_index, random_seed=seed_offset, **env_kwargs
+    )  # Pass the unique seed here
 
     # Add the logging function and args to the match dictionary
     match = {
-        'env': env,
-        'agents': agents,
-        'log_func': globals()[cfg['matches']['log_func']],
-        'log_func_args': cfg['matches']['log_func_args']
+        "env": env,
+        "agents": agents,
+        "log_func": globals()[cfg["matches"]["log_func"]],
+        "log_func_args": cfg["matches"]["log_func_args"],
     }
 
     return match
+
 
 def format_time(seconds):
     if seconds >= 3600:

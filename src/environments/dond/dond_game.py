@@ -1,12 +1,15 @@
 import random
-from utils.common_imports import *
 from collections import deque
+
+from utils.common_imports import *
 
 
 class DondEnv:
     def __init__(
         self,
-        agents,
+        game_index,
+        random_seed,
+        agents=["alice", "bob"],
         mode="coop",
         max_messages=None,
         min_messages=None,
@@ -20,7 +23,6 @@ class DondEnv:
         role_assignator_func_kwargs=None,
         finalization_visibility=False,
         other_values_visibility=False,
-        random_seed=None
     ):
         """
         Initializes the DoND game.
@@ -51,7 +53,9 @@ class DondEnv:
         self.min_messages = min_messages
         self.max_chars_per_message = max_chars_per_message
         self.random_setup_func = (
-            globals()[random_setup_func] if isinstance(random_setup_func, str) else random_setup_func
+            globals()[random_setup_func]
+            if isinstance(random_setup_func, str)
+            else random_setup_func
         )
         self.random_setup_kwargs = random_setup_kwargs
         if random_setup_kwargs is not None:
@@ -64,11 +68,15 @@ class DondEnv:
         self.max_nb_rounds_per_game = max_nb_rounds_per_game
         self.continuation_probability = continuation_probability
         self.role_assignator_func = (
-            globals()[role_assignator_func] if isinstance(role_assignator_func, str) else role_assignator_func
+            globals()[role_assignator_func]
+            if isinstance(role_assignator_func, str)
+            else role_assignator_func
         )
         self.role_assignator_func_kwargs = role_assignator_func_kwargs or {}
+        self.role_assignator_func_kwargs["game_index"] = game_index
         self.other_values_visibility = other_values_visibility
 
+        # TODO: Random seed should be tied to the sytem random seed.
         if random_seed is None:
             self.random_seed = random.randint(1, 10**9)
         else:
@@ -85,15 +93,16 @@ class DondEnv:
         The random_seed is incremented to ensure that each setup is different.
         """
         self.random_seed += 1
-        self.random_setup_kwargs["random_seed"] = self.random_seed  # Ensure the new seed is used
+        self.random_setup_kwargs[
+            "random_seed"
+        ] = self.random_seed  # Ensure the new seed is used
 
         kwargs = self.random_setup_kwargs
         self.items, self.quantities, role_values = self.random_setup_func(**kwargs)
         self.role_values = {
             self.roles[0]: role_values[0],
-            self.roles[1]: role_values[1]
+            self.roles[1]: role_values[1],
         }
-
 
     def step(self, actions):
         """
@@ -112,7 +121,6 @@ class DondEnv:
         current_agent = self.get_current_agent()
 
         if current_agent in actions:
-
             action = actions[current_agent]
             is_finalization, output = action
 
@@ -127,13 +135,16 @@ class DondEnv:
 
             # Update state flags.
             self.last_message = output
-            self.is_new_round = (self.message_turn == 1)
-            self.is_new_game = (self.round_nb == 0 and self.message_turn == 1)
+            self.is_new_round = self.message_turn == 1
+            self.is_new_game = self.round_nb == 0 and self.message_turn == 1
             self.game_over = False
             round_over = False
 
             # Check the minimum message requirement on a finalization attempt.
-            if is_finalization and self.round_messages[current_agent] < self.min_messages:
+            if (
+                is_finalization
+                and self.round_messages[current_agent] < self.min_messages
+            ):
                 # Treat the finalization as a conversation message
                 self.round_messages[current_agent] += 1
                 self.message_turn += 1
@@ -161,7 +172,9 @@ class DondEnv:
                     self.has_finalized = True
                     self.finalize(output)
                 # Check if any agent has exceeded their personal maximum message limit.
-                elif any(count > self.max_messages for count in self.round_messages.values()):
+                elif any(
+                    count > self.max_messages for count in self.round_messages.values()
+                ):
                     round_over = True
 
             self.role_deque.rotate(-1)
@@ -233,7 +246,10 @@ class DondEnv:
         Sets the points for each role based on their finalizations.
         """
         utilities = {
-            role: sum(self.role_values[role][item] * self.role_props[role][item] for item in self.items)
+            role: sum(
+                self.role_values[role][item] * self.role_props[role][item]
+                for item in self.items
+            )
             for role in self.roles
         }
 
@@ -307,7 +323,7 @@ class DondEnv:
     def get_info(self):
         return {
             "mode": self.mode,
-            "agents" : self.agents,
+            "agents": self.agents,
             "finalization_visibility": self.finalization_visibility,
             "other_values_visibility": self.other_values_visibility,
             "round_agent_roles": self.round_agent_roles,
@@ -329,7 +345,9 @@ class DondEnv:
         self.round_agent_roles.append(self.agent_to_role.copy())
         self.round_quantities.append(self.quantities)
         self.round_values.append({role: self.role_values[role] for role in self.roles})
-        self.round_finalizations.append({role: self.role_props[role] for role in self.roles})
+        self.round_finalizations.append(
+            {role: self.role_props[role] for role in self.roles}
+        )
         self.round_agreements_reached.append(self.agreement_reached)
         self.round_points.append({role: self.points[role] for role in self.roles})
 
@@ -368,7 +386,9 @@ class DondEnv:
         else:
             self.has_finalized = False
             self.role_props = {role: {} for role in self.roles}
-            self.points = {role: 0 for role in self.roles}  # Ensure points are initialized
+            self.points = {
+                role: 0 for role in self.roles
+            }  # Ensure points are initialized
             self.agreement_reached = False
             self.last_message = None
             self.round_nb = 0
@@ -404,7 +424,11 @@ class DondEnv:
         """
         Get the current agent (the one who has to play next)
         """
-        if not hasattr(self, 'role_to_agent') or not hasattr(self, 'role_deque') or not self.role_deque:
+        if (
+            not hasattr(self, "role_to_agent")
+            or not hasattr(self, "role_deque")
+            or not self.role_deque
+        ):
             return None
         return self.role_to_agent[self.role_deque[0]]
 
@@ -421,7 +445,9 @@ class DondEnv:
         """
         Assigns roles to agents for the current round using the role_assignator_func.
         """
-        self.agent_to_role = self.role_assignator_func(self.get_state(), **self.role_assignator_func_kwargs)
+        self.agent_to_role = self.role_assignator_func(
+            self.get_state(), **self.role_assignator_func_kwargs
+        )
 
         # Create agent_to_role mapping
         self.role_to_agent = {role: agent for agent, role in self.agent_to_role.items()}
@@ -434,6 +460,7 @@ class DondEnv:
             checkpoint (dict): A dictionary containing the checkpoint state.
         """
         self.__dict__.update(checkpoint)
+
 
 def dond_random_setup(items, min_quant, max_quant, min_val, max_val, random_seed=None):
     """
@@ -454,6 +481,7 @@ def dond_random_setup(items, min_quant, max_quant, min_val, max_val, random_seed
             - val_responding_negotiator (dict): Mapping for the responding negotiator with distinct values per item.
     """
     import numpy as np
+
     rng = np.random.default_rng(random_seed)
 
     # Determine the possible even numbers in the given range.
@@ -469,35 +497,81 @@ def dond_random_setup(items, min_quant, max_quant, min_val, max_val, random_seed
     # Make sure there are enough distinct values available for each agent's assignment.
     available_values = np.arange(min_val, max_val + 1)
     if len(available_values) < len(items):
-        raise ValueError("Range of values is not sufficient to assign unique values for all items.")
+        raise ValueError(
+            "Range of values is not sufficient to assign unique values for all items."
+        )
 
     # For each agent, randomly assign a distinct value to each item.
-    val_starting_negotiator = dict(zip(items, rng.choice(available_values, size=len(items), replace=False)))
-    val_responding_negotiator = dict(zip(items, rng.choice(available_values, size=len(items), replace=False)))
+    val_starting_negotiator = dict(
+        zip(items, rng.choice(available_values, size=len(items), replace=False))
+    )
+    val_responding_negotiator = dict(
+        zip(items, rng.choice(available_values, size=len(items), replace=False))
+    )
 
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
-def independent_random_vals(items, min_quant, max_quant, min_val, max_val, random_seed=None):
+
+def independent_random_vals(
+    items, min_quant, max_quant, min_val, max_val, random_seed=None
+):
     rng = np.random.default_rng(random_seed)
     quantities = {item: int(rng.integers(min_quant, max_quant + 1)) for item in items}
-    val_starting_negotiator = {item: int(rng.integers(min_val, max_val + 1)) for item in items}
-    val_responding_negotiator = {item: int(rng.integers(min_val, max_val + 1)) for item in items}
+    val_starting_negotiator = {
+        item: int(rng.integers(min_val, max_val + 1)) for item in items
+    }
+    val_responding_negotiator = {
+        item: int(rng.integers(min_val, max_val + 1)) for item in items
+    }
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
-def fixed_manual(items, quantities, val_starting_negotiator, val_responding_negotiator, random_seed=None):
+
+def fixed_manual(
+    items,
+    quantities,
+    val_starting_negotiator,
+    val_responding_negotiator,
+    random_seed=None,
+):
     quantities = {item: q for item, q in zip(items, quantities)}
-    val_starting_negotiator = {item: v for item, v in zip(items, val_starting_negotiator)}
-    val_responding_negotiator = {item: v for item, v in zip(items, val_responding_negotiator)}
+    val_starting_negotiator = {
+        item: v for item, v in zip(items, val_starting_negotiator)
+    }
+    val_responding_negotiator = {
+        item: v for item, v in zip(items, val_responding_negotiator)
+    }
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
-def random_quant_fixed_vals(items, min_quant, max_quant, val_starting_negotiator, val_responding_negotiator, random_seed=None):
+
+def random_quant_fixed_vals(
+    items,
+    min_quant,
+    max_quant,
+    val_starting_negotiator,
+    val_responding_negotiator,
+    random_seed=None,
+):
     rng = np.random.default_rng(random_seed)
     quantities = {item: int(rng.integers(min_quant, max_quant + 1)) for item in items}
-    val_starting_negotiator = {item: v for item, v in zip(items, val_starting_negotiator)}
-    val_responding_negotiator = {item: v for item, v in zip(items, val_responding_negotiator)}
+    val_starting_negotiator = {
+        item: v for item, v in zip(items, val_starting_negotiator)
+    }
+    val_responding_negotiator = {
+        item: v for item, v in zip(items, val_responding_negotiator)
+    }
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
-def bicameral_vals_assignator(items, min_quant, max_quant, low_val_mean, low_val_std, high_val_mean, high_val_std, random_seed=None):
+
+def bicameral_vals_assignator(
+    items,
+    min_quant,
+    max_quant,
+    low_val_mean,
+    low_val_std,
+    high_val_mean,
+    high_val_std,
+    random_seed=None,
+):
     rng = np.random.default_rng(random_seed)
     quantities = {item: int(rng.integers(min_quant, max_quant + 1)) for item in items}
 
@@ -505,11 +579,16 @@ def bicameral_vals_assignator(items, min_quant, max_quant, low_val_mean, low_val
     random_left = np.random.normal(low_val_mean, low_val_std, len(items))
     random_right = np.random.normal(high_val_mean, high_val_std, len(items))
 
-    vals_0 = np.ceil( np.abs(bernoullis * random_left + (1 - bernoullis) * random_right) + 0.001)
-    vals_1 = np.ceil( np.abs((1 - bernoullis) * random_left + (bernoullis) * random_right) + 0.001)
+    vals_0 = np.ceil(
+        np.abs(bernoullis * random_left + (1 - bernoullis) * random_right) + 0.001
+    )
+    vals_1 = np.ceil(
+        np.abs((1 - bernoullis) * random_left + (bernoullis) * random_right) + 0.001
+    )
     val_starting_negotiator = {item: v for item, v in zip(items, vals_0)}
     val_responding_negotiator = {item: v for item, v in zip(items, vals_1)}
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
+
 
 def alternating_role_assignator(state, **kwargs):
     """
@@ -526,6 +605,8 @@ def alternating_role_assignator(state, **kwargs):
     round_number = state["round_number"]
     agents = state["agents"]
     roles = ["starting_negotiator", "responding_negotiator"]
+    game_index = kwargs.get("game_index", 0)
+    round_number += game_index
 
     if round_number % 2 == 0:
         # Even rounds: agent_0 is "starting_negotiator"

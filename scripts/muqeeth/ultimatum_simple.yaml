@@ -1,21 +1,20 @@
 hydra:
   job:
     chdir: false
-    name: ultimatum
+    name: ultimatum_simple
   run:
     dir: ${oc.env:EXP_OUT}/${hydra.job.name}/
 
 experiment:
   method: generate_and_train
   description: "no description"
-  nb_epochs: 2000
+  nb_epochs: 500
   nb_matches_per_iteration: 32
-  # TODO (Dereck): reinit_matches_each_it is not used anywhere in the code
+  # TODO (Dereck): reinit_matches_each_it is not used anywhere in the code 
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: true
-  base_seed: 33
-  # random_seeds: [33, 53, 97, 157, 468, 484, 2959, 5145, 6368, 8602]
+  base_seed: 1
 
 ####################################################################################################
 #                                           GENERATION
@@ -41,12 +40,13 @@ matches:
   run_batched_matches_args:
     nb_parallel_matches: -1
 
+
   env_kwargs:
     agents: ['alice', 'bob']
     rounds_per_game: 1
     max_messages: 0
     min_messages: 0
-    max_chars_per_message: 1000
+    max_chars_per_message: 450
     mode: basic
     random_setup_func: fixed_manual
     random_setup_kwargs:
@@ -66,12 +66,12 @@ matches:
         max_errors: 1
         max_reasoning_chars: 0
         intro_prompt: ${prompt_blocks.barebone_ultimatum}
-        goal_prompt: ${prompt_blocks.fair_goal}
+        goal_prompt: ${prompt_blocks.unbiased_goal}
         new_round_prompt: null
-        agent_with_first_move_prompt: "You are the first agent. It is your turn to play."
+        agent_with_first_move_prompt: "\nYou are the first agent. It is your turn to play."
         received_message_prompt: null
         first_round_prompt: null
-        other_agent_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
+        other_agent_finalized_prompt: null
 
     bob:
       kwargs:
@@ -81,14 +81,12 @@ matches:
         max_errors: 1
         max_reasoning_chars: 0
         intro_prompt: ${prompt_blocks.barebone_ultimatum}
-        goal_prompt: ${prompt_blocks.fair_goal}
+        goal_prompt: ${prompt_blocks.unbiased_goal}
         new_round_prompt: null
         agent_with_first_move_prompt: null
         received_message_prompt: null
         first_round_prompt: null
-        other_agent_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
-
-temperature: 1
+        other_agent_finalized_prompt: "\n${prompt_blocks.visible_finalization_prompt}"
 
 common_models_init_args: &common_models_init_args
   max_model_length: 10000
@@ -113,10 +111,10 @@ common_models_init_args: &common_models_init_args
   generation_args:
     max_new_tokens: 120
     do_sample: True
-    temperature: ${temperature}
+    temperature: 1.0
     top_k: 0.0
     top_p: 1.0
-    repetition_penalty: 1
+    repetition_penalty: 0.0
 
   vllm_params:
     max_model_len : 13e3
@@ -130,10 +128,6 @@ common_models_init_args: &common_models_init_args
   keep_vllm_during_eval: True
   eval_with: "vllm"
   train_with: "hf"
-  optimizer_method: "AdamW"
-  optimizer_kwargs:
-    lr: 3e-6
-    weight_decay: 0.0
 
 models:
   llama:
@@ -150,20 +144,11 @@ models:
 common_training_agent_kwargs: &common_training_agent_kwargs
   training_data_func: generate_training_data_from_raw
   training_data_func_args:
-    exclude_errors: True
+    exclude_errors: False
     debug_output: True
     score_method: rloo_scores
     score_method_kwargs:
-      discount_factor: 0.9
-
-common_adapter_kwargs: &common_adapter_kwargs
-  train_func_args:
-    gradient_checkpointing: true
-    temperature: ${temperature}
-    entropy_coef: 0.01
-    kl_loss_coef: 0.01
-  train_data_args:
-    average_score_over_message: True
+      discount_factor: 1.0
 
 training:
 
@@ -177,10 +162,18 @@ training:
     adapters:
       ad_alice:
         train_func: train_reinforce_main
-        <<: *common_adapter_kwargs
+        train_func_args:
+          gradient_checkpointing: true
+          temperature: 1
+          learning_rate: 2e-6
+          entropy_coef: 0.0
       ad_bob:
         train_func: train_reinforce_main
-        <<: *common_adapter_kwargs
+        train_func_args:
+          gradient_checkpointing: true
+          temperature: 1
+          learning_rate: 2e-6
+          entropy_coef: 0.0
 
 
 ####################################################################################################
@@ -227,21 +220,12 @@ prompt_blocks:
 ############################################################
 
   barebone_ultimatum: |
-
     Welcome to the Splitting Game.
-
     Game Overview:
-
       1) Two agents divide 10 coins.
-
-      2) Each agent proposes a division of the coins.
-
-      3) Both agents must agree on a division to receive the coins. If not, both receive zero coins.
-
+      2) Each agent proposes a division of the coins, with second agent seeing the first agent's proposal.
+      3) Both agents must agree on the proposed division to receive the coins. If they do not agree, neither agent receives any coins.
       4) The game is played only once.
-
     Response Format:
-
-      1) Responses must be within <finalize> </finalize> tags.
-
+      1) Responses must be enclosed within <finalize> and </finalize> tags.
       2) Use JSON format: <finalize> {"i_take": {"coins": x}, "other_agent_gets": {"coins": y}} </finalize>.

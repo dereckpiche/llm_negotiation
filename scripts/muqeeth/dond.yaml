@@ -1,15 +1,15 @@
 hydra:
-  run:
-    dir: "${oc.env:SCRATCH}/llm_negotiation/results/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}.name}"
   job:
     chdir: false
+    name: dond_lr1e6
+  run:
+    dir: ${oc.env:EXP_OUT}/${hydra.job.name}/
 
 experiment:
-  name: "small_test_for_adv_align"
   method: generate_and_train
   description: "no description"
   nb_epochs: 1000
-  nb_matches_per_iteration: 16
+  nb_matches_per_iteration: 32
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: true
@@ -31,10 +31,10 @@ common_agent_kwargs: &common_agent_kwargs
       The points of each agent in every round is determined by multiplying the number of items they receive by the utility score of each of their items.
       At the end of each round, both agents must submit a finalization specifying how they wish to split the items. If the two finalizations do not match, neither agent earns points for that round.
   message_mechanics_prompt: |
-    Your messages must be sent in the <message>your-message-here</message> format, with no content outside the tags. They should be concise - less than 400 characters.
+    Your messages must be sent in the <message> your-message-here </message> format, with no content outside the tags. They should be concise - less than 400 characters.
   finalization_mechanics_prompt: |
     Your finalizations must be sent in this exact format:
-      <finalize> {"i_take": { {finalize_sample_i_take} }, "other_agent_gets": { {finalize_sample_other} }}</finalize>, with no content outside the tags. If the second agent's finalization is not complementary to the first agent's finalization, it is equivalent to a rejection. It is paramount to follow the formatting requirements perfectly in order to submit a valid finalization.
+      <finalize> {"i_take": { {finalize_sample_i_take} }, "other_agent_gets": { {finalize_sample_other} }} </finalize>, with no content outside the tags. If the second agent's finalization is not complementary to the first agent's finalization, it is equivalent to a rejection. It is paramount to follow the formatting requirements perfectly in order to submit a valid finalization.
   dond_version_specificities: |
     In this version of the game, each round is played as follows:
     1) One of the two agents is assigned as the starting agent.
@@ -57,6 +57,7 @@ common_agent_kwargs: &common_agent_kwargs
     The previous round has ended.
     In the last round, you earned {last_round_points_computed}.
     The other agent earned {coagent_last_round_points_computed_other}.
+
     For this new round, the items available are {quantities} and your utility scores for each item category are {values}.
   agent_with_first_move_prompt: |
    You are the starting agent.
@@ -109,9 +110,7 @@ matches:
 
   env_kwargs:
     agents: ['alice', 'bob']
-    max_nb_rounds_per_game: 100
-    min_nb_rounds_per_game: 1
-    continuation_probability: 0.8
+    rounds_per_game: 16
     max_messages: 1
     min_messages: 1
     max_chars_per_message: 450
@@ -138,8 +137,6 @@ matches:
         agent_name: "bob"
         policy_id: "llama/ad_bob"
 
-temperature: 1
-
 common_models_init_args: &common_models_init_args
   max_model_length: 10000
   include_value_head: false
@@ -163,16 +160,18 @@ common_models_init_args: &common_models_init_args
   generation_args:
     max_new_tokens: 120
     do_sample: True
-    temperature: ${temperature}
-    top_k: 0
+    # TODO: remember to tie the temperature to the training temperature
+    temperature: 0.7
+    top_k: 0.0
     top_p: 1.0
-    repetition_penalty: 1
+    repetition_penalty: 1.0
 
   vllm_params:
-    max_model_len : 13e3
+    max_model_len: 13e3
     gpu_memory_utilization: 0.45
     enable_prefix_caching: True
-    enable_sleep_mode : True
+    enable_sleep_mode: True
+    # enforce_eager: True
 
   keep_vllm_during_training: False
   keep_hf_during_training: True
@@ -185,15 +184,14 @@ common_models_init_args: &common_models_init_args
     lr: 1e-6
     weight_decay: 0.0
 
-models:
 
+models:
   llama:
     class: local_llm
     init_args:
       <<: *common_models_init_args
       name: 'llama'
       adapter_names: ['ad_alice', 'ad_bob']
-
 
 ####################################################################################################
 # TRAINING
@@ -204,21 +202,11 @@ common_training_agent_kwargs: &common_training_agent_kwargs
   training_data_func_args:
     exclude_errors: False
     debug_output: True
-    score_method: r2g_scores
+    score_method: rloo_scores
     score_method_kwargs:
-      discount_factor: 1.0
-
-common_adapter_kwargs: &common_adapter_kwargs
-  train_func_args:
-    gradient_checkpointing: true
-    temperature: ${temperature}
-    entropy_coef: 0.0
-    kl_loss_coef: 0.0
-  train_data_args:
-    average_score_over_message: False
+      discount_factor: 0.9
 
 training:
-
   agents:
     alice:
       <<: *common_training_agent_kwargs
@@ -229,11 +217,25 @@ training:
     adapters:
       ad_alice:
         train_func: train_reinforce_main
-        <<: *common_adapter_kwargs
+        train_func_args:
+          gradient_checkpointing: false
+          temperature: 0.7
+          entropy_coef: 0.00
+          kl_loss_coef: 0.00
+          mb_size: 1
+        train_data_args:
+          average_score_over_message: False
+
       ad_bob:
         train_func: train_reinforce_main
-        <<: *common_adapter_kwargs
-
+        train_func_args:
+          gradient_checkpointing: false
+          temperature: 0.7
+          entropy_coef: 0.00
+          kl_loss_coef: 0.00
+          mb_size: 1
+        train_data_args:
+          average_score_over_message: False
 
 ####################################################################################################
 # PROMPT DEFINITIONS
