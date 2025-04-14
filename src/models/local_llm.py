@@ -127,6 +127,9 @@ class LocalLLM:
         # Tracking current state
         self.current_adapter_name = None
         self.current_vllm_adapter_name = None
+
+        self.adapter_configs = adapter_configs
+        self.adapter_names = self.adapter_configs.keys()
         
         # Path management
         self.adapter_paths = {
@@ -247,6 +250,10 @@ class LocalLLM:
         Warning:
             This method changes the active adapter and may affect memory usage significantly.
         """
+
+        assert adapter_name in self.adapter_names, \
+            f"Adapter {adapter_name} not found in {self.adapter_names}."
+
         # Free memory if needed
         if not self.keep_vllm_during_training:
             self.vllm_model = None
@@ -377,6 +384,9 @@ class LocalLLM:
             - If HF model is not loaded when weight merging is required, a warning will be logged
               and weight merging will be skipped.
         """
+        assert adapter_name in self.adapter_names, \
+            f"Adapter {adapter_name} not found in {self.adapter_names}."
+
         model_logger.info(f"Preparing adapter {adapter_name} for evaluation.")
         adapter_type = self.adapter_types[adapter_name]
         adapter_path = self.adapter_paths[adapter_name]
@@ -396,14 +406,8 @@ class LocalLLM:
         is_full_adapter = adapter_type == "full"
         
         weight_switch_required = (
-            (is_adapter_changed or is_adapter_updated) and is_full_adapter
+            is_adapter_changed or is_adapter_updated
         )
-        
-        if weight_switch_required and self.hf_model is None:
-            model_logger.warning(
-                f"HF model is not loaded. Cannot merge weights for {adapter_name}."
-            )
-            assert False, "HF model is not loaded. Cannot merge weights for {adapter_name}."
 
         # Free memory if needed
         if not self.keep_hf_during_eval:
@@ -414,30 +418,39 @@ class LocalLLM:
             self.hf_model = None
 
         if self.eval_with == "vllm":
+
+            vllm_params = self.vllm_params
+            worker_extension_cls = None
+            hf_model = self.hf_model
+
+            # Prepare 
+            if weight_switch_required:
+
+                if self.hf_model is None:
+                    model_logger.warning(f"HF model is not loaded. Cannot merge weights for {adapter_name}.")
+
+                if self.hf_model is not None and self.hf_model.active_adapter is not None:
+                    model_logger.info(f"Detected active adapter {self.hf_model.active_adapter}, merging to base model for vLLM weight switch.")
+                    hf_model = self.hf_model.merge_and_unload()
+
+                # V1 version of vLLM is not compatible with weight switch.
+                os.environ["VLLM_USE_V1"] = '0' 
+                
+                # vLLM extension for weight switch.
+                worker_extension_cls = 'models.updatable_worker.UpdatableWorkerExtension'
+
+                # Instead of assertion, check and log a warning if enable_lora is True
+                if self.vllm_params.get("enable_lora", False):
+                    model_logger.warning(
+                        "VLLM weight merging is not supported with LoRA-enabled "
+                        "vLLM engine instances. Temporarily setting enable_lora to False."
+                    )
+                    # Make a copy of vllm_params and modify enable_lora
+                    vllm_params = dict(self.vllm_params)
+                    vllm_params["enable_lora"] = False
+
             # Initialize vLLM if not loaded
             if self.vllm_model is None:
-
-                vllm_params = self.vllm_params
-                worker_extension_cls = None
-
-                if weight_switch_required:
-
-                    # V1 version of vLLM is not compatible with weight switch.
-                    os.environ["VLLM_USE_V1"] = '0' 
-                    
-                    # vLLM extension for weight switch.
-                    worker_extension_cls = 'models.updatable_worker.UpdatableWorkerExtension'
-
-                    # Instead of assertion, check and log a warning if enable_lora is True
-                    if self.vllm_params.get("enable_lora", False):
-                        model_logger.warning(
-                            "VLLM weight merging is not supported with LoRA-enabled "
-                            "vLLM engine instances. Temporarily setting enable_lora to False."
-                        )
-                        # Make a copy of vllm_params and modify enable_lora
-                        vllm_params = dict(self.vllm_params)
-                        vllm_params["enable_lora"] = False
-
                 self.log_gpu_usage(f"Before loading VLLM model with {adapter_name}.")
                 start_time = time.time()
 
@@ -462,12 +475,12 @@ class LocalLLM:
             )
 
             # Handle full model weight updates
-            if weight_switch_required and self.hf_model is not None:
+            if weight_switch_required and hf_model is not None:
                 model_logger.info(
                     f"Merging weights for {adapter_name} from {adapter_path} to vLLM model."
                 )
-                self.hf_model.eval()
-                for name, param in self.hf_model.named_parameters():
+                hf_model.eval()
+                for name, param in hf_model.named_parameters():
                     self.vllm_model.collective_rpc(
                         'update_weight', 
                         args=(name, param.data)

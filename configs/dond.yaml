@@ -109,7 +109,7 @@ matches:
 
   env_kwargs:
     agents: ['alice', 'bob']
-    rounds_per_game: 16
+    rounds_per_game: 2
     max_messages: 1
     min_messages: 1
     max_chars_per_message: 450
@@ -148,12 +148,16 @@ common_models_init_args: &common_models_init_args
   adapter_configs:
 
     selfplay:
-      type: full
+      type: lora
       optimizer_method: "Adam"
       optimizer_kwargs:
-          lr: 1e-6
+          lr: 1e5
           weight_decay: 0.0
-      lora_kwargs: {}
+      lora_kwargs: 
+        r: 128
+        lora_alpha: 256
+        lora_dropout: 0.0
+        target_modules: "all-linear"
 
     # alice:
     #   type: lora
