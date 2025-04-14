@@ -118,6 +118,7 @@ def conversations_to_rl_data(tokenizer, conversations, average_score_over_messag
 
 def paths_to_rl_data(tokenizer, paths, average_score_over_message):
     conversations = []
+    # paths is needed if we do self play where we want to concatenate data from both players
     for path in paths:
         conversations.extend(get_conversations(path))
     return conversations_to_rl_data(

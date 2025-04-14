@@ -100,7 +100,6 @@ class LocalLLM:
             repetition_penalty=generation_args["repetition_penalty"],
         )
         self.lora_config = LoraConfig(**lora_args)
-        self.active_adapters = {adapter_name: False for adapter_name in adapter_names}
         self.current_adapter_name = None
         self.hf_model = None
         self.vllm_model = None
@@ -111,7 +110,6 @@ class LocalLLM:
         self.train_with = train_with
         self.eval_with = eval_with
         self.output_directory = output_directory
-        self.adapters_active = False
         self.vllm_id = 0
         self.hf_id = 0
         self.adapter_paths = {
@@ -128,7 +126,7 @@ class LocalLLM:
         self.base_seed = base_seed
         self.adapter_names = adapter_names
         self.hf_model = AutoModelForCausalLM.from_pretrained(
-            **self.pretrained_args, quantization_config=self.bits_and_bytes_configs
+            **self.pretrained_args,
         )
         for adapter_name in adapter_names:
             adapter_path = self.adapter_paths[adapter_name]
