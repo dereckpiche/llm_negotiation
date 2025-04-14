@@ -8,7 +8,7 @@ experiment:
   name: "small_test_for_adv_align"
   method: generate_and_train
   description: "no description"
-  nb_epochs: 1000
+  nb_epochs: 2000
   nb_matches_per_iteration: 16
   reinit_matches_each_it: true
   start_epoch: 0
@@ -25,16 +25,17 @@ common_agent_kwargs: &common_agent_kwargs
   max_reasoning_chars: 0
   intro_prompt: |
       Welcome, you are participating in a multi-round negotiation game.
+      You are playing as the agent named {agent_name}.
       Game Description:
       In this game, two agents will divide a collection of items over multiple rounds.
       In each round, the available items of each category ({items}) and their quantities will be specified. Each item category will have different utility scores for each agent.
       The points of each agent in every round is determined by multiplying the number of items they receive by the utility score of each of their items.
       At the end of each round, both agents must submit a finalization specifying how they wish to split the items. If the two finalizations do not match, neither agent earns points for that round.
   message_mechanics_prompt: |
-    Your messages must be sent in the <message>your-message-here</message> format, with no content outside the tags. They should be concise - less than 400 characters.
+    Your messages must be sent in the <message> your-message-here </message> format, with no content outside the tags. They should be concise - less than 400 characters.
   finalization_mechanics_prompt: |
     Your finalizations must be sent in this exact format:
-      <finalize> {"i_take": { {finalize_sample_i_take} }, "other_agent_gets": { {finalize_sample_other} }}</finalize>, with no content outside the tags. If the second agent's finalization is not complementary to the first agent's finalization, it is equivalent to a rejection. It is paramount to follow the formatting requirements perfectly in order to submit a valid finalization.
+      <finalize> {"alice": { {finalize_sample_i_take} }, "bob": { {finalize_sample_other} }} </finalize>, with no content outside the tags. If the second agent's finalization is not complementary to the first agent's finalization, it is equivalent to a rejection. It is paramount to follow the formatting requirements perfectly in order to submit a valid finalization.
   dond_version_specificities: |
     In this version of the game, each round is played as follows:
     1) One of the two agents is assigned as the starting agent.
@@ -57,19 +58,20 @@ common_agent_kwargs: &common_agent_kwargs
     The previous round has ended.
     In the last round, you earned {last_round_points_computed}.
     The other agent earned {coagent_last_round_points_computed_other}.
+
     For this new round, the items available are {quantities} and your utility scores for each item category are {values}.
   agent_with_first_move_prompt: |
    You are the starting agent.
   agent_with_second_move_prompt: |
     You are the second agent.
   received_message_prompt: |
-    The other agent sent the following message: "{last_message}".
+    The other agent sent the following message: {last_message}.
   other_agent_finalized_prompt: |
-    The other agent has finalized: {other_agent_finalization}. You must accept or reject now.
+    The other agent has finalized: {other_agent_finalization}.
   time_to_finalize_prompt: |
-    (You must finalize now in the aforementioned format.)
+    (You must finalize now in the <finalize> {"alice": { {finalize_sample_i_take} }, "bob": { {finalize_sample_other} }} </finalize> format.)
   time_to_send_message_prompt: |
-    (You must send a message now in the aforementioned format.)
+    (You must send a message now in the <message> your-message-here </message> format.)
 
 matches:
   env_class: "DondEnv"
@@ -136,7 +138,7 @@ matches:
         agent_name: "bob"
         policy_id: "llama/ad_bob"
 
-temperature: 1
+temperature: 0.7
 
 common_models_init_args: &common_models_init_args
   max_model_length: 10000

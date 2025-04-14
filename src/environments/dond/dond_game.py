@@ -260,7 +260,7 @@ class DondEnv:
             finalization (list): The list of finalized quantities for each item.
         """
         current_role = self.current_turn()
-        finalization_dict = finalization["i_take"]
+        finalization_dict = finalization[self.get_current_agent()]
         # Ensure every item is present in the finalization, defaulting to 0 if missing
         for item in self.items:
             finalization_dict.setdefault(item, 0)
