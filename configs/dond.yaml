@@ -139,7 +139,7 @@ matches:
 common_models_init_args: &common_models_init_args
   max_model_length: 10000
   device: "cuda"
-  model_name: "google/gemma-3-1b-it"
+  model_name: "google/gemma-3-4b-it"
   
   bits_and_bytes_args: null
     #load_in_8bit: False
@@ -159,11 +159,11 @@ common_models_init_args: &common_models_init_args
       type: lora
       optimizer_method: "AdamW"
       optimizer_kwargs:
-        lr: 1e-3
+        lr: 1.0
         weight_decay: 0.0
       lora_kwargs:
-        r: 16
-        lora_alpha: 32
+        r: 128
+        lora_alpha: 256
         lora_dropout: 0.0
         target_modules: "all-linear"
 
@@ -171,11 +171,11 @@ common_models_init_args: &common_models_init_args
       type: lora
       optimizer_method: "AdamW"
       optimizer_kwargs:
-        lr: 1e-3
+        lr: 1e-5
         weight_decay: 0.0
       lora_kwargs:
-        r: 16
-        lora_alpha: 32
+        r: 128
+        lora_alpha: 256
         lora_dropout: 0.0
         target_modules: "all-linear"
 
@@ -190,14 +190,15 @@ common_models_init_args: &common_models_init_args
   vllm_params:
     max_model_len : 13e3
     gpu_memory_utilization: 0.45
+    enable_lora: True
     enable_prefix_caching: True
     enable_sleep_mode : True
+    max_lora_rank: 128
 
   hf_model_init_kwargs:
-    pretrained_model_name_or_path: ${models.llama.init_args.model_name}
     torch_dtype: "bfloat16"
     device_map: "auto"
-    attn_implementation: "flash_attention_2"
+    attn_implementation: "eager"
 
   eval_with: "vllm"
   train_with: "hf"
@@ -251,10 +252,10 @@ training:
 
   llama:
     adapters:
-      ad_alice:
+      alice:
         train_func: train_reinforce_main
         <<: *common_adapter_kwargs
-      ad_bob:
+      bob:
         train_func: train_reinforce_main
         <<: *common_adapter_kwargs
 

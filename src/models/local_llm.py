@@ -14,7 +14,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from trl import AutoModelForCausalLMWithValueHead
 from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
-
+from torch.optim import Adam, AdamW, SGD, RMSprop
 from utils.common_imports import *
 
 compute_logger = logging.getLogger("compute_logger")
@@ -90,7 +90,7 @@ class LocalLLM:
         self.hf_model_init_kwargs = hf_model_init_kwargs
         self.max_model_length = max_model_length
         self.tokenizer = AutoTokenizer.from_pretrained(
-            hf_model_init_kwargs["pretrained_model_name_or_path"]
+            self.model_name
         )
 
         self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
@@ -181,12 +181,12 @@ class LocalLLM:
         if self.hf_model is None:
             if os.path.exists(adapter_path) and adapter_name == "full" :
                 self.hf_model = AutoModelForCausalLM.from_pretrained(
-                    adapter_path,
+                    pretrained_model_name_or_path=adapter_path,
                     **self.hf_model_init_kwargs,
                 )
             else: 
                 self.hf_model = AutoModelForCausalLM.from_pretrained(
-                    self.model_name,
+                    pretrained_model_name_or_path=self.model_name,
                     **self.hf_model_init_kwargs,
                 )
         if adapter_type == "full":
@@ -195,23 +195,29 @@ class LocalLLM:
                 param.requires_grad = True
 
         elif adapter_type == "lora":
-            if adapter_name in self.hf_model.list_adapters():
-                self.hf_model.set_adapter(adapter_name)
-            elif os.path.exists(adapter_path):
-                self.hf_model.load_adapter(adapter_path)
+            adapter_id = str(self.adapter_train_ids[adapter_name])
+            # import pdb; pdb.set_trace()
+            # See https://huggingface.co/docs/transformers/main/en/main_classes/peft#transformers.integrations.PeftAdapterMixin.add_adapter
+            if os.path.exists(adapter_path):
+                self.hf_model.load_adapter(peft_model_id=adapter_path, adapter_name=adapter_id)
+                self.hf_model.disable_adapters()
+                self.hf_model.set_adapter(adapter_name=adapter_id)
             else:
-                self.hf_model.add_adapter(adapter_name, lora_config=LoraConfig(**self.lora_kwargs[adapter_name]))
+                lora_config = LoraConfig(**self.lora_kwargs[adapter_name])
+                self.hf_model.add_adapter(adapter_name=adapter_id, adapter_config=lora_config)
+
+            self.hf_model.train()
             
         # Load the optimizer
-        self.current_optimizer = self.optimizer_methods[adapter_name](
+        from torch.optim import Adam, AdamW, SGD, RMSprop
+        self.current_optimizer = locals()[self.optimizer_methods[adapter_name]](
             self.hf_model.parameters(),
             **self.optimizer_kwargs[adapter_name]
         )
         if os.path.exists(self.optimizer_paths[adapter_name]):
+            model_logger.info(f"Loading optimizer state from {self.optimizer_paths[adapter_name]}")
             self.current_optimizer.load_state_dict(torch.load(self.optimizer_paths[adapter_name]))
 
-        if self.optimizer_on_gpu_during_training:
-            self.current_optimizer.to("cuda")
         
         # Log trainable parameters
         total_params = sum(p.numel() for p in self.hf_model.parameters())
@@ -261,7 +267,6 @@ class LocalLLM:
                 start_time = time.time()
 
                 if self.at_least_one_full_adapter:
-                    import os
                     os.environ["VLLM_USE_V1"] = '0'
                     self.vllm_model = LLM(
                         self.model_name,
@@ -291,7 +296,7 @@ class LocalLLM:
                     self.vllm_model.collective_rpc('update_weight', args=(name, param.data))
 
             # LoRA adapting 
-            if adapter_type == "lora":
+            if adapter_type == "lora" and os.path.exists(adapter_path):
                 self.current_lora_request = LoRARequest(
                     adapter_name, self.adapter_train_ids[adapter_name], adapter_path
                 )
@@ -384,7 +389,7 @@ class LocalLLM:
         self.hf_model.save_pretrained(adapter_path)
             
         # Save optimizer state
-        optimizer_state_path = os.path.join(adapter_path, "optimizer.pt")
+        optimizer_state_path = self.optimizer_paths[self.current_adapter_name]
         torch.save(self.current_optimizer.state_dict(), optimizer_state_path)
         model_logger.info(f"Optimizer state saved to {optimizer_state_path}")
 
@@ -395,8 +400,8 @@ class LocalLLM:
 
     def short_id_generator(self):
         """
-        Generates a unique random short 8-digit number.
+        Generates a unique random short 8-digit number integer.
         """
-        return str(uuid.uuid4().int)[:8]
+        return int(str(uuid.uuid4().int)[:8])
 
         
