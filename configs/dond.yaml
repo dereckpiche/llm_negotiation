@@ -109,7 +109,7 @@ matches:
 
   env_kwargs:
     agents: ['alice', 'bob']
-    rounds_per_game: 2
+    rounds_per_game: 16
     max_messages: 1
     min_messages: 1
     max_chars_per_message: 450
@@ -128,13 +128,13 @@ matches:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "alice"
-        policy_id: "llama/alice"
+        policy_id: "llama/selfplay"
 
     bob:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "bob"
-        policy_id: "llama/alice"
+        policy_id: "llama/selfplay"
 
 common_models_init_args: &common_models_init_args
   max_model_length: 10000
@@ -142,42 +142,41 @@ common_models_init_args: &common_models_init_args
   model_name: "google/gemma-3-4b-it"
   
   bits_and_bytes_args: null
-    #load_in_8bit: False
-    #load_in_4bit: true
 
   adapter_configs:
 
-    # full:
-    #   type: full
-    #   optimizer_method: "AdamW"
+    selfplay:
+      type: full
+      optimizer_method: "Adam"
+      optimizer_kwargs:
+          lr: 1e-6
+          weight_decay: 0.0
+      lora_kwargs: {}
+
+    # alice:
+    #   type: lora
+    #   optimizer_method: "Adam"
     #   optimizer_kwargs:
-    #     lr: 1e-3
+    #     lr: 1e-5
     #     weight_decay: 0.0
-    #   lora_kwargs: {}
+    #   lora_kwargs:
+    #     r: 128
+    #     lora_alpha: 256
+    #     lora_dropout: 0.0
+    #     target_modules: "all-linear"
 
-    alice:
-      type: full
-      optimizer_method: "Adam"
-      optimizer_kwargs:
-        lr: 1e4
-        weight_decay: 0.0
-      lora_kwargs:
-        r: 128
-        lora_alpha: 256
-        lora_dropout: 0.0
-        target_modules: "all-linear"
+    # bob:
+    #   type: lora
+    #   optimizer_method: "Adam"
+    #   optimizer_kwargs:
+    #     lr: 1e-5
+    #     weight_decay: 0.0
+    #   lora_kwargs:
+    #     r: 128
+    #     lora_alpha: 256
+    #     lora_dropout: 0.0
+    #     target_modules: "all-linear"
 
-    bob:
-      type: full
-      optimizer_method: "Adam"
-      optimizer_kwargs:
-        lr: 1e-5
-        weight_decay: 0.0
-      lora_kwargs:
-        r: 128
-        lora_alpha: 256
-        lora_dropout: 0.0
-        target_modules: "all-linear"
 
   generation_args:
     max_new_tokens: 120
@@ -198,7 +197,7 @@ common_models_init_args: &common_models_init_args
   hf_model_init_kwargs:
     torch_dtype: "bfloat16"
     device_map: "auto"
-    attn_implementation: "eager"
+    attn_implementation: "flash_attention_2"
 
   eval_with: "vllm"
   train_with: "hf"
@@ -210,6 +209,8 @@ common_models_init_args: &common_models_init_args
   keep_hf_during_training: True
   keep_hf_during_eval: True
   keep_vllm_during_eval: True
+  export_trained_parameters: False
+  export_optimizer: True
 
 models:
 
@@ -252,12 +253,15 @@ training:
 
   llama:
     adapters:
-      alice:
+      selfplay:
         train_func: train_reinforce_main
         <<: *common_adapter_kwargs
-      bob:
-        train_func: train_reinforce_main
-        <<: *common_adapter_kwargs
+      # alice:
+      #   train_func: train_reinforce_main
+      #   <<: *common_adapter_kwargs
+      # bob:
+      #   train_func: train_reinforce_main
+      #   <<: *common_adapter_kwargs
 
 
 ####################################################################################################

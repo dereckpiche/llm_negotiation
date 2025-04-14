@@ -66,6 +66,8 @@ class LocalLLM:
         },
         eval_with="vllm",
         train_with="hf",
+        base_seed: int = 42,
+        vllm_params={},
         optimizer_on_gpu_during_training=True,
         merge_weights_vllm_during_training=False,
         sleep_vllm_during_training=False,
@@ -75,8 +77,8 @@ class LocalLLM:
         keep_hf_during_eval=False,
         keep_vllm_during_eval=True,
         output_directory=None,
-        base_seed: int = 42,
-        vllm_params={},
+        export_trained_parameters=True,
+        export_optimizer=True,
     ) -> None:
         """
         Initializes the LocalLLM.
@@ -117,6 +119,8 @@ class LocalLLM:
         self.keep_vllm_during_eval = keep_vllm_during_eval
         self.train_with = train_with
         self.eval_with = eval_with
+        self.export_trained_parameters = export_trained_parameters
+        self.export_optimizer = export_optimizer
 
         self.hf_model = None
         self.vllm_model = None
@@ -304,7 +308,7 @@ class LocalLLM:
                 for name, param in self.hf_model.named_parameters():
                     self.vllm_model.collective_rpc('update_weight', args=(name, param.data))
 
-            # LoRA adapting 
+            # LoRA adaptation 
             if adapter_type == "lora" and os.path.exists(adapter_path):
                 self.current_lora_request = LoRARequest(
                     adapter_name, self.adapter_train_ids[adapter_name], adapter_path
@@ -312,8 +316,6 @@ class LocalLLM:
 
             else:
                 self.current_lora_request = None
-
-            
 
         self.current_adapter_name = adapter_name
 
@@ -374,9 +376,7 @@ class LocalLLM:
             return []
 
         end_time = time.time()
-        # compute_logger.info(
-        #     f"Generation completed in {end_time - start_time:.2f} seconds using {self.eval_with}."
-        # )
+     
 
         return responses
 
@@ -388,18 +388,20 @@ class LocalLLM:
         adapter_path = self.adapter_paths[self.current_adapter_name]
         adapter_type = self.adapter_types[self.current_adapter_name]
         os.makedirs(adapter_path, exist_ok=True)
-        
-        if adapter_type == "full":
-            model_logger.info(f"Saving full model to {adapter_path}")
-        elif adapter_type == "lora":
-            model_logger.info(f"Saving LoRA weights to {adapter_path}")
 
-        self.hf_model.save_pretrained(adapter_path)
+        # Save adapter
+        if self.export_trained_parameters:
+            if adapter_type == "full":
+                model_logger.info(f"Saving full model to {adapter_path}")
+            elif adapter_type == "lora":
+                model_logger.info(f"Saving LoRA weights to {adapter_path}")
+            self.hf_model.save_pretrained(adapter_path)
             
         # Save optimizer state
-        optimizer_state_path = self.optimizer_paths[self.current_adapter_name]
-        torch.save(self.current_optimizer.state_dict(), optimizer_state_path)
-        model_logger.info(f"Optimizer state saved to {optimizer_state_path}")
+        if self.export_optimizer:
+            optimizer_state_path = self.optimizer_paths[self.current_adapter_name]
+            torch.save(self.current_optimizer.state_dict(), optimizer_state_path)
+            model_logger.info(f"Optimizer state saved to {optimizer_state_path}")
 
         # For vllm
         # TODO (Muqeeth): check with Dereck if this is needed.
