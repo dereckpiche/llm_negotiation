@@ -141,7 +141,7 @@ temperature: 1
 common_models_init_args: &common_models_init_args
   max_model_length: 10000
   device: "cuda"
-  model_name: "google/gemma-3-4b-it"
+  model_name: "/network/weights/llama.var/llama_3.1/Meta-Llama-3.1-8B-Instruct"
   
   bits_and_bytes_args: null
 
@@ -153,11 +153,11 @@ common_models_init_args: &common_models_init_args
       optimizer_kwargs:
           lr: 1e-6
           weight_decay: 0.0
-      lora_kwargs: {}
-        # r: 128
-        # lora_alpha: 256
-        # lora_dropout: 0.0
-        # target_modules: "all-linear"
+      lora_kwargs: 
+        r: 64
+        lora_alpha: 128
+        lora_dropout: 0.0
+        target_modules: "all-linear"
 
     # alice:
     #   type: lora
@@ -194,11 +194,11 @@ common_models_init_args: &common_models_init_args
 
   vllm_params:
     max_model_len : 13e3
-    gpu_memory_utilization: 0.45
-    enable_lora: True
+    gpu_memory_utilization: 0.6
+    enable_lora: False
     enable_prefix_caching: True
     enable_sleep_mode : True
-    max_lora_rank: 128
+    max_lora_rank: 0
 
   hf_model_init_kwargs:
     torch_dtype: "bfloat16"

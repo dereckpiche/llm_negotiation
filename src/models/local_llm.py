@@ -61,6 +61,7 @@ class LocalLLM:
         keep_hf_during_training (bool): Keep HF model loaded during training.
         keep_hf_during_eval (bool): Keep HF model loaded during evaluation.
         keep_vllm_during_eval (bool): Keep vLLM loaded during evaluation.
+        put_hf_on_cpu_during_eval (bool): Put HF model on CPU during evaluation.
         output_directory (str): Directory to save adapters and optimization states.
         export_trained_parameters (bool): Whether to save model parameters after training.
         export_optimizer (bool): Whether to save optimizer state after training.
@@ -108,6 +109,7 @@ class LocalLLM:
         keep_hf_during_training=True,
         keep_hf_during_eval=False,
         keep_vllm_during_eval=True,
+        put_hf_on_cpu_during_eval=False,
         output_directory=None,
         export_trained_parameters=True,
         export_optimizer=True,
@@ -206,6 +208,7 @@ class LocalLLM:
         self.keep_hf_during_training = keep_hf_during_training
         self.keep_hf_during_eval = keep_hf_during_eval
         self.keep_vllm_during_eval = keep_vllm_during_eval
+        self.put_hf_on_cpu_during_eval = put_hf_on_cpu_during_eval
         self.train_with = train_with
         self.eval_with = eval_with
         self.export_trained_parameters = export_trained_parameters
@@ -541,6 +544,7 @@ class LocalLLM:
                                 
                                 # Get delta from all active adapters
                                 for adapter in module.active_adapter:
+                                    # TODO: double check if hf alpha is used
                                     delta = module.get_delta_weight(adapter)
                                     # Apply delta to get the full weight (using the copy)
                                     combined_weight = base_weight + delta
