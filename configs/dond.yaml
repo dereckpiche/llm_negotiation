@@ -128,13 +128,13 @@ matches:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "alice"
-        policy_id: "llama/selfplay"
+        policy_id: "llama/alice"
 
     bob:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "bob"
-        policy_id: "llama/selfplay"
+        policy_id: "llama/bob"
 
 temperature: 1
 
@@ -147,41 +147,41 @@ common_models_init_args: &common_models_init_args
 
   adapter_configs:
 
-    selfplay:
+    # selfplay:
+    #   type: lora
+    #   optimizer_method: "Adam"
+    #   optimizer_kwargs:
+    #       lr: 1e-6
+    #       weight_decay: 0.0
+    #   lora_kwargs: 
+    #     r: 128
+    #     lora_alpha: 256
+    #     lora_dropout: 0.0
+    #     target_modules: "all-linear"
+
+    alice:
       type: lora
       optimizer_method: "Adam"
       optimizer_kwargs:
-          lr: 1e5
-          weight_decay: 0.0
-      lora_kwargs: 
+        lr: 1e7
+        weight_decay: 0.0
+      lora_kwargs:
         r: 128
         lora_alpha: 256
         lora_dropout: 0.0
         target_modules: "all-linear"
 
-    # alice:
-    #   type: lora
-    #   optimizer_method: "Adam"
-    #   optimizer_kwargs:
-    #     lr: 1e-5
-    #     weight_decay: 0.0
-    #   lora_kwargs:
-    #     r: 128
-    #     lora_alpha: 256
-    #     lora_dropout: 0.0
-    #     target_modules: "all-linear"
-
-    # bob:
-    #   type: lora
-    #   optimizer_method: "Adam"
-    #   optimizer_kwargs:
-    #     lr: 1e-5
-    #     weight_decay: 0.0
-    #   lora_kwargs:
-    #     r: 128
-    #     lora_alpha: 256
-    #     lora_dropout: 0.0
-    #     target_modules: "all-linear"
+    bob:
+      type: lora
+      optimizer_method: "Adam"
+      optimizer_kwargs:
+        lr: 1e-5
+        weight_decay: 0.0
+      lora_kwargs:
+        r: 128
+        lora_alpha: 256
+        lora_dropout: 0.0
+        target_modules: "all-linear"
 
 
   generation_args:
@@ -195,7 +195,7 @@ common_models_init_args: &common_models_init_args
   vllm_params:
     max_model_len : 13e3
     gpu_memory_utilization: 0.45
-    # enable_lora: True
+    enable_lora: True
     enable_prefix_caching: True
     enable_sleep_mode : True
     max_lora_rank: 128
@@ -208,14 +208,14 @@ common_models_init_args: &common_models_init_args
   eval_with: "vllm"
   train_with: "hf"
   optimizer_on_gpu_during_training: True
-  fully_switch_vllm_weights_after_training: True
+  fully_switch_vllm_weights_after_training: False
   sleep_vllm_during_training: True
   wake_vllm_during_eval: True
   keep_vllm_during_training: True
   keep_hf_during_training: True
   keep_hf_during_eval: True
   keep_vllm_during_eval: True
-  export_trained_parameters: False
+  export_trained_parameters: True
   export_optimizer: True
 
 models:
@@ -259,15 +259,15 @@ training:
 
   llama:
     adapters:
-      selfplay:
+      # selfplay:
+      #   train_func: train_reinforce_main
+      #   <<: *common_adapter_kwargs
+      alice:
         train_func: train_reinforce_main
         <<: *common_adapter_kwargs
-      # alice:
-      #   train_func: train_reinforce_main
-      #   <<: *common_adapter_kwargs
-      # bob:
-      #   train_func: train_reinforce_main
-      #   <<: *common_adapter_kwargs
+      bob:
+        train_func: train_reinforce_main
+        <<: *common_adapter_kwargs
 
 
 ####################################################################################################
