@@ -74,6 +74,11 @@ common_agent_kwargs: &common_agent_kwargs
 matches:
   env_class: "DondEnv"
   agent_class: "DondAgent"
+
+  max_length: 25
+  continuation_prob: 0.8
+  same_length_batch: False
+
   log_func: dond_log_match
   log_func_args:
     metrics_func: gather_dond_statistics
@@ -109,9 +114,6 @@ matches:
 
   env_kwargs:
     agents: ['alice', 'bob']
-    max_nb_rounds_per_game: 100
-    min_nb_rounds_per_game: 1
-    continuation_probability: 0.8
     max_messages: 1
     min_messages: 1
     max_chars_per_message: 450
