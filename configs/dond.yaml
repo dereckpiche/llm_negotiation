@@ -109,7 +109,7 @@ matches:
 
   env_kwargs:
     agents: ['alice', 'bob']
-    rounds_per_game: 2
+    rounds_per_game: 16
     max_messages: 1
     min_messages: 1
     max_chars_per_message: 450
@@ -128,13 +128,13 @@ matches:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "alice"
-        policy_id: "llama/alice"
+        policy_id: "llama/selfplay"
 
     bob:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "bob"
-        policy_id: "llama/bob"
+        policy_id: "llama/selfplay"
 
 temperature: 1
 
@@ -147,41 +147,41 @@ common_models_init_args: &common_models_init_args
 
   adapter_configs:
 
-    # selfplay:
+    selfplay:
+      type: full
+      optimizer_method: "Adam"
+      optimizer_kwargs:
+          lr: 1e-6
+          weight_decay: 0.0
+      lora_kwargs: {}
+        # r: 128
+        # lora_alpha: 256
+        # lora_dropout: 0.0
+        # target_modules: "all-linear"
+
+    # alice:
     #   type: lora
     #   optimizer_method: "Adam"
     #   optimizer_kwargs:
-    #       lr: 1e-6
-    #       weight_decay: 0.0
-    #   lora_kwargs: 
+    #     lr: 1e-5
+    #     weight_decay: 0.0
+    #   lora_kwargs:
     #     r: 128
     #     lora_alpha: 256
     #     lora_dropout: 0.0
     #     target_modules: "all-linear"
 
-    alice:
-      type: lora
-      optimizer_method: "Adam"
-      optimizer_kwargs:
-        lr: 1e7
-        weight_decay: 0.0
-      lora_kwargs:
-        r: 128
-        lora_alpha: 256
-        lora_dropout: 0.0
-        target_modules: "all-linear"
-
-    bob:
-      type: lora
-      optimizer_method: "Adam"
-      optimizer_kwargs:
-        lr: 1e-5
-        weight_decay: 0.0
-      lora_kwargs:
-        r: 128
-        lora_alpha: 256
-        lora_dropout: 0.0
-        target_modules: "all-linear"
+    # bob:
+    #   type: lora
+    #   optimizer_method: "Adam"
+    #   optimizer_kwargs:
+    #     lr: 1e-5
+    #     weight_decay: 0.0
+    #   lora_kwargs:
+    #     r: 128
+    #     lora_alpha: 256
+    #     lora_dropout: 0.0
+    #     target_modules: "all-linear"
 
 
   generation_args:
@@ -208,7 +208,7 @@ common_models_init_args: &common_models_init_args
   eval_with: "vllm"
   train_with: "hf"
   optimizer_on_gpu_during_training: True
-  fully_switch_vllm_weights_after_training: False
+  fully_switch_vllm_weights_after_training: True
   sleep_vllm_during_training: True
   wake_vllm_during_eval: True
   keep_vllm_during_training: True
@@ -259,15 +259,15 @@ training:
 
   llama:
     adapters:
-      # selfplay:
+      selfplay:
+        train_func: train_reinforce_main
+        <<: *common_adapter_kwargs
+      # alice:
       #   train_func: train_reinforce_main
       #   <<: *common_adapter_kwargs
-      alice:
-        train_func: train_reinforce_main
-        <<: *common_adapter_kwargs
-      bob:
-        train_func: train_reinforce_main
-        <<: *common_adapter_kwargs
+      # bob:
+      #   train_func: train_reinforce_main
+      #   <<: *common_adapter_kwargs
 
 
 ####################################################################################################
