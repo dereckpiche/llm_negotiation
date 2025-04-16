@@ -321,10 +321,6 @@ class DondAgent:
             errors.append(
                 "Multiple <message> blocks detected. Please send only one message block."
             )
-        if num_finalize_tags > 1:
-            errors.append(
-                "Multiple <finalize> blocks detected. Please send only one finalization block."
-            )
 
         if has_message and has_finalization:
             errors.append(
@@ -632,29 +628,40 @@ class DondAgent:
             json.dump(self.conversation_history, f)
 
 
-def regular_proposal_parser(response, state, output_keys):
-    output_key_1 = output_keys[0]
-    output_key_2 = output_keys[1]
+def regular_proposal_parser(response, state, player_key_mapping):
 
     (
         has_finalization,
         finalization_errors,
         finalization_content,
     ) = verify_finalization_dict(
-        response, state, output_key_1, output_key_2
+        response, state, player_key_mapping
     )
 
     return has_finalization, finalization_errors, finalization_content
 
 
-def verify_finalization_dict(response, state, output_key_1, output_key_2):
+def verify_finalization_dict(response, state, player_key_mapping):
+    output_keys = list(player_key_mapping.values())
+    output_key_1 = output_keys[0]
+    output_key_2 = output_keys[1]
     finalize_tags = re.findall(r"<finalize>.*?</finalize>", response, flags=re.S)
     num_finalize_tags = len(finalize_tags)
 
     has_finalization = num_finalize_tags == 1
 
-    finalization_errors = []
+  
 
+    finalization_errors = []
+    if num_finalize_tags > 1:
+        finalization_errors.append(
+            "Multiple <finalize> blocks detected. Please send only one finalization block."
+        )
+    output_1 = None
+    output_2 = None
+    items_taken = None
+
+    # Check finalization consistency
     if has_finalization:
         finalization_content = (
             response.split("<finalize>", 1)[1].split("</finalize>", 1)[0].strip()
@@ -667,8 +674,6 @@ def verify_finalization_dict(response, state, output_key_1, output_key_2):
                 finalization_errors.append(
                     "The content within <finalize> is not a valid dictionary."
                 )
-                output_1 = None
-                output_2 = None
             else:
                 output_1 = finalization_json.get(output_key_1, {})
                 output_2 = finalization_json.get(output_key_2, {})
@@ -733,14 +738,15 @@ def verify_finalization_dict(response, state, output_key_1, output_key_2):
                             finalization_errors.append(
                                 f"Total {item} divided should sum to {expected_item_quantities.get(item, 0)}."
                             )
+            current_agent = state.get("current_agent")
+            items_taken = finalization_json.get(player_key_mapping[current_agent], {})
         except json.JSONDecodeError:
             finalization_errors.append("The content within <finalize> is not valid JSON.")
-    else:
-        output_1 = None
-        output_2 = None
 
+
+    
     return (
         has_finalization,
         finalization_errors,
-        {f"{output_key_1}": output_1, f"{output_key_2}": output_2},
+        items_taken
     )

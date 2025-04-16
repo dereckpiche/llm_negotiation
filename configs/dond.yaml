@@ -73,7 +73,8 @@ common_agent_kwargs: &common_agent_kwargs
   time_to_send_message_prompt: |
     (You must send a message now in the <message> your-message-here </message> format.)
   proposal_parser: regular_proposal_parser
-  proposal_parser_kwargs: ["alice", "bob"]
+  proposal_parser_kwargs:
+    {"alice" : "alice", "bob" : "bob"}
 
 matches:
   env_class: "DondEnv"
@@ -144,13 +145,13 @@ matches:
         agent_name: "bob"
         policy_id: "llama/ad_bob"
 
-temperature: 0.7
+temperature: 1.0
 
 common_models_init_args: &common_models_init_args
   max_model_length: 10000
   include_value_head: false
   device: "cuda"
-  model_name: "google/gemma-3-1b-it"
+  model_name: "/network/weights/llama.var/llama_3.1/Meta-Llama-3.1-8B-Instruct"
   pretrained_args:
     pretrained_model_name_or_path: ${models.llama.init_args.model_name}
     torch_dtype: "bfloat16"
