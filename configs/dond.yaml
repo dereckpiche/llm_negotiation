@@ -150,7 +150,7 @@ common_models_init_args: &common_models_init_args
   max_model_length: 10000
   include_value_head: false
   device: "cuda"
-  model_name: "/network/weights/llama.var/llama_3.1/Meta-Llama-3.1-8B-Instruct"
+  model_name: "google/gemma-3-1b-it"
   pretrained_args:
     pretrained_model_name_or_path: ${models.llama.init_args.model_name}
     torch_dtype: "bfloat16"

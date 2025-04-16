@@ -632,22 +632,22 @@ class DondAgent:
             json.dump(self.conversation_history, f)
 
 
-def regular_proposal_parser(finalization_content, state, output_keys):
-    output_key_1 = keys[0]
-    output_key_2 = keys[1]
+def regular_proposal_parser(response, state, output_keys):
+    output_key_1 = output_keys[0]
+    output_key_2 = output_keys[1]
 
     (
         has_finalization,
         finalization_errors,
         finalization_content,
     ) = verify_finalization_dict(
-        finalization_content, state, output_key_1, output_key_2
+        response, state, output_key_1, output_key_2
     )
 
-    return has_finalization, errors, finalization_content
+    return has_finalization, finalization_errors, finalization_content
 
 
-def verify_finalization_dict(finalization_content, state, output_key_1, output_key_2):
+def verify_finalization_dict(response, state, output_key_1, output_key_2):
     finalize_tags = re.findall(r"<finalize>.*?</finalize>", response, flags=re.S)
     num_finalize_tags = len(finalize_tags)
 
@@ -734,7 +734,10 @@ def verify_finalization_dict(finalization_content, state, output_key_1, output_k
                                 f"Total {item} divided should sum to {expected_item_quantities.get(item, 0)}."
                             )
         except json.JSONDecodeError:
-            errors.append("The content within <finalize> is not valid JSON.")
+            finalization_errors.append("The content within <finalize> is not valid JSON.")
+    else:
+        output_1 = None
+        output_2 = None
 
     return (
         has_finalization,
