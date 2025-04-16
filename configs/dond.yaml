@@ -137,13 +137,13 @@ matches:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "alice"
-        policy_id: "llama/ad_alice"
+        policy_id: "llama/common_adapter"
 
     bob:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "bob"
-        policy_id: "llama/ad_bob"
+        policy_id: "llama/common_adapter"
 
 temperature: 1.0
 
@@ -199,7 +199,7 @@ models:
     init_args:
       <<: *common_models_init_args
       name: 'llama'
-      adapter_names: ['ad_alice', 'ad_bob']
+      adapter_names: ['common_adapter']
 
 
 ####################################################################################################
@@ -237,9 +237,9 @@ training:
       ad_alice:
         train_func: train_reinforce_main
         <<: *common_adapter_kwargs
-      ad_bob:
-        train_func: train_reinforce_main
-        <<: *common_adapter_kwargs
+      # ad_bob:
+      #   train_func: train_reinforce_main
+      #   <<: *common_adapter_kwargs
 
 
 ####################################################################################################

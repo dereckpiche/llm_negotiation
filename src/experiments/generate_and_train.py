@@ -381,7 +381,8 @@ def get_stochastic_game_lengths(max_length,
     Returns:
         Array: An array of game lengths.
     """
-    
+    if continuation_prob==1:
+        return [max_length] * nb_games
     if same_length_batch:
         length = np.random.geometric(1-continuation_prob, 1)
         game_lengths = np.repeat(length, nb_games)
