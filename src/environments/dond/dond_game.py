@@ -252,15 +252,14 @@ class DondEnv:
         elif self.mode == "basic":
             self.points = {role: utilities[role] for role in self.roles}
 
-    def finalize(self, finalization: list):
+    def finalize(self, finalization_dict):
         """
         Records the finalization from the current agent.
 
         Args:
-            finalization (list): The list of finalized quantities for each item.
+            finalization (dict): Items taken by player for each category.
         """
         current_role = self.current_turn()
-        finalization_dict = finalization["i_take"]
         # Ensure every item is present in the finalization, defaulting to 0 if missing
         for item in self.items:
             finalization_dict.setdefault(item, 0)
