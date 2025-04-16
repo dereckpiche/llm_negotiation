@@ -81,10 +81,16 @@ def generate_and_train(cfg, base_seed):
         # Create independent matches based on the number in config
         matches = []
         nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
+        game_lengths = get_stochastic_game_lengths(
+            max_length=cfg["matches"]["max_length"],
+            nb_games=nb_matches,
+            continuation_prob=cfg["matches"]["continuation_prob"],
+            same_length_batch=cfg["matches"]["same_length_batch"],
+        )
         for i in range(nb_matches):
             matches.append(
                 create_blank_match(
-                    cfg, seed_offset=(iteration * nb_matches) + i, game_index=i
+                    cfg, seed_offset=(iteration * nb_matches) + i, game_index=i, game_length=game_lengths[i]
                 )
             )
         agents = matches[0]["agents"]
@@ -300,7 +306,7 @@ def init_models(cfg, base_seed, output_directory):
     return models
 
 
-def create_blank_match(cfg, seed_offset=0, game_index=0):
+def create_blank_match(cfg, seed_offset=0, game_index=0, game_length=10):
     """
     Initializes a match for any game, using a functional approach to instantiate
     environment and agent classes based on configuration.
@@ -338,7 +344,7 @@ def create_blank_match(cfg, seed_offset=0, game_index=0):
 
     # Create match with instantiated environment and agents
     env = EnvClass(
-        game_index=game_index, random_seed=seed_offset, **env_kwargs
+        game_index=game_index, random_seed=seed_offset, **env_kwargs, rounds_per_game=game_length
     )  # Pass the unique seed here
 
     # Add the logging function and args to the match dictionary
@@ -351,7 +357,6 @@ def create_blank_match(cfg, seed_offset=0, game_index=0):
 
     return match
 
-
 def format_time(seconds):
     if seconds >= 3600:
         return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m {int(seconds % 60)}s"
@@ -359,3 +364,32 @@ def format_time(seconds):
         return f"{int(seconds // 60)}m {int(seconds % 60)}s"
     else:
         return f"{int(seconds)}s"
+    
+def get_stochastic_game_lengths(max_length, 
+                                nb_games,
+                                continuation_prob, 
+                                same_length_batch=False):
+    """
+    Generates stochastic game lengths based on a geometric distribution.
+
+    Args:
+        max_length (int): The maximum length a game can have.
+        nb_games (int): The number of games to generate lengths for.
+        continuation_prob (float): The probability of the game continuing after each round.
+        same_length_batch (bool): If True, all games will have the same length.
+
+    Returns:
+        Array: An array of game lengths.
+    """
+    
+    if same_length_batch:
+        length = np.random.geometric(1-continuation_prob, 1)
+        game_lengths = np.repeat(length, nb_games)
+    else:
+        game_lengths = np.random.geometric(1-continuation_prob, nb_games)
+    
+    game_lengths = np.where(game_lengths > max_length, max_length, game_lengths)
+    return game_lengths.tolist()
+
+
+

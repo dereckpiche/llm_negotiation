@@ -74,6 +74,11 @@ common_agent_kwargs: &common_agent_kwargs
 matches:
   env_class: "DondEnv"
   agent_class: "DondAgent"
+
+  max_length: 25
+  continuation_prob: 0.8
+  same_length_batch: False
+
   log_func: dond_log_match
   log_func_args:
     metrics_func: gather_dond_statistics
@@ -109,7 +114,6 @@ matches:
 
   env_kwargs:
     agents: ['alice', 'bob']
-    rounds_per_game: 16
     max_messages: 1
     min_messages: 1
     max_chars_per_message: 450
@@ -202,9 +206,9 @@ common_training_agent_kwargs: &common_training_agent_kwargs
   training_data_func_args:
     exclude_errors: False
     debug_output: True
-    score_method: rloo_scores
+    score_method: r2g_scores
     score_method_kwargs:
-      discount_factor: 0.9
+      discount_factor: 1.0
 
 common_adapter_kwargs: &common_adapter_kwargs
   train_func_args:
