@@ -34,6 +34,7 @@ def reinforce_train(
     use_accelerate_gradaccum=False,
     use_accelerate=True,
     device="cuda:0",
+    gradient_clipping=None,
 ):
     """
     Args:
@@ -95,7 +96,7 @@ def reinforce_train(
             model_accelerator = Accelerator()
         model, optimizer = model_accelerator.prepare(model, optimizer)
 
-    loss_dict = defaultdict(list)
+    train_output_dict = defaultdict(list)
     for epoch in range(nb_epochs):
         for i in range(0, len(contexts_list), mb_size):
             if use_accelerate_gradaccum:
@@ -181,7 +182,7 @@ def reinforce_train(
                     torch.sum(mask_batch, dim=1) + epsilon
                 )  # (B,)
                 loss = loss.mean()
-                loss_dict["loss"].append(loss.item())
+                train_output_dict["loss"].append(loss.item())
 
                 if use_accelerate_gradaccum:
                     model_accelerator.backward(loss)
@@ -194,6 +195,19 @@ def reinforce_train(
                     else:
                         loss.backward()
                     if ((i + mb_size) // mb_size) % gradient_accumulation_steps == 0:
+                        if use_accelerate:
+                            if gradient_clipping and model_accelerator.sync_gradients:
+                                # norm is computed by concatenating all gradients, the gradients are present for param with requires_grad
+                                grad_norm = model_accelerator.clip_grad_norm_(
+                                    model.parameters(), gradient_clipping
+                                )
+                                train_output_dict["grad_norm"].append(grad_norm.item())
+                        else:
+                            if gradient_clipping:
+                                grad_norm = torch.nn.utils.clip_grad_norm_(
+                                    model.parameters(), gradient_clipping
+                                )
+                                train_output_dict["grad_norm"].append(grad_norm.item())
                         optimizer.step()
                         optimizer.zero_grad()
 
@@ -206,10 +220,12 @@ def reinforce_train(
     memory_logger.info(
         f"Max GPU memory usage during training: {max_memory_usage / (1024 ** 2):.2f} MB"
     )
-    model_logger.info(f"loss: {np.mean(loss_dict['loss']):.4f}")
+    model_logger.info(f"loss: {np.mean(train_output_dict['loss']):.4f}")
     if use_accelerate:
         model_accelerator.clear(model, optimizer)
-    return {"loss": np.mean(loss_dict["loss"])}
+    for key in train_output_dict:
+        train_output_dict[key] = np.mean(train_output_dict[key])
+    return train_output_dict
 
 
 def compute_kl_div(

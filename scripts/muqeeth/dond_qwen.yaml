@@ -107,10 +107,13 @@ matches:
   run_batched_matches_args:
     nb_parallel_matches: -1
 
+  max_length: 16
+  continuation_prob: 1.0
+  same_length_batch: False
+
 
   env_kwargs:
     agents: ['alice', 'bob']
-    rounds_per_game: 16
     max_messages: 1
     min_messages: 1
     max_chars_per_message: 450
