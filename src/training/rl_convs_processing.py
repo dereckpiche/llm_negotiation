@@ -35,18 +35,18 @@ def conversation_to_rl_data(tokenizer, conversation, average_score_over_message)
         formatted_conversation, return_tensors="pt", add_special_tokens=False
     ).squeeze(0)
 
-    tokenizer_name = tokenizer.name_or_path
-    if "llama" in tokenizer_name:
-        # Find all <|eot_id|> token positions (TODO: Handle tokenizers without eos_token_id)
-        eot_id = tokenizer.eos_token_id
-    elif "gemma" in tokenizer_name:
+    tokenizer_name = (tokenizer.name_or_path).lower()
+    if "gemma" in tokenizer_name:
+        # Gemma doesn't have system prompt.
         eot_id = tokenizer.encode("<end_of_turn>", add_special_tokens=False)
         if type(eot_id) == list:
             assert len(eot_id) == 1
             eot_id = eot_id[0]
-    all_eot_positions = (tokens == eot_id).nonzero(as_tuple=True)[0].tolist()
-    if "llama" in tokenizer_name:
-        # Remove the first <|eot_id|> position which corresponds to the system prompt as we don't have in conversation
+        all_eot_positions = (tokens == eot_id).nonzero(as_tuple=True)[0].tolist()
+    else:
+        eot_id = tokenizer.eos_token_id
+        all_eot_positions = (tokens == eot_id).nonzero(as_tuple=True)[0].tolist()
+        # Remove the first <|eot_id|> position which corresponds to the system prompt as we don't have in conversation.
         all_eot_positions = all_eot_positions[1:]
 
     score_values = []

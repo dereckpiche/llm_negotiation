@@ -7,5 +7,7 @@ peft
 vllm
 matplotlib
 tensorboard
-flash-attn
 diplomacy
+optimum
+auto-gptq
+flash-attn
