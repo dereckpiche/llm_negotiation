@@ -11,7 +11,7 @@ experiment:
   nb_epochs: 1000
   nb_matches_per_iteration: 32
   reinit_matches_each_it: true
-  start_epoch: 0  
+  start_epoch: 0
   resume_experiment: true
   base_seed: 1
 
@@ -72,7 +72,7 @@ common_agent_kwargs: &common_agent_kwargs
   time_to_send_message_prompt: |
     (You must send a message now in the aforementioned format.)
   proposal_parser: regular_proposal_parser
-  proposal_parser_kwargs: 
+  proposal_parser_kwargs:
     {"alice" : "i_take", "bob" : "i_take"}
 
 matches:
@@ -110,14 +110,13 @@ matches:
   run_batched_matches_args:
     nb_parallel_matches: -1
 
-  max_length: 25
-  continuation_prob: 0.8
+  max_length: 16
+  continuation_prob: 1.0
   same_length_batch: False
 
 
   env_kwargs:
     agents: ['alice', 'bob']
-    # rounds_per_game: 16
     max_messages: 1
     min_messages: 1
     max_chars_per_message: 450
