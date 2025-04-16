@@ -13,6 +13,8 @@ class DondAgent:
         allow_reasoning,
         max_errors,
         policy_id,
+        proposal_parser,
+        proposal_parser_kwargs,
         value_function_id=None,
         max_reasoning_chars=None,
         intro_prompt=None,
@@ -61,6 +63,8 @@ class DondAgent:
         self.policy_id = policy_id
         self.value_function_id = value_function_id
         self.max_reasoning_chars = max_reasoning_chars
+        self.proposal_parser = proposal_parser
+        self.proposal_parser_kwargs = proposal_parser_kwargs
 
         self.intro_prompt = intro_prompt
         self.goal_prompt = goal_prompt
@@ -294,17 +298,18 @@ class DondAgent:
         Returns:
             tuple: (is_error, error_message, is_finalization, processed_response)
         """
-        errors = []
+        # errors = []
 
         # Count the occurrences of valid tag blocks.
         message_tags = re.findall(r"<message>.*?</message>", response, flags=re.S)
         num_message_tags = len(message_tags)
-        finalize_tags = re.findall(r"<finalize>.*?</finalize>", response, flags=re.S)
-        num_finalize_tags = len(finalize_tags)
 
         # 2) Check that exactly one of <message>...</message> or <finalize>...</finalize> is present.
         has_message = num_message_tags == 1
-        has_finalization = num_finalize_tags == 1
+
+        has_finalization, errors, finalization_content = globals()[
+            self.proposal_parser
+        ](response, state, self.proposal_parser_kwargs)
 
         # New check: If the co-agent has finalized and our agent sends a message instead of a finalization, raise an error.
         if state.get("has_finalized", False) and has_message:
@@ -381,85 +386,6 @@ class DondAgent:
                 "Response exceeds the maximum allowed characters per message."
             )
 
-        # 4) Process finalization if present.
-        if has_finalization:
-            finalization_content = (
-                response.split("<finalize>", 1)[1].split("</finalize>", 1)[0].strip()
-            )
-            try:
-                finalization_json = json.loads(finalization_content)
-                if not isinstance(finalization_json, dict):
-                    errors.append(
-                        "The content within <finalize> is not a valid dictionary."
-                    )
-                    alice = None
-                    bob = None
-                else:
-                    alice = finalization_json.get("alice", {})
-                    bob = finalization_json.get("bob", {})
-
-                if not isinstance(alice, dict) or not isinstance(bob, dict):
-                    errors.append('"alice" and "bob" must be dictionaries.')
-                else:
-                    expected_items = set(state.get("items", []))
-                    expected_item_quantities = state.get("quantities", {})
-
-                    # Validate that the keys exactly match the expected items.
-                    if set(alice.keys()) != expected_items:
-                        missing = expected_items - set(alice.keys())
-                        extra = set(alice.keys()) - expected_items
-                        error_str = "Invalid keys in 'alice':"
-
-                        if missing:
-                            error_str += f" Missing keys: {', '.join(missing)}."
-                        if extra:
-                            error_str += f" Unexpected keys: {', '.join(extra)}."
-
-                        errors.append(error_str)
-
-                    if set(bob.keys()) != expected_items:
-                        missing = expected_items - set(bob.keys())
-                        extra = set(bob.keys()) - expected_items
-                        error_str = "Invalid keys in 'bob':"
-
-                        if missing:
-                            error_str += f" Missing keys: {', '.join(missing)}."
-                        if extra:
-                            error_str += f" Unexpected keys: {', '.join(extra)}."
-                        errors.append(error_str)
-
-                    alice_valid_items = set(alice.keys()) & expected_items
-                    bob_valid_items = set(bob.keys()) & expected_items
-
-                    # Verify that every value for each key is an integer and sums to total quantities.
-                    for item in expected_items:
-                        if item in alice_valid_items and item in bob_valid_items:
-                            is_alice_int = isinstance(alice.get(item), int)
-                            is_bob_int = isinstance(bob.get(item), int)
-
-                            if not is_alice_int:
-                                errors.append(
-                                    f'Value of "{item}" in "alice" must be an integer.'
-                                )
-
-                            if not is_bob_int:
-                                errors.append(
-                                    f'Value of "{item}" in "bob" must be an integer.'
-                                )
-
-                            if (
-                                is_alice_int
-                                and is_bob_int
-                                and alice.get(item, 0) + bob.get(item, 0)
-                                != expected_item_quantities.get(item, 0)
-                            ):
-                                errors.append(
-                                    f"Total {item} divided should sum to {expected_item_quantities.get(item, 0)}."
-                                )
-
-            except json.JSONDecodeError:
-                errors.append("The content within <finalize> is not valid JSON.")
-
         # 5) Return results: if errors exist, return an error message.
         if errors:
             if len(errors) == 1:
@@ -471,7 +397,7 @@ class DondAgent:
             return True, error_message, False, None
 
         if has_finalization:
-            return False, "", True, {"alice": alice, "bob": bob}
+            return False, "", True, finalization_content
         if has_message:
             # Extract using our earlier found list.
             message_content = (
@@ -704,3 +630,114 @@ class DondAgent:
         with open(path, "w") as f:
             json.dump(game_stats, f)
             json.dump(self.conversation_history, f)
+
+
+def regular_proposal_parser(finalization_content, state, output_keys):
+    output_key_1 = keys[0]
+    output_key_2 = keys[1]
+
+    (
+        has_finalization,
+        finalization_errors,
+        finalization_content,
+    ) = verify_finalization_dict(
+        finalization_content, state, output_key_1, output_key_2
+    )
+
+    return has_finalization, errors, finalization_content
+
+
+def verify_finalization_dict(finalization_content, state, output_key_1, output_key_2):
+    finalize_tags = re.findall(r"<finalize>.*?</finalize>", response, flags=re.S)
+    num_finalize_tags = len(finalize_tags)
+
+    has_finalization = num_finalize_tags == 1
+
+    finalization_errors = []
+
+    if has_finalization:
+        finalization_content = (
+            response.split("<finalize>", 1)[1].split("</finalize>", 1)[0].strip()
+        )
+
+        try:
+            finalization_json = json.loads(finalization_content)
+
+            if not isinstance(finalization_json, dict):
+                finalization_errors.append(
+                    "The content within <finalize> is not a valid dictionary."
+                )
+                output_1 = None
+                output_2 = None
+            else:
+                output_1 = finalization_json.get(output_key_1, {})
+                output_2 = finalization_json.get(output_key_2, {})
+
+            if not isinstance(output_1, dict) or not isinstance(output_2, dict):
+                finalization_errors.append(
+                    f'"{output_key_1}" and "{output_key_2}" must be dictionaries.'
+                )
+            else:
+                expected_items = set(state.get("items", []))
+                expected_item_quantities = state.get("quantities", {})
+
+                # Validate that the keys exactly match the expected items.
+                if set(output_1.keys()) != expected_items:
+                    missing = expected_items - set(output_1.keys())
+                    extra = set(output_1.keys()) - expected_items
+                    error_str = f"Invalid keys in '{output_key_1}':"
+
+                    if missing:
+                        error_str += f" Missing keys: {', '.join(missing)}."
+                    if extra:
+                        error_str += f" Unexpected keys: {', '.join(extra)}."
+
+                    finalization_errors.append(error_str)
+
+                if set(output_2.keys()) != expected_items:
+                    missing = expected_items - set(output_2.keys())
+                    extra = set(output_2.keys()) - expected_items
+                    error_str = f"Invalid keys in '{output_key_2}':"
+
+                    if missing:
+                        error_str += f" Missing keys: {', '.join(missing)}."
+                    if extra:
+                        error_str += f" Unexpected keys: {', '.join(extra)}."
+                    finalization_errors.append(error_str)
+
+                output_1_valid_items = set(output_1.keys()) & expected_items
+                output_2_valid_items = set(output_2.keys()) & expected_items
+
+                # Verify that every value for each key is an integer and sums to total quantities.
+                for item in expected_items:
+                    if item in output_1_valid_items and item in output_2_valid_items:
+                        is_output_1_int = isinstance(output_1.get(item), int)
+                        is_output_2_int = isinstance(output_2.get(item), int)
+
+                        if not is_output_1_int:
+                            finalization_errors.append(
+                                f'Value of "{item}" in "{output_key_1}" must be an integer.'
+                            )
+
+                        if not is_output_2_int:
+                            finalization_errors.append(
+                                f'Value of "{item}" in "{output_key_2}" must be an integer.'
+                            )
+
+                        if (
+                            is_output_1_int
+                            and is_output_2_int
+                            and output_1.get(item, 0) + output_2.get(item, 0)
+                            != expected_item_quantities.get(item, 0)
+                        ):
+                            finalization_errors.append(
+                                f"Total {item} divided should sum to {expected_item_quantities.get(item, 0)}."
+                            )
+        except json.JSONDecodeError:
+            errors.append("The content within <finalize> is not valid JSON.")
+
+    return (
+        has_finalization,
+        finalization_errors,
+        {f"{output_key_1}": output_1, f"{output_key_2}": output_2},
+    )

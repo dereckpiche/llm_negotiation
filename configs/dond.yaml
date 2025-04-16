@@ -72,6 +72,8 @@ common_agent_kwargs: &common_agent_kwargs
     (You must finalize now in the <finalize> {"alice": { {finalize_sample_i_take} }, "bob": { {finalize_sample_other} }} </finalize> format.)
   time_to_send_message_prompt: |
     (You must send a message now in the <message> your-message-here </message> format.)
+  proposal_parser: regular_proposal_parser
+  proposal_parser_kwargs: ["alice", "bob"]
 
 matches:
   env_class: "DondEnv"
