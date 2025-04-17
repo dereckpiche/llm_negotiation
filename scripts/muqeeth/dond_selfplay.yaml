@@ -19,6 +19,8 @@ experiment:
 #                                           GENERATION
 ####################################################################################################
 
+agent_key_mapping: {"alice" : "alice", "bob" : "bob"}
+
 common_agent_kwargs: &common_agent_kwargs
   max_errors: 0
   allow_reasoning: false
@@ -71,9 +73,7 @@ common_agent_kwargs: &common_agent_kwargs
     (You must finalize now in the aforementioned format.)
   time_to_send_message_prompt: |
     (You must send a message now in the aforementioned format.)
-  proposal_parser: regular_proposal_parser
-  proposal_parser_kwargs:
-    {"alice" : "i_take", "bob" : "i_take"}
+  agent_key_mapping: ${agent_key_mapping}
 
 matches:
   env_class: "DondEnv"
@@ -116,6 +116,7 @@ matches:
 
   env_kwargs:
     agents: ['alice', 'bob']
+    agent_key_mapping: ${agent_key_mapping}
     max_messages: 1
     min_messages: 1
     max_chars_per_message: 450

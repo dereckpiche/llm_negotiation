@@ -13,8 +13,7 @@ class DondAgent:
         allow_reasoning,
         max_errors,
         policy_id,
-        proposal_parser,
-        proposal_parser_kwargs,
+        agent_key_mapping,
         value_function_id=None,
         max_reasoning_chars=None,
         intro_prompt=None,
@@ -63,8 +62,7 @@ class DondAgent:
         self.policy_id = policy_id
         self.value_function_id = value_function_id
         self.max_reasoning_chars = max_reasoning_chars
-        self.proposal_parser = proposal_parser
-        self.proposal_parser_kwargs = proposal_parser_kwargs
+        self.agent_key_mapping = agent_key_mapping
 
         self.intro_prompt = intro_prompt
         self.goal_prompt = goal_prompt
@@ -308,9 +306,9 @@ class DondAgent:
         # 2) Check that exactly one of <message>...</message> or <finalize>...</finalize> is present.
         has_message = num_message_tags == 1
 
-        has_finalization, errors, finalization_content = globals()[
-            self.proposal_parser
-        ](response, state, self.proposal_parser_kwargs)
+        has_finalization, errors, finalization_content = verify_finalization_dict(
+            response, state, self.agent_key_mapping
+        )
 
         # New check: If the co-agent has finalized and our agent sends a message instead of a finalization, raise an error.
         if state.get("has_finalized", False) and has_message:
@@ -629,17 +627,7 @@ class DondAgent:
             json.dump(self.conversation_history, f)
 
 
-def regular_proposal_parser(response, state, player_key_mapping):
-    (
-        has_finalization,
-        finalization_errors,
-        finalization_content,
-    ) = verify_finalization_dict(response, state, player_key_mapping)
-
-    return has_finalization, finalization_errors, finalization_content
-
-
-def verify_finalization_dict(response, state, player_key_mapping):
+def verify_finalization_dict(response, state, agent_key_mapping):
     current_agent = state.get("current_agent")
     finalize_tags = re.findall(r"<finalize>.*?</finalize>", response, flags=re.S)
     num_finalize_tags = len(finalize_tags)
@@ -665,16 +653,19 @@ def verify_finalization_dict(response, state, player_key_mapping):
                     "The content within <finalize> is not a valid dictionary."
                 )
             else:
-                output_key = player_key_mapping[current_agent]
+                output_key = agent_key_mapping[current_agent]
                 other_keys = list(set(finalization_json.keys()) - {output_key})
+
                 if len(other_keys) > 1:
                     finalization_errors.append(
                         f"Unexpected keys in <finalize>: {', '.join(other_keys)}."
                     )
+
                 if len(other_keys) == 0:
                     finalization_errors.append(
                         "No finalization found for the other agent."
                     )
+
                 other_key = other_keys[0]
                 output_1 = finalization_json.get(output_key, {})
                 output_2 = finalization_json.get(other_key, {})
@@ -739,7 +730,7 @@ def verify_finalization_dict(response, state, player_key_mapping):
                             finalization_errors.append(
                                 f"Total {item} divided should sum to {expected_item_quantities.get(item, 0)}."
                             )
-            items_taken = finalization_json.get(player_key_mapping[current_agent], {})
+            items_taken = finalization_json
         except json.JSONDecodeError:
             finalization_errors.append(
                 "The content within <finalize> is not valid JSON."
