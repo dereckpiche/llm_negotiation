@@ -1,8 +1,7 @@
 import json
-import re
-
 import regex as re
-
+import re
+import json
 from utils.common_imports import *
 
 
@@ -13,7 +12,6 @@ class DondAgent:
         allow_reasoning,
         max_errors,
         policy_id,
-        agent_key_mapping,
         value_function_id=None,
         max_reasoning_chars=None,
         intro_prompt=None,
@@ -29,7 +27,7 @@ class DondAgent:
         dond_version_specificities=None,
         reasoning_mechanics_prompt=None,
         time_to_finalize_prompt=None,
-        time_to_send_message_prompt=None,
+        time_to_send_message_prompt=None
     ):
         """
         Initializes the DondAgent.
@@ -62,7 +60,6 @@ class DondAgent:
         self.policy_id = policy_id
         self.value_function_id = value_function_id
         self.max_reasoning_chars = max_reasoning_chars
-        self.agent_key_mapping = agent_key_mapping
 
         self.intro_prompt = intro_prompt
         self.goal_prompt = goal_prompt
@@ -76,9 +73,7 @@ class DondAgent:
         # Set the new mechanics prompts.
         self.message_mechanics_prompt = message_mechanics_prompt
         self.finalization_mechanics_prompt = finalization_mechanics_prompt
-        self.dond_version_specificities = (
-            dond_version_specificities  # New prompt for version specificities
-        )
+        self.dond_version_specificities = dond_version_specificities  # New prompt for version specificities
         self.reasoning_mechanics_prompt = reasoning_mechanics_prompt
         self.time_to_finalize_prompt = time_to_finalize_prompt
         self.time_to_send_message_prompt = time_to_send_message_prompt
@@ -115,19 +110,15 @@ class DondAgent:
         # If we have policy output, we need to process it and determine the action
         else:
             # Process the LLM output
-            (
-                is_error,
-                error_message,
-                is_finalization,
-                processed_response,
-            ) = self.process_response(policy_output, state)
+            is_error, error_message, is_finalization, processed_response = self.process_response(
+                policy_output, state
+            )
 
             # Add the model response to chat history
             model_response = {
                 "role": "assistant",
                 "content": policy_output,
                 "is_error": is_error,
-                "error_message": error_message,
                 "is_finalization": is_finalization,
                 "round_nb": state["round_number"],
             }
@@ -156,16 +147,11 @@ class DondAgent:
                 self.add_to_chat_history(user_message)
 
                 # Return with a request for policy output again (done = False)
-                return (
-                    self.policy_id,
-                    self.chat_history,
-                    None,
-                    False,
-                    self.get_log_info(),
-                )
+                return self.policy_id, self.chat_history, None, False, self.get_log_info()
 
             # Reset retries on successful processing
             self.retries = 0
+
 
             # Create the action to be sent to the environment
             action = (is_finalization, processed_response)
@@ -182,7 +168,7 @@ class DondAgent:
         return {
             "agent_name": self.agent_name,
             "chat_history": self.chat_history,
-            "augmented_chat_history": self.augmented_chat_history,
+            "augmented_chat_history": self.augmented_chat_history
         }
 
     def render(self):
@@ -194,6 +180,7 @@ class DondAgent:
         """Perform any necessary cleanup."""
         # Implementation can be expanded if needed
         pass
+
 
     ###########################################################################
     # Helper methods below this point
@@ -223,30 +210,20 @@ class DondAgent:
         if state["game_moves"].get(self.agent_name) == 0:
             user_message += self.format_prompt(self.intro_prompt, state)
             if self.message_mechanics_prompt:
-                user_message += "\n\n" + self.format_prompt(
-                    self.message_mechanics_prompt, state
-                )
+                user_message += "\n\n" + self.format_prompt(self.message_mechanics_prompt, state)
             if self.finalization_mechanics_prompt:
-                user_message += "\n\n" + self.format_prompt(
-                    self.finalization_mechanics_prompt, state
-                )
+                user_message += "\n\n" + self.format_prompt(self.finalization_mechanics_prompt, state)
             if self.dond_version_specificities:
-                user_message += "\n\n" + self.format_prompt(
-                    self.dond_version_specificities, state
-                )
+                user_message += "\n\n" + self.format_prompt(self.dond_version_specificities, state)
             if self.allow_reasoning and self.reasoning_mechanics_prompt:
-                user_message += "\n\n" + self.format_prompt(
-                    self.reasoning_mechanics_prompt, state
-                )
+                user_message += "\n\n" + self.format_prompt(self.reasoning_mechanics_prompt, state)
             if self.goal_prompt:
                 user_message += "\n\n" + self.format_prompt(self.goal_prompt, state)
 
         # If the current agent has not yet made any move in this round, add round instructions.
         if state["round_moves"].get(self.agent_name, 0) == 0:
             if state["round_number"] == 0 and self.first_round_prompt:
-                user_message += "\n\n" + self.format_prompt(
-                    self.first_round_prompt, state
-                )
+                user_message += "\n\n" + self.format_prompt(self.first_round_prompt, state)
             elif self.new_round_prompt:
                 user_message += self.format_prompt(self.new_round_prompt, state)
 
@@ -270,13 +247,9 @@ class DondAgent:
         max_msgs = state.get("max_messages", None)
         agent_messages = state.get("round_messages", {}).get(self.agent_name, 0)
         if agent_messages == max_msgs and self.time_to_finalize_prompt:
-            user_message += "\n\n" + self.format_prompt(
-                self.time_to_finalize_prompt, state
-            )
+            user_message += "\n\n" + self.format_prompt(self.time_to_finalize_prompt, state)
         elif agent_messages < min_msgs and self.time_to_send_message_prompt:
-            user_message += "\n\n" + self.format_prompt(
-                self.time_to_send_message_prompt, state
-            )
+            user_message += "\n\n" + self.format_prompt(self.time_to_send_message_prompt, state)
 
         usr_prompt = {
             "role": "user",
@@ -297,48 +270,39 @@ class DondAgent:
         Returns:
             tuple: (is_error, error_message, is_finalization, processed_response)
         """
-        # errors = []
+        errors = []
 
         # Count the occurrences of valid tag blocks.
         message_tags = re.findall(r"<message>.*?</message>", response, flags=re.S)
         num_message_tags = len(message_tags)
+        finalize_tags = re.findall(r"<finalize>.*?</finalize>", response, flags=re.S)
+        num_finalize_tags = len(finalize_tags)
 
         # 2) Check that exactly one of <message>...</message> or <finalize>...</finalize> is present.
         has_message = num_message_tags == 1
-
-        has_finalization, errors, finalization_content = verify_finalization_dict(
-            response, state, self.agent_key_mapping
-        )
+        has_finalization = num_finalize_tags == 1
 
         # New check: If the co-agent has finalized and our agent sends a message instead of a finalization, raise an error.
         if state.get("has_finalized", False) and has_message:
-            errors.append(
-                "You must finalize your move because the other agent has finalized. Do not send a conversation message."
-            )
+            errors.append("You must finalize your move because the other agent has finalized. Do not send a conversation message.")
 
         if num_message_tags > 1:
-            errors.append(
-                "Multiple <message> blocks detected. Please send only one message block."
-            )
+            errors.append("Multiple <message> blocks detected. Please send only one message block.")
+        if num_finalize_tags > 1:
+            errors.append("Multiple <finalize> blocks detected. Please send only one finalization block.")
 
         if has_message and has_finalization:
-            errors.append(
-                "You cannot send both a message and a finalization in one response."
-            )
+            errors.append("You cannot send both a message and a finalization in one response.")
 
         if not has_message and not has_finalization:
-            errors.append(
-                "You must send either a message or a finalization. You have sent nothing."
-            )
+            errors.append("You must send either a message or a finalization. You have sent nothing.")
 
         # 2.5) Check if this response is a message and would exceed per-agent allowed messages.
         max_msgs = state.get("max_messages", None)
         agent_messages = state.get("round_messages", {}).get(self.agent_name, 0)
         if max_msgs is not None and has_message:
             if agent_messages == max_msgs:
-                errors.append(
-                    "You must finalize because you reached the maximum number of messages!"
-                )
+                errors.append("You must finalize because you reached the maximum number of messages!")
 
         # NEW: Check that the minimum number of messages has been sent before finalizing.
         min_msgs = state.get("min_messages", None)
@@ -365,10 +329,7 @@ class DondAgent:
         think_blocks = re.findall(r"<think>(.*?)</think>", response, flags=re.S)
         if think_blocks:
             total_thinking_chars = sum(len(block.strip()) for block in think_blocks)
-            if (
-                self.max_reasoning_chars is not None
-                and total_thinking_chars > self.max_reasoning_chars
-            ):
+            if self.max_reasoning_chars is not None and total_thinking_chars > self.max_reasoning_chars:
                 errors.append(
                     f"The reasoning section exceeds the maximum allowed reasoning characters "
                     f"({total_thinking_chars} > {self.max_reasoning_chars})."
@@ -377,30 +338,92 @@ class DondAgent:
         # 3.5) Check if the response exceeds the maximum allowed characters per message.
         max_chars = state.get("max_chars_per_message", None)
         if max_chars is not None and len(response) > max_chars:
-            errors.append(
-                "Response exceeds the maximum allowed characters per message."
-            )
+            errors.append("Response exceeds the maximum allowed characters per message.")
+
+        # 4) Process finalization if present.
+        if has_finalization:
+            finalization_content = response.split("<finalize>", 1)[1].split("</finalize>", 1)[0].strip()
+            try:
+                finalization_json = json.loads(finalization_content)
+                if not isinstance(finalization_json, dict):
+                    errors.append("The content within <finalize> is not a valid dictionary.")
+                    i_take = None
+                    other_agent_gets = None
+                else:
+                    i_take = finalization_json.get("i_take", {})
+                    other_agent_gets = finalization_json.get("other_agent_gets", {})
+
+                if not isinstance(i_take, dict) or not isinstance(other_agent_gets, dict):
+                    errors.append('"i_take" and "other_agent_gets" must be dictionaries.')
+                else:
+                    expected_items = set(state.get("items", []))
+                    expected_item_quantities = state.get("quantities", {})
+
+                    # Validate that the keys exactly match the expected items.
+                    if set(i_take.keys()) != expected_items:
+
+                        missing = expected_items - set(i_take.keys())
+                        extra = set(i_take.keys()) - expected_items
+                        error_str = "Invalid keys in 'i_take':"
+
+                        if missing:
+                            error_str += f" Missing keys: {', '.join(missing)}."
+                        if extra:
+                            error_str += f" Unexpected keys: {', '.join(extra)}."
+
+                        errors.append(error_str)
+
+                    if set(other_agent_gets.keys()) != expected_items:
+
+                        missing = expected_items - set(other_agent_gets.keys())
+                        extra = set(other_agent_gets.keys()) - expected_items
+                        error_str = "Invalid keys in 'other_agent_gets':"
+
+                        if missing:
+                            error_str += f" Missing keys: {', '.join(missing)}."
+                        if extra:
+                            error_str += f" Unexpected keys: {', '.join(extra)}."
+                        errors.append(error_str)
+
+                    i_take_valid_items = set(i_take.keys()) & expected_items
+                    other_agent_gets_valid_items = set(other_agent_gets.keys()) & expected_items
+
+                    # Verify that every value for each key is an integer and sums to total quantities.
+                    for item in expected_items:
+                        if item in i_take_valid_items and item in other_agent_gets_valid_items:
+                            is_i_take_int = isinstance(i_take.get(item), int)
+                            is_other_agent_gets_int = isinstance(other_agent_gets.get(item), int)
+
+                            if not is_i_take_int:
+                                errors.append(f'Value of "{item}" in "i_take" must be an integer.')
+
+                            if not is_other_agent_gets_int:
+                                errors.append(f'Value of "{item}" in "other_agent_gets" must be an integer.')
+
+                            if (
+                                is_i_take_int
+                                and is_other_agent_gets_int
+                                and i_take.get(item, 0) + other_agent_gets.get(item, 0)
+                                != expected_item_quantities.get(item, 0)
+                            ):
+                                errors.append(f'Total {item} divided should sum to {expected_item_quantities.get(item, 0)}.')
+
+            except json.JSONDecodeError:
+                errors.append("The content within <finalize> is not valid JSON.")
 
         # 5) Return results: if errors exist, return an error message.
         if errors:
             if len(errors) == 1:
                 error_message = errors[0]
             else:
-                error_message = "Errors:\n" + "\n".join(
-                    f"{i+1}) {err}" for i, err in enumerate(errors)
-                )
+                error_message = "Errors:\n" + "\n".join(f"{i+1}) {err}" for i, err in enumerate(errors))
             return True, error_message, False, None
 
         if has_finalization:
-            return False, "", True, finalization_content
+            return False, "", True, i_take
         if has_message:
             # Extract using our earlier found list.
-            message_content = (
-                message_tags[0]
-                .split("<message>", 1)[1]
-                .split("</message>", 1)[0]
-                .strip()
-            )
+            message_content = message_tags[0].split("<message>", 1)[1].split("</message>", 1)[0].strip()
             return False, "", False, message_content
 
         return True, "Unknown error: Invalid response format.", False, None
@@ -416,19 +439,15 @@ class DondAgent:
                 other_agent_finalization = ""
 
             # Get the values for the current agent based on their role.
-            values = state["role_values"][
-                state["agent_to_role"][state["current_agent"]]
-            ]
+            values = state["role_values"][state["agent_to_role"][state["current_agent"]]]
 
             if state.get("round_points") != []:
-                last_round_points = state["round_points"][-1][
-                    state["agent_to_role"][state["current_agent"]]
-                ]
+                last_round_points = state['round_points'][-1][state["agent_to_role"][state["current_agent"]]]
             else:
                 last_round_points = 0
 
             # Retrieve message-related values from the state.
-            remaining_msgs = state["messages_remaining"][self.agent_name]
+            remaining_msgs = state['messages_remaining'][self.agent_name]
             max_msgs = state.get("max_messages", 0)
             min_msgs = state.get("min_messages", 0)
             current_sent = state["round_messages"].get(self.agent_name, 0)
@@ -444,16 +463,10 @@ class DondAgent:
             # If archived round info exists, then check if an agreement was reached.
             # If no agreement was reached, fill with "0 points, since no agreement was reached".
             # If agreement was reached, compute detailed breakdown per item.
-            if (
-                state.get("round_agent_roles")
-                and state.get("round_agreements_reached")
-                and len(state["round_agent_roles"]) > 0
-                and len(state["round_agreements_reached"]) > 0
-            ):
+            if (state.get("round_agent_roles") and state.get("round_agreements_reached") and
+                len(state["round_agent_roles"]) > 0 and len(state["round_agreements_reached"]) > 0):
                 last_agreement = state["round_agreements_reached"][-1]
-                last_arch_roles = state["round_agent_roles"][
-                    -1
-                ]  # mapping: agent -> role for that round
+                last_arch_roles = state["round_agent_roles"][-1]  # mapping: agent -> role for that round
                 # Determine current agent's role in the last round
                 my_role = last_arch_roles.get(self.agent_name, None)
                 # Determine the other agent's name and role
@@ -464,20 +477,12 @@ class DondAgent:
                         other_role = role
                         break
                 if not last_agreement:
-                    last_round_points_computed = (
-                        "0 points, since no agreement was reached"
-                    )
-                    coagent_last_round_points_computed = (
-                        "0 points, since no agreement was reached"
-                    )
+                    last_round_points_computed = "0 points, since no agreement was reached"
+                    coagent_last_round_points_computed = "0 points, since no agreement was reached"
                 else:
                     # Retrieve last round's finalizations and values
-                    last_round_finalizations = state["round_finalizations"][
-                        -1
-                    ]  # mapping: role -> finalization dict
-                    last_round_values = state["round_values"][
-                        -1
-                    ]  # mapping: role -> values dict
+                    last_round_finalizations = state["round_finalizations"][-1]  # mapping: role -> finalization dict
+                    last_round_values = state["round_values"][-1]  # mapping: role -> values dict
                     # Compute detailed breakdown for current agent:
                     total_my = 0
                     details_my = []
@@ -486,33 +491,21 @@ class DondAgent:
                         my_val = last_round_values.get(my_role, {}).get(item, 0)
                         product_my = my_qty * my_val
                         total_my += product_my
-                        details_my.append(
-                            f"{my_val} per {item} x {my_qty} = {product_my}"
-                        )
-                    last_round_points_computed = (
-                        "; ".join(details_my) + f" | Total: {total_my} points"
-                    )
+                        details_my.append(f"{my_val} per {item} x {my_qty} = {product_my}")
+                    last_round_points_computed = "; ".join(details_my) + f" | Total: {total_my} points"
                     # Compute detailed breakdown for the coagent:
                     total_other = 0
                     details_other = []
                     for item in items:
-                        other_qty = last_round_finalizations.get(other_role, {}).get(
-                            item, 0
-                        )
+                        other_qty = last_round_finalizations.get(other_role, {}).get(item, 0)
                         other_val = last_round_values.get(other_role, {}).get(item, 0)
                         product_other = other_qty * other_val
                         total_other += product_other
-                        details_other.append(
-                            f"{other_val} per {item} x {other_qty} = {product_other}"
-                        )
-                    coagent_last_round_points_computed = (
-                        "; ".join(details_other) + f" | Total: {total_other} points"
-                    )
+                        details_other.append(f"{other_val} per {item} x {other_qty} = {product_other}")
+                    coagent_last_round_points_computed = "; ".join(details_other) + f" | Total: {total_other} points"
             else:
                 last_round_points_computed = "0 points, since no agreement was reached"
-                coagent_last_round_points_computed = (
-                    "0 points, since no agreement was reached"
-                )
+                coagent_last_round_points_computed = "0 points, since no agreement was reached"
             # -------------------------------------------
 
             # After computing last_round_points_computed and coagent_last_round_points_computed, add cumulative points calculations based on historical rounds.
@@ -531,49 +524,28 @@ class DondAgent:
                         cp_role = mapping[cp]
                         cumulative_coagent_points += rp.get(cp_role, 0)
 
-            return (
-                prompt.replace(
-                    "{rounds_per_game}", str(state.get("rounds_per_game", ""))
-                )
-                .replace("{last_round_points}", str(last_round_points))
-                .replace("{last_round_points_computed}", last_round_points_computed)
-                .replace(
-                    "{coagent_last_round_points_computed_other}",
-                    coagent_last_round_points_computed,
-                )
-                .replace("{current_round}", str(state.get("current_round", "")))
-                .replace("{nb_rounds}", str(state["round_number"] + 1))
-                .replace("{quantities}", str(state.get("quantities", "")))
-                .replace("{values}", str(values))
-                .replace("{items}", str(items))
-                .replace("{max_reasoning_chars}", str(self.max_reasoning_chars))
-                .replace("{max_messages}", str(max_msgs))
-                .replace("{min_messages}", str(min_msgs))
-                .replace(
-                    "{max_chars_per_message}",
-                    str(state.get("max_chars_per_message", "")),
-                )
-                .replace("{max_errors}", str(self.max_errors))
-                .replace(
-                    "{last_message}",
-                    "<message> " + str(state.get("last_message", "")) + " </message>",
-                )
-                .replace(
-                    "{other_agent_finalization}",
-                    "<finalize> " + str(other_agent_finalization) + " </finalize>",
-                )
-                .replace(
-                    "{remaining_messages}",
-                    f"Minimum Messages: {min_msgs}, Maximum Messages: {max_msgs}, Current Number Sent: {current_sent}",
-                )
-                .replace("{finalize_sample_i_take}", finalize_sample_i_take)
-                .replace("{finalize_sample_other}", finalize_sample_other)
-                .replace("{cumulative_round_points_your}", str(cumulative_your_points))
-                .replace("{agent_name}", str(state.get("current_agent")))
-                .replace(
-                    "{cumulative_round_points_coagent}", str(cumulative_coagent_points)
-                )
-            )
+            return prompt.replace("{rounds_per_game}", str(state.get("rounds_per_game", ""))) \
+                        .replace("{last_round_points}", str(last_round_points)) \
+                        .replace("{last_round_points_computed}", last_round_points_computed) \
+                        .replace("{coagent_last_round_points_computed_other}", coagent_last_round_points_computed) \
+                        .replace("{current_round}", str(state.get("current_round", ""))) \
+                        .replace("{nb_rounds}", str(state["round_number"] + 1)) \
+                        .replace("{quantities}", str(state.get("quantities", ""))) \
+                        .replace("{values}", str(values)) \
+                        .replace("{items}", str(items)) \
+                        .replace("{max_reasoning_chars}", str(self.max_reasoning_chars)) \
+                        .replace("{max_messages}", str(max_msgs)) \
+                        .replace("{min_messages}", str(min_msgs)) \
+                        .replace("{max_chars_per_message}", str(state.get("max_chars_per_message", ""))) \
+                        .replace("{max_errors}", str(self.max_errors)) \
+                        .replace("{last_message}", str(state.get("last_message", ""))) \
+                        .replace("{other_agent_finalization}", str(other_agent_finalization)) \
+                        .replace("{remaining_messages}", \
+                                 f"Minimum Messages: {min_msgs}, Maximum Messages: {max_msgs}, Current Number Sent: {current_sent}") \
+                        .replace("{finalize_sample_i_take}", finalize_sample_i_take) \
+                        .replace("{finalize_sample_other}", finalize_sample_other) \
+                        .replace("{cumulative_round_points_your}", str(cumulative_your_points)) \
+                        .replace("{cumulative_round_points_coagent}", str(cumulative_coagent_points))
         return ""
 
     def get_chat_history(self):
@@ -615,125 +587,9 @@ class DondAgent:
         self.__dict__.update(checkpoint)
 
     def export(self, path, state_history):
-        game_stats = self.gather_statistics_func(
-            state_history, self.conversation_history, **self.gather_statistics_func_args
-        )
-        self.set_chat_scores_func(
-            self.conversation_history, **self.set_chat_scores_func_args
-        )
+        game_stats = self.gather_statistics_func(state_history, self.conversation_history, **self.gather_statistics_func_args)
+        self.set_chat_scores_func(self.conversation_history, **self.set_chat_scores_func_args)
 
         with open(path, "w") as f:
             json.dump(game_stats, f)
             json.dump(self.conversation_history, f)
-
-
-def verify_finalization_dict(response, state, agent_key_mapping):
-    current_agent = state.get("current_agent")
-    finalize_tags = re.findall(r"<finalize>.*?</finalize>", response, flags=re.S)
-    num_finalize_tags = len(finalize_tags)
-    has_finalization = num_finalize_tags == 1
-    finalization_errors = []
-    if num_finalize_tags > 1:
-        finalization_errors.append(
-            "Multiple <finalize> blocks detected. Please send only one finalization block."
-        )
-
-    items_taken = None
-
-    # Check finalization consistency
-    if has_finalization:
-        finalization_content = (
-            response.split("<finalize>", 1)[1].split("</finalize>", 1)[0].strip()
-        )
-
-        try:
-            finalization_json = json.loads(finalization_content)
-            if not isinstance(finalization_json, dict):
-                finalization_errors.append(
-                    "The content within <finalize> is not a valid dictionary."
-                )
-            else:
-                output_key = agent_key_mapping[current_agent]
-                other_keys = list(set(finalization_json.keys()) - {output_key})
-
-                if len(other_keys) > 1:
-                    finalization_errors.append(
-                        f"Unexpected keys in <finalize>: {', '.join(other_keys)}."
-                    )
-
-                if len(other_keys) == 0:
-                    finalization_errors.append(
-                        "No finalization found for the other agent."
-                    )
-
-                other_key = other_keys[0]
-                output_1 = finalization_json.get(output_key, {})
-                output_2 = finalization_json.get(other_key, {})
-
-            if not isinstance(output_1, dict) or not isinstance(output_2, dict):
-                finalization_errors.append(
-                    f'"{output_key}" and "{other_key}" must be dictionaries.'
-                )
-            else:
-                expected_items = set(state.get("items", []))
-                expected_item_quantities = state.get("quantities", {})
-
-                # Validate that the keys exactly match the expected items.
-                if set(output_1.keys()) != expected_items:
-                    missing = expected_items - set(output_1.keys())
-                    extra = set(output_1.keys()) - expected_items
-                    error_str = f"Invalid keys in '{output_key}':"
-
-                    if missing:
-                        error_str += f" Missing keys: {', '.join(missing)}."
-                    if extra:
-                        error_str += f" Unexpected keys: {', '.join(extra)}."
-
-                    finalization_errors.append(error_str)
-
-                if set(output_2.keys()) != expected_items:
-                    missing = expected_items - set(output_2.keys())
-                    extra = set(output_2.keys()) - expected_items
-                    error_str = f"Invalid keys in '{other_key}':"
-
-                    if missing:
-                        error_str += f" Missing keys: {', '.join(missing)}."
-                    if extra:
-                        error_str += f" Unexpected keys: {', '.join(extra)}."
-                    finalization_errors.append(error_str)
-
-                output_1_valid_items = set(output_1.keys()) & expected_items
-                output_2_valid_items = set(output_2.keys()) & expected_items
-
-                # Verify that every value for each key is an integer and sums to total quantities.
-                for item in expected_items:
-                    if item in output_1_valid_items and item in output_2_valid_items:
-                        is_output_1_int = isinstance(output_1.get(item), int)
-                        is_output_2_int = isinstance(output_2.get(item), int)
-
-                        if not is_output_1_int:
-                            finalization_errors.append(
-                                f'Value of "{item}" in "{output_key}" must be an integer.'
-                            )
-
-                        if not is_output_2_int:
-                            finalization_errors.append(
-                                f'Value of "{item}" in "{other_key}" must be an integer.'
-                            )
-
-                        if (
-                            is_output_1_int
-                            and is_output_2_int
-                            and output_1.get(item, 0) + output_2.get(item, 0)
-                            != expected_item_quantities.get(item, 0)
-                        ):
-                            finalization_errors.append(
-                                f"Total {item} divided should sum to {expected_item_quantities.get(item, 0)}."
-                            )
-            items_taken = finalization_json
-        except json.JSONDecodeError:
-            finalization_errors.append(
-                "The content within <finalize> is not valid JSON."
-            )
-
-    return (has_finalization, finalization_errors, items_taken)
