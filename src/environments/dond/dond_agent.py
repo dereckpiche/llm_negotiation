@@ -129,6 +129,7 @@ class DondAgent:
                 "role": "assistant",
                 "content": policy_output,
                 "is_error": is_error,
+                "error_message": error_message,
                 "is_finalization": is_finalization,
                 "round_nb": state["round_number"],
             }
@@ -629,36 +630,26 @@ class DondAgent:
 
 
 def regular_proposal_parser(response, state, player_key_mapping):
-
     (
         has_finalization,
         finalization_errors,
         finalization_content,
-    ) = verify_finalization_dict(
-        response, state, player_key_mapping
-    )
+    ) = verify_finalization_dict(response, state, player_key_mapping)
 
     return has_finalization, finalization_errors, finalization_content
 
 
 def verify_finalization_dict(response, state, player_key_mapping):
-    output_keys = list(player_key_mapping.values())
-    output_key_1 = output_keys[0]
-    output_key_2 = output_keys[1]
+    current_agent = state.get("current_agent")
     finalize_tags = re.findall(r"<finalize>.*?</finalize>", response, flags=re.S)
     num_finalize_tags = len(finalize_tags)
-
     has_finalization = num_finalize_tags == 1
-
-  
-
     finalization_errors = []
     if num_finalize_tags > 1:
         finalization_errors.append(
             "Multiple <finalize> blocks detected. Please send only one finalization block."
         )
-    output_1 = None
-    output_2 = None
+
     items_taken = None
 
     # Check finalization consistency
@@ -669,18 +660,28 @@ def verify_finalization_dict(response, state, player_key_mapping):
 
         try:
             finalization_json = json.loads(finalization_content)
-
             if not isinstance(finalization_json, dict):
                 finalization_errors.append(
                     "The content within <finalize> is not a valid dictionary."
                 )
             else:
-                output_1 = finalization_json.get(output_key_1, {})
-                output_2 = finalization_json.get(output_key_2, {})
+                output_key = player_key_mapping[current_agent]
+                other_keys = list(set(finalization_json.keys()) - {output_key})
+                if len(other_keys) > 1:
+                    finalization_errors.append(
+                        f"Unexpected keys in <finalize>: {', '.join(other_keys)}."
+                    )
+                if len(other_keys) == 0:
+                    finalization_errors.append(
+                        "No finalization found for the other agent."
+                    )
+                other_key = other_keys[0]
+                output_1 = finalization_json.get(output_key, {})
+                output_2 = finalization_json.get(other_key, {})
 
             if not isinstance(output_1, dict) or not isinstance(output_2, dict):
                 finalization_errors.append(
-                    f'"{output_key_1}" and "{output_key_2}" must be dictionaries.'
+                    f'"{output_key}" and "{other_key}" must be dictionaries.'
                 )
             else:
                 expected_items = set(state.get("items", []))
@@ -690,7 +691,7 @@ def verify_finalization_dict(response, state, player_key_mapping):
                 if set(output_1.keys()) != expected_items:
                     missing = expected_items - set(output_1.keys())
                     extra = set(output_1.keys()) - expected_items
-                    error_str = f"Invalid keys in '{output_key_1}':"
+                    error_str = f"Invalid keys in '{output_key}':"
 
                     if missing:
                         error_str += f" Missing keys: {', '.join(missing)}."
@@ -702,7 +703,7 @@ def verify_finalization_dict(response, state, player_key_mapping):
                 if set(output_2.keys()) != expected_items:
                     missing = expected_items - set(output_2.keys())
                     extra = set(output_2.keys()) - expected_items
-                    error_str = f"Invalid keys in '{output_key_2}':"
+                    error_str = f"Invalid keys in '{other_key}':"
 
                     if missing:
                         error_str += f" Missing keys: {', '.join(missing)}."
@@ -721,12 +722,12 @@ def verify_finalization_dict(response, state, player_key_mapping):
 
                         if not is_output_1_int:
                             finalization_errors.append(
-                                f'Value of "{item}" in "{output_key_1}" must be an integer.'
+                                f'Value of "{item}" in "{output_key}" must be an integer.'
                             )
 
                         if not is_output_2_int:
                             finalization_errors.append(
-                                f'Value of "{item}" in "{output_key_2}" must be an integer.'
+                                f'Value of "{item}" in "{other_key}" must be an integer.'
                             )
 
                         if (
@@ -738,15 +739,10 @@ def verify_finalization_dict(response, state, player_key_mapping):
                             finalization_errors.append(
                                 f"Total {item} divided should sum to {expected_item_quantities.get(item, 0)}."
                             )
-            current_agent = state.get("current_agent")
             items_taken = finalization_json.get(player_key_mapping[current_agent], {})
         except json.JSONDecodeError:
-            finalization_errors.append("The content within <finalize> is not valid JSON.")
+            finalization_errors.append(
+                "The content within <finalize> is not valid JSON."
+            )
 
-
-    
-    return (
-        has_finalization,
-        finalization_errors,
-        items_taken
-    )
+    return (has_finalization, finalization_errors, items_taken)
