@@ -9,19 +9,20 @@ class DondEnv:
         self,
         game_index,
         random_seed,
-        agent_key_mapping,
         agents=["alice", "bob"],
-        mode="coop",
         max_messages=None,
         min_messages=None,
         max_chars_per_message=None,
         rounds_per_game=1,
         random_setup_func=None,
         random_setup_kwargs=None,
+        points_attribution_method=None,
+        points_attributions_kwargs=None,
         role_assignator_func=None,
         role_assignator_func_kwargs=None,
         finalization_visibility=False,
         other_values_visibility=False,
+        mode="basic",
     ):
         """
         Initializes the DoND game.
@@ -43,7 +44,6 @@ class DondEnv:
             random_seed (int, optional): The base seed that will be used (and incremented) for random generation.
         """
 
-        self.agent_key_mapping = agent_key_mapping
         self.agents = agents
         self.roles = ["starting_negotiator", "responding_negotiator"]
         self.mode = mode
@@ -71,6 +71,14 @@ class DondEnv:
         self.role_assignator_func_kwargs = role_assignator_func_kwargs or {}
         self.role_assignator_func_kwargs["game_index"] = game_index
         self.other_values_visibility = other_values_visibility
+
+        # Store the points_attribution_method
+        self.points_attribution_method = (
+            globals()[points_attribution_method]
+            if isinstance(points_attribution_method, str)
+            else points_attribution_method
+        )
+        self.points_attributions_kwargs = points_attributions_kwargs or {}
 
         # TODO: Random seed should be tied to the sytem random seed.
         if random_seed is None:
@@ -151,16 +159,12 @@ class DondEnv:
             if self.has_finalized:
                 # We are in the second finalization phase.
                 if not is_finalization:
-                    self.points = {agent: 0 for agent in self.agents}
+                    self.points = {role: 0 for role in self.roles}
                     self.agreement_reached = False
                 else:
                     self.finalize(output)
-                    if self.verify_finalizations_match():
-                        self.set_points()
-                        self.agreement_reached = True
-                    else:
-                        self.points = {agent: 0 for agent in self.agents}
-                        self.agreement_reached = False
+                    # Use the custom points attribution method which now returns (points, valid_agreement)
+                    self.points, self.agreement_reached = self.points_attribution_method(self.get_state(), **self.points_attributions_kwargs)
                 round_over = True
 
             else:
@@ -222,38 +226,6 @@ class DondEnv:
         """Perform any necessary cleanup."""
         pass
 
-    def verify_finalizations_match(self):
-        """
-        Verifies if the finalizations from both agents match the total quantities.
-
-        scores:
-            bool: True if the finalizations match, False otherwise.
-        """
-        for item in self.items:
-            total = sum(self.role_props[role][item] for role in self.roles)
-            if total != self.quantities[item]:
-                return False
-        return True
-
-    def set_points(self):
-        """
-        Sets the points for each role based on their finalizations.
-        """
-        utilities = {
-            role: sum(
-                self.role_values[role][item] * self.role_props[role][item]
-                for item in self.items
-            )
-            for role in self.roles
-        }
-
-        if self.mode == "coop":
-            total = sum(utilities.values())
-            self.points = {role: total for role in self.roles}
-
-        elif self.mode == "basic":
-            self.points = {role: utilities[role] for role in self.roles}
-
     def finalize(self, finalization):
         """
         Records the finalization from the current agent.
@@ -263,13 +235,10 @@ class DondEnv:
         """
         current_role = self.current_turn()
         current_agent = self.get_current_agent()
-
-        finalization_dict = finalization[self.agent_key_mapping[current_agent]]
-
         # Ensure every item is present in the finalization, defaulting to 0 if missing
         for item in self.items:
-            finalization_dict.setdefault(item, 0)
-        self.role_props[current_role] = finalization_dict
+            finalization.setdefault(item, 0)
+        self.role_props[current_role] = finalization
 
     def get_state(self):
         """
@@ -633,3 +602,113 @@ def fixed_role_assignator(state, **kwargs):
     agent_to_role = {agents[0]: roles[0], agents[1]: roles[1]}
 
     return agent_to_role
+
+
+def regular_set_points(state, **kwargs):
+    """
+    Sets the points for each role based on their finalizations.
+    This is the default/regular points attribution method.
+    
+    Args:
+        state (dict): The current state of the game.
+        kwargs (dict): Additional keyword arguments (not used here).
+    
+    Returns:
+        tuple: (dict, bool) - A mapping of roles to points and a boolean indicating if the agreement is valid.
+    """
+    roles = state["agent_to_role"].values()
+    items = state["items"]
+    role_values = state["role_values"]
+    role_props = state["role_props"]
+    mode = state["mode"]
+    quantities = state["quantities"]
+    
+    # Verify if finalizations match the total quantities
+    valid_agreement = True
+    for item in items:
+        total = sum(role_props[role].get(item, 0) for role in roles)
+        if total != quantities[item]:
+            valid_agreement = False
+            break
+    
+    # Calculate utility for each role
+    utilities = {
+        role: sum(
+            role_values[role][item] * role_props[role].get(item, 0)
+            for item in items
+        )
+        for role in roles
+    }
+    
+    # Assign points based on game mode
+    if mode == "coop":
+        total = sum(utilities.values())
+        return {role: total for role in roles}, valid_agreement
+    elif mode == "basic":
+        return {role: utilities[role] for role in roles}, valid_agreement
+    else:
+        # Default to individual utilities if mode is not recognized
+        return {role: utilities[role] for role in roles}, valid_agreement
+
+
+def negotiation_payoff(state, use_max_divisor=True):
+    """
+    Implements the payoff formula r_a = ∑ (p_a * v_a) / max(q, p_a + p_o) from https://arxiv.org/pdf/2406.14662
+    
+    Where:
+    - r_a is the reward for agent a
+    - p_a is the proposal (quantity taken) by agent a
+    - v_a is the value agent a places on each item
+    - p_o is the proposal (quantity taken) by the opponent agent
+    - q is the total quantity of the item
+    
+    Args:
+        state (dict): The current state of the game.
+        kwargs (dict): Additional keyword arguments.
+            - min_divisor (int, optional): The minimum divisor value (default is 5)
+            - use_max_divisor (bool, optional): If True, use max(min_divisor, p_a + p_o),
+              otherwise use the total quantity (default is False)
+    
+    Returns:
+        tuple: (dict, bool) - A mapping of roles to points and a boolean indicating if the agreement is valid.
+    """
+    roles = list(state["agent_to_role"].values())
+    items = state["items"]
+    role_values = state["role_values"]
+    role_props = state["role_props"]
+    quantities = state["quantities"]
+    
+    # Verify if finalizations match the total quantities
+    valid_agreement = True
+    for item in items:
+        total = sum(role_props[role].get(item, 0) for role in roles)
+        if total != quantities[item]:
+            valid_agreement = False
+            break
+    
+    points = {}
+    for i, role in enumerate(roles):
+        opponent_role = roles[1 - i]  
+        
+        total_points = 0
+        
+        for item in items:
+            p_a = role_props[role].get(item, 0)
+            v_a = role_values[role].get(item, 0)
+            
+            p_o = role_props[opponent_role].get(item, 0)
+            
+            if use_max_divisor:
+                divisor = max(quantities.get(item, 0), p_a + p_o)
+            else: 
+                divisor = p_a + p_o
+            
+            item_points = (p_a * v_a) / divisor if divisor > 0 else 0
+            
+            total_points += item_points
+            
+        points[role] = total_points
+    
+    return points, valid_agreement
+
+

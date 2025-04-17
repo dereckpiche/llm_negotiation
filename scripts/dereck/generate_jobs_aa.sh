@@ -1,31 +1,39 @@
 #!/bin/bash
 
 # === Shared SLURM settings ===
-PARTITION="long"
-MEM="32G"
+PARTITION="main"
+MEM="48G"
 GPUS="a100l"
 TIME="48:00:00"
-CPUS="4"
+CPUS="6"
 ENV_NAME="/home/mila/d/dereck.piche/llm_negotiation/.venv/bin/activate"
-LOGDIR="/home/mila/d/dereck.piche/aa_logs"
+LOGDIR="/home/mila/d/dereck.piche/llm_negotiation/slurm_logs"
 SCRIPT_PATH="/home/mila/d/dereck.piche/llm_negotiation/src/run.py"
 
 mkdir -p "$LOGDIR"
 
 # === Commands to run (varying only the Python command) ===
+# COMMANDS=(
+
+#   "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=1 hydra.run.dir=/home/mila/d/dereck.piche/scratch/aa_regulated training.agents.alice.training_data_func_args.score_method_kwargs.regulate_var=True training.agents.bob.training_data_func_args.score_method_kwargs.regulate_var=True"
+
+#   "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=2 hydra.run.dir=/home/mila/d/dereck.piche/scratch/aa_tiny_beta training.agents.alice.training_data_func_args.score_method_kwargs.beta=0.25 training.agents.bob.training_data_func_args.score_method_kwargs.beta=0.25"
+
+#   "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=3 hydra.run.dir=/home/mila/d/dereck.piche/scratch/aa_small_beta training.agents.alice.training_data_func_args.score_method_kwargs.beta=0.5 training.agents.bob.training_data_func_args.score_method_kwargs.beta=0.5"
+
+#   "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=4 hydra.run.dir=/home/mila/d/dereck.piche/scratch/aa_medium_beta training.agents.alice.training_data_func_args.score_method_kwargs.beta=0.8 training.agents.bob.training_data_func_args.score_method_kwargs.beta=0.8"
+
+#   "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=5 hydra.run.dir=/home/mila/d/dereck.piche/scratch/aa_standard_beta training.agents.alice.training_data_func_args.score_method_kwargs.beta=1.0 training.agents.bob.training_data_func_args.score_method_kwargs.beta=1.0"
+
+#   "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=6 hydra.run.dir=/home/mila/d/dereck.piche/scratch/aa_big_beta training.agents.alice.training_data_func_args.score_method_kwargs.beta=2.0 training.agents.bob.training_data_func_args.score_method_kwargs.beta=2.0"
+# )
+
 COMMANDS=(
-
-  "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=1 hydra.run.dir=/home/mila/d/dereck.piche/scratch/aa_regulated training.agents.alice.training_data_func_args.score_method_kwargs.regulate_var=True training.agents.bob.training_data_func_args.score_method_kwargs.regulate_var=True"
-
-  "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=2 hydra.run.dir=/home/mila/d/dereck.piche/scratch/aa_tiny_beta training.agents.alice.training_data_func_args.score_method_kwargs.beta=0.25 training.agents.bob.training_data_func_args.score_method_kwargs.beta=0.25"
-
-  "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=3 hydra.run.dir=/home/mila/d/dereck.piche/scratch/aa_small_beta training.agents.alice.training_data_func_args.score_method_kwargs.beta=0.5 training.agents.bob.training_data_func_args.score_method_kwargs.beta=0.5"
-
-  "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=4 hydra.run.dir=/home/mila/d/dereck.piche/scratch/aa_medium_beta training.agents.alice.training_data_func_args.score_method_kwargs.beta=0.8 training.agents.bob.training_data_func_args.score_method_kwargs.beta=0.8"
-
-  "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=5 hydra.run.dir=/home/mila/d/dereck.piche/scratch/aa_standard_beta training.agents.alice.training_data_func_args.score_method_kwargs.beta=1.0 training.agents.bob.training_data_func_args.score_method_kwargs.beta=1.0"
-
-  "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=6 hydra.run.dir=/home/mila/d/dereck.piche/scratch/aa_big_beta training.agents.alice.training_data_func_args.score_method_kwargs.beta=2.0 training.agents.bob.training_data_func_args.score_method_kwargs.beta=2.0"
+  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=dond_qwen experiment.base_seed=1"
+  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=dond_qwen experiment.base_seed=53"
+  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=dond_qwen experiment.base_seed=97"
+  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=dond_qwen experiment.base_seed=157"
+  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=dond_qwen experiment.base_seed=468"
 )
 
 
@@ -49,8 +57,6 @@ for i in "${!COMMANDS[@]}"; do
 #SBATCH --requeue
 #SBATCH --signal=B:USR1@60
 
-module load python/3.10
-module load cuda/11.7
 
 source activate $ENV_NAME
 
