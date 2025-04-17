@@ -9,7 +9,6 @@ class DondEnv:
         self,
         game_index,
         random_seed,
-        agent_key_mapping,
         agents=["alice", "bob"],
         mode="coop",
         max_messages=None,
@@ -43,7 +42,6 @@ class DondEnv:
             random_seed (int, optional): The base seed that will be used (and incremented) for random generation.
         """
 
-        self.agent_key_mapping = agent_key_mapping
         self.agents = agents
         self.roles = ["starting_negotiator", "responding_negotiator"]
         self.mode = mode
@@ -254,18 +252,14 @@ class DondEnv:
         elif self.mode == "basic":
             self.points = {role: utilities[role] for role in self.roles}
 
-    def finalize(self, finalization):
+    def finalize(self, finalization_dict):
         """
         Records the finalization from the current agent.
 
         Args:
-            finalization (dict): Items taken by each player for each category.
+            finalization (dict): Items taken by player for each category.
         """
         current_role = self.current_turn()
-        current_agent = self.get_current_agent()
-
-        finalization_dict = finalization[self.agent_key_mapping[current_agent]]
-
         # Ensure every item is present in the finalization, defaulting to 0 if missing
         for item in self.items:
             finalization_dict.setdefault(item, 0)
