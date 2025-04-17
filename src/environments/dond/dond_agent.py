@@ -446,6 +446,22 @@ class DondAgent:
             else:
                 last_round_points = 0
 
+            # Get the coagent's last round points if available
+            if state.get("round_points") != [] and len(state["round_points"][-1]) > 1:
+                # Find the coagent's role
+                coagent_role = None
+                for role in state["round_points"][-1]:
+                    if role != state["agent_to_role"][state["current_agent"]]:
+                        coagent_role = role
+                        break
+                
+                if coagent_role:
+                    coagent_last_round_points = state['round_points'][-1][coagent_role]
+                else:
+                    coagent_last_round_points = 0
+            else:
+                coagent_last_round_points = 0
+
             # Retrieve message-related values from the state.
             remaining_msgs = state['messages_remaining'][self.agent_name]
             max_msgs = state.get("max_messages", 0)
@@ -527,6 +543,7 @@ class DondAgent:
             return prompt.replace("{rounds_per_game}", str(state.get("rounds_per_game", ""))) \
                         .replace("{last_round_points}", str(last_round_points)) \
                         .replace("{last_round_points_computed}", last_round_points_computed) \
+                        .replace("{coagent_last_round_points}", str(coagent_last_round_points)) \
                         .replace("{coagent_last_round_points_computed_other}", coagent_last_round_points_computed) \
                         .replace("{current_round}", str(state.get("current_round", ""))) \
                         .replace("{nb_rounds}", str(state["round_number"] + 1)) \

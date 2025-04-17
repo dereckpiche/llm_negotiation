@@ -25,42 +25,41 @@ common_agent_kwargs: &common_agent_kwargs
   allow_reasoning: false
   max_reasoning_chars: 0
   intro_prompt: |
-      Welcome, you are participating in a multi-round negotiation game.
+      Welcome, you are participating in a negotiation game.
       You are playing as the agent named {agent_name}.
       Game Description:
-      In this game, two agents will divide a collection of items over multiple rounds.
-      In each round, the available items of each category ({items}) and their quantities will be specified. Each item category will have different utility scores for each agent.
-      The points of each agent in every round is determined by multiplying the number of items they receive by the utility score of each of their items.
-      At the end of each round, both agents must submit a finalization specifying how they wish to split the items. If the two finalizations do not match, neither agent earns points for that round.
+      In this game, two agents bargain over how to divide items over multiple rounds. Each agent only knows their own item values. Each item has different values for each agent. Your goal is to propose item allocations that maximize your reward in each round.Each agent submits their own proposal for how to divide the items. The more items you propose for yourself, the more points you can get in the current round.
   message_mechanics_prompt: |
     Your messages must be sent in the <message> your-message-here </message> format, with no content outside the tags. They should be concise - less than 400 characters.
   finalization_mechanics_prompt: |
     Your finalizations must be sent in this exact format:
-      <finalize> {"alice": { {finalize_sample_i_take} }, "bob": { {finalize_sample_other} }} </finalize>, with no content outside the tags. If the second agent's finalization is not complementary to the first agent's finalization, it is equivalent to a rejection. It is paramount to follow the formatting requirements perfectly in order to submit a valid finalization.
+      <finalize> {"i_take": { {finalize_sample_i_take} }, "other_agent_gets": { {finalize_sample_other} }} </finalize>, with no content outside the tags. 
+      Your proposal should be consistent - the sum of items you take and items the other agent gets should equal the total available items.
   dond_version_specificities: |
-    In this version of the game, each round is played as follows:
-    1) One of the two agents is assigned as the starting agent.
+    Each round is played as follows:
+    1) One agent is designated as the starting agent
     2) The starting agent sends a message
     3) The second agent sends a message
     4) The starting agent sends a finalization
     5) The second agent sends a finalization
 
-    Each agent can only send 1 message per round -- this is a strict rule.
-    At each round, the starting agent alternates.
-    The finalization of the starting agent will be automatically shown to the second agent.
-    However, utility scores are not shared automatically. Thus, it is recommended that each agent use their 1 message to communicate their utility scores to the other agent.
+    Each agent can only send 1 message per round.
+    The starting agent alternates each round.
+    Each agent only knows the values of items from their own perspective. You cannot see the other agent's item values unless they explicitly share this information in their messages. And vice versa. You are free to share your item values in your messages.
   reasoning_mechanics_prompt: |
     ${prompt_blocks.dond_reasoning_mechanics}
   goal_prompt: |
-    Your goal is to maximize your sum of points across rounds.
+    Your goal is to maximize your reward, which is the sum of your round points. 
+    
+    The more items you propose for yourself, the higher your round points. However, there's a tradeoff - if both agents propose to take many items, the total reward across agents decreases compared to if you divided items based on who values them more.
   first_round_prompt: |
-    For this new round, the items available are {quantities} and your utility scores for each item category are {values}.
+    For this round, the items available are {quantities} and your values for each item category are {values}.
   new_round_prompt: |
     The previous round has ended.
-    In the last round, you earned {last_round_points_computed}.
-    The other agent earned {coagent_last_round_points_computed_other}.
+    In the last round, you earned {last_round_points} points.
+    The other agent earned {coagent_last_round_points} points.
 
-    For this new round, the items available are {quantities} and your utility scores for each item category are {values}.
+    For this round, the items available are {quantities} and your values for each item category are {values}.
   agent_with_first_move_prompt: |
    You are the starting agent.
   agent_with_second_move_prompt: |
@@ -68,9 +67,9 @@ common_agent_kwargs: &common_agent_kwargs
   received_message_prompt: |
     The other agent sent the following message: {last_message}.
   other_agent_finalized_prompt: |
-    The other agent has finalized: {other_agent_finalization}.
+    The other agent has finalized.
   time_to_finalize_prompt: |
-    (You must finalize now in the <finalize> {"alice": { {finalize_sample_i_take} }, "bob": { {finalize_sample_other} }} </finalize> format.)
+    (You must finalize now in the <finalize> {"i_take": { {finalize_sample_i_take} }, "other_agent_gets": { {finalize_sample_other} }} </finalize> format.)
   time_to_send_message_prompt: |
     (You must send a message now in the <message> your-message-here </message> format.)
 
@@ -86,26 +85,21 @@ matches:
   log_func_args:
     metrics_func: gather_dond_statistics
     metrics_func_args:
+      format_options: ["by_agent"]
       stats_to_log: [
       "agreement_percentage",
       "points",
       "points_on_agreement",
-      "items_given_to_self",
-      "quantities",
-      "values",
-      "imbalance_on_agreement",
+      "items_given_to_self_percentage",
+      "more_items_to_value_more_percentage",
       "points_difference_on_agreement",
-      "greedy_dominant_points_difference_on_agreement",
-      "greedy_submission_points_difference_on_agreement",
-      "cooperative_points_difference_on_agreement",
-      "coagent_cooperative_points_difference_on_agreement",
+      "optimal_points_difference_on_agreement",
       "split_equal_points_difference_on_agreement",
-      "total_coop_points_difference_on_agreement_agent",
-      "total_coop_points_difference_on_agreement_coagent",
-      "total_imbalance_on_agreement",
       "total_points_difference_on_agreement",
-      "total_coop_points_difference_agent",
-      "total_coop_points_difference_coagent"
+      "total_optimal_points_difference_on_agreement",
+      "total_points_difference",
+      "total_points_difference_on_agreement",
+      "total_agreement_percentage",
       ]
 
   stop_condition: game_over_condition
@@ -130,19 +124,21 @@ matches:
       max_val: 20
     role_assignator_func: alternating_role_assignator
     role_assignator_func_kwargs: {}
+    points_attribution_method: negotiation_payoff
+    points_attributions_kwargs: {}
 
   agents:
     alice:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "alice"
-        policy_id: "llama/common_adapter"
+        policy_id: "llama/default"
 
     bob:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "bob"
-        policy_id: "llama/common_adapter"
+        policy_id: "llama/default"
 
 temperature: 0.7
 
@@ -189,7 +185,7 @@ common_models_init_args: &common_models_init_args
   train_with: "hf"
   optimizer_method: "AdamW"
   optimizer_kwargs:
-    lr: 1e-6
+    lr: 1e-5
     weight_decay: 0.0
 
 models:
@@ -199,7 +195,7 @@ models:
     init_args:
       <<: *common_models_init_args
       name: 'llama'
-      adapter_names: ['common_adapter']
+      adapter_names: ['default']
 
 
 ####################################################################################################
@@ -215,7 +211,7 @@ common_training_agent_kwargs: &common_training_agent_kwargs
     score_method_kwargs:
       discount_factor: 1.0
 
-common_adapter_kwargs: &common_adapter_kwargs
+default_kwargs: &default_kwargs
   train_func_args:
     gradient_checkpointing: true
     temperature: ${temperature}
@@ -234,12 +230,12 @@ training:
 
   llama:
     adapters:
-      ad_alice:
+      default:
         train_func: train_reinforce_main
-        <<: *common_adapter_kwargs
+        <<: *default_kwargs
       # ad_bob:
       #   train_func: train_reinforce_main
-      #   <<: *common_adapter_kwargs
+      #   <<: *default_kwargs
 
 
 ####################################################################################################
@@ -329,7 +325,7 @@ prompt_blocks:
   dond_normal_goal: |
     The points attributed to each agent will be computed as the cumulative sum of their points over rounds, where each agent's round score is determined by multiplying the quantity of each item they receive by the value they assign to each item.
 
-  dond_cooperative_goal: |
+  dond_optimal_goal: |
     The points attributed to each agent will be computed as the cumulative sum of their points over rounds, where each agent's round score is determined by multiplying the quantity of each item they receive by the value they assign to each item. The right strategy here is not to be naively greedy. The right strategy is as follows: 1) Reveal your values in your messages. Your coagent will do the same. 2) Together, find the agent who values the items the most in the current round. 3) Give the items to the agent who values them the most. That way, both agents will maximize their expected sum of points over rounds. Your goal is to perform this strategy with your coagent. Please follow this strategy with your coagent.
 
   dond_goal_long_term: |
