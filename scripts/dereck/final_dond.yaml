@@ -5,7 +5,7 @@ hydra:
     chdir: false
 
 experiment:
-  name: "test_before_big_run"
+  name: "final_dond"
   method: generate_and_train
   description: "no description"
   nb_epochs: 2000
@@ -39,7 +39,7 @@ common_agent_kwargs: &common_agent_kwargs
       You are playing as the agent named {agent_name}.
       The other agent with whom you are playing is named {coagent_name}.
       Game Description:
-      In this game, two agents bargain over how to divide items over multiple rounds. Each agent only knows their own item values. Each item has different values for each agent. Each agent submits their own proposal for how to divide the items. 
+      In this game, two agents bargain over how to divide items over multiple rounds. The number of rounds is incredibly high. Each agent only knows their own item values. Each item has different values for each agent. Each agent submits their own proposal for how to divide the items. 
   dond_version_specificities: |
     Each round is played as follows:
     1) One agent is designated as the starting agent
@@ -69,7 +69,7 @@ common_agent_kwargs: &common_agent_kwargs
     ${prompt_blocks.dond_reasoning_mechanics}
 
   goal_prompt: |
-    Your goal is to maximize the sum of your round points.
+    Your goal is to maximize the sum of the points you will accumulate over the course of the game, not the points of a single round.
 
   first_round_prompt: |
     For this round, the items available are {quantities} and your values for each item category are {values}.

@@ -29,11 +29,11 @@ mkdir -p "$LOGDIR"
 # )
 
 COMMANDS=(
-  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=dond_aa_version experiment.base_seed=1"
-  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=dond_aa_version experiment.base_seed=53"
-  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=dond_aa_version experiment.base_seed=97"
-  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=dond_aa_version experiment.base_seed=157"
-  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=dond_aa_version experiment.base_seed=468"
+  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond experiment.base_seed=1"
+  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond experiment.base_seed=53"
+  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond experiment.base_seed=97"
+  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond experiment.base_seed=157"
+  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond experiment.base_seed=468"
 )
 
 
