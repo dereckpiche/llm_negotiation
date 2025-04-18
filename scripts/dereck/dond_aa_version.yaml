@@ -9,7 +9,7 @@ experiment:
   method: generate_and_train
   description: "no description"
   nb_epochs: 2000
-  nb_matches_per_iteration: 16
+  nb_matches_per_iteration: 32
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: true
@@ -79,7 +79,7 @@ matches:
 
   max_length: 25
   continuation_prob: 0.8
-  same_length_batch: False
+  same_length_batch: True
 
   log_func: dond_log_match
   log_func_args:
@@ -183,9 +183,9 @@ common_models_init_args: &common_models_init_args
   keep_vllm_during_eval: True
   eval_with: "vllm"
   train_with: "hf"
-  optimizer_method: "AdamW"
+  optimizer_method: "Adam"
   optimizer_kwargs:
-    lr: 1e-5
+    lr: 1e-6
     weight_decay: 0.0
 
 models:
@@ -207,7 +207,7 @@ common_training_agent_kwargs: &common_training_agent_kwargs
   training_data_func_args:
     exclude_errors: False
     debug_output: True
-    score_method: r2g_scores
+    score_method: rloo_scores
     score_method_kwargs:
       discount_factor: 1.0
 
