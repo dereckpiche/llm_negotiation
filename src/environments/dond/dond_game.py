@@ -237,10 +237,20 @@ class DondEnv:
         Records the finalization from the current agent.
 
         Args:
-            finalization (dict): Items taken by each player for each category.
+            finalization (dict or str): Items taken by each player for each category,
+                                        or "reject" to explicitly reject the previous offer.
         """
         current_role = self.current_turn()
         current_agent = self.get_current_agent()
+        
+        # Handle explicit rejection
+        if finalization == "reject_flag":
+            # Mark the agreement as explicitly rejected
+            self.agreement_reached = False
+            self.role_props[current_role] = {"reject_flag": True}
+            return
+        
+        # Regular finalization (dict of items)
         # Ensure every item is present in the finalization, defaulting to 0 if missing
         for item in self.items:
             finalization.setdefault(item, 0)
@@ -629,6 +639,12 @@ def regular_set_points(state, **kwargs):
     mode = state["mode"]
     quantities = state["quantities"]
     
+    # Check if any role has explicitly rejected (with reject_flag flag)
+    for role in roles:
+        if role_props.get(role, {}).get("reject_flag", False):
+            # Agreement rejected, everyone gets 0 points
+            return {role: 0 for role in roles}, False
+    
     # Verify if finalizations match the total quantities
     valid_agreement = True
     for item in items:
@@ -684,6 +700,12 @@ def negotiation_payoff(state, use_max_divisor=True):
     role_values = state["role_values"]
     role_props = state["role_props"]
     quantities = state["quantities"]
+    
+    # Check if any role has explicitly rejected (with reject_flag flag)
+    for role in roles:
+        if role_props.get(role, {}).get("reject_flag", False):
+            # Agreement rejected, everyone gets 0 points
+            return {role: 0 for role in roles}, False
     
     # Verify if finalizations match the total quantities
     valid_agreement = True
