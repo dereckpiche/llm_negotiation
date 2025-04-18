@@ -121,7 +121,7 @@ class DondEnv:
 
         Args:
             actions (dict): A dictionary where keys are agent identifiers and values are actions
-                           in the form of (is_finalization, output).
+                           in the form of (is_finalization, processed_response, raw_response).
 
         Returns:
             observations (dict): A dictionary where keys are agent identifiers and values are observations.
@@ -133,7 +133,7 @@ class DondEnv:
 
         if current_agent in actions:
             action = actions[current_agent]
-            is_finalization, output = action
+            is_finalization, processed_response, raw_response = action
 
             # Count this move for the current agent (finalization or conversation).
             self.game_moves[current_agent] += 1
@@ -145,7 +145,8 @@ class DondEnv:
                 self.message_turn += 1
 
             # Update state flags.
-            self.last_message = output
+            self.last_raw_response = raw_response
+            self.last_processed_response = processed_response
             self.is_new_round = self.message_turn == 1
             self.is_new_game = self.round_nb == 0 and self.message_turn == 1
             self.game_over = False
@@ -159,7 +160,8 @@ class DondEnv:
                 # Treat the finalization as a conversation message
                 self.round_messages[current_agent] += 1
                 self.message_turn += 1
-                self.last_message = output
+                self.last_raw_response = raw_response
+                self.last_processed_response = processed_response
                 is_finalization = False
 
             if self.has_finalized:
@@ -168,7 +170,7 @@ class DondEnv:
                     self.points = {role: 0 for role in self.roles}
                     self.agreement_reached = False
                 else:
-                    self.finalize(output)
+                    self.finalize(processed_response)
                     # Use the custom points attribution method which now returns (points, valid_agreement)
                     self.points, self.agreement_reached = self.points_attribution_method(self.get_state(), **self.points_attributions_kwargs)
                 round_over = True
@@ -177,7 +179,7 @@ class DondEnv:
                 # If a agent sends a finalization, record it.
                 if is_finalization:
                     self.has_finalized = True
-                    self.finalize(output)
+                    self.finalize(processed_response)
                 # Check if any agent has exceeded their personal maximum message limit.
                 elif any(
                     count > self.max_messages for count in self.round_messages.values()
@@ -280,7 +282,9 @@ class DondEnv:
             "nb_rounds": self.rounds_per_game,
             "quantities": self.quantities,
             "has_finalized": self.has_finalized,
-            "last_message": self.last_message,
+            "last_raw_response": getattr(self, "last_raw_response", None),
+            "last_processed_response": getattr(self, "last_processed_response", None),
+            "last_message": getattr(self, "last_raw_response", None),  # For backward compatibility
             "agents": self.agents,
             "finalization_visibility": self.finalization_visibility,
             "other_values_visibility": self.other_values_visibility,
@@ -343,7 +347,8 @@ class DondEnv:
         self.role_props = {role: {} for role in self.roles}
         self.points = {role: 0 for role in self.roles}  # Ensure points are reset
         self.agreement_reached = False
-        self.last_message = None
+        self.last_raw_response = None
+        self.last_processed_response = None
         # Reset the conversation message counter for the new round.
         self.message_turn = 0
         # Reset per-round move tracking for every agent.
@@ -372,14 +377,14 @@ class DondEnv:
                 role: 0 for role in self.roles
             }  # Ensure points are initialized
             self.agreement_reached = False
-            self.last_message = None
+            self.last_raw_response = None
+            self.last_processed_response = None
             self.round_nb = 0
             # Remove the old turn counter and use message_turn for conversation messages.
             self.message_turn = 0
             self.is_new_round = True
             self.is_new_game = True
             self.game_over = False
-            self.last_message = None
             self.role_deque = deque(self.roles)
             self.agent_to_role = None
             self.round_agent_roles = []

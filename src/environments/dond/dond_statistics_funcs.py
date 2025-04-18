@@ -333,6 +333,21 @@ def gather_dond_statistics(agent_info, info, stats_to_log, format_options=None):
         else:
             add_total_stat("more_items_to_value_more_percentage", None, None)
 
+    if "total_items_given_to_self_percentage" in stats_to_log:
+        total_items_allocated = 0
+        total_items_available = 0
+        for i in range(len(info['round_finalizations'])):
+            agent_role = info['round_agent_roles'][i].get(agent_name)
+            finalization = info['round_finalizations'][i].get(agent_role, {})
+            quantities = info['round_quantities'][i]
+            total_items_allocated += sum(finalization.values())
+            total_items_available += sum(quantities.values())
+        if total_items_available > 0:
+            total_percentage = 100.0 * total_items_allocated / total_items_available
+            add_total_stat("total_items_given_to_self_percentage", total_percentage)
+        else:
+            add_total_stat("total_items_given_to_self_percentage", None)
+
     statistics["totals"] = total_stats
 
     return statistics

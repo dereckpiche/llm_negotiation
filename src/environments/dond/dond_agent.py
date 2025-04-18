@@ -128,7 +128,7 @@ class DondAgent:
         # If we have policy output, we need to process it and determine the action
         else:
             # Process the LLM output
-            is_error, error_message, is_finalization, processed_response = self.process_response(
+            is_error, error_message, is_finalization, processed_response, raw_response = self.process_response(
                 policy_output, state
             )
 
@@ -157,7 +157,7 @@ class DondAgent:
                     if policy_output and "<finalize>" not in policy_output:
                         max_chars = state.get("max_chars_per_message", 300)
                         fallback = policy_output[:max_chars]
-                    action = (False, fallback)
+                    action = (False, fallback, policy_output)
                     return None, None, action, True, self.get_log_info()
 
                 # Set error user message
@@ -172,7 +172,7 @@ class DondAgent:
 
 
             # Create the action to be sent to the environment
-            action = (is_finalization, processed_response)
+            action = (is_finalization, processed_response, raw_response)
 
             # Action is ready to be sent to the environment
             return None, None, action, True, self.get_log_info()
@@ -248,7 +248,7 @@ class DondAgent:
         # Then add the appropriate message based on the finalization state and move count.
         if state["has_finalized"]:
             user_message += self.format_prompt(self.other_agent_finalized_prompt, state)
-        elif state["last_message"] is None:
+        elif state["last_raw_response"] is None:
             current_round_moves = state["round_moves"].get(self.agent_name, 0)
             if current_round_moves == 0:
                 user_message += self.agent_with_first_move_prompt
@@ -286,7 +286,8 @@ class DondAgent:
             state (dict): The current state of the game.
 
         Returns:
-            tuple: (is_error, error_message, is_finalization, processed_response)
+            tuple: (is_error, error_message, is_finalization, processed_response, raw_content)
+            where raw_content is the complete original response for display purposes
         """
         # Basic validation for content outside valid tags
         errors = []
@@ -323,6 +324,7 @@ class DondAgent:
         # Use the finalization parser to check for and extract finalization content
         contains_finalization, finalization_errors, processed_finalization = self.finalization_parser(response, state, **self.finalization_parser_kwargs)
         
+        
         # Combine errors from all validations
         if message_errors:
             errors.extend(message_errors)
@@ -342,13 +344,13 @@ class DondAgent:
                 error_message = errors[0]
             else:
                 error_message = "Errors:\n" + "\n".join(f"{i+1}) {err}" for i, err in enumerate(errors))
-            return True, error_message, False, None
+            return True, error_message, False, None, response
             
         # If no errors, return the appropriate processed content
         if contains_finalization:
-            return False, "", True, processed_finalization
+            return False, "", True, processed_finalization, response
         else:
-            return False, "", False, processed_message
+            return False, "", False, processed_message, response
 
     def format_prompt(self, prompt, state):
         """
@@ -356,7 +358,7 @@ class DondAgent:
         """
         if prompt:
             if state.get("has_finalized"):
-                other_agent_finalization = state.get("last_message", "")
+                other_agent_finalization = state.get("last_raw_response", "")
             else:
                 other_agent_finalization = ""
 
@@ -402,20 +404,20 @@ class DondAgent:
                 i_take_key = agent_keys.get("i_take_key", "i_take")
                 other_takes_key = agent_keys.get("other_takes_key", "other_takes")
             
-            finalize_sample = '{\n'
-            finalize_sample += f'  "{i_take_key}": {{\n'
+            finalize_sample = '{'
+            finalize_sample += f'  "{i_take_key}": {{'
             item_entries = []
             for item in items:
                 item_entries.append(f'    "{item}": x')
-            finalize_sample += ',\n'.join(item_entries)
-            finalize_sample += '\n  },\n'
+            finalize_sample += ','.join(item_entries)
+            finalize_sample += '  },'
             
-            finalize_sample += f'  "{other_takes_key}": {{\n'
+            finalize_sample += f'  "{other_takes_key}": {{'
             item_entries = []
             for item in items:
                 item_entries.append(f'    "{item}": y')
-            finalize_sample += ',\n'.join(item_entries)
-            finalize_sample += '\n  }\n}'
+            finalize_sample += ','.join(item_entries)
+            finalize_sample += '  }}'
             
             last_round_coagent_values = {}
             # -------------------------------------------
@@ -492,6 +494,7 @@ class DondAgent:
                         cp = coagent_names[0]
                         cp_role = mapping[cp]
                         cumulative_coagent_points += rp.get(cp_role, 0)
+
             # Get the coagent's name for prompt replacement
             coagent_name = ""
             if state.get("agent_to_role"):
@@ -519,7 +522,9 @@ class DondAgent:
                         .replace("{min_messages}", str(min_msgs)) \
                         .replace("{max_chars_per_message}", str(state.get("max_chars_per_message", ""))) \
                         .replace("{max_errors}", str(self.max_errors)) \
-                        .replace("{last_message}", str(state.get("last_message", ""))) \
+                        .replace("{last_message}", str(state.get("last_raw_response", ""))) \
+                        .replace("{last_raw_response}", str(state.get("last_raw_response", ""))) \
+                        .replace("{last_processed_response}", str(state.get("last_processed_response", ""))) \
                         .replace("{other_agent_finalization}", str(other_agent_finalization)) \
                         .replace("{remaining_messages}", \
                                  f"Minimum Messages: {min_msgs}, Maximum Messages: {max_msgs}, Current Number Sent: {current_sent}") \
@@ -768,7 +773,7 @@ def accept_reject_finalization_parser(response, state, attribution_map=None):
     if finalization_content.lower() == "accept":
         # For accept, we need to calculate what the current agent gets
         # based on what the other agent took
-        other_agent_finalization = state.get("last_message", {})
+        other_agent_finalization = state.get("last_processed_response", {})
         quantities = state.get("quantities", {})
         items = state.get("items", [])
         

@@ -27,6 +27,7 @@ common_agent_kwargs: &common_agent_kwargs
   intro_prompt: |
       Welcome, you are participating in a negotiation game.
       You are playing as the agent named {agent_name}.
+      The other agent your are playing with is named {coagent_name}.
       Game Description:
       In this game, two agents bargain over how to divide items over multiple rounds. Each agent only knows their own item values. Each item has different values for each agent. Each agent submits their own proposal for how to divide the items. 
   dond_version_specificities: |
@@ -42,7 +43,7 @@ common_agent_kwargs: &common_agent_kwargs
 
     Each agent only knows the values of items from their own perspective. You cannot see the other agent's item values unless they explicitly share this information in their messages. And vice versa. You are strongly encouraged to use your messages to discuss about item values with the other agent.
 
-    The items obtained by each agent at the end of a round is proportional to the number of items they proposed for themselves. For example, if both players propose to take all the items, they both get half.
+    The items obtained by each agent at the end of a round is proportional to the number of items they proposed for themselves. For example, if both players propose to take all the items, they both get half. The finalization of both agents need not be complementary in order for both agents to get points.
     
     Your round points are calculated by multiplying the number of each item you get by how much you value that item. For example, if you get 7 coins and you value each coin at 5 points, you'll earn 35 points for the round.
 
@@ -51,14 +52,14 @@ common_agent_kwargs: &common_agent_kwargs
 
   finalization_mechanics_prompt: |
     Your finalizations must be sent in this exact format:
-    <finalize> {"i_take": { {finalize_sample_i_take} }, "other_agent_gets": { {finalize_sample_other} }} </finalize>, with no content outside the tags. 
+    <finalize> {{finalize_sample_i_take} , {finalize_sample_other_takes}} </finalize>, with no content outside the tags. 
     Your proposal should be consistent with itself - the sum of items in "i_take" and items in "other_agent_gets" should equal the total available items.
 
   reasoning_mechanics_prompt: |
     ${prompt_blocks.dond_reasoning_mechanics}
 
   goal_prompt: |
-    Your goal is to maximize the sum of your round points, not just a single round.
+    Your goal is to maximize the sum of your round points.
 
   first_round_prompt: |
     For this round, the items available are {quantities} and your values for each item category are {values}.
@@ -108,6 +109,7 @@ matches:
       "total_points_difference",
       "total_points_difference_on_agreement",
       "total_agreement_percentage",
+      "total_items_given_to_self_percentage",
       ]
 
   stop_condition: game_over_condition

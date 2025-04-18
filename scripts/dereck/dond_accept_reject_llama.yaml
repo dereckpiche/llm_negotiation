@@ -95,9 +95,9 @@ common_agent_kwargs: &common_agent_kwargs
   agent_with_second_move_prompt: |
     You are the second agent.
   received_message_prompt: |
-    The other agent sent the following message: {last_message}.
+    The other agent sent the following message: {last_raw_response}.
   other_agent_finalized_prompt: |
-    The other agent has finalized. Their finalization is: {other_agent_finalization}. You must either <finalize>accept</finalize> or <finalize>reject</finalize> their proposal.
+    The other agent has finalized. Their finalization is: {last_raw_response}. You must either <finalize>accept</finalize> or <finalize>reject</finalize> their proposal.
   time_to_finalize_prompt: |
     (You must finalize now.)
   time_to_send_message_prompt: |
@@ -108,7 +108,7 @@ matches:
   agent_class: "DondAgent"
 
   max_length: 25
-  continuation_prob: 0.8
+  continuation_prob: 0.85
   same_length_batch: True
 
   log_func: dond_log_match

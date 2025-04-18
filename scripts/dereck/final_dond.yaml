@@ -5,7 +5,7 @@ hydra:
     chdir: false
 
 experiment:
-  name: "qwen_aa_payoff"
+  name: "test_before_big_run"
   method: generate_and_train
   description: "no description"
   nb_epochs: 2000
@@ -13,7 +13,7 @@ experiment:
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: true
-  base_seed: 1
+  base_seed: 50
 
 ####################################################################################################
 #                                           GENERATION
@@ -24,9 +24,20 @@ common_agent_kwargs: &common_agent_kwargs
   max_errors: 0
   allow_reasoning: false
   max_reasoning_chars: 0
+  message_parser: regular_message_parser
+  finalization_parser: regular_finalization_parser
+  finalization_parser_kwargs:
+    attribution_map:
+      alice:
+        i_take_key: "i_take"
+        other_takes_key: "other_takes"
+      bob:
+        i_take_key: "i_take"
+        other_takes_key: "other_takes"
   intro_prompt: |
       Welcome, you are participating in a negotiation game.
       You are playing as the agent named {agent_name}.
+      The other agent with whom you are playing is named {coagent_name}.
       Game Description:
       In this game, two agents bargain over how to divide items over multiple rounds. Each agent only knows their own item values. Each item has different values for each agent. Each agent submits their own proposal for how to divide the items. 
   dond_version_specificities: |
@@ -42,23 +53,23 @@ common_agent_kwargs: &common_agent_kwargs
 
     Each agent only knows the values of items from their own perspective. You cannot see the other agent's item values unless they explicitly share this information in their messages. And vice versa. You are strongly encouraged to use your messages to discuss about item values with the other agent.
 
-    The items obtained by each agent at the end of a round is proportional to the number of items they proposed for themselves. For example, if both players propose to take all the items, they both get half.
-    
+    The items obtained by each agent at the end of a round is proportional to the number of items they proposed for themselves in their finalization. First example: If both players propose to take all the items, they both get half. Second example: If one agent proposes to take all the items and the other agent proposes to take none, the first agent gets all the items and the second agent gets nothing. 
+
     Your round points are calculated by multiplying the number of each item you get by how much you value that item. For example, if you get 7 coins and you value each coin at 5 points, you'll earn 35 points for the round.
 
   message_mechanics_prompt: |
-    Your messages must be sent in the <message> your-message-here </message> format, with no content outside the tags. They should be concise - less than 400 characters.
+    Your messages must be sent in the <message> your-message-here </message> format, with no content outside the tags. They should be concise - less than 400 characters. Finalization is not allowed in messages.
 
   finalization_mechanics_prompt: |
     Your finalizations must be sent in this exact format:
-    <finalize> {"i_take": { {finalize_sample_i_take} }, "other_agent_gets": { {finalize_sample_other} }} </finalize>, with no content outside the tags. 
-    Your proposal should be consistent with itself - the sum of items in "i_take" and items in "other_agent_gets" should equal the total available items.
+    <finalize> {finalize_sample} </finalize>, with no content outside the tags. 
+    Your proposal should be consistent with itself - the sum of items that you propose for yourself and the items that you propose for the other agent should equal the total available items.
 
   reasoning_mechanics_prompt: |
     ${prompt_blocks.dond_reasoning_mechanics}
 
   goal_prompt: |
-    Your goal is to maximize the sum of your round points, not just a single round.
+    Your goal is to maximize the sum of your round points.
 
   first_round_prompt: |
     For this round, the items available are {quantities} and your values for each item category are {values}.
@@ -77,7 +88,7 @@ common_agent_kwargs: &common_agent_kwargs
   other_agent_finalized_prompt: |
     The other agent has finalized.
   time_to_finalize_prompt: |
-    (You must finalize now in the <finalize> {"i_take": { {finalize_sample_i_take} }, "other_agent_gets": { {finalize_sample_other} }} </finalize> format.)
+    (You must finalize now in the correct format.)
   time_to_send_message_prompt: |
     (You must send a message now in the <message> your-message-here </message> format.)
 
@@ -85,8 +96,8 @@ matches:
   env_class: "DondEnv"
   agent_class: "DondAgent"
 
-  max_length: 25
-  continuation_prob: 0.8
+  max_length: 30
+  continuation_prob: 0.85
   same_length_batch: True
 
   log_func: dond_log_match
@@ -108,6 +119,7 @@ matches:
       "total_points_difference",
       "total_points_difference_on_agreement",
       "total_agreement_percentage",
+      "total_items_given_to_self_percentage",
       ]
 
   stop_condition: game_over_condition
@@ -155,7 +167,7 @@ common_models_init_args: &common_models_init_args
   max_model_length: 10000
   include_value_head: false
   device: "cuda"
-  model_name: "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int8"
+  model_name: "/network/weights/llama.var/llama_3.1/Meta-Llama-3.1-8B-Instruct"
   pretrained_args:
     pretrained_model_name_or_path: ${models.llama.init_args.model_name}
     torch_dtype: "bfloat16"
@@ -169,7 +181,7 @@ common_models_init_args: &common_models_init_args
     r: 64
     lora_alpha: 128
     lora_dropout: 0.0
-    target_modules: ['k_proj', 'q_proj', 'v_proj', 'o_proj', "gate_proj", "down_proj", "up_proj"]
+    target_modules: "all-linear"
 
   generation_args:
     max_new_tokens: 120
@@ -280,7 +292,7 @@ prompt_blocks:
       4) In order for both agents to agree, the finalizations must be complementary. If no agreement is reached between the two agents with the two finalizations, both agents will receive zero points. If agreement is reached, the agents will receive the coins corresponding to the finalizations.
     Response Formatting:
       1) All of your responses must be within <finalize></finalize> tags.
-      2) The division must be in a JSON-parsable format. Formatting: Final division: <finalize> {"i_take": {"coins": x}, "other_agent_gets": {"coins": y}} </finalize> where "i_take" represents your share and "other_agent_gets" represents the other agent's share of the coins.
+      2) The division must be in a JSON-parsable format. Formatting: Final division: <finalize> {"i_take": {"coins": x}, "other_takes": {"coins": y}} </finalize> where "i_take" represents your share and "other_takes" represents the other agent's share of the coins.
 
   ultimatum_game_multiple_rounds: |
     Welcome, you are playing a multi-round splitting game.
@@ -293,7 +305,7 @@ prompt_blocks:
       6) Both agents are assigned a value for each coin. The points each agent receives are the product of the number of coins they get and the coin's value.
     Response Formatting:
       1) All your responses in each round must be enclosed within <finalize></finalize> tags.
-      2) Specify the division in a JSON-parsable format. For example: <finalize> {"i_take": {"coins": x}, "other_agent_gets": {"coins": y}} </finalize> where the numbers represent the counts of each object allocated to you and to your opponent.
+      2) Specify the division in a JSON-parsable format. For example: <finalize> {"i_take": {"coins": x}, "other_takes": {"coins": y}} </finalize> where the numbers represent the counts of each object allocated to you and to your opponent.
 
   unbiased_goal: null
 
