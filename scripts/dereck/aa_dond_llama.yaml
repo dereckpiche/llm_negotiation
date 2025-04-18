@@ -1,11 +1,11 @@
 hydra:
   run:
-    dir: "${oc.env:SCRATCH}/${experiment.name}_seed_${experiment.base_seed}"
+    dir: "${oc.env:SCRATCH}/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}"
   job:
     chdir: false
 
 experiment:
-  name: "qwen_aa_payoff"
+  name: "llama_aa_payoff"
   method: generate_and_train
   description: "no description"
   nb_epochs: 2000
@@ -155,7 +155,7 @@ common_models_init_args: &common_models_init_args
   max_model_length: 10000
   include_value_head: false
   device: "cuda"
-  model_name: "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int8"
+  model_name: "meta-llama/Llama-3.1-8B-Instruct"
   pretrained_args:
     pretrained_model_name_or_path: ${models.llama.init_args.model_name}
     torch_dtype: "bfloat16"
@@ -169,7 +169,7 @@ common_models_init_args: &common_models_init_args
     r: 64
     lora_alpha: 128
     lora_dropout: 0.0
-    target_modules: ['k_proj', 'q_proj', 'v_proj', 'o_proj', "gate_proj", "down_proj", "up_proj"]
+    target_modules: "all-linear"
 
   generation_args:
     max_new_tokens: 120

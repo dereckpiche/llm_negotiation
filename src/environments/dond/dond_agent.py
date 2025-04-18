@@ -472,7 +472,7 @@ class DondAgent:
             items = state.get("items", [])
             finalize_sample_i_take = ", ".join([f'"{item}": x' for item in items])
             finalize_sample_other = ", ".join([f'"{item}": y' for item in items])
-
+            last_round_coagent_values = {}
             # -------------------------------------------
             # New logic: Compute last round breakdown details for new_round_prompt_with_values.
             #
@@ -492,13 +492,18 @@ class DondAgent:
                         other_agent_name = p
                         other_role = role
                         break
+                
+                # Get the last round values
+                last_round_values = state["round_values"][-1]  # mapping: role -> values dict
+                # Extract coagent values outside the agreement check
+                last_round_coagent_values = last_round_values.get(other_role, {})
+                
                 if not last_agreement:
                     last_round_points_computed = "0 points, since no agreement was reached"
                     coagent_last_round_points_computed = "0 points, since no agreement was reached"
                 else:
-                    # Retrieve last round's finalizations and values
+                    # Retrieve last round's finalizations
                     last_round_finalizations = state["round_finalizations"][-1]  # mapping: role -> finalization dict
-                    last_round_values = state["round_values"][-1]  # mapping: role -> values dict
                     # Compute detailed breakdown for current agent:
                     total_my = 0
                     details_my = []
@@ -519,10 +524,13 @@ class DondAgent:
                         total_other += product_other
                         details_other.append(f"{other_val} per {item} x {other_qty} = {product_other}")
                     coagent_last_round_points_computed = "; ".join(details_other) + f" | Total: {total_other} points"
+                
             else:
                 last_round_points_computed = "0 points, since no agreement was reached"
                 coagent_last_round_points_computed = "0 points, since no agreement was reached"
+
             # -------------------------------------------
+
 
             # After computing last_round_points_computed and coagent_last_round_points_computed, add cumulative points calculations based on historical rounds.
             rounds_roles = state.get("round_agent_roles", [])
@@ -545,6 +553,7 @@ class DondAgent:
                         .replace("{last_round_points_computed}", last_round_points_computed) \
                         .replace("{coagent_last_round_points}", str(coagent_last_round_points)) \
                         .replace("{coagent_last_round_points_computed_other}", coagent_last_round_points_computed) \
+                        .replace("{last_round_coagent_values}", str(last_round_coagent_values)) \
                         .replace("{current_round}", str(state.get("current_round", ""))) \
                         .replace("{nb_rounds}", str(state["round_number"] + 1)) \
                         .replace("{quantities}", str(state.get("quantities", ""))) \
@@ -610,3 +619,5 @@ class DondAgent:
         with open(path, "w") as f:
             json.dump(game_stats, f)
             json.dump(self.conversation_history, f)
+
+

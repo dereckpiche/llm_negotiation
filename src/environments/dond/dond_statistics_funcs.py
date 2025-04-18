@@ -143,12 +143,12 @@ def gather_dond_statistics(agent_info, info, stats_to_log, format_options=None):
             else:
                 add_stat("imbalance_on_agreement", None, None)
 
-        if "items_given_to_self" in stats_to_log:
+        if "items_given_to_self_percentage" in stats_to_log:
             agent_items = calculate_items_given_to_self(info['round_finalizations'][i].get(agent_role, {}), quantities)
             coagent_items = None
             if coagent_name and coagent_role in info['round_finalizations'][i]:
                 coagent_items = calculate_items_given_to_self(info['round_finalizations'][i].get(coagent_role, {}), quantities)
-            add_stat("items_given_to_self", agent_items, coagent_items)
+            add_stat("items_given_to_self_percentage", agent_items, coagent_items)
 
         if "points_on_agreement" in stats_to_log:
             add_stat("points_on_agreement", 

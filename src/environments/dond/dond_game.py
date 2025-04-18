@@ -61,6 +61,12 @@ class DondEnv:
         else:
             self.random_setup_kwargs = {"random_seed": random_seed}
 
+        # In this game, players negotiate to divide items between them. 
+        # Each item has a quantity (like 6 books or 4 apples) that must be completely 
+        # distributed between players. For example, if there are 10 cookies,
+        # one player might take 7 and the other 3. Each player values the items 
+        # differently, so what's valuable to one player might not be to the other.
+            
         self.finalization_visibility = finalization_visibility
         self.rounds_per_game = rounds_per_game
         self.role_assignator_func = (
@@ -653,12 +659,13 @@ def regular_set_points(state, **kwargs):
 
 def negotiation_payoff(state, use_max_divisor=True):
     """
-    Implements the payoff formula r_a = ∑ (p_a * v_a) / max(q, p_a + p_o) from https://arxiv.org/pdf/2406.14662
+    Implements the payoff formula r_a = ∑ (p_a * q_a * v_a) / max(q, p_a + p_o) from https://arxiv.org/pdf/2406.14662
     
     Where:
     - r_a is the reward for agent a
     - p_a is the proposal (quantity taken) by agent a
     - v_a is the value agent a places on each item
+    - q_a is the total quantity of the item
     - p_o is the proposal (quantity taken) by the opponent agent
     - q is the total quantity of the item
     
@@ -695,15 +702,16 @@ def negotiation_payoff(state, use_max_divisor=True):
         for item in items:
             p_a = role_props[role].get(item, 0)
             v_a = role_values[role].get(item, 0)
+            q_a = quantities.get(item, 0)  
             
             p_o = role_props[opponent_role].get(item, 0)
             
             if use_max_divisor:
-                divisor = max(quantities.get(item, 0), p_a + p_o)
+                divisor = max(q_a, p_a + p_o)
             else: 
                 divisor = p_a + p_o
             
-            item_points = (p_a * v_a) / divisor if divisor > 0 else 0
+            item_points = (p_a * q_a * v_a) / divisor if divisor > 0 else 0
             
             total_points += item_points
             
