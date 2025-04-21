@@ -1,6 +1,6 @@
 hydra:
   run:
-    dir: "${oc.env:SCRATCH}/${now:%Y-%m-%d___%H-%M-%S}___${experiment.name}_seed_${experiment.base_seed}"
+    dir: "${oc.env:SCRATCH}/final_aa_runs/${experiment.name}_${common_training_agent_kwargs.training_data_func_args.score_method_kwargs.beta}"
   job:
     chdir: false
 
@@ -107,19 +107,22 @@ matches:
       format_options: ["by_agent"]
       stats_to_log: [
       "agreement_percentage",
-      "points",
-      "points_on_agreement",
+      "round_values",
+      "round_points",
+      "optimal_points_difference",
       "items_given_to_self_percentage",
       "more_items_to_value_more_percentage",
-      "points_difference_on_agreement",
-      "optimal_points_difference_on_agreement",
-      "split_equal_points_difference_on_agreement",
-      "total_points_difference_on_agreement",
-      "total_optimal_points_difference_on_agreement",
-      "total_points_difference",
-      "total_points_difference_on_agreement",
+      "more_items_to_value_more_percentage",
+
       "total_agreement_percentage",
+      "total_points_difference",
+      "total_optimal_points_difference",
+      "total_imbalance",
+      "total_average_imbalance",
+      "total_sum_points_percentage_of_max",
+      "total_more_items_to_value_more_percentage",
       "total_items_given_to_self_percentage",
+      "number_of_rounds"
       ]
 
   stop_condition: game_over_condition
@@ -230,7 +233,7 @@ common_training_agent_kwargs: &common_training_agent_kwargs
     score_method: rloo_advantage_alignment_scores
     score_method_kwargs:
       discount_factor: 1.0
-      beta: 1.0
+      beta: 0.8
 
 default_kwargs: &default_kwargs
   train_func_args:

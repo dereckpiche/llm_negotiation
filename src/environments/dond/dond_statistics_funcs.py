@@ -30,6 +30,9 @@ def gather_dond_statistics(agent_info, info, stats_to_log, format_options=None):
     if format_options is None:
         format_options = ["flat"]
     
+    # Define a special flag to indicate a stat is not to be logged (different from None)
+    __NO_STAT__ = "__NO_STAT__"
+    
     statistics = {}
     agent_name = agent_info['agent_name']
     total_points_agent = 0
@@ -101,122 +104,121 @@ def gather_dond_statistics(agent_info, info, stats_to_log, format_options=None):
             total_points_coagent += coagent_points
 
         # Helper function to add stat to round_info based on format options
-        def add_stat(stat_name, agent_value, coagent_value=None):
+        def add_stat(stat_name, agent_value, coagent_value=None, both_agents=None):
+            # Skip values that are marked with the special flag
+            if agent_value == __NO_STAT__:
+                agent_value = None
+            if coagent_value == __NO_STAT__:
+                coagent_value = None
+            if both_agents == __NO_STAT__:
+                both_agents = None
+            
+            # Skip if all values are None
+            if agent_value is None and coagent_value is None and both_agents is None:
+                return
+            
             if "flat" in format_options:
-                round_info["flat"][stat_name] = agent_value
-                if coagent_value is not None and f"coagent_{stat_name}" in stats_to_log:
-                    round_info["flat"][f"coagent_{stat_name}"] = coagent_value
+                if both_agents != __NO_STAT__ and both_agents is not None:
+                    round_info["flat"][stat_name] = both_agents
+                else:
+                    if agent_value != __NO_STAT__ and agent_value is not None:
+                        round_info["flat"][stat_name] = agent_value
+                    if coagent_value != __NO_STAT__ and coagent_value is not None and f"coagent_{stat_name}" in stats_to_log:
+                        round_info["flat"][f"coagent_{stat_name}"] = coagent_value
             
             if "by_agent" in format_options:
-                round_info["by_agent"][agent_name][stat_name] = agent_value
-                if coagent_name and coagent_value is not None:
-                    round_info["by_agent"][coagent_name][stat_name] = coagent_value
+                if both_agents != __NO_STAT__ and both_agents is not None:
+                    round_info["by_agent"][stat_name] = both_agents
+                else:
+                    if agent_value != __NO_STAT__ and agent_value is not None:
+                        round_info["by_agent"][agent_name][stat_name] = agent_value
+                    if coagent_name and coagent_value != __NO_STAT__ and coagent_value is not None:
+                        round_info["by_agent"][coagent_name][stat_name] = coagent_value
             
             if "by_role" in format_options:
-                round_info["by_role"][agent_role][stat_name] = agent_value
-                if coagent_role and coagent_value is not None:
-                    round_info["by_role"][coagent_role][stat_name] = coagent_value
+                if both_agents != __NO_STAT__ and both_agents is not None:
+                    round_info["by_role"]["overall"][stat_name] = both_agents
+                else:
+                    if agent_value != __NO_STAT__ and agent_value is not None:
+                        round_info["by_role"][agent_role][stat_name] = agent_value
+                    if coagent_role and coagent_value != __NO_STAT__ and coagent_value is not None:
+                        round_info["by_role"][coagent_role][stat_name] = coagent_value
             
             if "by_agent_and_role" in format_options:
-                round_info["by_agent_and_role"][agent_name][agent_role][stat_name] = agent_value
-                if coagent_name and coagent_value is not None:
-                    round_info["by_agent_and_role"][coagent_name][coagent_role][stat_name] = coagent_value
-
-        if "agreement_percentage" in stats_to_log:
-            add_stat("agreement_percentage", 100 if agreement_reached else 0)
-
-        if "points" in stats_to_log:
-            add_stat("points", agent_points, coagent_points)
-
-        if "points_difference_on_agreement" in stats_to_log:
+                if both_agents != __NO_STAT__ and both_agents is not None:
+                    round_info["by_agent_and_role"][stat_name] = both_agents
+                else:
+                    if agent_value != __NO_STAT__ and agent_value is not None:
+                        round_info["by_agent_and_role"][agent_name][agent_role][stat_name] = agent_value
+                    if coagent_name and coagent_value != __NO_STAT__ and coagent_value is not None:
+                        round_info["by_agent_and_role"][coagent_name][coagent_role][stat_name] = coagent_value
+        
+        # Define functions for each statistic
+        def agreement_percentage():
+            return 100 if agreement_reached else 0, 100 if agreement_reached else 0, __NO_STAT__
+        
+        def round_points():
+            return agent_points, coagent_points, __NO_STAT__
+        
+        def points_difference_on_agreement():
             if agreement_reached:
-                add_stat("points_difference_on_agreement", 
-                         compute_points_difference(agent_points, coagent_points),
-                         compute_points_difference(coagent_points, agent_points))
-            else:
-                add_stat("points_difference_on_agreement", None, None)
-
-        if "imbalance_on_agreement" in stats_to_log:
+                points_difference = agent_points - coagent_points
+                return points_difference, -points_difference, __NO_STAT__
+            return None, None, __NO_STAT__
+        
+        def imbalance_on_agreement():
             if agreement_reached:
                 imbalance = calculate_imbalance(points, agent_role, coagent_role)
-                add_stat("imbalance_on_agreement", imbalance, imbalance)
-            else:
-                add_stat("imbalance_on_agreement", None, None)
-
-        if "items_given_to_self_percentage" in stats_to_log:
-            agent_items = calculate_items_given_to_self(info['round_finalizations'][i].get(agent_role, {}), quantities)
+                return imbalance, imbalance, __NO_STAT__
+            return None, None, __NO_STAT__
+        
+        def items_given_to_self_percentage():
+            agent_items = calculate_items_given_to_self_percentage(info['round_finalizations'][i].get(agent_role, {}), quantities)
             coagent_items = None
             if coagent_name and coagent_role in info['round_finalizations'][i]:
-                coagent_items = calculate_items_given_to_self(info['round_finalizations'][i].get(coagent_role, {}), quantities)
-            add_stat("items_given_to_self_percentage", agent_items, coagent_items)
-
-        if "points_on_agreement" in stats_to_log:
-            add_stat("points_on_agreement", 
-                    compute_points_on_agreement(agent_points, agreement_reached),
-                    compute_points_on_agreement(coagent_points, agreement_reached))
-
-        if "points_diff_on_agreement" in stats_to_log:
-            add_stat("points_diff_on_agreement", 
-                    compute_points_diff_on_agreement(agent_points, coagent_points, agreement_reached),
-                    compute_points_diff_on_agreement(coagent_points, agent_points, agreement_reached))
-
-        if "quantities" in stats_to_log:
-            add_stat("quantities", quantities, quantities)
-
-        if "values" in stats_to_log:
-            add_stat("values", values, coagent_values)
+                coagent_items = calculate_items_given_to_self_percentage(info['round_finalizations'][i].get(coagent_role, {}), quantities)
+            return agent_items, coagent_items, __NO_STAT__
         
-        if "optimal_points_difference_on_agreement" in stats_to_log:
+        def points_on_agreement():
+            if agreement_reached:
+                return agent_points, coagent_points, __NO_STAT__
+            return None, None, __NO_STAT__
+        
+        def points_diff_on_agreement():
+            if agreement_reached:
+                points_diff = agent_points - coagent_points
+                return points_diff, -points_diff, __NO_STAT__
+            return None, None, __NO_STAT__
+        
+        def round_quantities():
+            return __NO_STAT__, __NO_STAT__, quantities
+        
+        def round_values():
+            return values, coagent_values, __NO_STAT__
+        
+        def optimal_points_difference_on_agreement():
             if agreement_reached:
                 optimal_agent, optimal_coagent = compute_optimal_points_for_round(values, coagent_values, quantities)
-                add_stat("optimal_points_difference_on_agreement", 
-                        agent_points - optimal_agent,
-                        coagent_points - optimal_coagent)
-            else:
-                add_stat("optimal_points_difference_on_agreement", None, None)
-
-        if "greedy_dominant_points_difference_on_agreement" in stats_to_log:
-            if agreement_reached:
-                gd_points = compute_greedy_dominant_points(values, quantities)
-                gd_points_coagent = compute_greedy_dominant_points(coagent_values, quantities)
-                add_stat("greedy_dominant_points_difference_on_agreement", 
-                        agent_points - gd_points,
-                        coagent_points - gd_points_coagent)
-            else:
-                add_stat("greedy_dominant_points_difference_on_agreement", None, None)
-
-        if "greedy_submission_points_difference_on_agreement" in stats_to_log:
-            if agreement_reached:
-                gs_points = compute_greedy_submission_points(values)
-                gs_points_coagent = compute_greedy_submission_points(coagent_values)
-                add_stat("greedy_submission_points_difference_on_agreement", 
-                        agent_points - gs_points,
-                        coagent_points - gs_points_coagent)
-            else:
-                add_stat("greedy_submission_points_difference_on_agreement", None, None)
-
-        if "split_equal_points_difference_on_agreement" in stats_to_log:
-            if agreement_reached:
-                se_points = compute_split_equal_points(values, quantities)
-                se_points_coagent = compute_split_equal_points(coagent_values, quantities)
-                add_stat("split_equal_points_difference_on_agreement", 
-                        agent_points - se_points,
-                        coagent_points - se_points_coagent)
-            else:
-                add_stat("split_equal_points_difference_on_agreement", None, None)
-
-        if "more_items_to_value_more_percentage" in stats_to_log:
-            if agreement_reached:
-                agent_finalization = info['round_finalizations'][i].get(agent_role, {})
-                coagent_finalization = info['round_finalizations'][i].get(coagent_role, {})
-                is_majority_to_higher_value = check_items_allocation_to_higher_value_agent(
-                    values, coagent_values, agent_finalization, coagent_finalization
-                )
-                add_stat("more_items_to_value_more_percentage", 
-                         100 if is_majority_to_higher_value else 0,
-                         100 if is_majority_to_higher_value else 0)
-            else:
-                add_stat("more_items_to_value_more_percentage", None, None)
+                return agent_points - optimal_agent, coagent_points - optimal_coagent, __NO_STAT__
+            return None, None, __NO_STAT__
+        
+        def optimal_points_difference():
+            optimal_agent, optimal_coagent = compute_optimal_points_for_round(values, coagent_values, quantities)
+            return agent_points - optimal_agent, coagent_points - optimal_coagent, __NO_STAT__
+        
+        def more_items_to_value_more_percentage():
+            agent_finalization = info['round_finalizations'][i].get(agent_role, {})
+            coagent_finalization = info['round_finalizations'][i].get(coagent_role, {})
+            is_majority_to_higher_value = check_items_allocation_to_higher_value_agent(
+                values, coagent_values, agent_finalization, coagent_finalization
+            )
+            return __NO_STAT__, __NO_STAT__, 100 if is_majority_to_higher_value else 0
+            
+        # Calculate and add stats
+        for stat_name in stats_to_log:
+            if stat_name in locals():
+                agent_value, coagent_value, both_agents = locals()[stat_name]()
+                add_stat(stat_name, agent_value, coagent_value, both_agents)
 
         statistics[f"round_{i}"] = round_info
 
@@ -230,6 +232,7 @@ def gather_dond_statistics(agent_info, info, stats_to_log, format_options=None):
         total_stats["by_agent"] = {agent_name: {}}
         if coagent_name:
             total_stats["by_agent"][coagent_name] = {}
+        total_stats["by_agent"]["both_agents"] = {}
     
     if "by_role" in format_options:
         # For totals, we don't have specific roles anymore, so we'll use "overall"
@@ -241,112 +244,169 @@ def gather_dond_statistics(agent_info, info, stats_to_log, format_options=None):
             total_stats["by_agent_and_role"][coagent_name] = {"overall": {}}
 
     # Helper function to add total stat based on format options
-    def add_total_stat(stat_name, agent_value, coagent_value=None):
+    def add_total_stat(stat_name, agent_value, coagent_value=None, both_agents=None):
+        # Skip values that are marked with the special flag
+        if agent_value == __NO_STAT__:
+            agent_value = None
+        if coagent_value == __NO_STAT__:
+            coagent_value = None
+        if both_agents == __NO_STAT__:
+            both_agents = None
+            
+        # Skip if all values are None
+        if agent_value is None and coagent_value is None and both_agents is None:
+            return
+            
         if "flat" in format_options:
-            total_stats["flat"][stat_name] = agent_value
-            if coagent_value is not None:
-                total_stats["flat"][f"coagent_{stat_name}"] = coagent_value
+            if both_agents != __NO_STAT__ and both_agents is not None:
+                total_stats["flat"][stat_name] = both_agents
+            else:
+                if agent_value != __NO_STAT__ and agent_value is not None:
+                    total_stats["flat"][stat_name] = agent_value
+                if coagent_value != __NO_STAT__ and coagent_value is not None:
+                    total_stats["flat"][f"coagent_{stat_name}"] = coagent_value
         
         if "by_agent" in format_options:
-            total_stats["by_agent"][agent_name][stat_name] = agent_value
-            if coagent_name and coagent_value is not None:
-                total_stats["by_agent"][coagent_name][stat_name] = coagent_value
+            if both_agents != __NO_STAT__ and both_agents is not None:
+                for agent in total_stats["by_agent"]:
+                    total_stats["by_agent"]["both_agents"][stat_name] = both_agents
+            else:
+                if agent_value != __NO_STAT__ and agent_value is not None:
+                    total_stats["by_agent"][agent_name][stat_name] = agent_value
+                if coagent_name and coagent_value != __NO_STAT__ and coagent_value is not None:
+                    total_stats["by_agent"][coagent_name][stat_name] = coagent_value
         
         if "by_role" in format_options:
-            total_stats["by_role"]["agent_overall"][stat_name] = agent_value
-            if coagent_value is not None:
-                total_stats["by_role"]["coagent_overall"][stat_name] = coagent_value
+            if both_agents != __NO_STAT__ and both_agents is not None:
+                total_stats["by_role"]["overall"][stat_name] = both_agents
+            else:
+                if agent_value != __NO_STAT__ and agent_value is not None:
+                    total_stats["by_role"]["agent_overall"][stat_name] = agent_value
+                if coagent_value != __NO_STAT__ and coagent_value is not None:
+                    total_stats["by_role"]["coagent_overall"][stat_name] = coagent_value
         
         if "by_agent_and_role" in format_options:
-            total_stats["by_agent_and_role"][agent_name]["overall"][stat_name] = agent_value
-            if coagent_name and coagent_value is not None:
-                total_stats["by_agent_and_role"][coagent_name]["overall"][stat_name] = coagent_value
-
-    if "total_optimal_points_difference_on_agreement_agent" in stats_to_log:
-        agent_value = total_points_agent - total_optimal_agent if total_points_agent > 0 else None
-        add_total_stat("total_optimal_points_difference_on_agreement", agent_value)
-
-    if "total_optimal_points_difference_on_agreement_coagent" in stats_to_log:
-        coagent_value = total_points_coagent - total_optimal_coagent if total_points_coagent > 0 else None
-        add_total_stat("total_optimal_points_difference_on_agreement_coagent", coagent_value)
-
-    if "total_imbalance_on_agreement" in stats_to_log:
-        if total_points_agent + total_points_coagent > 0:
-            imbalance = float(abs(total_points_agent - total_points_coagent) / (total_points_agent + total_points_coagent + 1e-6))
-            add_total_stat("total_imbalance_on_agreement", imbalance, imbalance)
-        else:
-            add_total_stat("total_imbalance_on_agreement", None, None)
-
-    if "total_points_difference_on_agreement" in stats_to_log:
-        if total_points_agent + total_points_coagent > 0:
-            add_total_stat("total_points_difference_on_agreement", 
-                        float(total_points_agent - total_points_coagent),
-                        float(total_points_coagent - total_points_agent))
-        else:
-            add_total_stat("total_points_difference_on_agreement", None, None)
+            if both_agents != __NO_STAT__ and both_agents is not None:
+                for agent in total_stats["by_agent_and_role"]:
+                    total_stats["by_agent_and_role"][agent]["overall"][stat_name] = both_agents
+            else:
+                if agent_value != __NO_STAT__ and agent_value is not None:
+                    total_stats["by_agent_and_role"][agent_name]["overall"][stat_name] = agent_value
+                if coagent_name and coagent_value != __NO_STAT__ and coagent_value is not None:
+                    total_stats["by_agent_and_role"][coagent_name]["overall"][stat_name] = coagent_value
     
-    if "total_optimal_points_difference" in stats_to_log:
-        add_total_stat("total_optimal_points_difference", 
-                      total_points_agent_all - total_optimal_agent_all,
-                      total_points_coagent_all - total_optimal_coagent_all)
-
-    if "total_agreement_percentage" in stats_to_log:
-        # Calculate the percentage of rounds where an agreement was reached
+    
+    def total_imbalance_on_agreement():
+        imbalance = float(abs(total_points_agent - total_points_coagent) / (total_points_agent + total_points_coagent + 1e-6))
+        return imbalance, imbalance, __NO_STAT__
+    
+    def total_points_difference_on_agreement():
+        if total_points_agent + total_points_coagent > 0:
+            return float(total_points_agent - total_points_coagent), float(total_points_coagent - total_points_agent), __NO_STAT__
+        return None, None, __NO_STAT__
+    
+    def total_optimal_points_difference():
+        return total_points_agent_all - total_optimal_agent_all, total_points_coagent_all - total_optimal_coagent_all, __NO_STAT__
+    
+    def total_agreement_percentage():
         total_rounds = len(info['round_agreements_reached'])
         if total_rounds > 0:
             agreements_count = sum(1 for agreement in info['round_agreements_reached'] if agreement)
             agreement_percentage = (agreements_count / total_rounds) * 100
-            add_total_stat("total_agreement_percentage", agreement_percentage, agreement_percentage)
-        else:
-            add_total_stat("total_agreement_percentage", None, None)
-
-    if "more_items_to_value_more_percentage" in stats_to_log:
-        # Calculate the total percentage across all rounds
-        rounds_with_agreement = sum(1 for i in range(len(info['round_agreements_reached'])) 
-                                  if info['round_agreements_reached'][i])
-        
-        total_higher_value_rounds = 0
-        if rounds_with_agreement > 0:
-            for i in range(len(info['round_agreements_reached'])):
-                if not info['round_agreements_reached'][i]:
-                    continue
+            return agreement_percentage, agreement_percentage, __NO_STAT__
+        return None, None, __NO_STAT__
+    
+    def total_sum_points_percentage_of_max():
+        max_points = total_optimal_agent_all + total_optimal_coagent_all
+        if max_points > 0:
+            sum_points_percentage = 100 * (total_points_agent_all + total_points_coagent_all) / max_points
+            return __NO_STAT__, __NO_STAT__, sum_points_percentage
+        return __NO_STAT__, __NO_STAT__, None
+    
+    def total_imbalance():
+        total_points = total_points_agent_all + total_points_coagent_all
+        if total_points > 0:
+            imbalance = abs(total_points_agent_all - total_points_coagent_all) / total_points
+            return __NO_STAT__, __NO_STAT__, imbalance
+        return __NO_STAT__, __NO_STAT__, None
+    
+    def total_average_imbalance():
+        """
+        Computes the average imbalance across all rounds.
+        """
+        imbalances = []
+        for i, state in enumerate(info['round_agent_roles']):
+            agent_role = state.get(agent_name)
+            if agent_role is None:
+                continue
                 
-                agent_role = info['round_agent_roles'][i].get(agent_name)
-                coagent_name = next((name for name in info['round_agent_roles'][i].keys() if name != agent_name), None)
-                coagent_role = info['round_agent_roles'][i].get(coagent_name)
+            # Find the co-agent name and role
+            coagent_name_i = next((name for name in state.keys() if name != agent_name), None)
+            coagent_role = state.get(coagent_name_i)
+            if coagent_role is None:
+                continue
                 
-                values = info['round_values'][i][agent_role]
-                coagent_values = info['round_values'][i][coagent_role]
-                
-                agent_finalization = info['round_finalizations'][i].get(agent_role, {})
-                coagent_finalization = info['round_finalizations'][i].get(coagent_role, {})
-                
-                is_majority_to_higher_value = check_items_allocation_to_higher_value_agent(
-                    values, coagent_values, agent_finalization, coagent_finalization
-                )
-                
-                if is_majority_to_higher_value:
-                    total_higher_value_rounds += 1
+            points = info['round_points'][i]
+            # Calculate imbalance for this round
+            round_imbalance = calculate_imbalance(points, agent_role, coagent_role)
+            imbalances.append(round_imbalance)
             
-            percentage = (total_higher_value_rounds / rounds_with_agreement) * 100
-            add_total_stat("more_items_to_value_more_percentage", percentage, percentage)
-        else:
-            add_total_stat("more_items_to_value_more_percentage", None, None)
-
-    if "total_items_given_to_self_percentage" in stats_to_log:
+        avg_imbalance = sum(imbalances) / len(imbalances) if imbalances else None
+        # Return tuple of (agent_value, coagent_value, both_agent_value)
+        return avg_imbalance, avg_imbalance, __NO_STAT__
+    
+    def total_more_items_to_value_more_percentage():
+        total_higher_value_rounds = 0
+        nb_rounds = len(info['round_agreements_reached'])
+        for i in range(nb_rounds):
+            if i >= len(info['round_agent_roles']):
+                continue
+            agent_role = info['round_agent_roles'][i].get(agent_name)
+            if agent_role is None:
+                continue
+            coagent_name_i = next((name for name in info['round_agent_roles'][i].keys() if name != agent_name), None)
+            coagent_role_i = info['round_agent_roles'][i].get(coagent_name_i)
+            if coagent_role_i is None:
+                continue
+            values_i = info['round_values'][i][agent_role]
+            coagent_values_i = info['round_values'][i][coagent_role_i]
+            agent_finalization = info['round_finalizations'][i].get(agent_role, {})
+            coagent_finalization = info['round_finalizations'][i].get(coagent_role_i, {})
+            is_majority_to_higher_value = check_items_allocation_to_higher_value_agent(
+                values_i, coagent_values_i, agent_finalization, coagent_finalization
+            )
+            if is_majority_to_higher_value:
+                total_higher_value_rounds += 1
+        percentage = (total_higher_value_rounds / nb_rounds) * 100 if nb_rounds > 0 else None
+        return __NO_STAT__, __NO_STAT__, percentage
+    
+    def total_items_given_to_self_percentage():
         total_items_allocated = 0
         total_items_available = 0
         for i in range(len(info['round_finalizations'])):
-            agent_role = info['round_agent_roles'][i].get(agent_name)
-            finalization = info['round_finalizations'][i].get(agent_role, {})
-            quantities = info['round_quantities'][i]
+            if i >= len(info['round_agent_roles']):
+                continue
+            agent_role_i = info['round_agent_roles'][i].get(agent_name)
+            if agent_role_i is None:
+                continue
+            finalization = info['round_finalizations'][i].get(agent_role_i, {})
+            quantities_i = info['round_quantities'][i]
             total_items_allocated += sum(finalization.values())
-            total_items_available += sum(quantities.values())
+            total_items_available += sum(quantities_i.values())
         if total_items_available > 0:
             total_percentage = 100.0 * total_items_allocated / total_items_available
-            add_total_stat("total_items_given_to_self_percentage", total_percentage)
-        else:
-            add_total_stat("total_items_given_to_self_percentage", None)
+            return total_percentage, __NO_STAT__, __NO_STAT__
+        return None, __NO_STAT__, __NO_STAT__
+
+    def number_of_rounds():
+        return len(info['round_agent_roles']), __NO_STAT__, __NO_STAT__
+
+    # Calculate and add total stats
+    for stat_name in stats_to_log:
+        # Handle total stats
+        if stat_name in locals():
+            agent_value, coagent_value, both_agents = locals()[stat_name]()
+            add_total_stat(stat_name, agent_value, coagent_value, both_agents)
 
     statistics["totals"] = total_stats
 
@@ -371,7 +431,7 @@ def calculate_imbalance(points, agent_role, coagent_role):
     return abs((points[agent_role] - points[coagent_role]) / total_points)
 
 
-def calculate_items_given_to_self(finalization, quantities):
+def calculate_items_given_to_self_percentage(finalization, quantities):
     """
     Calculates the percentage of total available items given to self from finalization data.
     
@@ -393,52 +453,6 @@ def calculate_items_given_to_self(finalization, quantities):
     
     # Return as a percentage (0-100)
     return 100.0 * total_items_allocated / total_items_available
-
-
-# --- External points computation functions --- #
-
-def compute_points_difference(agent_points, coagent_points):
-    """
-    Computes the difference between the agent's points and the coagent agent's points.
-    
-    Args:
-        agent_points (numeric): Points for the agent.
-        coagent_points (numeric): Points for the coagent agent.
-    
-    scores:
-        numeric: The difference (agent_points - coagent_points).
-    """
-    return agent_points - coagent_points
-
-
-def compute_points_on_agreement(agent_points, agreement_reached):
-    """
-    scores the agent's points if an agreement was reached, coagentwise None.
-    
-    Args:
-        agent_points (numeric): The agent's points.
-        agreement_reached (bool): Whether an agreement was reached.
-    
-    scores:
-        numeric or None
-    """
-    return agent_points if agreement_reached else None
-
-
-def compute_points_diff_on_agreement(agent_points, coagent_points, agreement_reached):
-    """
-    Computes the difference between the agent's and the coagent agent's points
-    only if an agreement was reached.
-    
-    Args:
-        agent_points (numeric): The agent's points.
-        coagent_points (numeric): The coagent agent's points.
-        agreement_reached (bool): Whether an agreement was reached.
-    
-    scores:
-        numeric or None: The difference if agreement reached; coagentwise, None.
-    """
-    return agent_points - coagent_points if agreement_reached else None
 
 
 def compute_optimal_points_for_round(agent_values, coagent_values, quantities):
@@ -468,50 +482,6 @@ def compute_optimal_points_for_round(agent_values, coagent_values, quantities):
             agent_optimal += 0.5 * agent_values[item] * quantities[item]
             coagent_optimal += 0.5 * coagent_values[item] * quantities[item]
     return agent_optimal, coagent_optimal
-
-
-def compute_greedy_dominant_points(agent_values, quantities):
-    """
-    Computes the hypothetical points under a greedy-dominant policy for the agent.
-    Policy: Summing the (value * quantity) for all items then subtracting the minimum value.
-    
-    Args:
-        agent_values (dict): The agent's values for each item.
-        quantities (dict): The quantities for each item.
-    
-    scores:
-        numeric: The computed greedy dominant points.
-    """
-    total = sum(agent_values[item] * quantities[item] for item in quantities)
-    return total - min(agent_values.values()) if agent_values else total
-
-
-def compute_greedy_submission_points(agent_values):
-    """
-    Computes the hypothetical points under a greedy-submission policy by taking the minimum value.
-    
-    Args:
-        agent_values (dict): The agent's values for each item.
-    
-    scores:
-        numeric: The minimum value among the agent's item values.
-    """
-    return min(agent_values.values()) if agent_values else None
-
-
-def compute_split_equal_points(agent_values, quantities):
-    """
-    Computes the hypothetical points under a split-equal policy.
-    Policy: Each item contributes half of its full (value * quantity).
-    
-    Args:
-        agent_values (dict): The agent's values for each item.
-        quantities (dict): The quantities for each item.
-    
-    scores:
-        numeric: The computed split-equal points.
-    """
-    return sum(0.5 * agent_values[item] * quantities[item] for item in quantities)
 
 
 def check_items_allocation_to_higher_value_agent(agent_values, coagent_values, finalization, coagent_finalization):

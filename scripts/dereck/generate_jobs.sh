@@ -29,11 +29,11 @@ mkdir -p "$LOGDIR"
 # )
 
 COMMANDS=(
-  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond experiment.base_seed=1"
-  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond experiment.base_seed=53"
-  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond experiment.base_seed=97"
-  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond experiment.base_seed=157"
-  "python $SCRIPT_PATH --config-name=dond --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond experiment.base_seed=468"
+  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa common_training_agent_kwargs.training_data_func_args.score_method_kwargs.beta=0.1 experiment.base_seed=100"
+  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa common_training_agent_kwargs.training_data_func_args.score_method_kwargs.beta=0.5 experiment.base_seed=200"
+  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa common_training_agent_kwargs.training_data_func_args.score_method_kwargs.beta=1.0 experiment.base_seed=300"
+  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa common_training_agent_kwargs.training_data_func_args.score_method_kwargs.beta=2.0 experiment.base_seed=400"
+  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa common_training_agent_kwargs.training_data_func_args.score_method_kwargs.beta=3.0 experiment.base_seed=500"
 )
 
 

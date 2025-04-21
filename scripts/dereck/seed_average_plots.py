@@ -159,7 +159,7 @@ if __name__ == "__main__":
     # Example usage
     
     # Example path to experiment folder
-    experiment_folder = "/home/mila/d/dereck.piche/scratch/finalseeds"
+    experiment_folder = "/home/mila/d/dereck.piche/scratch/final_aa_runs"
 
     agent_name = "bob"
     
