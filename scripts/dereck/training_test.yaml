@@ -206,9 +206,9 @@ common_models_init_args: &common_models_init_args
   keep_vllm_during_eval: True
   eval_with: "vllm"
   train_with: "hf"
-  optimizer_method: "Adam"
+  optimizer_method: "SGD"
   optimizer_kwargs:
-    lr: 1e-6
+    lr: 1e-5
     weight_decay: 0.0
 
 models:

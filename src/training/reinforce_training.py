@@ -398,7 +398,253 @@ def compute_kl_div(
 # =====================================================================================================
 # =====================================================================================================
 
+def _log_adapter_weights_snapshot(model, save_path):
+    """
+    Creates a snapshot of adapter weights for verification.
+    
+    Extracts and saves adapter weights from the model to verify if they're being updated
+    during training. This function focuses on PEFT adapters (LoRA, etc.) if present.
+    
+    Args:
+        model: The model containing adapters
+        save_path: Path to save the adapter weights snapshot
+    """
+    import json
+    import torch
+    import os
+    import numpy as np
+    from collections import defaultdict
+    
+    # Dictionary to store adapter weights
+    adapter_weights = defaultdict(dict)
+    
+    # Helper to determine if a module is likely an adapter
+    def is_adapter_param(name):
+        adapter_keywords = ['lora', 'adapter', 'peft', 'prefix']
+        return any(keyword in name.lower() for keyword in adapter_keywords)
+    
+    # Helper to make tensors JSON serializable with high precision
+    def tensor_to_serializable(tensor, max_values=10):
+        if tensor is None:
+            return None
+            
+        # Convert to list of floats (first few values) with high precision
+        if tensor.numel() > 0:
+            flat_tensor = tensor.detach().flatten()
+            # Store with full float64 precision to catch even tiny changes
+            first_values = flat_tensor[:max_values].to(torch.float64).tolist()
+            last_values = flat_tensor[-max_values:].to(torch.float64).tolist() if tensor.numel() > max_values else []
+            
+            # Create a unique fingerprint for the tensor that works with any dtype
+            # Convert to float32 first to handle BFloat16 and other special types
+            try:
+                tensor_hash = hash(tensor.detach().cpu().to(torch.float32).numpy().tobytes())
+            except Exception:
+                # Fallback to a simpler fingerprint if hashing fails
+                tensor_hash = hash(str(first_values) + str(last_values))
+            
+            # Compute stats with high precision
+            return {
+                "shape": list(tensor.shape),
+                "first_values": first_values,
+                "last_values": last_values,
+                "norm": float(tensor.norm().item()),
+                "mean": float(tensor.mean().item()),
+                "std": float(tensor.std().item()) if tensor.numel() > 1 else 0.0,
+                "min": float(tensor.min().item()),
+                "max": float(tensor.max().item()),
+                "fingerprint": tensor_hash,
+                "numel": tensor.numel()
+            }
+        return {"empty": True, "shape": list(tensor.shape)}
+    
+    # Extract adapter parameters
+    adapter_params = {}
+    base_model_params = {}
+    
+    with torch.no_grad():
+        for name, param in model.named_parameters():
+            if param.requires_grad:  # Only track trainable parameters
+                if is_adapter_param(name):
+                    adapter_params[name] = tensor_to_serializable(param)
+                else:
+                    # For base model params, just store summary stats to save space
+                    base_model_params[name] = {
+                        "shape": list(param.shape),
+                        "norm": float(param.norm().item()) if param.numel() > 0 else 0,
+                        "requires_grad": param.requires_grad
+                    }
+    
+    # Find PEFT modules more explicitly
+    peft_modules = []
+    adapter_info = {
+        "has_adapters": False,
+        "adapter_types": []
+    }
+    
+    for name, module in model.named_modules():
+        # Check for PEFT attributes
+        if (hasattr(module, 'lora_A') or 
+            hasattr(module, 'lora_B') or 
+            'lora' in name.lower() or
+            'adapter' in name.lower()):
+            peft_modules.append(name)
+            adapter_info["has_adapters"] = True
+            if "lora" not in adapter_info["adapter_types"]:
+                adapter_info["adapter_types"].append("lora")
+    
+    # Store everything in a dictionary
+    adapter_info.update({
+        "adapter_parameters": adapter_params,
+        "base_model_parameters_summary": base_model_params,
+        "peft_modules": peft_modules,
+        "trainable_adapter_params": len(adapter_params),
+        "adapter_param_sizes": {name: info["shape"] for name, info in adapter_params.items()},
+    })
+    
+    # Save to file
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    with open(save_path, 'w') as f:
+        json.dump(adapter_info, f, indent=2)
+    
+    model_logger.info(f"Adapter weights snapshot saved to {save_path}")
+    model_logger.info(f"Found {len(adapter_params)} trainable adapter parameters")
+    
+    return adapter_info
 
+
+def _generate_adapter_weights_comparison(initial_path, final_path, output_path):
+    """
+    Generates a human-readable comparison between initial and final adapter weights.
+    Shows differences in scientific notation and marks changes with visual indicators.
+    
+    Args:
+        initial_path: Path to the initial adapter weights JSON
+        final_path: Path to the final adapter weights JSON
+        output_path: Path to save the comparison report
+    """
+    import json
+    import os
+    import numpy as np
+    from collections import defaultdict
+    
+    try:
+        # Load initial and final weights
+        with open(initial_path, 'r') as f:
+            initial = json.load(f)
+        
+        with open(final_path, 'r') as f:
+            final = json.load(f)
+        
+        # Prepare comparison report
+        with open(output_path, 'w') as f:
+            f.write("ADAPTER WEIGHTS COMPARISON REPORT\n")
+            f.write("===============================\n\n")
+            
+            # High-level summary
+            initial_params = initial.get("trainable_adapter_params", 0)
+            final_params = final.get("trainable_adapter_params", 0)
+            f.write(f"Initial trainable adapter parameters: {initial_params}\n")
+            f.write(f"Final trainable adapter parameters: {final_params}\n\n")
+            
+            # Compare adapter parameters
+            init_params = initial.get("adapter_parameters", {})
+            final_params = final.get("adapter_parameters", {})
+            
+            # Use sorted keys from initial parameters to ensure consistent ordering
+            all_param_names = sorted(set(list(init_params.keys()) + list(final_params.keys())))
+            
+            f.write(f"Detailed parameter comparison:\n")
+            f.write(f"----------------------------\n\n")
+            
+            # Track overall change statistics
+            total_changed = 0
+            total_identical = 0
+            total_params = 0
+            
+            for name in all_param_names:
+                total_params += 1
+                
+                if name in init_params and name in final_params:
+                    init_tensor = init_params[name]
+                    final_tensor = final_params[name]
+                    
+                    # Check for exact equality using fingerprint if available
+                    exact_match = init_tensor.get('fingerprint', None) == final_tensor.get('fingerprint', None)
+                    
+                    # Calculate differences for various metrics
+                    changes = {}
+                    
+                    # Norm difference
+                    init_norm = init_tensor.get("norm", 0)
+                    final_norm = final_tensor.get("norm", 0)
+                    norm_diff = final_norm - init_norm
+                    
+                    # Check for any changes in values (even extremely small ones)
+                    init_first = init_tensor.get("first_values", [])
+                    final_first = final_tensor.get("first_values", [])
+                    
+                    any_changes = not exact_match
+                    value_diffs = []
+                    
+                    for i, (iv, fv) in enumerate(zip(init_first, final_first)):
+                        diff = fv - iv
+                        if abs(diff) > 0:
+                            any_changes = True
+                        value_diffs.append(diff)
+                    
+                    # Set status indicator
+                    if any_changes:
+                        status = "✓"  # Changed
+                        total_changed += 1
+                    else:
+                        status = "✗"  # Identical
+                        total_identical += 1
+                    
+                    # Write parameter comparison
+                    f.write(f"{status} Parameter: {name}\n")
+                    f.write(f"  - Shape: {init_tensor.get('shape')}\n")
+                    f.write(f"  - Norm: {init_norm:.8e} → {final_norm:.8e} (diff: {norm_diff:.8e})\n")
+                    
+                    # Add other statistics in scientific notation
+                    for stat in ['mean', 'std', 'min', 'max']:
+                        if stat in init_tensor and stat in final_tensor:
+                            init_val = init_tensor[stat]
+                            final_val = final_tensor[stat]
+                            diff = final_val - init_val
+                            f.write(f"  - {stat.capitalize()}: {init_val:.8e} → {final_val:.8e} (diff: {diff:.8e})\n")
+                    
+                    # Show detailed value comparisons
+                    if init_first and final_first:
+                        f.write("  - Values comparison:\n")
+                        for i, (iv, fv) in enumerate(zip(init_first[:5], final_first[:5])):
+                            diff = fv - iv
+                            change_indicator = "✓" if abs(diff) > 0 else "✗"
+                            f.write(f"      [{i}] {change_indicator} {iv:.16e} → {fv:.16e} (diff: {diff:.16e})\n")
+                    
+                    f.write("\n")
+                else:
+                    # Parameter exists in only one snapshot
+                    f.write(f"! Parameter: {name} - exists in {'initial' if name in init_params else 'final'} snapshot only\n\n")
+            
+            # Overall change summary
+            f.write("\nChange Summary:\n")
+            f.write("==============\n")
+            f.write(f"Total parameters: {total_params}\n")
+            f.write(f"Parameters with ANY change: {total_changed} ({(total_changed/total_params)*100:.2f}%)\n")
+            f.write(f"Parameters with NO change: {total_identical} ({(total_identical/total_params)*100:.2f}%)\n")
+            
+            # Conclusion
+            if total_changed > 0:
+                f.write("\nCONCLUSION: Adapter weights changed during training.\n")
+            else:
+                f.write("\nCONCLUSION: NO CHANGES detected in adapter weights! Training had no effect.\n")
+        
+        model_logger.info(f"Adapter weights comparison saved to {output_path}")
+        model_logger.info(f"Changes detected in {total_changed}/{total_params} adapter parameters")
+        
+    except Exception as e:
+        model_logger.error(f"Error generating adapter weights comparison: {e}")
 
 def verify_reinforce_train_inputs(contexts_list, scores_list, output_masks_list):
     """
@@ -1580,222 +1826,7 @@ def _create_consolidated_training_verification_report(verification_dir, epoch):
     return report_path
 
 
-def _log_adapter_weights_snapshot(model, save_path):
-    """
-    Creates a snapshot of adapter weights for verification.
-    
-    Extracts and saves adapter weights from the model to verify if they're being updated
-    during training. This function focuses on PEFT adapters (LoRA, etc.) if present.
-    
-    Args:
-        model: The model containing adapters
-        save_path: Path to save the adapter weights snapshot
-    """
-    import json
-    import torch
-    import os
-    from collections import defaultdict
-    
-    # Dictionary to store adapter weights
-    adapter_weights = defaultdict(dict)
-    
-    # Helper to determine if a module is likely an adapter
-    def is_adapter_param(name):
-        adapter_keywords = ['lora', 'adapter', 'peft', 'prefix']
-        return any(keyword in name.lower() for keyword in adapter_keywords)
-    
-    # Helper to make tensors JSON serializable
-    def tensor_to_serializable(tensor, max_values=10):
-        if tensor is None:
-            return None
-            
-        # Convert to list of floats (first few values)
-        if tensor.numel() > 0:
-            flat_tensor = tensor.detach().flatten()
-            first_values = flat_tensor[:max_values].tolist()
-            last_values = flat_tensor[-max_values:].tolist() if tensor.numel() > max_values else []
-            
-            return {
-                "shape": list(tensor.shape),
-                "first_values": first_values,
-                "last_values": last_values,
-                "norm": float(tensor.norm().item()),
-                "mean": float(tensor.mean().item()),
-                "std": float(tensor.std().item()) if tensor.numel() > 1 else 0.0,
-                "min": float(tensor.min().item()),
-                "max": float(tensor.max().item()),
-                "numel": tensor.numel()
-            }
-        return {"empty": True, "shape": list(tensor.shape)}
-    
-    # Extract adapter parameters
-    adapter_params = {}
-    base_model_params = {}
-    
-    with torch.no_grad():
-        for name, param in model.named_parameters():
-            if param.requires_grad:  # Only track trainable parameters
-                if is_adapter_param(name):
-                    adapter_params[name] = tensor_to_serializable(param)
-                else:
-                    # For base model params, just store summary stats to save space
-                    base_model_params[name] = {
-                        "shape": list(param.shape),
-                        "norm": float(param.norm().item()) if param.numel() > 0 else 0,
-                        "requires_grad": param.requires_grad
-                    }
-    
-    # Find PEFT modules more explicitly
-    peft_modules = []
-    adapter_info = {
-        "has_adapters": False,
-        "adapter_types": []
-    }
-    
-    for name, module in model.named_modules():
-        # Check for PEFT attributes
-        if (hasattr(module, 'lora_A') or 
-            hasattr(module, 'lora_B') or 
-            'lora' in name.lower() or
-            'adapter' in name.lower()):
-            peft_modules.append(name)
-            adapter_info["has_adapters"] = True
-            if "lora" not in adapter_info["adapter_types"]:
-                adapter_info["adapter_types"].append("lora")
-    
-    # Store everything in a dictionary
-    adapter_info.update({
-        "adapter_parameters": adapter_params,
-        "base_model_parameters_summary": base_model_params,
-        "peft_modules": peft_modules,
-        "trainable_adapter_params": len(adapter_params),
-        "adapter_param_sizes": {name: info["shape"] for name, info in adapter_params.items()},
-    })
-    
-    # Save to file
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    with open(save_path, 'w') as f:
-        json.dump(adapter_info, f, indent=2)
-    
-    model_logger.info(f"Adapter weights snapshot saved to {save_path}")
-    model_logger.info(f"Found {len(adapter_params)} trainable adapter parameters")
-    
-    return adapter_info
 
-
-def _generate_adapter_weights_comparison(initial_path, final_path, output_path):
-    """
-    Generates a human-readable comparison between initial and final adapter weights.
-    
-    Args:
-        initial_path: Path to the initial adapter weights JSON
-        final_path: Path to the final adapter weights JSON
-        output_path: Path to save the comparison report
-    """
-    import json
-    import os
-    from collections import defaultdict
-    
-    try:
-        # Load initial and final weights
-        with open(initial_path, 'r') as f:
-            initial = json.load(f)
-        
-        with open(final_path, 'r') as f:
-            final = json.load(f)
-        
-        # Prepare comparison report
-        with open(output_path, 'w') as f:
-            f.write("ADAPTER WEIGHTS COMPARISON REPORT\n")
-            f.write("===============================\n\n")
-            
-            # High-level summary
-            initial_params = initial.get("trainable_adapter_params", 0)
-            final_params = final.get("trainable_adapter_params", 0)
-            f.write(f"Initial trainable adapter parameters: {initial_params}\n")
-            f.write(f"Final trainable adapter parameters: {final_params}\n\n")
-            
-            # Compare adapter parameters
-            init_params = initial.get("adapter_parameters", {})
-            final_params = final.get("adapter_parameters", {})
-            
-            all_param_names = sorted(set(list(init_params.keys()) + list(final_params.keys())))
-            
-            f.write(f"Detailed parameter comparison:\n")
-            f.write(f"----------------------------\n\n")
-            
-            # Track overall change statistics
-            total_changed = 0
-            total_params = 0
-            significant_changes = []
-            change_threshold = 1e-5  # Threshold to consider a parameter changed
-            
-            for name in all_param_names:
-                total_params += 1
-                if name in init_params and name in final_params:
-                    # Calculate norm difference
-                    init_norm = init_params[name].get("norm", 0)
-                    final_norm = final_params[name].get("norm", 0)
-                    norm_diff = abs(final_norm - init_norm)
-                    
-                    # Check if values changed
-                    init_first = init_params[name].get("first_values", [])
-                    final_first = final_params[name].get("first_values", [])
-                    
-                    value_diffs = []
-                    for i, (iv, fv) in enumerate(zip(init_first, final_first)):
-                        value_diffs.append(abs(fv - iv))
-                    
-                    avg_value_diff = sum(value_diffs) / len(value_diffs) if value_diffs else 0
-                    max_value_diff = max(value_diffs) if value_diffs else 0
-                    
-                    # Determine if parameter changed significantly
-                    param_changed = norm_diff > change_threshold or avg_value_diff > change_threshold
-                    
-                    if param_changed:
-                        total_changed += 1
-                        significant_changes.append((name, norm_diff, avg_value_diff))
-                        
-                        # For significantly changed parameters, show detailed comparison
-                        if len(significant_changes) <= 10:  # Limit detailed output to top 10 changes
-                            f.write(f"Parameter: {name}\n")
-                            f.write(f"  - Shape: {init_params[name].get('shape')}\n")
-                            f.write(f"  - Initial norm: {init_norm:.6f}\n")
-                            f.write(f"  - Final norm: {final_norm:.6f}\n")
-                            f.write(f"  - Norm difference: {norm_diff:.6f}\n")
-                            f.write(f"  - Average value difference: {avg_value_diff:.6f}\n")
-                            
-                            # Show first few values
-                            if init_first and final_first:
-                                f.write("  - Values sample (first few):\n")
-                                for i, (iv, fv) in enumerate(zip(init_first[:5], final_first[:5])):
-                                    f.write(f"      [{i}] {iv:.6f} → {fv:.6f} (diff: {abs(fv-iv):.6f})\n")
-                            f.write("\n")
-            
-            # Overall change summary
-            f.write("\nChange Summary:\n")
-            f.write("==============\n")
-            f.write(f"Total parameters: {total_params}\n")
-            f.write(f"Parameters with significant changes: {total_changed} ({(total_changed/total_params)*100:.2f}%)\n")
-            
-            # List top changes by norm difference
-            if significant_changes:
-                f.write("\nTop changes by norm difference:\n")
-                top_norm_changes = sorted(significant_changes, key=lambda x: x[1], reverse=True)[:10]
-                for name, norm_diff, value_diff in top_norm_changes:
-                    f.write(f"  - {name}: norm diff {norm_diff:.6f}, value diff {value_diff:.6f}\n")
-            
-            # Conclusion
-            if total_changed > 0:
-                f.write("\nCONCLUSION: Adapter weights were successfully updated during training.\n")
-            else:
-                f.write("\nCONCLUSION: NO SIGNIFICANT CHANGES detected in adapter weights! Training may not have been effective.\n")
-        
-        model_logger.info(f"Adapter weights comparison saved to {output_path}")
-        model_logger.info(f"Changes detected in {total_changed}/{total_params} adapter parameters")
-        
-    except Exception as e:
-        model_logger.error(f"Error generating adapter weights comparison: {e}")
 
 
 def find_tokenizer_from_model(model):
