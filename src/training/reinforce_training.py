@@ -290,101 +290,11 @@ def reinforce_train(
                         per_token_kl=per_token_kl,
                     )
 
-                    # Log additional debugging information
-                    batch_idx = i // mb_size
-                    gradient_accumulation_step = batch_idx % gradient_accumulation_steps
-                    
-                    # Log model/adapter status at the beginning of each epoch and when parameters are updated
-                    if i == 0 or gradient_accumulation_step == gradient_accumulation_steps - 1:
-                        _log_model_adapter_status(
-                            model=model,
-                            save_dir=debug_log_path,
-                            epoch=epoch,
-                            batch_idx=batch_idx,
-                        )
-                    
-                    # Log gradient statistics
-                    _log_gradient_stats(
-                        model=model,
-                        optimizer=optimizer,
-                        save_dir=debug_log_path,
-                        epoch=epoch,
-                        batch_idx=batch_idx,
-                        gradient_accumulation_step=gradient_accumulation_step,
-                        total_steps=gradient_accumulation_steps,
-                    )
-                    
-                    # Generate step overview with combined statistics
-                    step_summary = {
-                        "loss": loss.item(),
-                        "reward": (return_batch * mask_batch).sum().item() / mask_batch.sum().item() if mask_batch.sum().item() > 0 else 0,
-                        "reinforcement": (action_log_probs * return_batch * mask_batch).sum().item() / mask_batch.sum().item() if mask_batch.sum().item() > 0 else 0,
-                        "gradient_accumulation_step": gradient_accumulation_step,
-                        "total_gradient_accumulation_steps": gradient_accumulation_steps,
-                    }
-                    
-                    _log_step_overview(
-                        model=model,
-                        optimizer=optimizer,
-                        step_summary=step_summary,
-                        save_dir=debug_log_path,
-                        epoch=epoch,
-                        batch_idx=batch_idx,
-                    )
-
                 if use_accelerate_gradaccum:
                     model_accelerator.backward(loss)
                     
-                    # After backward but before step, check gradient accumulation
-                    if debug_enabled and model_accelerator.sync_gradients:
-                        batch_idx = i // mb_size
-                        gradient_accumulation_step = batch_idx % gradient_accumulation_steps
-                        _track_training_verification(
-                            model=model,
-                            optimizer=optimizer,
-                            save_dir=debug_log_path,
-                            epoch=epoch,
-                            accumulation_step=gradient_accumulation_step,
-                            total_accumulation_steps=gradient_accumulation_steps,
-                            is_first_batch=is_first_batch
-                        )
-                        
-                        # Log pre-optimization step state
-                        _log_optimization_step(
-                            model=model,
-                            optimizer=optimizer,
-                            save_dir=debug_log_path,
-                            epoch=epoch,
-                            batch_idx=batch_idx,
-                            pre_step=True
-                        )
-                    
                     optimizer.step()
                     
-                    if debug_enabled and model_accelerator.sync_gradients:
-                        # Log post-optimization step state
-                        batch_idx = i // mb_size
-                        _log_optimization_step(
-                            model=model,
-                            optimizer=optimizer,
-                            save_dir=debug_log_path,
-                            epoch=epoch,
-                            batch_idx=batch_idx,
-                            pre_step=False
-                        )
-                        
-                        # After optimizer step, check if parameters were updated
-                        gradient_accumulation_step = batch_idx % gradient_accumulation_steps
-                        _track_training_verification(
-                            model=model,
-                            optimizer=optimizer,
-                            save_dir=debug_log_path,
-                            epoch=epoch,
-                            accumulation_step=gradient_accumulation_step,
-                            total_accumulation_steps=gradient_accumulation_steps,
-                            is_first_batch=False
-                        )
-                        
                     optimizer.zero_grad()
                 else:
                     loss = loss / gradient_accumulation_steps
@@ -393,32 +303,7 @@ def reinforce_train(
                     else:
                         loss.backward()
                     
-                    # After backward but before step, check gradient accumulation
-                    if debug_enabled:
-                        gradient_accumulation_step = batch_idx % gradient_accumulation_steps
-                        _track_training_verification(
-                            model=model,
-                            optimizer=optimizer,
-                            save_dir=debug_log_path,
-                            epoch=epoch,
-                            accumulation_step=gradient_accumulation_step,
-                            total_accumulation_steps=gradient_accumulation_steps,
-                            is_first_batch=is_first_batch
-                        )
-                        
                     if ((i + mb_size) // mb_size) % gradient_accumulation_steps == 0:
-                        if debug_enabled:
-                            # Log pre-optimization step state
-                            batch_idx = i // mb_size
-                            _log_optimization_step(
-                                model=model,
-                                optimizer=optimizer,
-                                save_dir=debug_log_path,
-                                epoch=epoch,
-                                batch_idx=batch_idx,
-                                pre_step=True
-                            )
-                            
                         if use_accelerate:
                             if gradient_clipping and model_accelerator.sync_gradients:
                                 # norm is computed by concatenating all gradients, the gradients are present for param with requires_grad
@@ -434,30 +319,6 @@ def reinforce_train(
                                 train_output_dict["grad_norm"].append(grad_norm.item())
                         optimizer.step()
                         
-                        if debug_enabled:
-                            # Log post-optimization step state
-                            batch_idx = i // mb_size
-                            _log_optimization_step(
-                                model=model,
-                                optimizer=optimizer,
-                                save_dir=debug_log_path,
-                                epoch=epoch,
-                                batch_idx=batch_idx,
-                                pre_step=False
-                            )
-                            
-                            # After optimizer step, check if parameters were updated
-                            gradient_accumulation_step = batch_idx % gradient_accumulation_steps
-                            _track_training_verification(
-                                model=model,
-                                optimizer=optimizer,
-                                save_dir=debug_log_path,
-                                epoch=epoch,
-                                accumulation_step=gradient_accumulation_step,
-                                total_accumulation_steps=gradient_accumulation_steps,
-                                is_first_batch=False
-                            )
-                            
                         optimizer.zero_grad()
 
                 # Update max GPU memory usage
@@ -488,7 +349,12 @@ def reinforce_train(
         model_accelerator.clear(model, optimizer)
     for key in train_output_dict:
         train_output_dict[key] = np.mean(train_output_dict[key])
+
+    import gc
+    gc.collect()
+    torch.cuda.empty_cache()
     return train_output_dict
+
 
 def compute_kl_div(
     model, input_ids, attention_mask, action_log_probs, index, temperature
@@ -1745,7 +1611,7 @@ def _log_adapter_weights_snapshot(model, save_path):
             
         # Convert to list of floats (first few values)
         if tensor.numel() > 0:
-            flat_tensor = tensor.detach().flatten().cpu()
+            flat_tensor = tensor.detach().flatten()
             first_values = flat_tensor[:max_values].tolist()
             last_values = flat_tensor[-max_values:].tolist() if tensor.numel() > max_values else []
             

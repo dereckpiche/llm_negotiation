@@ -60,12 +60,12 @@ def train_reinforce_main(
     )
     train_output = reinforce_train(
         model=hf_model.hf_model,
-        optimizer=hf_model.current_optimizer,
+        optimizer=hf_model.optimizer,
         contexts_list=contexts_list,
         scores_list=scores_list,
         output_masks_list=output_masks_list,
-        **train_reinforce_args,
         output_path=output_path,
-        tokenizer=hf_model.tokenizer
+        tokenizer=hf_model.tokenizer,
+        **train_reinforce_args
     )
     return train_output
