@@ -60,7 +60,7 @@ def train_reinforce_main(
     )
     train_output = reinforce_train(
         model=hf_model.hf_model,
-        optimizer=hf_model.optimizer,
+        optimizer=hf_model.current_optimizer,
         contexts_list=contexts_list,
         scores_list=scores_list,
         output_masks_list=output_masks_list,

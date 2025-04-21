@@ -131,44 +131,6 @@ def reinforce_train(
         raise ValueError(
             "Optimizer must be provided. Please pass an optimizer instance."
         )
-        
-    # Check if both lora_A and lora_B parameters are trainable
-    lora_a_params = []
-    lora_b_params = []
-    trainable_params = []
-    
-    for name, param in model.named_parameters():
-        if param.requires_grad:
-            trainable_params.append(name)
-            if 'lora_A' in name:
-                lora_a_params.append(name)
-            elif 'lora_B' in name:
-                lora_b_params.append(name)
-    
-    if len(lora_b_params) > 0 and len(lora_a_params) == 0:
-        model_logger.warning("WARNING: Found lora_B parameters but no lora_A parameters are trainable!")
-        model_logger.warning("This will result in ineffective training as both A and B matrices are needed.")
-        model_logger.warning("Setting lora_A parameters to be trainable...")
-        
-        # Make lora_A parameters trainable
-        for name, param in model.named_parameters():
-            if 'lora_A' in name and not param.requires_grad:
-                param.requires_grad = True
-                lora_a_params.append(name)
-        
-        # Check if optimizer needs to be updated
-        if hasattr(optimizer, 'param_groups'):
-            new_params = []
-            for name, param in model.named_parameters():
-                if param.requires_grad and param not in [p for group in optimizer.param_groups for p in group['params']]:
-                    new_params.append(param)
-            
-            if new_params:
-                optimizer.add_param_group({'params': new_params})
-                model_logger.info(f"Added {len(new_params)} new trainable parameters to optimizer")
-
-    model_logger.info(f"Trainable lora_A parameters: {len(lora_a_params)}")
-    model_logger.info(f"Trainable lora_B parameters: {len(lora_b_params)}")
 
     verify_reinforce_train_inputs(contexts_list, scores_list, output_masks_list)
 
