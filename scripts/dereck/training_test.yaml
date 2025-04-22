@@ -168,24 +168,9 @@ temperature: 0.7
 
 common_models_init_args: &common_models_init_args
   max_model_length: 10000
-  include_value_head: false
   device: "cuda"
   model_name: "/network/weights/llama.var/llama_3.1/Meta-Llama-3.1-8B-Instruct"
-  pretrained_args:
-    pretrained_model_name_or_path: ${models.llama.init_args.model_name}
-    torch_dtype: "bfloat16"
-    device_map: "auto"
-    attn_implementation: "flash_attention_2"
   bits_and_bytes_args: null
-    #load_in_8bit: False
-    #load_in_4bit: true
-  lora_args:
-    task_type: CAUSAL_LM
-    r: 64
-    lora_alpha: 128
-    lora_dropout: 0.0
-    target_modules: "all-linear"
-
   generation_args:
     max_new_tokens: 120
     do_sample: True
@@ -193,32 +178,47 @@ common_models_init_args: &common_models_init_args
     top_k: 0
     top_p: 1.0
     repetition_penalty: 1
-
   vllm_params:
     max_model_len : 13e3
-    gpu_memory_utilization: 0.4
+    gpu_memory_utilization: 0.6
+    enable_lora: True
     enable_prefix_caching: True
     enable_sleep_mode : True
-
-  keep_vllm_during_training: False
-  keep_hf_during_training: True
-  keep_hf_during_eval: False
-  keep_vllm_during_eval: True
+    max_lora_rank: 64
+  hf_model_init_kwargs:
+    torch_dtype: "bfloat16"
+    device_map: "auto"
+    attn_implementation: "flash_attention_2"
   eval_with: "vllm"
   train_with: "hf"
-  optimizer_method: "SGD"
-  optimizer_kwargs:
-    lr: 1e-5
-    weight_decay: 0.0
+  optimizer_on_gpu_during_training: True
+  fully_switch_vllm_weights_after_training: False
+  keep_vllm_during_training: True
+  keep_vllm_during_eval: True
+  sleep_vllm_during_training: True
+  wake_vllm_during_eval: True
+  export_trained_parameters: True
+  export_optimizer: True
 
 models:
-
   llama:
-    class: local_llm
+    class: local_llm_v2
     init_args:
       <<: *common_models_init_args
       name: 'llama'
-      adapter_names: ['default']
+      adapter_configs:
+        default:
+          type: "lora"
+          optimizer_method: "Adam"
+          optimizer_kwargs:
+            lr: 1e-4
+            weight_decay: 0.0
+          lora_kwargs:
+            task_type: "CAUSAL_LM"
+            r: 64
+            lora_alpha: 128
+            lora_dropout: 0.0
+            target_modules: "all-linear"
 
 
 ####################################################################################################
@@ -260,9 +260,6 @@ training:
       default:
         train_func: train_reinforce_main
         <<: *default_kwargs
-      # ad_bob:
-      #   train_func: train_reinforce_main
-      #   <<: *default_kwargs
 
 
 ####################################################################################################

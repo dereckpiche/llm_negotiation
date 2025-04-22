@@ -102,6 +102,7 @@ class LocalLLM:
         self.lora_config = LoraConfig(**lora_args)
         self.current_adapter_name = None
         self.hf_model = None
+        self.peft_models = {}
         self.vllm_model = None
         self.keep_vllm_during_training = keep_vllm_during_training
         self.keep_hf_during_training = keep_hf_during_training
@@ -125,24 +126,39 @@ class LocalLLM:
         # set random seeds
         self.base_seed = base_seed
         self.adapter_names = adapter_names
+        
+        # Initialize base model
         self.hf_model = AutoModelForCausalLM.from_pretrained(
             **self.pretrained_args,
         )
+        
+        # Initialize PEFT models for each adapter
         for adapter_name in adapter_names:
             adapter_path = self.adapter_paths[adapter_name]
             if os.path.exists(adapter_path):
                 model_logger.info(f"Loading adapter {adapter_name} from {adapter_path}")
-                self.hf_model.load_adapter(adapter_path, adapter_name)
+                # Load existing PEFT model
+                self.peft_models[adapter_name] = PeftModel.from_pretrained(
+                    self.hf_model,
+                    adapter_path,
+                    adapter_name=adapter_name
+                )
             else:
-                self.hf_model.add_adapter(self.lora_config, adapter_name)
+                # Create new PEFT model
+                self.peft_models[adapter_name] = get_peft_model(
+                    self.hf_model, 
+                    self.lora_config,
+                    adapter_name=adapter_name
+                )
+                
         self.optimizer = None
         self.adapter_optimizers = {}
         for adapter_name in adapter_names:
-            self.hf_model.set_adapter(adapter_name)
-            # set_adapters has the correct trainable parameters.
+            # Set up optimizer for each adapter
+            trainable_params = [p for p in self.peft_models[adapter_name].parameters() if p.requires_grad]
             self.adapter_optimizers[adapter_name] = getattr(
                 torch.optim, optimizer_method
-            )(self.hf_model.parameters(), **optimizer_kwargs)
+            )(trainable_params, **optimizer_kwargs)
             optimizer_state_path = os.path.join(
                 self.adapter_paths[adapter_name], "optimizer.pt"
             )
@@ -174,9 +190,13 @@ class LocalLLM:
 
         self.current_adapter_name = adapter_name
         adapter_path = self.adapter_paths[self.current_adapter_name]
+        
         if self.train_with == "hf":
+            # Set current model to the PEFT model with the specified adapter
+            self.hf_model = self.peft_models[adapter_name]
+            # Ensure adapter is active
             self.hf_model.set_adapter(adapter_name)
-            # set the right optimizer for adapter_name
+            # Set the right optimizer for adapter_name
             self.optimizer = self.adapter_optimizers[adapter_name]
             # Log trainable parameters
             total_params = sum(p.numel() for p in self.hf_model.parameters())

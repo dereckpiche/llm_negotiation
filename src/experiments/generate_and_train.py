@@ -24,6 +24,7 @@ from models.dummy_local_llm import DummyLocalLLM
 
 # Local imports
 from models.local_llm import LocalLLM
+from models.new_local_llm import LocalLLMV2
 from models.server_llm import ServerLLM
 from training.train_main import *
 from utils.common_imports import *
@@ -291,6 +292,12 @@ def init_models(cfg, base_seed, output_directory):
     for model_name in cfg["models"].keys():
         if cfg["models"][model_name]["class"] == "local_llm":
             models[model_name] = LocalLLM(
+                **cfg["models"][model_name]["init_args"],
+                base_seed=base_seed * cfg["experiment"]["nb_epochs"],
+                output_directory=output_directory,
+            )
+        elif cfg["models"][model_name]["class"] == "local_llm_v2":
+            models[model_name] = LocalLLMV2(
                 **cfg["models"][model_name]["init_args"],
                 base_seed=base_seed * cfg["experiment"]["nb_epochs"],
                 output_directory=output_directory,

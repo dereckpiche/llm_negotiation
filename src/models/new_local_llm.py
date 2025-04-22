@@ -9,7 +9,7 @@ import uuid
 from copy import deepcopy
 
 import torch
-from peft import LoraConfig, PeftModel, get_peft_model
+from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from trl import AutoModelForCausalLMWithValueHead
 from vllm import LLM, SamplingParams
@@ -22,7 +22,7 @@ memory_logger = logging.getLogger("memory_logger")
 model_logger = logging.getLogger("model_logger")
 
 
-class LocalLLM:
+class LocalLLMV2:
     """
     A class that manages HuggingFace and vLLM model instances with multiple adapter configurations.
     
@@ -103,11 +103,9 @@ class LocalLLM:
         vllm_params={},
         optimizer_on_gpu_during_training=True,
         fully_switch_vllm_weights_after_training=False,
-        sleep_vllm_during_training=False,
+        sleep_vllm_during_training=True,
         wake_vllm_during_eval=True,
-        keep_vllm_during_training=False,
-        keep_hf_during_training=True,
-        keep_hf_during_eval=False,
+        keep_vllm_during_training=True,
         keep_vllm_during_eval=True,
         put_hf_on_cpu_during_eval=False,
         output_directory=None,
@@ -206,8 +204,6 @@ class LocalLLM:
         self.sleep_vllm_during_training = sleep_vllm_during_training
         self.wake_vllm_during_eval = wake_vllm_during_eval
         self.keep_vllm_during_training = keep_vllm_during_training
-        self.keep_hf_during_training = keep_hf_during_training
-        self.keep_hf_during_eval = keep_hf_during_eval
         self.keep_vllm_during_eval = keep_vllm_during_eval
         self.put_hf_on_cpu_during_eval = put_hf_on_cpu_during_eval
         self.train_with = train_with
@@ -217,8 +213,9 @@ class LocalLLM:
 
         self.hf_model = None
         self.vllm_model = None
+        self.peft_model = None  # Single PeftModel instance to hold all adapters
 
-        self.current_optimizer = None
+        self.optimizer = None
         self.current_lora_request = None
         self.adapter_configs = adapter_configs
         self.adapter_names = self.adapter_configs.keys()
@@ -246,6 +243,9 @@ class LocalLLM:
             name: config["lora_kwargs"] 
             for name, config in self.adapter_configs.items()
         }
+
+        # For storing full model adapters since they can't be added to a single PeftModel
+        self.hf_full_models = {}
 
         self.base_seed = base_seed
 
@@ -297,58 +297,50 @@ class LocalLLM:
         adapter_path = self.adapter_paths[self.current_adapter_name]
         adapter_type = self.adapter_types[self.current_adapter_name]
 
-        # Load model if needed
+        # Initialize base model if needed
+        new_hf_model = False
         if self.hf_model is None:
-            if os.path.exists(adapter_path) and adapter_type == "full":
-                model_logger.info(f"Loading HF model from {adapter_path} for training.")
-                self.hf_model = AutoModelForCausalLM.from_pretrained(
-                    pretrained_model_name_or_path=adapter_path,
-                    **self.hf_model_init_kwargs,
-                )
-            else: 
-                model_logger.info(f"Loading HF model named {self.model_name} for training.")
-                self.hf_model = AutoModelForCausalLM.from_pretrained(
-                    pretrained_model_name_or_path=self.model_name,
-                    **self.hf_model_init_kwargs,
-                )
+            new_hf_model = True
+            self.hf_model = AutoModelForCausalLM.from_pretrained(
+                pretrained_model_name_or_path=self.model_name,
+                **self.hf_model_init_kwargs,
+            )
             
-        # Configure model for training based on adapter type
         if adapter_type == "full":
-            model_logger.info("Setting up full model training (no LoRA)")
+            model_logger.info(f"Setting up full model adapter for {adapter_name}")
+            # Enable all parameters for training
             for param in self.hf_model.parameters():
                 param.requires_grad = True
                 
         elif adapter_type == "lora":
-            adapter_id = str(self.adapter_train_ids[adapter_name])
+            model_logger.info(f"Setting up LoRA adapter for {adapter_name}")
 
-            # Clean up any existing adapters first to avoid parameter bloat
-            for id in list(self.adapter_train_ids.values()) + [previous_id]:
-                try: 
-                    self.hf_model.delete_adapter(str(id))
-                    model_logger.info(f"Deleted adapter {id}")
-                except: pass
+            # Initialize a single PEFT model if not already done
+            if new_hf_model:
+                model_logger.info(f"Initializing PEFT model with LoRA adapter {adapter_name}")
+                lora_config = LoraConfig(**self.lora_kwargs[adapter_name])
+                self.hf_model = get_peft_model(self.hf_model, lora_config, adapter_name=adapter_name)
             
-
-            if os.path.exists(adapter_path):
-                model_logger.info(f"Loading HF LoRA adapter from {adapter_path} for training.")
-                self.hf_model.load_adapter(
-                    peft_model_id=adapter_path, 
-                    adapter_name=adapter_id
-                )
-
-            else:
-                model_logger.info(f"Creating new HF LoRA adapter for {adapter_name} for training.")
+            # Prepare the model for kbit training if quantization is enabled
+            if self.bits_and_bytes_configs is not None and not hasattr(self.hf_model, "is_quantized"):
+                self.hf_model = prepare_model_for_kbit_training(self.hf_model)
+                self.hf_model.is_quantized = True 
+            
+            if adapter_name not in getattr(self.hf_model, "peft_config", {}):
+                # Set adapter in PEFT model
+                model_logger.info(f"Adding new adapter {adapter_name} to existing PEFT model")
                 lora_config = LoraConfig(**self.lora_kwargs[adapter_name])
                 self.hf_model.add_adapter(
-                    adapter_name=adapter_id,
-                    adapter_config=lora_config
+                    lora_config,
+                    adapter_name=adapter_name
                 )
 
-            self.hf_model.set_adapter(adapter_name=adapter_id)
+            self.hf_model.set_adapter(adapter_name)
             
         self.hf_model.train()
             
-        # Initialize and load optimizer
+        trainable_params = [p for p in self.hf_model.parameters() if p.requires_grad]
+        
         optimizer_class = getattr(
             __import__(
                 'torch.optim', 
@@ -357,8 +349,8 @@ class LocalLLM:
             self.optimizer_methods[adapter_name]
         )
         
-        self.current_optimizer = optimizer_class(
-            self.hf_model.parameters(),
+        self.optimizer = optimizer_class(
+            trainable_params,  
             **self.optimizer_kwargs[adapter_name]
         )
         
@@ -366,7 +358,7 @@ class LocalLLM:
         if os.path.exists(optimizer_path):
             model_logger.info(f"Loading optimizer state from {optimizer_path}")
             try:
-                self.current_optimizer.load_state_dict(
+                self.optimizer.load_state_dict(
                     torch.load(optimizer_path)
                 )
             except ValueError as e:
@@ -444,26 +436,18 @@ class LocalLLM:
             and self.switch_weights_vllm_before_eval
         )
 
-        # Free memory if needed
-        if not self.keep_hf_during_eval:
-            model_logger.info(f"Deleting HF model for evaluation with {adapter_name}.")
-            del self.hf_model
-            gc.collect()
-            torch.cuda.empty_cache()
-            self.hf_model = None
-
+            
         if self.eval_with == "vllm":
-
             vllm_params = self.vllm_params
             # vLLM extension for weight switch.
             worker_extension_cls = None
             hf_model = self.hf_model
 
-            # Prepare 
+            # Prepare for weight merging
             if weight_switch_required:
-
                 if self.hf_model is None:
                     model_logger.warning(f"HF model is not loaded. Cannot merge weights for {adapter_name}.")
+                    weight_switch_required = False
 
                 # V1 version of vLLM is not compatible with weight switch.
                 os.environ["VLLM_USE_V1"] = '0' 
@@ -510,13 +494,13 @@ class LocalLLM:
                 self.adapter_train_ids[adapter_name]
             )
 
-            # Handle full model weight switch
-            if weight_switch_required and hf_model is not None:
-                if os.path.exists(adapter_path):
+            # Handle weight merging for vLLM if required
+            if weight_switch_required and self.hf_model is not None:
+                if os.path.exists(adapter_path) or adapter_type == "full":
                     model_logger.info(
                         f"Merging weights for {adapter_name} from {adapter_path} to vLLM model."
                     )
-                    hf_model.eval()
+                    self.hf_model.eval()
                     
                     # Check adapter type
                     if adapter_type == "full":
@@ -529,44 +513,64 @@ class LocalLLM:
                                 args=(name, param.data)
                             )
                     elif adapter_type == "lora":
-                        # For LoRA adapters, we need to properly handle the delta weights
-                        model_logger.info("Using LoRA-aware weight update for LoRA adapter")
+                        # For LoRA adapters, merge the weights first
+                        model_logger.info("Merging LoRA weights with base model before updating vLLM")
                         
-                        # Collect all LoRA modules for easy lookup
-                        lora_modules = {}
-                        for name, module in hf_model.named_modules():
-                            if hasattr(module, 'get_delta_weight') and hasattr(module, 'active_adapter'):
-                                lora_modules[name] = module
-                        
-                        # Track parameters we've already processed
-                        processed_params = set()
-                        
-                        # Process all modules with get_delta_weight method (LoRA modules)
-                        for module_name, module in lora_modules.items():
-                            if hasattr(module, 'weight'):
-                                param_name = f"{module_name}.weight"
-                                
-                                # Make a copy of the base weight to avoid modifying the original
-                                base_weight = module.weight.data
-                                
-                                # Get delta from all active adapters
-                                for adapter in module.active_adapter:
-                                    # TODO: double check if hf alpha is used
-                                    delta = module.get_delta_weight(adapter)
-                                    # Apply delta to get the full weight (using the copy)
-                                    combined_weight = base_weight + delta
+                        if isinstance(hf_model, PeftModel):
+                            # Get merged weights
+                            merged_model = hf_model.merge_and_unload()
+                            
+                            # Update vLLM with the merged weights
+                            for name, param in merged_model.named_parameters():
+                                self.vllm_model.collective_rpc(
+                                    'update_weight',
+                                    args=(name, param.data)
+                                )
+                            
+                            # Clean up merged model to save memory
+                            del merged_model
+                            gc.collect()
+                            torch.cuda.empty_cache()
+                        else:
+                            # For older implementations or direct delta weights
+                            model_logger.info("Using LoRA-aware weight update with delta weights")
+                            
+                            # Collect all LoRA modules for easy lookup
+                            lora_modules = {}
+                            for name, module in hf_model.named_modules():
+                                if hasattr(module, 'get_delta_weight') and hasattr(module, 'active_adapter'):
+                                    lora_modules[name] = module
+                            
+                            # Track parameters we've already processed
+                            processed_params = set()
+                            
+                            # Process all modules with get_delta_weight method (LoRA modules)
+                            for module_name, module in lora_modules.items():
+                                if hasattr(module, 'weight'):
+                                    param_name = f"{module_name}.weight"
                                     
-                                    # Update weight in vLLM
-                                    self.vllm_model.collective_rpc(
-                                        'update_weight', 
-                                        args=(param_name, combined_weight)
-                                    )
+                                    # Make a copy of the base weight to avoid modifying the original
+                                    base_weight = module.weight.data
                                     
-                                    # Mark as processed
-                                    processed_params.add(param_name)
+                                    # Get delta from active adapters
+                                    for adapter in module.active_adapter:
+                                        # Get delta weights from the adapter
+                                        delta = module.get_delta_weight(adapter)
+                                        # Apply delta to get the full weight
+                                        combined_weight = base_weight + delta
+                                        
+                                        # Update weight in vLLM
+                                        self.vllm_model.collective_rpc(
+                                            'update_weight', 
+                                            args=(param_name, combined_weight)
+                                        )
+                                        
+                                        # Mark as processed
+                                        processed_params.add(param_name)
 
-            # Use vLLM LoRA Request instead of full weight switch
+            # Use vLLM LoRA Request instead of full weight switch for LoRA adapters
             elif adapter_type == "lora" and os.path.exists(adapter_path) and not self.switch_weights_vllm_before_eval:
+                model_logger.info(f"Creating LoRA request for adapter {adapter_name}")
                 self.current_lora_request = LoRARequest(
                     adapter_name, 
                     self.adapter_train_ids[adapter_name], 
@@ -644,19 +648,41 @@ class LocalLLM:
         Warning:
             This operation may take significant disk space for full model adapters.
         """
+        if not self.export_trained_parameters and not self.export_optimizer:
+            model_logger.info("Skipping export as both export_trained_parameters and export_optimizer are False")
+            return
 
+        adapter_path = self.adapter_paths[self.current_adapter_name]
+        adapter_type = self.adapter_types[self.current_adapter_name]
+        
+        # Create output directory if it doesn't exist
+        os.makedirs(adapter_path, exist_ok=True)
 
         # Save model parameters
         if self.export_trained_parameters:
-            adapter_path = self.adapter_paths[self.current_adapter_name]
-            adapter_type = self.adapter_types[self.current_adapter_name]
-            os.makedirs(adapter_path, exist_ok=True)
             if adapter_type == "full":
                 model_logger.info(f"Saving full model to {adapter_path}")
+                self.hf_model.save_pretrained(adapter_path)
             elif adapter_type == "lora":
-                model_logger.info(f"Saving LoRA weights to {adapter_path}")
+                model_logger.info(f"Saving LoRA adapter to {adapter_path}")
                 
-            self.hf_model.save_pretrained(adapter_path)
+                # Properly save PEFT adapter
+                if isinstance(self.hf_model, PeftModel):
+                    # Ensure the current adapter is active
+                    if self.current_adapter_name != self.hf_model.active_adapter:
+                        model_logger.info(f"Setting active adapter to {self.current_adapter_name} for saving")
+                        self.hf_model.set_adapter(self.current_adapter_name)
+                    
+                    # Save only the active adapter
+                    self.hf_model.save_pretrained(
+                        adapter_path,
+                        adapter_name=self.current_adapter_name,
+                        safe_serialization=True
+                    )
+                else:
+                    model_logger.warning(
+                        "Model is not a PeftModel instance. Unable to save LoRA adapter."
+                    )
             
         # Save optimizer state
         if self.export_optimizer:
@@ -665,7 +691,7 @@ class LocalLLM:
             os.makedirs(optimizer_dir, exist_ok=True)
             
             torch.save(
-                self.current_optimizer.state_dict(), 
+                self.optimizer.state_dict(), 
                 optimizer_state_path
             )
             
