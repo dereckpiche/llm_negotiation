@@ -29,11 +29,16 @@ mkdir -p "$LOGDIR"
 # )
 
 COMMANDS=(
-  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa common_training_agent_kwargs.training_data_func_args.score_method_kwargs.beta=0.1 experiment.base_seed=100"
-  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa common_training_agent_kwargs.training_data_func_args.score_method_kwargs.beta=0.5 experiment.base_seed=200"
-  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa common_training_agent_kwargs.training_data_func_args.score_method_kwargs.beta=1.0 experiment.base_seed=300"
-  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa common_training_agent_kwargs.training_data_func_args.score_method_kwargs.beta=2.0 experiment.base_seed=400"
-  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa common_training_agent_kwargs.training_data_func_args.score_method_kwargs.beta=3.0 experiment.base_seed=500"
+  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=sum_rewards"
+
+  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa experiment.name=EXPLORE2/regulate_var_beta1 training.agents.alice.training_data_func_args.score_method_kwargs.beta=1.0 training.agents.alice.training_data_func_args.score_method_kwargs.regulate_var=true training.agents.bob.training_data_func_args.score_method_kwargs.beta=1.0 training.agents.bob.training_data_func_args.score_method_kwargs.regulate_var=true experiment.base_seed=56"
+
+  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa experiment.name=EXPLORE2/time_decay_beta0.1 training.agents.alice.training_data_func_args.score_method_kwargs.beta=0.1 training.agents.alice.training_data_func_args.score_method_kwargs.time_decay=true training.agents.bob.training_data_func_args.score_method_kwargs.beta=0.1 training.agents.bob.training_data_func_args.score_method_kwargs.time_decay=true experiment.base_seed=634"
+
+  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa experiment.name=EXPLORE2/time_decay_beta0.5 training.agents.alice.training_data_func_args.score_method_kwargs.beta=0.5 training.agents.alice.training_data_func_args.score_method_kwargs.time_decay=true training.agents.bob.training_data_func_args.score_method_kwargs.beta=0.5 training.agents.bob.training_data_func_args.score_method_kwargs.time_decay=true experiment.base_seed=457"
+
+  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa experiment.name=EXPLORE2/time_decay_beta1 training.agents.alice.training_data_func_args.score_method_kwargs.beta=1.0 training.agents.alice.training_data_func_args.score_method_kwargs.time_decay=true training.agents.bob.training_data_func_args.score_method_kwargs.beta=1.0 training.agents.bob.training_data_func_args.score_method_kwargs.time_decay=true experiment.base_seed=1025"
+
 )
 
 

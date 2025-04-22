@@ -5,7 +5,7 @@ hydra:
     chdir: false
 
 experiment:
-  name: "no_name"
+  name: "sum_rewards"
   method: generate_and_train
   description: "no description"
   nb_epochs: 2000
@@ -230,12 +230,9 @@ common_training_agent_kwargs: &common_training_agent_kwargs
   training_data_func_args:
     exclude_errors: False
     debug_output: True
-    score_method: rloo_advantage_alignment_scores
+    score_method: sum_rloo_scores
     score_method_kwargs:
       discount_factor: 1.0
-      beta: 1.0
-      regulate_var: false
-      time_decay: false
 
 default_kwargs: &default_kwargs
   train_func_args:
@@ -253,30 +250,11 @@ training:
 
   agents:
     alice:
-      # <<: *common_training_agent_kwargs
-      training_data_func: generate_training_data_from_raw
-      training_data_func_args:
-        exclude_errors: False
-        debug_output: True
-        score_method: rloo_advantage_alignment_scores
-        score_method_kwargs:
-          discount_factor: 1.0
-          beta: 1.0
-          regulate_var: false
-          time_decay: false
+      <<: *common_training_agent_kwargs
+
 
     bob:
-      # <<: *common_training_agent_kwargs
-      training_data_func: generate_training_data_from_raw
-      training_data_func_args:
-        exclude_errors: False
-        debug_output: True
-        score_method: rloo_advantage_alignment_scores
-        score_method_kwargs:
-          discount_factor: 1.0
-          beta: 1.0
-          regulate_var: false
-          time_decay: false
+      <<: *common_training_agent_kwargs
 
 
   llama:
