@@ -13,6 +13,17 @@ SCRIPT_PATH="/home/mila/d/dereck.piche/llm_negotiation/src/run.py"
 mkdir -p "$LOGDIR"
 
 # === Commands to run (varying only the Python command) ===
+
+COMMANDS=(
+
+  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=sum_rewards_1bigadapter"
+
+  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=sum_rewards_2bigadapters"
+
+  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=sum_rewards_full_finetune"
+
+)
+
 # COMMANDS=(
 
 #   "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=1 hydra.run.dir=/home/mila/d/dereck.piche/scratch/aa_regulated training.agents.alice.training_data_func_args.score_method_kwargs.regulate_var=True training.agents.bob.training_data_func_args.score_method_kwargs.regulate_var=True"
@@ -25,21 +36,21 @@ mkdir -p "$LOGDIR"
 
 #   "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=5 hydra.run.dir=/home/mila/d/dereck.piche/scratch/aa_standard_beta training.agents.alice.training_data_func_args.score_method_kwargs.beta=1.0 training.agents.bob.training_data_func_args.score_method_kwargs.beta=1.0"
 
-#   "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=6 hydra.run.dir=/home/mila/d/dereck.piche/scratch/aa_big_beta training.agents.alice.training_data_func_args.score_method_kwargs.beta=2.0 training.agents.bob.training_data_func_args.score_method_kwargs.beta=2.0"
+# #   "python3 $SCRIPT_PATH --config-name=adv_align experiment.base_seed=6 hydra.run.dir=/home/mila/d/dereck.piche/scratch/aa_big_beta training.agents.alice.training_data_func_args.score_method_kwargs.beta=2.0 training.agents.bob.training_data_func_args.score_method_kwargs.beta=2.0"
+# # )
+
+# COMMANDS=(
+#   "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=sum_rewards"
+
+#   "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa experiment.name=EXPLORE2/regulate_var_beta1 training.agents.alice.training_data_func_args.score_method_kwargs.beta=1.0 training.agents.alice.training_data_func_args.score_method_kwargs.regulate_var=true training.agents.bob.training_data_func_args.score_method_kwargs.beta=1.0 training.agents.bob.training_data_func_args.score_method_kwargs.regulate_var=true experiment.base_seed=56"
+
+#   "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa experiment.name=EXPLORE2/time_decay_beta0.1 training.agents.alice.training_data_func_args.score_method_kwargs.beta=0.1 training.agents.alice.training_data_func_args.score_method_kwargs.time_decay=true training.agents.bob.training_data_func_args.score_method_kwargs.beta=0.1 training.agents.bob.training_data_func_args.score_method_kwargs.time_decay=true experiment.base_seed=634"
+
+#   "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa experiment.name=EXPLORE2/time_decay_beta0.5 training.agents.alice.training_data_func_args.score_method_kwargs.beta=0.5 training.agents.alice.training_data_func_args.score_method_kwargs.time_decay=true training.agents.bob.training_data_func_args.score_method_kwargs.beta=0.5 training.agents.bob.training_data_func_args.score_method_kwargs.time_decay=true experiment.base_seed=457"
+
+#   "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa experiment.name=EXPLORE2/time_decay_beta1 training.agents.alice.training_data_func_args.score_method_kwargs.beta=1.0 training.agents.alice.training_data_func_args.score_method_kwargs.time_decay=true training.agents.bob.training_data_func_args.score_method_kwargs.beta=1.0 training.agents.bob.training_data_func_args.score_method_kwargs.time_decay=true experiment.base_seed=1025"
+
 # )
-
-COMMANDS=(
-  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=sum_rewards"
-
-  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa experiment.name=EXPLORE2/regulate_var_beta1 training.agents.alice.training_data_func_args.score_method_kwargs.beta=1.0 training.agents.alice.training_data_func_args.score_method_kwargs.regulate_var=true training.agents.bob.training_data_func_args.score_method_kwargs.beta=1.0 training.agents.bob.training_data_func_args.score_method_kwargs.regulate_var=true experiment.base_seed=56"
-
-  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa experiment.name=EXPLORE2/time_decay_beta0.1 training.agents.alice.training_data_func_args.score_method_kwargs.beta=0.1 training.agents.alice.training_data_func_args.score_method_kwargs.time_decay=true training.agents.bob.training_data_func_args.score_method_kwargs.beta=0.1 training.agents.bob.training_data_func_args.score_method_kwargs.time_decay=true experiment.base_seed=634"
-
-  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa experiment.name=EXPLORE2/time_decay_beta0.5 training.agents.alice.training_data_func_args.score_method_kwargs.beta=0.5 training.agents.alice.training_data_func_args.score_method_kwargs.time_decay=true training.agents.bob.training_data_func_args.score_method_kwargs.beta=0.5 training.agents.bob.training_data_func_args.score_method_kwargs.time_decay=true experiment.base_seed=457"
-
-  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=final_dond_aa experiment.name=EXPLORE2/time_decay_beta1 training.agents.alice.training_data_func_args.score_method_kwargs.beta=1.0 training.agents.alice.training_data_func_args.score_method_kwargs.time_decay=true training.agents.bob.training_data_func_args.score_method_kwargs.beta=1.0 training.agents.bob.training_data_func_args.score_method_kwargs.time_decay=true experiment.base_seed=1025"
-
-)
 
 
 # === Loop to create job scripts ===

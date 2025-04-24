@@ -9,12 +9,19 @@ import uuid
 from copy import deepcopy
 
 import torch
-from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
+from peft import (
+    LoraConfig,
+    PeftConfig,
+    PeftModel,
+    get_peft_model,
+    prepare_model_for_kbit_training,
+)
+from torch.optim import SGD, Adam, AdamW, RMSprop
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from trl import AutoModelForCausalLMWithValueHead
 from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
-from torch.optim import Adam, AdamW, SGD, RMSprop
+
 from utils.common_imports import *
 
 compute_logger = logging.getLogger("compute_logger")
@@ -25,11 +32,11 @@ model_logger = logging.getLogger("model_logger")
 class LocalLLMV2:
     """
     A class that manages HuggingFace and vLLM model instances with multiple adapter configurations.
-    
+
     This class handles the lifecycle of language models with efficient memory management
     between training and inference phases. It supports both full model fine-tuning and
     parameter-efficient methods like LoRA.
-    
+
     Args:
         name (str): Identifier for this model instance.
         model_name (str): HuggingFace model identifier.
@@ -65,7 +72,7 @@ class LocalLLMV2:
         output_directory (str): Directory to save adapters and optimization states.
         export_trained_parameters (bool): Whether to save model parameters after training.
         export_optimizer (bool): Whether to save optimizer state after training.
-        
+
     Warning:
         - Memory management is critical when using this class, especially with large models.
         - When using full model adapters with vLLM, weight merging is required for evaluation,
@@ -111,7 +118,7 @@ class LocalLLMV2:
         output_directory=None,
         export_trained_parameters=True,
         export_optimizer=True,
-        adapter_names=None # not used, for backward compatibility
+        adapter_names=None,  # not used, for backward compatibility
     ) -> None:
         """
         Initializes the LocalLLM.
@@ -131,44 +138,39 @@ class LocalLLMV2:
 
         self.adapter_configs = adapter_configs
         self.adapter_names = self.adapter_configs.keys()
-        
+
         # Path management
         self.adapter_paths = {
             adapter_name: os.path.join(self.output_directory, adapter_name, "model")
             for adapter_name in self.adapter_names
         }
-        
+
         self.optimizer_paths = {
             adapter_name: os.path.join(
-                self.output_directory, 
-                adapter_name, 
-                "optimizer", 
-                "optimizer.pt"
-            ) 
+                self.output_directory, adapter_name, "optimizer", "optimizer.pt"
+            )
             for adapter_name in self.adapter_names
         }
-        
+
         # ID management for tracking adapter versions
-        self.adapter_train_ids = {  
-            adapter_name: self.short_id_generator() 
+        self.adapter_train_ids = {
+            adapter_name: self.short_id_generator()
             for adapter_name in self.adapter_names
         }
-        
+
         self.adapter_eval_ids = deepcopy(self.adapter_train_ids)
         self.vllm_loaded_adapter_versions = deepcopy(self.adapter_train_ids)
-        
+
         # Feature detection
         self.at_least_one_full_adapter = any(
-            config["type"] == "full" 
-            for config in self.adapter_configs.values()
+            config["type"] == "full" for config in self.adapter_configs.values()
         )
 
         # Check if we have LoRA adapters but export_trained_parameters is False
         has_lora_adapters = any(
-            config["type"] == "lora"
-            for config in self.adapter_configs.values()
+            config["type"] == "lora" for config in self.adapter_configs.values()
         )
-        
+
         if has_lora_adapters and not export_trained_parameters:
             model_logger.warning(
                 "LoRA adapters detected but export_trained_parameters is set to False. "
@@ -178,17 +180,16 @@ class LocalLLMV2:
 
         # Initialize tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        
+
         # Setup padding token to be same as EOS token
         self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         self.tokenizer.pad_token = self.tokenizer.eos_token
-        
+
         # Setup quantization if provided
         self.bits_and_bytes_configs = (
-            BitsAndBytesConfig(**bits_and_bytes_args) 
-            if bits_and_bytes_args else None
+            BitsAndBytesConfig(**bits_and_bytes_args) if bits_and_bytes_args else None
         )
-        
+
         # Configure sampling parameters
         self.hf_sampling_params = generation_args
         self.vllm_sampling_params = SamplingParams(
@@ -222,26 +223,24 @@ class LocalLLMV2:
         self.active_adapters = {
             adapter_name: False for adapter_name in self.adapter_names
         }
-        
+
         # Extract configurations from adapter configs
         self.adapter_types = {
-            name: config["type"] 
-            for name, config in self.adapter_configs.items()
+            name: config["type"] for name, config in self.adapter_configs.items()
         }
-        
+
         self.optimizer_methods = {
-            name: config["optimizer_method"] 
+            name: config["optimizer_method"]
             for name, config in self.adapter_configs.items()
         }
-        
+
         self.optimizer_kwargs = {
-            name: config["optimizer_kwargs"] 
+            name: config["optimizer_kwargs"]
             for name, config in self.adapter_configs.items()
         }
-        
+
         self.lora_kwargs = {
-            name: config["lora_kwargs"] 
-            for name, config in self.adapter_configs.items()
+            name: config["lora_kwargs"] for name, config in self.adapter_configs.items()
         }
 
         # For storing full model adapters since they can't be added to a single PeftModel
@@ -252,26 +251,27 @@ class LocalLLMV2:
     def prepare_adapter_train(self, adapter_name: str):
         """
         Prepares the model for training with the specified adapter.
-        
+
         This method handles the memory management between vLLM and HuggingFace models,
         loads the appropriate adapter configuration, and sets up the optimizer.
-        
+
         Args:
             adapter_name (str): Name of the adapter to prepare for training.
-            
+
         Notes:
             - This method may unload vLLM to free memory if keep_vllm_during_training is False.
             - A new adapter ID is generated to track changes in the adapter during training.
             - For full model training, all parameters are set to requires_grad=True.
             - For LoRA training, only adapter parameters are trainable.
-            
+
         Warning:
             This method changes the active adapter and may affect memory usage significantly.
             If using a LoRA adapter, the weights need to be saved externally.
         """
 
-        assert adapter_name in self.adapter_names, \
-            f"Adapter {adapter_name} not found in {self.adapter_names}."
+        assert (
+            adapter_name in self.adapter_names
+        ), f"Adapter {adapter_name} not found in {self.adapter_names}."
 
         # Free memory if needed
         if not self.keep_vllm_during_training:
@@ -285,11 +285,11 @@ class LocalLLMV2:
         # Create new model version with a new ID
         previous_id = self.adapter_train_ids[adapter_name]
         self.adapter_train_ids[adapter_name] = self.short_id_generator()
-        
+
         self.log_gpu_usage(
             f"Before loading HF model with adapter {adapter_name} for training."
         )
-        
+
         model_logger.info(f"Preparing adapter {adapter_name} for training.")
 
         start_time = time.time()
@@ -305,73 +305,79 @@ class LocalLLMV2:
                 pretrained_model_name_or_path=self.model_name,
                 **self.hf_model_init_kwargs,
             )
-            
+
         if adapter_type == "full":
             model_logger.info(f"Setting up full model adapter for {adapter_name}")
-            # Enable all parameters for training
             for param in self.hf_model.parameters():
                 param.requires_grad = True
-                
+            # Create parameter groups explicitly
+            param_groups = [
+                {
+                    "params": self.hf_model.parameters(),
+                    "lr": self.optimizer_kwargs[adapter_name].get("lr", 1e-5),
+                }
+            ]
+            self.optimizer = getattr(
+                __import__(
+                    "torch.optim", fromlist=[self.optimizer_methods[adapter_name]]
+                ),
+                self.optimizer_methods[adapter_name],
+            )(param_groups, **self.optimizer_kwargs[adapter_name])
+
         elif adapter_type == "lora":
             model_logger.info(f"Setting up LoRA adapter for {adapter_name}")
 
             # Initialize a single PEFT model if not already done
             if new_hf_model:
-                model_logger.info(f"Initializing PEFT model with LoRA adapter {adapter_name}")
+                model_logger.info(
+                    f"Initializing PEFT model with LoRA adapter {adapter_name}"
+                )
                 lora_config = LoraConfig(**self.lora_kwargs[adapter_name])
-                self.hf_model = get_peft_model(self.hf_model, lora_config, adapter_name=adapter_name)
-            
+                self.hf_model = get_peft_model(
+                    model=self.hf_model,
+                    peft_config=lora_config,
+                    adapter_name=adapter_name,
+                )
+
             # Prepare the model for kbit training if quantization is enabled
-            if self.bits_and_bytes_configs is not None and not hasattr(self.hf_model, "is_quantized"):
+            if self.bits_and_bytes_configs is not None and not hasattr(
+                self.hf_model, "is_quantized"
+            ):
                 self.hf_model = prepare_model_for_kbit_training(self.hf_model)
-                self.hf_model.is_quantized = True 
-            
+                self.hf_model.is_quantized = True
+
             if adapter_name not in getattr(self.hf_model, "peft_config", {}):
                 # Set adapter in PEFT model
-                model_logger.info(f"Adding new adapter {adapter_name} to existing PEFT model")
+                model_logger.info(
+                    f"Adding new adapter {adapter_name} to existing PEFT model"
+                )
                 lora_config = LoraConfig(**self.lora_kwargs[adapter_name])
                 self.hf_model.add_adapter(
-                    lora_config,
-                    adapter_name=adapter_name
+                    adapter_name=adapter_name, peft_config=lora_config
                 )
 
             self.hf_model.set_adapter(adapter_name)
-            
+
         self.hf_model.train()
-            
+
         trainable_params = [p for p in self.hf_model.parameters() if p.requires_grad]
-        
-        optimizer_class = getattr(
-            __import__(
-                'torch.optim', 
-                fromlist=[self.optimizer_methods[adapter_name]]
-            ), 
-            self.optimizer_methods[adapter_name]
-        )
-        
-        self.optimizer = optimizer_class(
-            trainable_params,  
-            **self.optimizer_kwargs[adapter_name]
-        )
-        
+
         optimizer_path = self.optimizer_paths[adapter_name]
         if os.path.exists(optimizer_path):
             model_logger.info(f"Loading optimizer state from {optimizer_path}")
             try:
-                self.optimizer.load_state_dict(
-                    torch.load(optimizer_path)
-                )
+                self.optimizer.load_state_dict(torch.load(optimizer_path))
             except ValueError as e:
                 model_logger.warning(f"Failed to load optimizer state: {e}")
                 model_logger.warning("Creating a new optimizer state instead.")
                 # Continue with the new optimizer that was already created
-        
+
         # Log model statistics
         total_params = sum(p.numel() for p in self.hf_model.parameters())
         trainable_params = sum(
             p.numel() for p in self.hf_model.parameters() if p.requires_grad
         )
-        
+
         model_logger.info(f"Total Parameters: {total_params}")
         model_logger.info(
             f"Trainable Parameters: {trainable_params} "
@@ -381,7 +387,7 @@ class LocalLLMV2:
         compute_logger.info(
             f"HF model loading time: {time.time() - start_time:.2f} seconds."
         )
-        
+
         self.log_gpu_usage(
             f"After loading HF model with adapter {adapter_name} for training."
         )
@@ -389,54 +395,51 @@ class LocalLLMV2:
     def prepare_adapter_eval(self, adapter_name: str, seed_offset: int = 0):
         """
         Prepares the model for evaluation with the specified adapter.
-        
+
         This method handles memory management between HuggingFace and vLLM models,
         loads the appropriate adapter, and sets up the environment for inference.
-        
+
         Args:
             adapter_name (str): Name of the adapter to use for evaluation.
             seed_offset (int, optional): Offset to apply to the base seed for deterministic generation.
-            
+
         Notes:
             - This method may unload the HF model if keep_hf_during_eval is False.
             - For full model adapters, weights are merged into vLLM when necessary.
             - For LoRA adapters, a LoRA request is set up for vLLM.
-            
+
         Warning:
             - Weight merging requires both HF and vLLM models to be loaded, which can be memory intensive.
             - VLLM weight merging is NOT compatible with LoRA-enabled vLLM engine instances.
-              If both are detected, a warning will be logged and enable_lora will be temporarily 
+              If both are detected, a warning will be logged and enable_lora will be temporarily
               set to False to allow weight merging to proceed.
             - If HF model is not loaded when weight merging is required, a warning will be logged
               and weight merging will be skipped.
         """
-        assert adapter_name in self.adapter_names, \
-            f"Adapter {adapter_name} not found in {self.adapter_names}."
+        assert (
+            adapter_name in self.adapter_names
+        ), f"Adapter {adapter_name} not found in {self.adapter_names}."
 
         model_logger.info(f"Preparing adapter {adapter_name} for evaluation.")
         adapter_type = self.adapter_types[adapter_name]
         adapter_path = self.adapter_paths[adapter_name]
-        
+
         # Track adapter changes
         self.current_adapter_name = adapter_name
-        
-        is_adapter_changed = (
-            self.current_adapter_name != self.current_vllm_adapter_name
-        )
-        
+
+        is_adapter_changed = self.current_adapter_name != self.current_vllm_adapter_name
+
         is_adapter_updated = (
-            self.vllm_loaded_adapter_versions[self.current_adapter_name] 
+            self.vllm_loaded_adapter_versions[self.current_adapter_name]
             != self.adapter_train_ids[self.current_adapter_name]
         )
-        
-        is_full_adapter = adapter_type == "full"
-        
-        weight_switch_required = (
-            (is_adapter_changed or is_adapter_updated) 
-            and self.switch_weights_vllm_before_eval
-        )
 
-            
+        is_full_adapter = adapter_type == "full"
+
+        weight_switch_required = (
+            is_adapter_changed or is_adapter_updated
+        ) and self.switch_weights_vllm_before_eval
+
         if self.eval_with == "vllm":
             vllm_params = self.vllm_params
             # vLLM extension for weight switch.
@@ -446,12 +449,16 @@ class LocalLLMV2:
             # Prepare for weight merging
             if weight_switch_required:
                 if self.hf_model is None:
-                    model_logger.warning(f"HF model is not loaded. Cannot merge weights for {adapter_name}.")
+                    model_logger.warning(
+                        f"HF model is not loaded. Cannot merge weights for {adapter_name}."
+                    )
                     weight_switch_required = False
 
                 # V1 version of vLLM is not compatible with weight switch.
-                os.environ["VLLM_USE_V1"] = '0' 
-                worker_extension_cls = 'models.updatable_worker.UpdatableWorkerExtension'
+                os.environ["VLLM_USE_V1"] = "0"
+                worker_extension_cls = (
+                    "models.updatable_worker.UpdatableWorkerExtension"
+                )
 
                 # Instead of assertion, check and log a warning if enable_lora is True
                 if self.vllm_params.get("enable_lora", False):
@@ -472,14 +479,14 @@ class LocalLLMV2:
                     self.vllm_model = LLM(
                         self.model_name,
                         **vllm_params,
-                        worker_extension_cls=worker_extension_cls
+                        worker_extension_cls=worker_extension_cls,
                     )
                 else:
                     self.vllm_model = LLM(
                         self.model_name,
                         **vllm_params,
                     )
-                    
+
                 compute_logger.info(
                     f"VLLM model loading time: {time.time() - start_time:.2f} seconds."
                 )
@@ -490,9 +497,9 @@ class LocalLLMV2:
 
             # Update tracking information
             self.current_vllm_adapter_name = adapter_name
-            self.vllm_loaded_adapter_versions[adapter_name] = (
-                self.adapter_train_ids[adapter_name]
-            )
+            self.vllm_loaded_adapter_versions[adapter_name] = self.adapter_train_ids[
+                adapter_name
+            ]
 
             # Handle weight merging for vLLM if required
             if weight_switch_required and self.hf_model is not None:
@@ -501,80 +508,28 @@ class LocalLLMV2:
                         f"Merging weights for {adapter_name} from {adapter_path} to vLLM model."
                     )
                     self.hf_model.eval()
-                    
-                    # Check adapter type
-                    if adapter_type == "full":
-                        # For full model adapters, update weights directly
-                        model_logger.info("Using direct weight update for full model adapter")
-                        for name, param in hf_model.named_parameters():
-                            # Create a copy of the parameter data to avoid modifying the original
-                            self.vllm_model.collective_rpc(
-                                'update_weight', 
-                                args=(name, param.data)
-                            )
-                    elif adapter_type == "lora":
-                        # For LoRA adapters, merge the weights first
-                        model_logger.info("Merging LoRA weights with base model before updating vLLM")
-                        
-                        if isinstance(hf_model, PeftModel):
-                            # Get merged weights
-                            merged_model = hf_model.merge_and_unload()
-                            
-                            # Update vLLM with the merged weights
-                            for name, param in merged_model.named_parameters():
-                                self.vllm_model.collective_rpc(
-                                    'update_weight',
-                                    args=(name, param.data)
-                                )
-                            
-                            # Clean up merged model to save memory
-                            del merged_model
-                            gc.collect()
-                            torch.cuda.empty_cache()
-                        else:
-                            # For older implementations or direct delta weights
-                            model_logger.info("Using LoRA-aware weight update with delta weights")
-                            
-                            # Collect all LoRA modules for easy lookup
-                            lora_modules = {}
-                            for name, module in hf_model.named_modules():
-                                if hasattr(module, 'get_delta_weight') and hasattr(module, 'active_adapter'):
-                                    lora_modules[name] = module
-                            
-                            # Track parameters we've already processed
-                            processed_params = set()
-                            
-                            # Process all modules with get_delta_weight method (LoRA modules)
-                            for module_name, module in lora_modules.items():
-                                if hasattr(module, 'weight'):
-                                    param_name = f"{module_name}.weight"
-                                    
-                                    # Make a copy of the base weight to avoid modifying the original
-                                    base_weight = module.weight.data
-                                    
-                                    # Get delta from active adapters
-                                    for adapter in module.active_adapter:
-                                        # Get delta weights from the adapter
-                                        delta = module.get_delta_weight(adapter)
-                                        # Apply delta to get the full weight
-                                        combined_weight = base_weight + delta
-                                        
-                                        # Update weight in vLLM
-                                        self.vllm_model.collective_rpc(
-                                            'update_weight', 
-                                            args=(param_name, combined_weight)
-                                        )
-                                        
-                                        # Mark as processed
-                                        processed_params.add(param_name)
+                    if adapter_type == "lora":
+                        model_logger.error(
+                            "LoRA weight merging is not supported for vLLM."
+                        )
+
+                    model_logger.info(
+                        "Using direct weight update for full model adapter"
+                    )
+                    for name, param in hf_model.named_parameters():
+                        self.vllm_model.collective_rpc(
+                            "update_weight", args=(name, param.data)
+                        )
 
             # Use vLLM LoRA Request instead of full weight switch for LoRA adapters
-            elif adapter_type == "lora" and os.path.exists(adapter_path) and not self.switch_weights_vllm_before_eval:
+            elif (
+                adapter_type == "lora"
+                and os.path.exists(adapter_path)
+                and not self.switch_weights_vllm_before_eval
+            ):
                 model_logger.info(f"Creating LoRA request for adapter {adapter_name}")
                 self.current_lora_request = LoRARequest(
-                    adapter_name, 
-                    self.adapter_train_ids[adapter_name], 
-                    adapter_path
+                    adapter_name, self.adapter_train_ids[adapter_name], adapter_path
                 )
             else:
                 self.current_lora_request = None
@@ -590,7 +545,7 @@ class LocalLLMV2:
 
         Returns:
             list: List of generated responses from the model.
-            
+
         Notes:
             - This method only supports vLLM for text generation.
             - Empty contexts list will return an empty list.
@@ -601,11 +556,8 @@ class LocalLLMV2:
 
         # Apply chat template to contexts
         texts = self.tokenizer.apply_chat_template(
-            contexts, 
-            tokenize=False, 
-            add_generation_prompt=True
+            contexts, tokenize=False, add_generation_prompt=True
         )
-
 
         if self.eval_with == "vllm":
             # Disable deterministic seed for more diversity
@@ -617,7 +569,7 @@ class LocalLLMV2:
                     f"Current LoRA request ID is {self.current_lora_request.adapter_id}. "
                     f"Current LoRA adapter path is {self.current_lora_request.path}."
                 )
-                
+
             # Generate responses
             decoded = self.vllm_model.generate(
                 texts,
@@ -630,31 +582,32 @@ class LocalLLMV2:
             model_logger.error(f"Unsupported generation method: {self.eval_with}")
             return []
 
-
         return responses
 
     def export_current_adapter(self) -> None:
         """
         Exports the current adapter to the configured output directory.
-        
+
         For 'full' adapters, the entire model is saved.
         For 'lora' adapters, only the LoRA parameters are saved.
         The optimizer state is also saved if configured.
-        
+
         Notes:
             - Directory structure is organized by adapter name.
             - Export can be disabled via export_trained_parameters and export_optimizer flags.
-            
+
         Warning:
             This operation may take significant disk space for full model adapters.
         """
         if not self.export_trained_parameters and not self.export_optimizer:
-            model_logger.info("Skipping export as both export_trained_parameters and export_optimizer are False")
+            model_logger.info(
+                "Skipping export as both export_trained_parameters and export_optimizer are False"
+            )
             return
 
         adapter_path = self.adapter_paths[self.current_adapter_name]
         adapter_type = self.adapter_types[self.current_adapter_name]
-        
+
         # Create output directory if it doesn't exist
         os.makedirs(adapter_path, exist_ok=True)
 
@@ -665,39 +618,36 @@ class LocalLLMV2:
                 self.hf_model.save_pretrained(adapter_path)
             elif adapter_type == "lora":
                 model_logger.info(f"Saving LoRA adapter to {adapter_path}")
-                
+
                 # Properly save PEFT adapter
                 if isinstance(self.hf_model, PeftModel):
                     # Ensure the current adapter is active
                     if self.current_adapter_name != self.hf_model.active_adapter:
-                        model_logger.info(f"Setting active adapter to {self.current_adapter_name} for saving")
+                        model_logger.info(
+                            f"Setting active adapter to {self.current_adapter_name} for saving"
+                        )
                         self.hf_model.set_adapter(self.current_adapter_name)
-                    
+
                     # Save only the active adapter
                     self.hf_model.save_pretrained(
                         adapter_path,
                         adapter_name=self.current_adapter_name,
-                        safe_serialization=True
+                        safe_serialization=True,
                     )
                 else:
                     model_logger.warning(
                         "Model is not a PeftModel instance. Unable to save LoRA adapter."
                     )
-            
+
         # Save optimizer state
         if self.export_optimizer:
             optimizer_state_path = self.optimizer_paths[self.current_adapter_name]
             optimizer_dir = os.path.dirname(optimizer_state_path)
             os.makedirs(optimizer_dir, exist_ok=True)
-            
-            torch.save(
-                self.optimizer.state_dict(), 
-                optimizer_state_path
-            )
-            
-            model_logger.info(
-                f"Optimizer state saved to {optimizer_state_path}"
-            )
+
+            torch.save(self.optimizer.state_dict(), optimizer_state_path)
+
+            model_logger.info(f"Optimizer state saved to {optimizer_state_path}")
 
     def log_gpu_usage(self, message: str) -> None:
         """
@@ -713,10 +663,8 @@ class LocalLLMV2:
     def short_id_generator(self) -> int:
         """
         Generates a short unique ID for tracking adapter versions.
-        
+
         Returns:
             int: An 8-digit integer ID.
         """
         return int(str(uuid.uuid4().int)[:8])
-
-        

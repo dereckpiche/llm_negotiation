@@ -1,0 +1,74 @@
+defaults:
+  - dereck_base_config.yaml
+
+experiment:
+  name: "SUM_REWARDS/sum_rewards_big_adapter"
+  description: "Sum rewards with full finetune"
+
+matches:
+  agents:
+    alice:
+      kwargs:
+        agent_name: "alice"
+        policy_id: "llama/full_model"
+    bob:
+      kwargs:
+        agent_name: "bob"
+        policy_id: "llama/full_model"
+
+temperature: 0.7
+
+
+
+models:
+  llama:
+    class: local_llm_v2
+    init_args:
+      name: 'llama'
+      adapter_configs:
+        full_model:
+          type: "lora"
+          optimizer_method: "Adam"
+          optimizer_kwargs:
+            lr: 1e-2
+            weight_decay: 0.0
+          lora_kwargs:
+            r: 512
+            lora_alpha: 1024
+            lora_dropout: 0.1
+            lora_train_bias: False
+
+
+
+####################################################################################################
+# TRAINING
+####################################################################################################
+default_kwargs: &default_kwargs
+  train_func_args:
+    gradient_checkpointing: true
+    use_accelerate_gradaccum: true
+    temperature: ${temperature}
+    entropy_coef: 0.0
+    kl_loss_coef: 0.0
+    debug_enabled: True
+    debug_log_path: "${oc.env:SCRATCH}/${experiment.name}/trainer_debugger"
+  train_data_args:
+    average_score_over_message: False
+
+training:
+  agents:
+    alice:
+      training_data_func_args:
+        score_method: sum_rloo_scores
+        score_method_kwargs:
+          discount_factor: 1.0
+    bob:
+      training_data_func_args:
+        score_method: sum_rloo_scores
+        score_method_kwargs:
+          discount_factor: 1.0
+  llama:
+    adapters:
+      full_model:
+        train_func: train_reinforce_main
+        <<: *default_kwargs
