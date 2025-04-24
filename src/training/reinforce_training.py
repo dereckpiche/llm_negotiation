@@ -13,7 +13,6 @@ from utils.common_imports import *
 
 compute_logger = logging.getLogger("compute_logger")
 memory_logger = logging.getLogger("memory_logger")
-model_logger = logging.getLogger("model_logger")
 
 
 def reinforce_train(
@@ -136,7 +135,6 @@ def reinforce_train(
 
     # Calculate the maximum context length in terms of number of tokens
     max_context_length = max(context.size(0) for context in contexts_list)
-    model_logger.info(f"Max context length (in tokens): {max_context_length}")
 
     max_memory_usage = 0  # Initialize max memory usage
 
@@ -174,7 +172,6 @@ def reinforce_train(
             model, os.path.join(debug_subfolder, "trainable_weights_initial.json")
         )
 
-        model_logger.info(f"Debug logs will be saved to: {debug_subfolder}")
         debug_log_path = debug_subfolder
 
     # Determine if debug logging is enabled
@@ -351,7 +348,6 @@ def reinforce_train(
     memory_logger.info(
         f"Max GPU memory usage during training: {max_memory_usage / (1024 ** 2):.2f} MB"
     )
-    model_logger.info(f"loss: {np.mean(train_output_dict['loss']):.4f}")
 
     # Save final trainable weights snapshot if debug enabled
     if debug_enabled:
@@ -365,8 +361,6 @@ def reinforce_train(
             os.path.join(debug_log_path, "trainable_weights_final.json"),
             os.path.join(debug_log_path, "trainable_weights_comparison.txt"),
         )
-
-        model_logger.info(f"All debug logs saved to: {debug_log_path}")
 
     if use_accelerate:
         model_accelerator.clear(model, optimizer)
@@ -554,16 +548,6 @@ def _log_trainable_weights_snapshot(model, save_path):
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     with open(save_path, "w") as f:
         json.dump(training_info, f, indent=2)
-
-    model_logger.info(f"Trainable weights snapshot saved to {save_path}")
-    model_logger.info(
-        f"Found {len(trainable_params)} trainable parameters"
-        + (
-            f" ({len(adapter_params)} adapter, {len(base_model_params)} base model)"
-            if training_info["has_adapters"]
-            else ""
-        )
-    )
 
     return training_info
 
@@ -761,13 +745,8 @@ def _generate_trainable_weights_comparison(initial_path, final_path, output_path
                     "\nCONCLUSION: NO CHANGES detected in trainable weights! Training had no effect.\n"
                 )
 
-        model_logger.info(f"Trainable weights comparison saved to {output_path}")
-        model_logger.info(
-            f"Changes detected in {total_changed}/{total_params} trainable parameters"
-        )
-
     except Exception as e:
-        model_logger.error(f"Error generating trainable weights comparison: {e}")
+        pass
 
 
 def verify_reinforce_train_inputs(contexts_list, scores_list, output_masks_list):
@@ -898,11 +877,6 @@ def _log_trainable_weights_gradient_snapshot(model, save_path):
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     with open(save_path, "w") as f:
         json.dump(gradient_info, f, indent=2)
-
-    model_logger.info(f"Gradient snapshot saved to {save_path}")
-    model_logger.info(
-        f"Found {gradient_info['stats']['params_with_grad']} trainable parameters with gradients"
-    )
 
     # Return overall stats for logging
     return gradient_info["stats"]
@@ -1253,17 +1227,6 @@ def _log_model_adapter_status(model, save_dir, epoch, batch_idx):
     with open(os.path.join(batch_dir, "adapter_info.json"), "w") as f:
         json.dump(adapter_info, f, indent=2)
 
-    # Log shortened status to model logger
-    model_logger.info(
-        f"Model status: {'adapter-based' if adapter_info['has_adapters'] else 'full-model'} training with "
-        f"{adapter_info['total_trainable_params']:,} trainable params "
-        f"({adapter_info['trainable_percentage']:.2f}% of total)"
-    )
-
-    if adapter_info["has_adapters"]:
-        model_logger.info(f"Active adapters: {adapter_info['active_adapters']}")
-        model_logger.info(f"Adapter types: {adapter_info['adapter_types']}")
-
     return adapter_info
 
 
@@ -1401,10 +1364,6 @@ def _log_gradient_stats(
         "zero"
         if with_grad_params == 0
         else f"mean={gradient_stats['overall']['mean_grad_norm']:.4e}"
-    )
-    model_logger.info(
-        f"Gradient stats (step {gradient_accumulation_step+1}/{total_steps}): "
-        f"{with_grad_params}/{trainable_params} params with grad, {grad_status}"
     )
 
     return gradient_stats
@@ -1691,12 +1650,6 @@ def _log_optimization_step(model, optimizer, save_dir, epoch, batch_idx, pre_ste
                 "mean_relative_change": sum(rel_changes) / len(rel_changes),
                 "max_relative_change": max(rel_changes),
             }
-
-            # Log notable parameter changes
-            model_logger.info(
-                f"Parameter updates: mean rel change: {step_info['change_summary']['mean_relative_change']:.6f}, "
-                f"max rel change: {step_info['change_summary']['max_relative_change']:.6f}"
-            )
 
         # Clean up to avoid memory leaks
         delattr(model, "_debug_pre_step_params")
@@ -2032,7 +1985,6 @@ def _track_training_verification(
                     }
             except Exception as e:
                 verification["parameter_comparison_error"] = str(e)
-                model_logger.warning(f"Error in parameter comparison: {e}")
 
     # Make the entire structure JSON-serializable
     verification = _make_json_serializable(verification)
@@ -2121,9 +2073,7 @@ def _track_training_verification(
 
     # Log the most important information
     if verification["gradients_accumulating"] != "UNVERIFIED":
-        model_logger.info(
-            f"Gradient accumulation verified: {verification['gradients_accumulating']}"
-        )
+        pass
 
     if (
         verification["base_model_updating"] != "UNVERIFIED"
@@ -2131,10 +2081,7 @@ def _track_training_verification(
     ):
         if "parameter_change_stats" in verification:
             stats = verification["parameter_change_stats"]
-            model_logger.info(
-                f"Parameter updates - Base: {stats.get('base_params_changed', 0)}/{stats.get('total_base_modules', 0)} modules, "
-                f"Adapters: {stats.get('adapter_params_changed', 0)}/{stats.get('total_adapter_modules', 0)} modules"
-            )
+            pass
 
     # If this is the final step in accumulation, create a consolidated report
     if accumulation_step == total_accumulation_steps - 1:
@@ -2276,7 +2223,6 @@ def _create_consolidated_training_verification_report(verification_dir, epoch):
         else:
             f.write("❌ TRAINING ISSUE: No adapter parameter updates detected\n")
 
-    model_logger.info(f"Consolidated verification report created: {report_path}")
     return report_path
 
 
@@ -2292,27 +2238,18 @@ def find_tokenizer_from_model(model):
     """
     tokenizer = None
     try:
-        model_logger.info(
-            "Attempting to automatically find tokenizer for debug logging"
-        )
         if hasattr(model, "tokenizer"):
             tokenizer = model.tokenizer
-            model_logger.info("Using tokenizer from model.tokenizer")
         elif hasattr(model, "model") and hasattr(model.model, "tokenizer"):
             tokenizer = model.model.tokenizer
-            model_logger.info("Using tokenizer from model.model.tokenizer")
         elif hasattr(model, "pretrained_model") and hasattr(
             model.pretrained_model, "tokenizer"
         ):
             tokenizer = model.pretrained_model.tokenizer
-            model_logger.info("Using tokenizer from model.pretrained_model.tokenizer")
         elif hasattr(model, "config") and hasattr(model.config, "tokenizer_class"):
             from transformers import AutoTokenizer
 
             tokenizer = AutoTokenizer.from_pretrained(model.config.name_or_path)
-            model_logger.info(
-                f"Loaded tokenizer from model config: {model.config.name_or_path}"
-            )
         else:
             try:
                 from transformers import AutoTokenizer
@@ -2320,14 +2257,11 @@ def find_tokenizer_from_model(model):
                 # Try to infer tokenizer from model's pretrained name
                 if hasattr(model, "config") and hasattr(model.config, "name_or_path"):
                     tokenizer = AutoTokenizer.from_pretrained(model.config.name_or_path)
-                    model_logger.info(
-                        f"Loaded tokenizer from model config: {model.config.name_or_path}"
-                    )
                 else:
-                    model_logger.warning("Could not find a tokenizer for debug logging")
+                    pass
             except Exception as e:
-                model_logger.warning(f"Error loading tokenizer: {e}")
+                pass
     except Exception as e:
-        model_logger.warning(f"Failed to find tokenizer: {e}")
+        pass
 
     return tokenizer

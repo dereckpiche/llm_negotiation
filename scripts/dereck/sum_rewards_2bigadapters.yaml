@@ -18,14 +18,13 @@ matches:
 
 temperature: 0.7
 
-
-
 models:
   llama:
     class: local_llm_v2
     init_args:
       vllm_params:
         max_lora_rank: 512
+      export_trained_parameters: False
       name: 'llama'
       adapter_configs:
         adapter_alice:

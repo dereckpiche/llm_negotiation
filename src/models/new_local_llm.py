@@ -283,7 +283,6 @@ class LocalLLMV2:
             self.vllm_model.sleep()
 
         # Create new model version with a new ID
-        previous_id = self.adapter_train_ids[adapter_name]
         self.adapter_train_ids[adapter_name] = self.short_id_generator()
 
         self.log_gpu_usage(
@@ -306,11 +305,11 @@ class LocalLLMV2:
                 **self.hf_model_init_kwargs,
             )
 
+        # Full model training
         if adapter_type == "full":
             model_logger.info(f"Setting up full model adapter for {adapter_name}")
             for param in self.hf_model.parameters():
                 param.requires_grad = True
-            # Create parameter groups explicitly
             param_groups = [
                 {
                     "params": self.hf_model.parameters(),
@@ -324,10 +323,10 @@ class LocalLLMV2:
                 self.optimizer_methods[adapter_name],
             )(param_groups, **self.optimizer_kwargs[adapter_name])
 
+        # Prepare for LoRA training
         elif adapter_type == "lora":
             model_logger.info(f"Setting up LoRA adapter for {adapter_name}")
 
-            # Initialize a single PEFT model if not already done
             if new_hf_model:
                 model_logger.info(
                     f"Initializing PEFT model with LoRA adapter {adapter_name}"
@@ -339,7 +338,6 @@ class LocalLLMV2:
                     adapter_name=adapter_name,
                 )
 
-            # Prepare the model for kbit training if quantization is enabled
             if self.bits_and_bytes_configs is not None and not hasattr(
                 self.hf_model, "is_quantized"
             ):
@@ -347,7 +345,6 @@ class LocalLLMV2:
                 self.hf_model.is_quantized = True
 
             if adapter_name not in getattr(self.hf_model, "peft_config", {}):
-                # Set adapter in PEFT model
                 model_logger.info(
                     f"Adding new adapter {adapter_name} to existing PEFT model"
                 )
@@ -355,8 +352,19 @@ class LocalLLMV2:
                 self.hf_model.add_adapter(
                     adapter_name=adapter_name, peft_config=lora_config
                 )
-
             self.hf_model.set_adapter(adapter_name)
+            trainable_params = [
+                p for p in self.hf_model.parameters() if p.requires_grad
+            ]
+            optimizer_class = getattr(
+                __import__(
+                    "torch.optim", fromlist=[self.optimizer_methods[adapter_name]]
+                ),
+                self.optimizer_methods[adapter_name],
+            )
+            self.optimizer = optimizer_class(
+                trainable_params, **self.optimizer_kwargs[adapter_name]
+            )
 
         self.hf_model.train()
 
@@ -433,6 +441,10 @@ class LocalLLMV2:
             self.vllm_loaded_adapter_versions[self.current_adapter_name]
             != self.adapter_train_ids[self.current_adapter_name]
         )
+        if is_adapter_updated:
+            model_logger.info(
+                f"Adapter {adapter_name} has been updated. vLLM will be updated."
+            )
 
         is_full_adapter = adapter_type == "full"
 
@@ -503,9 +515,9 @@ class LocalLLMV2:
 
             # Handle weight merging for vLLM if required
             if weight_switch_required and self.hf_model is not None:
-                if os.path.exists(adapter_path) or adapter_type == "full":
+                if adapter_type == "full":
                     model_logger.info(
-                        f"Merging weights for {adapter_name} from {adapter_path} to vLLM model."
+                        f"Merging weights for {adapter_name} to vLLM model."
                     )
                     self.hf_model.eval()
                     if adapter_type == "lora":
@@ -628,12 +640,24 @@ class LocalLLMV2:
                         )
                         self.hf_model.set_adapter(self.current_adapter_name)
 
-                    # Save only the active adapter
+                    # All because HF creates stupid sub folders
+                    temp_adapter_path = os.path.join(adapter_path, "_temp")
                     self.hf_model.save_pretrained(
-                        adapter_path,
+                        temp_adapter_path,
                         adapter_name=self.current_adapter_name,
                         safe_serialization=True,
                     )
+                    subfolder_path = os.path.join(
+                        temp_adapter_path, self.current_adapter_name
+                    )
+                    if os.path.exists(subfolder_path):
+                        for item in os.listdir(subfolder_path):
+                            src = os.path.join(subfolder_path, item)
+                            dst = os.path.join(adapter_path, item)
+                            shutil.move(src, dst)
+
+                    # Clean up temp directory
+                    shutil.rmtree(temp_adapter_path)
                 else:
                     model_logger.warning(
                         "Model is not a PeftModel instance. Unable to save LoRA adapter."

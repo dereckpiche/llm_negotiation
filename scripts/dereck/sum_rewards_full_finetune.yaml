@@ -24,7 +24,7 @@ models:
   llama:
     class: local_llm_v2
     init_args:
-      fully_switch_vllm_weights_after_training: False
+      fully_switch_vllm_weights_after_training: True
       vllm_params:
         enable_lora: False
       name: 'llama'
@@ -33,7 +33,7 @@ models:
           type: "full"
           optimizer_method: "SGD"
           optimizer_kwargs:
-            lr: 1e-4
+            lr: 1e-5
             weight_decay: 0.0
           lora_kwargs: {}
 

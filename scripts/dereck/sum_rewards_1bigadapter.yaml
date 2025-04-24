@@ -3,21 +3,20 @@ defaults:
 
 experiment:
   name: "SUM_REWARDS/sum_rewards_big_adapter"
-  description: "Sum rewards with full finetune"
+  description: "Sum rewards with a big adapter finetune"
 
 matches:
   agents:
     alice:
       kwargs:
         agent_name: "alice"
-        policy_id: "llama/full_model"
+        policy_id: "llama/fulldude"
     bob:
       kwargs:
         agent_name: "bob"
-        policy_id: "llama/full_model"
+        policy_id: "llama/fulldude"
 
 temperature: 0.7
-
 
 
 models:
@@ -25,18 +24,19 @@ models:
     class: local_llm_v2
     init_args:
       name: 'llama'
+      vllm_params:
+        max_lora_rank: 512
       adapter_configs:
-        full_model:
+        fulldude:
           type: "lora"
           optimizer_method: "Adam"
           optimizer_kwargs:
-            lr: 1e-2
+            lr: 1e-6
             weight_decay: 0.0
           lora_kwargs:
             r: 512
             lora_alpha: 1024
-            lora_dropout: 0.1
-            lora_train_bias: False
+            lora_dropout: 0.0
 
 
 
@@ -69,6 +69,6 @@ training:
           discount_factor: 1.0
   llama:
     adapters:
-      full_model:
+      fulldude:
         train_func: train_reinforce_main
         <<: *default_kwargs
