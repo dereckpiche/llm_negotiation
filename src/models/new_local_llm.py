@@ -43,7 +43,7 @@ class LocalLLMV2:
         device (str): Device to load the model on ('cuda', 'cpu').
         hf_model_init_kwargs (dict): Initialization arguments for HuggingFace model.
         max_model_length (int): Maximum sequence length for processing.
-        bits_and_bytes_args (dict, optional): Configuration for quantization.
+        bits_and_bytes_args (dict, optional): Configuration for quantization. See https://huggingface.co/docs/transformers/v4.51.3/quantization/bitsandbytes
         adapter_configs (dict): Dictionary of adapter configurations.
             Format:
             {
@@ -185,11 +185,6 @@ class LocalLLMV2:
         self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
-        # Setup quantization if provided
-        self.bits_and_bytes_configs = (
-            BitsAndBytesConfig(**bits_and_bytes_args) if bits_and_bytes_args else None
-        )
-
         # Configure sampling parameters
         self.hf_sampling_params = generation_args
         self.vllm_sampling_params = SamplingParams(
@@ -243,10 +238,13 @@ class LocalLLMV2:
             name: config["lora_kwargs"] for name, config in self.adapter_configs.items()
         }
 
-        # For storing full model adapters since they can't be added to a single PeftModel
-        self.hf_full_models = {}
-
         self.base_seed = base_seed
+
+        # Setup quantization if provided
+        if isinstance(bits_and_bytes_args, dict):
+            self.hf_quantization_config = BitsAndBytesConfig(**bits_and_bytes_args)
+        else:
+            self.hf_quantization_config = None
 
     def prepare_adapter_train(self, adapter_name: str):
         """
@@ -300,10 +298,18 @@ class LocalLLMV2:
         new_hf_model = False
         if self.hf_model is None:
             new_hf_model = True
-            self.hf_model = AutoModelForCausalLM.from_pretrained(
-                pretrained_model_name_or_path=self.model_name,
-                **self.hf_model_init_kwargs,
-            )
+            if self.hf_quantization_config is None:
+                # Avoids HF bugs with pre-existing quant. conflicts in base model
+                self.hf_model = AutoModelForCausalLM.from_pretrained(
+                    pretrained_model_name_or_path=self.model_name,
+                    **self.hf_model_init_kwargs,
+                )
+            else:
+                self.hf_model = AutoModelForCausalLM.from_pretrained(
+                    pretrained_model_name_or_path=self.model_name,
+                    quantization_config=self.hf_quantization_config,
+                    **self.hf_model_init_kwargs,
+                )
 
         # Full model training
         if adapter_type == "full":
@@ -338,11 +344,11 @@ class LocalLLMV2:
                     adapter_name=adapter_name,
                 )
 
-            if self.bits_and_bytes_configs is not None and not hasattr(
-                self.hf_model, "is_quantized"
-            ):
-                self.hf_model = prepare_model_for_kbit_training(self.hf_model)
-                self.hf_model.is_quantized = True
+            # if self.hf_quantization_config is not None and not hasattr(
+            #     self.hf_model, "is_quantized"
+            # ):
+            #     self.hf_model = prepare_model_for_kbit_training(self.hf_model)
+            #     self.hf_model.is_quantized = True
 
             if adapter_name not in getattr(self.hf_model, "peft_config", {}):
                 model_logger.info(
@@ -431,7 +437,8 @@ class LocalLLMV2:
         model_logger.info(f"Preparing adapter {adapter_name} for evaluation.")
         adapter_type = self.adapter_types[adapter_name]
         adapter_path = self.adapter_paths[adapter_name]
-
+        if self.hf_model is not None:
+            self.hf_model.eval()
         # Track adapter changes
         self.current_adapter_name = adapter_name
 

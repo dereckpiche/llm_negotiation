@@ -2,7 +2,7 @@ defaults:
   - dereck_base_config.yaml
 
 experiment:
-  name: "SUM_REWARDS/2_big_adapters"
+  name: "COOPERATIVE/2_big_adapters"
   description: "Sum rewards with 2 big adapters"
 
 matches:
@@ -29,7 +29,7 @@ models:
       adapter_configs:
         adapter_alice:
           type: "lora"
-          optimizer_method: "Adam"
+          optimizer_method: "SGD"
           optimizer_kwargs:
             lr: 1e-6
             weight_decay: 0.0
@@ -41,7 +41,7 @@ models:
             target_modules: "all-linear"
         adapter_bob:
           type: "lora"
-          optimizer_method: "Adam"
+          optimizer_method: "SGD"
           optimizer_kwargs:
             lr: 1e-6
             weight_decay: 0.0
@@ -59,7 +59,6 @@ models:
 default_kwargs: &default_kwargs
   train_func_args:
     gradient_checkpointing: true
-    use_accelerate_gradaccum: true
     temperature: ${temperature}
     entropy_coef: 0.0
     kl_loss_coef: 0.0

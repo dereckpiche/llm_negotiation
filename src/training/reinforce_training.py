@@ -11,8 +11,7 @@ from torch.nn.utils.rnn import pad_sequence
 
 from utils.common_imports import *
 
-compute_logger = logging.getLogger("compute_logger")
-memory_logger = logging.getLogger("memory_logger")
+train_logger = logging.getLogger("train_logger")
 
 
 def reinforce_train(
@@ -30,8 +29,6 @@ def reinforce_train(
     entropy_coef=0,
     kl_loss_coef=0,
     temperature=1.0,
-    use_accelerate_gradaccum=False,
-    use_accelerate=True,
     device="cuda:0",
     gradient_clipping=None,
     debug_log_path=None,
@@ -105,10 +102,6 @@ def reinforce_train(
             Values > 1 make the distribution more uniform, < 1 make it more peaked.
             Must be greater than 0.
 
-        use_accelerate_gradaccum (bool): Whether to use HuggingFace Accelerate's gradient accumulation.
-
-        use_accelerate (bool): Whether to use HuggingFace Accelerate for distributed training.
-
         device (str): The device to run training on, e.g., "cuda:0", "cpu".
 
         gradient_clipping (float, optional): Maximum gradient norm for gradient clipping.
@@ -122,8 +115,37 @@ def reinforce_train(
     Returns:
         dict: Dictionary containing training metrics, such as average loss.
     """
+    train_logger.info(
+        f"Memory taken before training: {torch.cuda.max_memory_allocated(device) / (1024 ** 2):.2f} MB"
+    )
+    train_logger.info(f"Starting reinforce training on {device}.")
+    try:
+        train_logger.info(f"Model active adapters are: {model.active_adapters}.")
+    except:
+        pass
+    try:
+        train_logger.info(f"Base model has data type {model.base_model_torch_dtype}.")
+    except:
+        pass
+    try:
+        train_logger.info(
+            f"Model has {model.get_nb_trainable_parameters()} trainable parameters."
+        )
+    except:
+        pass
+    try:
+        train_logger.info(f"Model has PEFT type {model.peft_type}.")
+    except:
+        pass
+    try:
+        train_logger.info(
+            f"Model base class is {model.get_nb_trainable_parameters()} trainable parameters."
+        )
+    except:
+        pass
     model.train()
     if gradient_checkpointing == True:
+        train_logger.info("Enabling gradient checkpointing")
         model.gradient_checkpointing_enable(dict(use_reentrant=False))
 
     if optimizer is None:
@@ -144,16 +166,11 @@ def reinforce_train(
         gradient_accumulation_steps = nb_trajectories_we_train_on // mb_size
     else:
         gradient_accumulation_steps = mb_per_step
+    train_logger.info(f"Gradient accumulation steps are {gradient_accumulation_steps}.")
 
-    if use_accelerate:
-        if use_accelerate_gradaccum:
-            # Initialize the accelerators (https://huggingface.co/docs/accelerate/en/usage_guides/gradient_accumulation)
-            model_accelerator = Accelerator(
-                gradient_accumulation_steps=gradient_accumulation_steps
-            )
-        else:
-            model_accelerator = Accelerator()
-        model, optimizer = model_accelerator.prepare(model, optimizer)
+    # Initialize Accelerator
+    model_accelerator = Accelerator()
+    model, optimizer = model_accelerator.prepare(model, optimizer)
 
     # Configure debug logging with timestamped subfolder
     if debug_enabled and debug_log_path is not None:
@@ -182,171 +199,142 @@ def reinforce_train(
         debug_enabled = debug_enabled and tokenizer is not None
 
     train_output_dict = defaultdict(list)
+
     for epoch in range(nb_epochs):
+        train_logger.info(f"Epoch {epoch} of {nb_epochs}")
         for i in range(0, len(contexts_list), mb_size):
-            if use_accelerate_gradaccum:
-                context_manager = model_accelerator.accumulate(model)
-            else:
-                context_manager = nullcontext()
-            with context_manager:
-                # Get the minibatch
-                context_batch = contexts_list[i : i + mb_size]
-                return_batch = scores_list[i : i + mb_size]
-                mask_batch = output_masks_list[i : i + mb_size]
+            train_logger.info(f"Batch {i} of {len(contexts_list)}")
+            # Get the minibatch
+            context_batch = contexts_list[i : i + mb_size]
+            return_batch = scores_list[i : i + mb_size]
+            mask_batch = output_masks_list[i : i + mb_size]
 
-                action_batch = [a[1:] for a in context_batch]
-                return_batch = [r[1:] for r in return_batch]
-                mask_batch = [m[1:] for m in mask_batch]
-                context_batch = [c[:-1] for c in context_batch]
+            action_batch = [a[1:] for a in context_batch]
+            return_batch = [r[1:] for r in return_batch]
+            mask_batch = [m[1:] for m in mask_batch]
+            context_batch = [c[:-1] for c in context_batch]
 
-                # Track if this is the first batch of training for verification
-                is_first_batch = epoch == 0 and i == 0
+            # Track if this is the first batch of training for verification
+            is_first_batch = epoch == 0 and i == 0
 
-                # Pad sequences
-                action_batch = pad_sequence(action_batch, batch_first=True).long()
-                context_batch = pad_sequence(context_batch, batch_first=True).long()
-                return_batch = pad_sequence(return_batch, batch_first=True).float()
-                mask_batch = pad_sequence(mask_batch, batch_first=True).float()
+            # Pad sequences
+            action_batch = pad_sequence(action_batch, batch_first=True).long()
+            context_batch = pad_sequence(context_batch, batch_first=True).long()
+            return_batch = pad_sequence(return_batch, batch_first=True).float()
+            mask_batch = pad_sequence(mask_batch, batch_first=True).float()
 
-                # Create attention mask to ignore padding tokens
-                attention_mask = (
-                    context_batch != 0
-                ).long()  # context_batch: (B, S) -> attention_mask: (B, S)
+            # Create attention mask to ignore padding tokens
+            attention_mask = (
+                context_batch != 0
+            ).long()  # context_batch: (B, S) -> attention_mask: (B, S)
 
-                if use_accelerate:
-                    device = model_accelerator.device
-                # Move data to the appropriate device
-                action_batch = action_batch.to(device)  # (B, S)
-                context_batch = context_batch.to(device)  # (B, S)
-                return_batch = return_batch.to(device)  # (B, S)
-                mask_batch = mask_batch.to(device)  # (B, S)
-                attention_mask = attention_mask.to(device)  # (B, S)
+            device = model_accelerator.device
+            # Move data to the appropriate device
+            action_batch = action_batch.to(device)  # (B, S)
+            context_batch = context_batch.to(device)  # (B, S)
+            return_batch = return_batch.to(device)  # (B, S)
+            mask_batch = mask_batch.to(device)  # (B, S)
+            attention_mask = attention_mask.to(device)  # (B, S)
 
-                # Forward pass
-                outputs = model(input_ids=context_batch, attention_mask=attention_mask)
+            # Forward pass
+            outputs = model(input_ids=context_batch, attention_mask=attention_mask)
 
-                logits = outputs[0]  # (B, S, V)
+            logits = outputs[0]  # (B, S, V)
 
-                # Apply temperature scaling before computing log probabilities
-                assert temperature > 0, "Temperature must be greater than 0."
+            # Apply temperature scaling before computing log probabilities
+            assert temperature > 0, "Temperature must be greater than 0."
 
-                logits = logits / temperature  # (B, S, V)
+            logits = logits / temperature  # (B, S, V)
 
-                # Compute new log probabilities
-                log_probs = F.log_softmax(logits, dim=-1)  # (B, S, V)
-                # Apply mask to log probabilities and values
-                action_log_probs = log_probs.gather(
-                    dim=-1, index=action_batch.unsqueeze(-1)
-                ).squeeze(
-                    -1
-                )  # (B,S)
+            # Compute new log probabilities
+            log_probs = F.log_softmax(logits, dim=-1)  # (B, S, V)
+            # Apply mask to log probabilities and values
+            action_log_probs = log_probs.gather(
+                dim=-1, index=action_batch.unsqueeze(-1)
+            ).squeeze(
+                -1
+            )  # (B,S)
 
-                entropy = -log_probs * F.softmax(logits, dim=-1)  # (B, S, V)
-                entropy = entropy.sum(dim=-1)  # (B, S)
+            entropy = -log_probs * F.softmax(logits, dim=-1)  # (B, S, V)
+            entropy = entropy.sum(dim=-1)  # (B, S)
 
-                kl_div = 0
-                if kl_loss_coef != 0.0:
-                    kl_div = compute_kl_div(
-                        model,
-                        input_ids=context_batch,
-                        attention_mask=attention_mask,
-                        action_log_probs=action_log_probs,
-                        index=action_batch,
-                        temperature=temperature,
+            kl_div = 0
+            if kl_loss_coef != 0.0:
+                kl_div = compute_kl_div(
+                    model,
+                    input_ids=context_batch,
+                    attention_mask=attention_mask,
+                    action_log_probs=action_log_probs,
+                    index=action_batch,
+                    temperature=temperature,
+                )
+            per_token_kl = kl_loss_coef * (kl_div * mask_batch)
+
+            rewarded_action_log_probs = action_log_probs * (
+                return_batch * mask_batch
+            ) + entropy_coef * (
+                entropy * mask_batch
+            )  # (B,S)
+
+            rewarded_action_log_probs = rewarded_action_log_probs - per_token_kl
+
+            # Avoid division by zero by adding a small epsilon value to the denominator
+            epsilon = 1e-8
+            loss = -rewarded_action_log_probs.sum(dim=1) / (
+                torch.sum(mask_batch, dim=1) + epsilon
+            )  # (B,)
+            loss = loss.mean()
+            train_output_dict["loss"].append(loss.item())
+
+            # ------------------------------------------------------------------
+            # Per‑batch debug logging (after computing loss)
+            # ------------------------------------------------------------------
+            if debug_enabled:
+                _output_reinforce_step_debug(
+                    save_dir=debug_log_path,
+                    tokenizer=tokenizer,
+                    epoch=epoch,
+                    batch_start_idx=i,
+                    context_batch=context_batch,
+                    action_batch=action_batch,
+                    logits=logits,
+                    action_log_probs=action_log_probs,
+                    return_batch=return_batch,
+                    mask_batch=mask_batch,
+                    entropy=entropy,
+                    per_token_kl=per_token_kl,
+                )
+
+            loss = loss / gradient_accumulation_steps
+            model_accelerator.backward(loss)
+            train_logger.info(f"Accumulated a gradient on loss of {loss.item()}.")
+
+            if ((i + mb_size) // mb_size) % gradient_accumulation_steps == 0:
+                if gradient_clipping and model_accelerator.sync_gradients:
+                    # norm is computed by concatenating all gradients, the gradients are present for param with requires_grad
+                    grad_norm = model_accelerator.clip_grad_norm_(
+                        model.parameters(), gradient_clipping
                     )
-                per_token_kl = kl_loss_coef * (kl_div * mask_batch)
+                    train_output_dict["grad_norm"].append(grad_norm.item())
 
-                rewarded_action_log_probs = action_log_probs * (
-                    return_batch * mask_batch
-                ) + entropy_coef * (
-                    entropy * mask_batch
-                )  # (B,S)
-
-                rewarded_action_log_probs = rewarded_action_log_probs - per_token_kl
-
-                # Avoid division by zero by adding a small epsilon value to the denominator
-                epsilon = 1e-8
-                loss = -rewarded_action_log_probs.sum(dim=1) / (
-                    torch.sum(mask_batch, dim=1) + epsilon
-                )  # (B,)
-                loss = loss.mean()
-                train_output_dict["loss"].append(loss.item())
-
-                # ------------------------------------------------------------------
-                # Per‑batch debug logging (after computing loss)
-                # ------------------------------------------------------------------
-                if debug_enabled:
-                    _output_reinforce_step_debug(
-                        save_dir=debug_log_path,
-                        tokenizer=tokenizer,
-                        epoch=epoch,
-                        batch_start_idx=i,
-                        context_batch=context_batch,
-                        action_batch=action_batch,
-                        logits=logits,
-                        action_log_probs=action_log_probs,
-                        return_batch=return_batch,
-                        mask_batch=mask_batch,
-                        entropy=entropy,
-                        per_token_kl=per_token_kl,
+                if debug_enabled and debug_log_path is not None:
+                    grad_snapshot_path = os.path.join(
+                        debug_log_path,
+                        f"gradient_snapshot_epoch{epoch}_batch{i}.json",
                     )
+                    _log_trainable_weights_gradient_snapshot(model, grad_snapshot_path)
 
-                if use_accelerate_gradaccum:
-                    model_accelerator.backward(loss)
+                train_logger.info(f"Applying a gradient step on the model.")
+                optimizer.step()
+                optimizer.zero_grad()
 
-                    if debug_enabled and debug_log_path is not None:
-                        grad_snapshot_path = os.path.join(
-                            debug_log_path,
-                            f"gradient_snapshot_epoch{epoch}_batch{i}.json",
-                        )
-                        _log_trainable_weights_gradient_snapshot(
-                            model, grad_snapshot_path
-                        )
+            # Update max GPU memory usage
+            current_memory_usage = torch.cuda.max_memory_allocated(device)
+            if current_memory_usage > max_memory_usage:
+                max_memory_usage = current_memory_usage
 
-                    optimizer.step()
-                    optimizer.zero_grad()
-                else:
-                    loss = loss / gradient_accumulation_steps
-                    if use_accelerate:
-                        model_accelerator.backward(loss)
-                    else:
-                        loss.backward()
-
-                    if ((i + mb_size) // mb_size) % gradient_accumulation_steps == 0:
-                        if use_accelerate:
-                            if gradient_clipping and model_accelerator.sync_gradients:
-                                # norm is computed by concatenating all gradients, the gradients are present for param with requires_grad
-                                grad_norm = model_accelerator.clip_grad_norm_(
-                                    model.parameters(), gradient_clipping
-                                )
-                                train_output_dict["grad_norm"].append(grad_norm.item())
-                        else:
-                            if gradient_clipping:
-                                grad_norm = torch.nn.utils.clip_grad_norm_(
-                                    model.parameters(), gradient_clipping
-                                )
-                                train_output_dict["grad_norm"].append(grad_norm.item())
-
-                        if debug_enabled and debug_log_path is not None:
-                            grad_snapshot_path = os.path.join(
-                                debug_log_path,
-                                f"gradient_snapshot_epoch{epoch}_batch{i}.json",
-                            )
-                            _log_trainable_weights_gradient_snapshot(
-                                model, grad_snapshot_path
-                            )
-
-                        optimizer.step()
-                        optimizer.zero_grad()
-
-                # Update max GPU memory usage
-                current_memory_usage = torch.cuda.max_memory_allocated(device)
-                if current_memory_usage > max_memory_usage:
-                    max_memory_usage = current_memory_usage
-
-    # Log max GPU memory usage after training
-    memory_logger.info(
-        f"Max GPU memory usage during training: {max_memory_usage / (1024 ** 2):.2f} MB"
+    train_logger.info(
+        f"Max GPU memory usage during entire training: {max_memory_usage / (1024 ** 2):.2f} MB"
     )
 
     # Save final trainable weights snapshot if debug enabled
@@ -362,11 +350,13 @@ def reinforce_train(
             os.path.join(debug_log_path, "trainable_weights_comparison.txt"),
         )
 
-    if use_accelerate:
-        model_accelerator.clear(model, optimizer)
+    model_accelerator.clear(model, optimizer)
     for key in train_output_dict:
         train_output_dict[key] = np.mean(train_output_dict[key])
-
+    # TODO: log memory taken
+    train_logger.info(
+        f"Memory taken after training: {torch.cuda.max_memory_allocated(device) / (1024 ** 2):.2f} MB"
+    )
     import gc
 
     gc.collect()
@@ -493,11 +483,18 @@ def _log_trainable_weights_snapshot(model, save_path):
                 trainable_params[name] = tensor_to_serializable(param)
             else:
                 # For frozen params, just store summary stats to save space
-                frozen_params[name] = {
-                    "shape": list(param.shape),
-                    "norm": float(param.norm().item()) if param.numel() > 0 else 0,
-                    "requires_grad": param.requires_grad,
-                }
+                try:
+                    frozen_params[name] = {
+                        "shape": list(param.shape),
+                        "norm": float(param.norm().item()) if param.numel() > 0 else 0,
+                        "requires_grad": param.requires_grad,
+                    }
+                except Exception as e:
+                    # print(f"Error computing norm for {name}: {e}")
+                    frozen_params[name] = {
+                        "shape": list(param.shape),
+                        "requires_grad": param.requires_grad,
+                    }
 
     # Find PEFT modules more explicitly for categorization purposes
     peft_modules = []

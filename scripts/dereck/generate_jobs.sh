@@ -22,6 +22,8 @@ COMMANDS=(
 
   "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=sum_rewards_full_finetune"
 
+  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=sum_rewards_qwen"
+
 )
 
 # COMMANDS=(

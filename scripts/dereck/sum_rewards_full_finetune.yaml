@@ -2,7 +2,7 @@ defaults:
   - dereck_base_config.yaml
 
 experiment:
-  name: "SUM_REWARDS/sum_rewards_full_finetune"
+  name: "COOPERATIVE/sum_rewards_full_finetune"
   description: "Sum rewards with full finetune"
 
 matches:
@@ -25,6 +25,7 @@ models:
     class: local_llm_v2
     init_args:
       fully_switch_vllm_weights_after_training: True
+      export_trained_parameters: False
       vllm_params:
         enable_lora: False
       name: 'llama'
@@ -45,7 +46,6 @@ models:
 default_kwargs: &default_kwargs
   train_func_args:
     gradient_checkpointing: true
-    use_accelerate_gradaccum: true
     temperature: ${temperature}
     entropy_coef: 0.0
     kl_loss_coef: 0.0

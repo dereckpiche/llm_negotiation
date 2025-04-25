@@ -2,7 +2,7 @@ defaults:
   - dereck_base_config.yaml
 
 experiment:
-  name: "COOPERATIVE/sum_rewards_big_adapter"
+  name: "COOPERATIVE/qwen_sum_rewards_big_adapter"
   description: "Sum rewards with a big adapter finetune"
 
 matches:
@@ -23,20 +23,26 @@ models:
   llama:
     class: local_llm_v2
     init_args:
-      name: 'llama'
+      model_name: "Qwen/Qwen2.5-14B-Instruct-GPTQ-Int8"
+      bits_and_bytes_args: null
       vllm_params:
-        max_lora_rank: 512
+        gpu_memory_utilization: 0.45
+        max_lora_rank: 64
+        dtype: "float16"
+      hf_model_init_kwargs:
+        torch_dtype: "float16"
       adapter_configs:
         fulldude:
           type: "lora"
-          optimizer_method: "Adam"
+          optimizer_method: "SGD"
           optimizer_kwargs:
-            lr: 1e-6
+            lr: 1e-5
             weight_decay: 0.0
           lora_kwargs:
-            r: 512
-            lora_alpha: 1024
+            r: 64
+            lora_alpha: 128
             lora_dropout: 0.0
+            target_modules: ['k_proj', 'q_proj', 'v_proj', 'o_proj', "gate_proj", "down_proj", "up_proj"]
 
 
 
