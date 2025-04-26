@@ -1,7 +1,8 @@
 import json
-import regex as re
 import re
-import json
+
+import regex as re
+
 from utils.common_imports import *
 
 
@@ -61,7 +62,7 @@ class DondAgent:
             attribution_map (dict, optional): Mapping of agent names to their attribution keys for finalization.
                 Format: {
                     "agent_name": {
-                        "i_take_key": "key_for_self", 
+                        "i_take_key": "key_for_self",
                         "other_takes_key": "key_for_other"
                     },
                     ...
@@ -86,11 +87,13 @@ class DondAgent:
         # Set the new mechanics prompts.
         self.message_mechanics_prompt = message_mechanics_prompt
         self.finalization_mechanics_prompt = finalization_mechanics_prompt
-        self.dond_version_specificities = dond_version_specificities  # New prompt for version specificities
+        self.dond_version_specificities = (
+            dond_version_specificities  # New prompt for version specificities
+        )
         self.reasoning_mechanics_prompt = reasoning_mechanics_prompt
         self.time_to_finalize_prompt = time_to_finalize_prompt
         self.time_to_send_message_prompt = time_to_send_message_prompt
-        
+
         # Store the parser functions
         self.message_parser = globals()[message_parser]
         self.finalization_parser = globals()[finalization_parser]
@@ -128,9 +131,13 @@ class DondAgent:
         # If we have policy output, we need to process it and determine the action
         else:
             # Process the LLM output
-            is_error, error_message, is_finalization, processed_response, raw_response = self.process_response(
-                policy_output, state
-            )
+            (
+                is_error,
+                error_message,
+                is_finalization,
+                processed_response,
+                raw_response,
+            ) = self.process_response(policy_output, state)
 
             # Add the model response to chat history
             model_response = {
@@ -165,11 +172,16 @@ class DondAgent:
                 self.add_to_chat_history(user_message)
 
                 # Return with a request for policy output again (done = False)
-                return self.policy_id, self.chat_history, None, False, self.get_log_info()
+                return (
+                    self.policy_id,
+                    self.chat_history,
+                    None,
+                    False,
+                    self.get_log_info(),
+                )
 
             # Reset retries on successful processing
             self.retries = 0
-
 
             # Create the action to be sent to the environment
             action = (is_finalization, processed_response, raw_response)
@@ -186,7 +198,7 @@ class DondAgent:
         return {
             "agent_name": self.agent_name,
             "chat_history": self.chat_history,
-            "augmented_chat_history": self.augmented_chat_history
+            "augmented_chat_history": self.augmented_chat_history,
         }
 
     def render(self):
@@ -198,7 +210,6 @@ class DondAgent:
         """Perform any necessary cleanup."""
         # Implementation can be expanded if needed
         pass
-
 
     ###########################################################################
     # Helper methods below this point
@@ -228,20 +239,30 @@ class DondAgent:
         if state["game_moves"].get(self.agent_name) == 0:
             user_message += self.format_prompt(self.intro_prompt, state)
             if self.message_mechanics_prompt:
-                user_message += "\n\n" + self.format_prompt(self.message_mechanics_prompt, state)
+                user_message += "\n\n" + self.format_prompt(
+                    self.message_mechanics_prompt, state
+                )
             if self.finalization_mechanics_prompt:
-                user_message += "\n\n" + self.format_prompt(self.finalization_mechanics_prompt, state)
+                user_message += "\n\n" + self.format_prompt(
+                    self.finalization_mechanics_prompt, state
+                )
             if self.dond_version_specificities:
-                user_message += "\n\n" + self.format_prompt(self.dond_version_specificities, state)
+                user_message += "\n\n" + self.format_prompt(
+                    self.dond_version_specificities, state
+                )
             if self.allow_reasoning and self.reasoning_mechanics_prompt:
-                user_message += "\n\n" + self.format_prompt(self.reasoning_mechanics_prompt, state)
+                user_message += "\n\n" + self.format_prompt(
+                    self.reasoning_mechanics_prompt, state
+                )
             if self.goal_prompt:
                 user_message += "\n\n" + self.format_prompt(self.goal_prompt, state)
 
         # If the current agent has not yet made any move in this round, add round instructions.
         if state["round_moves"].get(self.agent_name, 0) == 0:
             if state["round_number"] == 0 and self.first_round_prompt:
-                user_message += "\n\n" + self.format_prompt(self.first_round_prompt, state)
+                user_message += "\n\n" + self.format_prompt(
+                    self.first_round_prompt, state
+                )
             elif self.new_round_prompt:
                 user_message += self.format_prompt(self.new_round_prompt, state)
 
@@ -265,9 +286,13 @@ class DondAgent:
         max_msgs = state.get("max_messages", None)
         agent_messages = state.get("round_messages", {}).get(self.agent_name, 0)
         if agent_messages == max_msgs and self.time_to_finalize_prompt:
-            user_message += "\n\n" + self.format_prompt(self.time_to_finalize_prompt, state)
+            user_message += "\n\n" + self.format_prompt(
+                self.time_to_finalize_prompt, state
+            )
         elif agent_messages < min_msgs and self.time_to_send_message_prompt:
-            user_message += "\n\n" + self.format_prompt(self.time_to_send_message_prompt, state)
+            user_message += "\n\n" + self.format_prompt(
+                self.time_to_send_message_prompt, state
+            )
 
         usr_prompt = {
             "role": "user",
@@ -302,50 +327,66 @@ class DondAgent:
         outside_length = total_length - total_tag_content_length
         if outside_length > 5:
             errors.append("Excessive content outside of valid tags.")
-            
+
         # Check reasoning content
         think_blocks = re.findall(r"<think>(.*?)</think>", response, flags=re.S)
         if think_blocks:
             total_thinking_chars = sum(len(block.strip()) for block in think_blocks)
-            if self.max_reasoning_chars is not None and total_thinking_chars > self.max_reasoning_chars:
+            if (
+                self.max_reasoning_chars is not None
+                and total_thinking_chars > self.max_reasoning_chars
+            ):
                 errors.append(
                     f"The reasoning section exceeds the maximum allowed reasoning characters "
                     f"({total_thinking_chars} > {self.max_reasoning_chars})."
                 )
-                
+
         # Check if the response exceeds the maximum allowed characters per message.
         max_chars = state.get("max_chars_per_message", None)
         if max_chars is not None and len(response) > max_chars:
-            errors.append("Response exceeds the maximum allowed characters per message.")
-        
+            errors.append(
+                "Response exceeds the maximum allowed characters per message."
+            )
+
         # Use the message parser to check for and extract message content
-        contains_message, message_errors, processed_message = self.message_parser(response, state)
-        
+        contains_message, message_errors, processed_message = self.message_parser(
+            response, state
+        )
+
         # Use the finalization parser to check for and extract finalization content
-        contains_finalization, finalization_errors, processed_finalization = self.finalization_parser(response, state, **self.finalization_parser_kwargs)
-        
-        
+        (
+            contains_finalization,
+            finalization_errors,
+            processed_finalization,
+        ) = self.finalization_parser(response, state, **self.finalization_parser_kwargs)
+
         # Combine errors from all validations
         if message_errors:
             errors.extend(message_errors)
         if finalization_errors:
             errors.extend(finalization_errors)
-            
+
         # Check for conflicting actions
         if contains_message and contains_finalization:
-            errors.append("You cannot send both a message and a finalization in one response.")
-        
+            errors.append(
+                "You cannot send both a message and a finalization in one response."
+            )
+
         if not contains_message and not contains_finalization:
-            errors.append("You must send either a message or a finalization. You have sent nothing.")
-        
+            errors.append(
+                "You must send either a message or a finalization. You have sent nothing."
+            )
+
         # Return results
         if errors:
             if len(errors) == 1:
                 error_message = errors[0]
             else:
-                error_message = "Errors:\n" + "\n".join(f"{i+1}) {err}" for i, err in enumerate(errors))
+                error_message = "Errors:\n" + "\n".join(
+                    f"{i+1}) {err}" for i, err in enumerate(errors)
+                )
             return True, error_message, False, None, response
-            
+
         # If no errors, return the appropriate processed content
         if contains_finalization:
             return False, "", True, processed_finalization, response
@@ -363,10 +404,14 @@ class DondAgent:
                 other_agent_finalization = ""
 
             # Get the values for the current agent based on their role.
-            values = state["role_values"][state["agent_to_role"][state["current_agent"]]]
+            values = state["role_values"][
+                state["agent_to_role"][state["current_agent"]]
+            ]
 
             if state.get("round_points") != []:
-                last_round_points = state['round_points'][-1][state["agent_to_role"][state["current_agent"]]]
+                last_round_points = state["round_points"][-1][
+                    state["agent_to_role"][state["current_agent"]]
+                ]
             else:
                 last_round_points = 0
 
@@ -378,47 +423,54 @@ class DondAgent:
                     if role != state["agent_to_role"][state["current_agent"]]:
                         coagent_role = role
                         break
-                
+
                 if coagent_role:
-                    coagent_last_round_points = state['round_points'][-1][coagent_role]
+                    coagent_last_round_points = state["round_points"][-1][coagent_role]
                 else:
                     coagent_last_round_points = 0
             else:
                 coagent_last_round_points = 0
 
             # Retrieve message-related values from the state.
-            remaining_msgs = state['messages_remaining'][self.agent_name]
+            remaining_msgs = state["messages_remaining"][self.agent_name]
             max_msgs = state.get("max_messages", 0)
             min_msgs = state.get("min_messages", 0)
             current_sent = state["round_messages"].get(self.agent_name, 0)
 
             # Format finalize samples using actual item names and agent's attribution keys
             items = state.get("items", [])
-            
+
             # Get the appropriate keys for this agent from attribution_map or use defaults
             i_take_key = "i_take"
             other_takes_key = "other_takes"
-            
-            if self.finalization_parser_kwargs and self.agent_name in self.finalization_parser_kwargs:
-                agent_keys = self.finalization_parser_kwargs[self.agent_name]
-                i_take_key = agent_keys.get("i_take_key", "i_take")
-                other_takes_key = agent_keys.get("other_takes_key", "other_takes")
-            
-            finalize_sample = '{'
+
+            if self.finalization_parser_kwargs:
+                attribution_map = self.finalization_parser_kwargs.get(
+                    "attribution_map", {}
+                )
+                i_take_key = attribution_map.get(self.agent_name, {}).get(
+                    "i_take_key", "i_take"
+                )
+                other_takes_key = attribution_map.get(self.agent_name, {}).get(
+                    "other_takes_key", "other_takes"
+                )
+            # import pdb; pdb.set_trace()
+
+            finalize_sample = "{"
             finalize_sample += f'  "{i_take_key}": {{'
             item_entries = []
             for item in items:
                 item_entries.append(f'    "{item}": x')
-            finalize_sample += ','.join(item_entries)
-            finalize_sample += '  },'
-            
+            finalize_sample += ",".join(item_entries)
+            finalize_sample += "  },"
+
             finalize_sample += f'  "{other_takes_key}": {{'
             item_entries = []
             for item in items:
                 item_entries.append(f'    "{item}": y')
-            finalize_sample += ','.join(item_entries)
-            finalize_sample += '  }}'
-            
+            finalize_sample += ",".join(item_entries)
+            finalize_sample += "  }}"
+
             last_round_coagent_values = {}
             # -------------------------------------------
             # New logic: Compute last round breakdown details for new_round_prompt_with_values.
@@ -426,10 +478,16 @@ class DondAgent:
             # If archived round info exists, then check if an agreement was reached.
             # If no agreement was reached, fill with "0 points, since no agreement was reached".
             # If agreement was reached, compute detailed breakdown per item.
-            if (state.get("round_agent_roles") and state.get("round_agreements_reached") and
-                len(state["round_agent_roles"]) > 0 and len(state["round_agreements_reached"]) > 0):
+            if (
+                state.get("round_agent_roles")
+                and state.get("round_agreements_reached")
+                and len(state["round_agent_roles"]) > 0
+                and len(state["round_agreements_reached"]) > 0
+            ):
                 last_agreement = state["round_agreements_reached"][-1]
-                last_arch_roles = state["round_agent_roles"][-1]  # mapping: agent -> role for that round
+                last_arch_roles = state["round_agent_roles"][
+                    -1
+                ]  # mapping: agent -> role for that round
                 # Determine current agent's role in the last round
                 my_role = last_arch_roles.get(self.agent_name, None)
                 # Determine the other agent's name and role
@@ -439,18 +497,26 @@ class DondAgent:
                         other_agent_name = p
                         other_role = role
                         break
-                
+
                 # Get the last round values
-                last_round_values = state["round_values"][-1]  # mapping: role -> values dict
+                last_round_values = state["round_values"][
+                    -1
+                ]  # mapping: role -> values dict
                 # Extract coagent values outside the agreement check
                 last_round_coagent_values = last_round_values.get(other_role, {})
-                
+
                 if not last_agreement:
-                    last_round_points_computed = "0 points, since no agreement was reached"
-                    coagent_last_round_points_computed = "0 points, since no agreement was reached"
+                    last_round_points_computed = (
+                        "0 points, since no agreement was reached"
+                    )
+                    coagent_last_round_points_computed = (
+                        "0 points, since no agreement was reached"
+                    )
                 else:
                     # Retrieve last round's finalizations
-                    last_round_finalizations = state["round_finalizations"][-1]  # mapping: role -> finalization dict
+                    last_round_finalizations = state["round_finalizations"][
+                        -1
+                    ]  # mapping: role -> finalization dict
                     # Compute detailed breakdown for current agent:
                     total_my = 0
                     details_my = []
@@ -459,25 +525,36 @@ class DondAgent:
                         my_val = last_round_values.get(my_role, {}).get(item, 0)
                         product_my = my_qty * my_val
                         total_my += product_my
-                        details_my.append(f"{my_val} per {item} x {my_qty} = {product_my}")
-                    last_round_points_computed = "; ".join(details_my) + f" | Total: {total_my} points"
+                        details_my.append(
+                            f"{my_val} per {item} x {my_qty} = {product_my}"
+                        )
+                    last_round_points_computed = (
+                        "; ".join(details_my) + f" | Total: {total_my} points"
+                    )
                     # Compute detailed breakdown for the coagent:
                     total_other = 0
                     details_other = []
                     for item in items:
-                        other_qty = last_round_finalizations.get(other_role, {}).get(item, 0)
+                        other_qty = last_round_finalizations.get(other_role, {}).get(
+                            item, 0
+                        )
                         other_val = last_round_values.get(other_role, {}).get(item, 0)
                         product_other = other_qty * other_val
                         total_other += product_other
-                        details_other.append(f"{other_val} per {item} x {other_qty} = {product_other}")
-                    coagent_last_round_points_computed = "; ".join(details_other) + f" | Total: {total_other} points"
-                
+                        details_other.append(
+                            f"{other_val} per {item} x {other_qty} = {product_other}"
+                        )
+                    coagent_last_round_points_computed = (
+                        "; ".join(details_other) + f" | Total: {total_other} points"
+                    )
+
             else:
                 last_round_points_computed = "0 points, since no agreement was reached"
-                coagent_last_round_points_computed = "0 points, since no agreement was reached"
+                coagent_last_round_points_computed = (
+                    "0 points, since no agreement was reached"
+                )
 
             # -------------------------------------------
-
 
             # After computing last_round_points_computed and coagent_last_round_points_computed, add cumulative points calculations based on historical rounds.
             rounds_roles = state.get("round_agent_roles", [])
@@ -504,35 +581,64 @@ class DondAgent:
                         coagent_name = agent_name
                         break
 
-            return prompt.replace("{rounds_per_game}", str(state.get("rounds_per_game", ""))) \
-                        .replace("{last_round_points}", str(last_round_points)) \
-                        .replace("{agent_name}", self.agent_name) \
-                        .replace("{coagent_name}", coagent_name) \
-                        .replace("{last_round_points_computed}", last_round_points_computed) \
-                        .replace("{coagent_last_round_points}", str(coagent_last_round_points)) \
-                        .replace("{coagent_last_round_points_computed_other}", coagent_last_round_points_computed) \
-                        .replace("{last_round_coagent_values}", str(last_round_coagent_values)) \
-                        .replace("{current_round}", str(state.get("current_round", ""))) \
-                        .replace("{nb_rounds}", str(state["round_number"] + 1)) \
-                        .replace("{quantities}", str(state.get("quantities", ""))) \
-                        .replace("{values}", str(values)) \
-                        .replace("{items}", str(items)) \
-                        .replace("{max_reasoning_chars}", str(self.max_reasoning_chars)) \
-                        .replace("{max_messages}", str(max_msgs)) \
-                        .replace("{min_messages}", str(min_msgs)) \
-                        .replace("{max_chars_per_message}", str(state.get("max_chars_per_message", ""))) \
-                        .replace("{max_errors}", str(self.max_errors)) \
-                        .replace("{last_message}", str(state.get("last_raw_response", ""))) \
-                        .replace("{last_raw_response}", str(state.get("last_raw_response", ""))) \
-                        .replace("{last_processed_response}", str(state.get("last_processed_response", ""))) \
-                        .replace("{other_agent_finalization}", str(other_agent_finalization)) \
-                        .replace("{remaining_messages}", \
-                                 f"Minimum Messages: {min_msgs}, Maximum Messages: {max_msgs}, Current Number Sent: {current_sent}") \
-                        .replace("{finalize_sample}", finalize_sample) \
-                        .replace("{finalize_sample_i_take}", f'"{i_take_key}": ' + "{" + ", ".join([f'"{item}": x' for item in items]) + "}") \
-                        .replace("{finalize_sample_other}", f'"{other_takes_key}": ' + "{" + ", ".join([f'"{item}": y' for item in items]) + "}") \
-                        .replace("{cumulative_round_points_your}", str(cumulative_your_points)) \
-                        .replace("{cumulative_round_points_coagent}", str(cumulative_coagent_points))
+            return (
+                prompt.replace(
+                    "{rounds_per_game}", str(state.get("rounds_per_game", ""))
+                )
+                .replace("{last_round_points}", str(last_round_points))
+                .replace("{agent_name}", self.agent_name)
+                .replace("{coagent_name}", coagent_name)
+                .replace("{last_round_points_computed}", last_round_points_computed)
+                .replace("{coagent_last_round_points}", str(coagent_last_round_points))
+                .replace(
+                    "{coagent_last_round_points_computed_other}",
+                    coagent_last_round_points_computed,
+                )
+                .replace("{last_round_coagent_values}", str(last_round_coagent_values))
+                .replace("{current_round}", str(state.get("current_round", "")))
+                .replace("{nb_rounds}", str(state["round_number"] + 1))
+                .replace("{quantities}", str(state.get("quantities", "")))
+                .replace("{values}", str(values))
+                .replace("{items}", str(items))
+                .replace("{max_reasoning_chars}", str(self.max_reasoning_chars))
+                .replace("{max_messages}", str(max_msgs))
+                .replace("{min_messages}", str(min_msgs))
+                .replace(
+                    "{max_chars_per_message}",
+                    str(state.get("max_chars_per_message", "")),
+                )
+                .replace("{max_errors}", str(self.max_errors))
+                .replace("{last_message}", str(state.get("last_raw_response", "")))
+                .replace("{last_raw_response}", str(state.get("last_raw_response", "")))
+                .replace(
+                    "{last_processed_response}",
+                    str(state.get("last_processed_response", "")),
+                )
+                .replace("{other_agent_finalization}", str(other_agent_finalization))
+                .replace(
+                    "{remaining_messages}",
+                    f"Minimum Messages: {min_msgs}, Maximum Messages: {max_msgs}, Current Number Sent: {current_sent}",
+                )
+                .replace("{finalize_sample}", finalize_sample)
+                .replace(
+                    "{finalize_sample_i_take}",
+                    f'"{i_take_key}": '
+                    + "{"
+                    + ", ".join([f'"{item}": x' for item in items])
+                    + "}",
+                )
+                .replace(
+                    "{finalize_sample_other}",
+                    f'"{other_takes_key}": '
+                    + "{"
+                    + ", ".join([f'"{item}": y' for item in items])
+                    + "}",
+                )
+                .replace("{cumulative_round_points_your}", str(cumulative_your_points))
+                .replace(
+                    "{cumulative_round_points_coagent}", str(cumulative_coagent_points)
+                )
+            )
         return ""
 
     def get_chat_history(self):
@@ -574,8 +680,12 @@ class DondAgent:
         self.__dict__.update(checkpoint)
 
     def export(self, path, state_history):
-        game_stats = self.gather_statistics_func(state_history, self.conversation_history, **self.gather_statistics_func_args)
-        self.set_chat_scores_func(self.conversation_history, **self.set_chat_scores_func_args)
+        game_stats = self.gather_statistics_func(
+            state_history, self.conversation_history, **self.gather_statistics_func_args
+        )
+        self.set_chat_scores_func(
+            self.conversation_history, **self.set_chat_scores_func_args
+        )
 
         with open(path, "w") as f:
             json.dump(game_stats, f)
@@ -585,190 +695,213 @@ class DondAgent:
 def regular_message_parser(response, state):
     """
     Default message parser for DondAgent.
-    
+
     Args:
         response (str): The full response from the agent.
         state (dict): The current state of the game.
-        
+
     Returns:
         tuple: (contains_message, errors, processed_message)
     """
     errors = []
-    
+
     # Find all message tags in the response
     message_tags = re.findall(r"<message>(.*?)</message>", response, flags=re.S)
     num_message_tags = len(message_tags)
-    
+
     # Check if there is exactly one message tag
     if num_message_tags == 0:
         return False, [], None
-        
+
     if num_message_tags > 1:
-        errors.append("Multiple <message> blocks detected. Please send only one message block.")
+        errors.append(
+            "Multiple <message> blocks detected. Please send only one message block."
+        )
         return True, errors, None
-    
+
     # Extract message content
     message_content = message_tags[0].strip()
-    
+
     # Check if this response is a message and would exceed per-agent allowed messages.
     max_msgs = state.get("max_messages", None)
     agent_name = state.get("current_agent", "")
     agent_messages = state.get("round_messages", {}).get(agent_name, 0)
-    
+
     if max_msgs is not None:
         if agent_messages == max_msgs:
-            errors.append("You must finalize because you reached the maximum number of messages!")
-    
+            errors.append(
+                "You must finalize because you reached the maximum number of messages!"
+            )
+
     # Check that the message is not sent when the other agent has finalized
     if state.get("has_finalized", False):
-        errors.append("You must finalize your move because the other agent has finalized. Do not send a conversation message.")
-    
+        errors.append(
+            "You must finalize your move because the other agent has finalized. Do not send a conversation message."
+        )
+
     return True, errors, message_content
 
 
 def regular_finalization_parser(response, state, attribution_map=None):
     """
     Simplified finalization parser for DondAgent.
-    
+
     Args:
         response (str): The full response from the agent.
         state (dict): The current state of the game.
         attribution_map (dict, optional): Mapping of agent names to their attribution keys.
-            
+
     Returns:
         tuple: (contains_finalization, errors, processed_finalization)
     """
     errors = []
-    
+
     # Find all finalize tags in the response
     finalize_tags = re.findall(r"<finalize>(.*?)</finalize>", response, flags=re.S)
-    
+
     # Check if there is a finalize tag
     if not finalize_tags:
         return False, [], None
-    
+
     # Extract finalization content from the first tag
     finalization_content = finalize_tags[0].strip()
-    
+
     # Get current agent name and other agent names
     current_agent = state.get("current_agent", "")
     agents = state.get("agents", [])
     other_agent = next((agent for agent in agents if agent != current_agent), "")
-    
+
     try:
         # Check 1: Proper formatting
         finalization_json = json.loads(finalization_content)
         if not isinstance(finalization_json, dict):
             errors.append("The finalization is not properly formatted.")
             return True, errors, None
-        
+
         # Format 1: Agent name keys format - {current_agent: {...}, other_agent: {...}}
         if current_agent in finalization_json and other_agent in finalization_json:
             my_items = finalization_json.get(current_agent, {})
             other_items = finalization_json.get(other_agent, {})
-            
+
             if not isinstance(my_items, dict) or not isinstance(other_items, dict):
                 errors.append("The finalization is not properly formatted.")
                 return True, errors, None
-            
+
             # Check 2: Consistency with quantities
             expected_items = set(state.get("items", []))
             expected_item_quantities = state.get("quantities", {})
-            
+
             for item in expected_items:
                 if item in my_items and item in other_items:
-                    if not (isinstance(my_items.get(item), int) and isinstance(other_items.get(item), int)):
+                    if not (
+                        isinstance(my_items.get(item), int)
+                        and isinstance(other_items.get(item), int)
+                    ):
                         errors.append("The finalization is not properly formatted.")
                         return True, errors, None
-                        
-                    if my_items.get(item, 0) + other_items.get(item, 0) != expected_item_quantities.get(item, 0):
-                        errors.append("The quantities don't sum up to the total quantities available.")
+
+                    if my_items.get(item, 0) + other_items.get(
+                        item, 0
+                    ) != expected_item_quantities.get(item, 0):
+                        errors.append(
+                            "The quantities don't sum up to the total quantities available."
+                        )
                         return True, errors, None
-            
+
             # Return what the current agent takes for themselves
             return True, errors, my_items
-            
+
         # Format 2: i_take/other_takes format - backward compatibility
         i_take_key = "i_take"
         other_takes_key = "other_takes"
-        
+
         if attribution_map and current_agent in attribution_map:
             agent_keys = attribution_map[current_agent]
             i_take_key = agent_keys.get("i_take_key", "i_take")
             other_takes_key = agent_keys.get("other_takes_key", "other_takes")
-        
+
         i_take = finalization_json.get(i_take_key, {})
         other_takes = finalization_json.get(other_takes_key, {})
-        
+
         if not isinstance(i_take, dict) or not isinstance(other_takes, dict):
             errors.append("The finalization is not properly formatted.")
             return True, errors, None
-            
+
         # Check 2: Consistency with quantities
         expected_items = set(state.get("items", []))
         expected_item_quantities = state.get("quantities", {})
-        
+
         for item in expected_items:
             if item in i_take and item in other_takes:
-                if not (isinstance(i_take.get(item), int) and isinstance(other_takes.get(item), int)):
+                if not (
+                    isinstance(i_take.get(item), int)
+                    and isinstance(other_takes.get(item), int)
+                ):
                     errors.append("The finalization is not properly formatted.")
                     return True, errors, None
-                    
-                if i_take.get(item, 0) + other_takes.get(item, 0) != expected_item_quantities.get(item, 0):
-                    errors.append("The quantities don't sum up to the total quantities available.")
+
+                if i_take.get(item, 0) + other_takes.get(
+                    item, 0
+                ) != expected_item_quantities.get(item, 0):
+                    errors.append(
+                        "The quantities don't sum up to the total quantities available."
+                    )
                     return True, errors, None
-        
+
         # Return what the current agent takes for themselves
         return True, errors, i_take
-        
+
     except json.JSONDecodeError:
         errors.append("The finalization is not properly formatted.")
         return True, errors, None
+
 
 def accept_reject_finalization_parser(response, state, attribution_map=None):
     """
     A finalization parser that uses regular_parser for the first finalization,
     but expects 'accept' or 'reject' for subsequent finalizations.
-    
+
     Args:
         response (str): The full response from the agent.
         state (dict): The current state of the game.
         attribution_map (dict, optional): Mapping of agent names to their attribution keys.
-            
+
     Returns:
         tuple: (contains_finalization, errors, processed_finalization)
         processed_finalization is a dict of items for first finalization and accept,
         or simply "reject_flag" string for rejection.
     """
     errors = []
-    
+
     # Find all finalize tags in the response
     finalize_tags = re.findall(r"<finalize>(.*?)</finalize>", response, flags=re.S)
-    
+
     # Check if there is a finalize tag
     if not finalize_tags:
         return False, [], None
-    
+
     # Extract finalization content from the first tag
     finalization_content = finalize_tags[0].strip()
-    
+
     # Check if this is the first finalization or a response to a previous finalization
     agent_name = state.get("current_agent", "")
     is_first_finalization = True
-    
+
     # Check if there's a previous finalization from the other agent
     if state.get("has_finalized", False):
         is_first_finalization = False
-    
+
     # If it's the first finalization, use the regular parser
     if is_first_finalization:
         return regular_finalization_parser(response, state, attribution_map)
-    
+
     # For subsequent finalizations, expect 'accept' or 'reject'
     if finalization_content.lower() not in ["accept", "reject"]:
-        errors.append("For responding to a finalization, you must either <finalize>accept</finalize> or <finalize>reject</finalize>.")
+        errors.append(
+            "For responding to a finalization, you must either <finalize>accept</finalize> or <finalize>reject</finalize>."
+        )
         return True, errors, None
-    
+
     # Return based on the response
     if finalization_content.lower() == "accept":
         # For accept, we need to calculate what the current agent gets
@@ -776,10 +909,10 @@ def accept_reject_finalization_parser(response, state, attribution_map=None):
         other_agent_finalization = state.get("last_processed_response", {})
         quantities = state.get("quantities", {})
         items = state.get("items", [])
-        
+
         # Create our finalization by subtracting what the other agent took from total quantities
         my_finalization = {}
-        
+
         for item in items:
             # Get what the other agent took for this item
             other_took = other_agent_finalization.get(item, 0)
@@ -787,11 +920,8 @@ def accept_reject_finalization_parser(response, state, attribution_map=None):
             total_qty = quantities.get(item, 0)
             # Calculate what I get
             my_finalization[item] = total_qty - other_took
-        
+
         return True, errors, my_finalization
     else:  # reject
         # Simply return the "reject_flag" string to match the finalize method in DondEnv
         return True, errors, "reject_flag"
-
-
-
