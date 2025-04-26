@@ -11,19 +11,13 @@ import torch
 from environments.dond.dond_agent import DondAgent
 from environments.dond.dond_game import DondEnv
 from environments.dond.dond_training_data_funcs import *
-
-# from environments.ipd.ipd_game import IPDEnv
-# from environments.ipd.ipd_agent import IPDAgent
-# from environments.dond.dond_game import DondEnv
-# from environments.dond.dond_agent import DondAgent
-# from environments.ipd.ipd_log_funcs import *
-# from environments.dond.dond_log_funcs import *
 from environments.environment_imports import *
 from generation.run_games import run_batched_matches
 from models.dummy_local_llm import DummyLocalLLM
 
 # Local imports
 from models.local_llm import LocalLLM
+from models.new_local_llm import LocalLLMV2
 from models.server_llm import ServerLLM
 from training.train_main import *
 from utils.common_imports import *
@@ -90,7 +84,10 @@ def generate_and_train(cfg, base_seed):
         for i in range(nb_matches):
             matches.append(
                 create_blank_match(
-                    cfg, seed_offset=(iteration * nb_matches) + i, game_index=i, game_length=game_lengths[i]
+                    cfg,
+                    seed=base_seed + (iteration * nb_matches) + i,
+                    game_index=i,
+                    game_length=game_lengths[i],
                 )
             )
         agents = matches[0]["agents"]
@@ -295,6 +292,12 @@ def init_models(cfg, base_seed, output_directory):
                 base_seed=base_seed * cfg["experiment"]["nb_epochs"],
                 output_directory=output_directory,
             )
+        elif cfg["models"][model_name]["class"] == "local_llm_v2":
+            models[model_name] = LocalLLMV2(
+                **cfg["models"][model_name]["init_args"],
+                base_seed=base_seed * cfg["experiment"]["nb_epochs"],
+                output_directory=output_directory,
+            )
         elif cfg["models"][model_name]["class"] == "dummy_local_llm":
             models[model_name] = DummyLocalLLM(**cfg["models"][model_name]["init_args"])
         elif cfg["models"][model_name]["class"] == "server_llm":
@@ -306,7 +309,7 @@ def init_models(cfg, base_seed, output_directory):
     return models
 
 
-def create_blank_match(cfg, seed_offset=0, game_index=0, game_length=10):
+def create_blank_match(cfg, seed=0, game_index=0, game_length=10):
     """
     Initializes a match for any game, using a functional approach to instantiate
     environment and agent classes based on configuration.
@@ -344,7 +347,10 @@ def create_blank_match(cfg, seed_offset=0, game_index=0, game_length=10):
 
     # Create match with instantiated environment and agents
     env = EnvClass(
-        game_index=game_index, random_seed=seed_offset, **env_kwargs, rounds_per_game=game_length
+        game_index=game_index,
+        random_seed=seed,
+        **env_kwargs,
+        rounds_per_game=game_length,
     )  # Pass the unique seed here
 
     # Add the logging function and args to the match dictionary
@@ -357,6 +363,7 @@ def create_blank_match(cfg, seed_offset=0, game_index=0, game_length=10):
 
     return match
 
+
 def format_time(seconds):
     if seconds >= 3600:
         return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m {int(seconds % 60)}s"
@@ -364,11 +371,11 @@ def format_time(seconds):
         return f"{int(seconds // 60)}m {int(seconds % 60)}s"
     else:
         return f"{int(seconds)}s"
-    
-def get_stochastic_game_lengths(max_length, 
-                                nb_games,
-                                continuation_prob, 
-                                same_length_batch=False):
+
+
+def get_stochastic_game_lengths(
+    max_length, nb_games, continuation_prob, same_length_batch=False
+):
     """
     Generates stochastic game lengths based on a geometric distribution.
 
@@ -381,16 +388,13 @@ def get_stochastic_game_lengths(max_length,
     Returns:
         Array: An array of game lengths.
     """
-    if continuation_prob==1:
+    if continuation_prob == 1:
         return [max_length] * nb_games
     if same_length_batch:
-        length = np.random.geometric(1-continuation_prob, 1)
+        length = np.random.geometric(1 - continuation_prob, 1)
         game_lengths = np.repeat(length, nb_games)
     else:
-        game_lengths = np.random.geometric(1-continuation_prob, nb_games)
-    
+        game_lengths = np.random.geometric(1 - continuation_prob, nb_games)
+
     game_lengths = np.where(game_lengths > max_length, max_length, game_lengths)
     return game_lengths.tolist()
-
-
-

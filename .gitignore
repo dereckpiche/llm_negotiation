@@ -5,12 +5,13 @@ test_venv/
 home
 results
 .vscode/
-
+slurm_logs/
+temp/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
-
+*.sh
 # C extensions
 *.so
 

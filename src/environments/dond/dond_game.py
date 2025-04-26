@@ -10,17 +10,19 @@ class DondEnv:
         game_index,
         random_seed,
         agents=["alice", "bob"],
-        mode="coop",
         max_messages=None,
         min_messages=None,
         max_chars_per_message=None,
         rounds_per_game=1,
         random_setup_func=None,
         random_setup_kwargs=None,
+        points_attribution_method=None,
+        points_attributions_kwargs=None,
         role_assignator_func=None,
         role_assignator_func_kwargs=None,
         finalization_visibility=False,
         other_values_visibility=False,
+        mode="basic",
     ):
         """
         Initializes the DoND game.
@@ -59,6 +61,12 @@ class DondEnv:
         else:
             self.random_setup_kwargs = {"random_seed": random_seed}
 
+        # In this game, players negotiate to divide items between them. 
+        # Each item has a quantity (like 6 books or 4 apples) that must be completely 
+        # distributed between players. For example, if there are 10 cookies,
+        # one player might take 7 and the other 3. Each player values the items 
+        # differently, so what's valuable to one player might not be to the other.
+            
         self.finalization_visibility = finalization_visibility
         self.rounds_per_game = rounds_per_game
         self.role_assignator_func = (
@@ -69,6 +77,14 @@ class DondEnv:
         self.role_assignator_func_kwargs = role_assignator_func_kwargs or {}
         self.role_assignator_func_kwargs["game_index"] = game_index
         self.other_values_visibility = other_values_visibility
+
+        # Store the points_attribution_method
+        self.points_attribution_method = (
+            globals()[points_attribution_method]
+            if isinstance(points_attribution_method, str)
+            else points_attribution_method
+        )
+        self.points_attributions_kwargs = points_attributions_kwargs or {}
 
         # TODO: Random seed should be tied to the sytem random seed.
         if random_seed is None:
@@ -105,7 +121,7 @@ class DondEnv:
 
         Args:
             actions (dict): A dictionary where keys are agent identifiers and values are actions
-                           in the form of (is_finalization, output).
+                           in the form of (is_finalization, processed_response, raw_response).
 
         Returns:
             observations (dict): A dictionary where keys are agent identifiers and values are observations.
@@ -117,7 +133,7 @@ class DondEnv:
 
         if current_agent in actions:
             action = actions[current_agent]
-            is_finalization, output = action
+            is_finalization, processed_response, raw_response = action
 
             # Count this move for the current agent (finalization or conversation).
             self.game_moves[current_agent] += 1
@@ -129,7 +145,8 @@ class DondEnv:
                 self.message_turn += 1
 
             # Update state flags.
-            self.last_message = output
+            self.last_raw_response = raw_response
+            self.last_processed_response = processed_response
             self.is_new_round = self.message_turn == 1
             self.is_new_game = self.round_nb == 0 and self.message_turn == 1
             self.game_over = False
@@ -143,29 +160,26 @@ class DondEnv:
                 # Treat the finalization as a conversation message
                 self.round_messages[current_agent] += 1
                 self.message_turn += 1
-                self.last_message = output
+                self.last_raw_response = raw_response
+                self.last_processed_response = processed_response
                 is_finalization = False
 
             if self.has_finalized:
                 # We are in the second finalization phase.
                 if not is_finalization:
-                    self.points = {agent: 0 for agent in self.agents}
+                    self.points = {role: 0 for role in self.roles}
                     self.agreement_reached = False
                 else:
-                    self.finalize(output)
-                    if self.verify_finalizations_match():
-                        self.set_points()
-                        self.agreement_reached = True
-                    else:
-                        self.points = {agent: 0 for agent in self.agents}
-                        self.agreement_reached = False
+                    self.finalize(processed_response)
+                    # Use the custom points attribution method which now returns (points, valid_agreement)
+                    self.points, self.agreement_reached = self.points_attribution_method(self.get_state(), **self.points_attributions_kwargs)
                 round_over = True
 
             else:
                 # If a agent sends a finalization, record it.
                 if is_finalization:
                     self.has_finalized = True
-                    self.finalize(output)
+                    self.finalize(processed_response)
                 # Check if any agent has exceeded their personal maximum message limit.
                 elif any(
                     count > self.max_messages for count in self.round_messages.values()
@@ -220,51 +234,29 @@ class DondEnv:
         """Perform any necessary cleanup."""
         pass
 
-    def verify_finalizations_match(self):
-        """
-        Verifies if the finalizations from both agents match the total quantities.
-
-        scores:
-            bool: True if the finalizations match, False otherwise.
-        """
-        for item in self.items:
-            total = sum(self.role_props[role][item] for role in self.roles)
-            if total != self.quantities[item]:
-                return False
-        return True
-
-    def set_points(self):
-        """
-        Sets the points for each role based on their finalizations.
-        """
-        utilities = {
-            role: sum(
-                self.role_values[role][item] * self.role_props[role][item]
-                for item in self.items
-            )
-            for role in self.roles
-        }
-
-        if self.mode == "coop":
-            total = sum(utilities.values())
-            self.points = {role: total for role in self.roles}
-
-        elif self.mode == "basic":
-            self.points = {role: utilities[role] for role in self.roles}
-
-    def finalize(self, finalization: list):
+    def finalize(self, finalization):
         """
         Records the finalization from the current agent.
 
         Args:
-            finalization (list): The list of finalized quantities for each item.
+            finalization (dict or str): Items taken by each player for each category,
+                                        or "reject" to explicitly reject the previous offer.
         """
         current_role = self.current_turn()
-        finalization_dict = finalization["i_take"]
+        current_agent = self.get_current_agent()
+        
+        # Handle explicit rejection
+        if finalization == "reject_flag":
+            # Mark the agreement as explicitly rejected
+            self.agreement_reached = False
+            self.role_props[current_role] = {"reject_flag": True}
+            return
+        
+        # Regular finalization (dict of items)
         # Ensure every item is present in the finalization, defaulting to 0 if missing
         for item in self.items:
-            finalization_dict.setdefault(item, 0)
-        self.role_props[current_role] = finalization_dict
+            finalization.setdefault(item, 0)
+        self.role_props[current_role] = finalization
 
     def get_state(self):
         """
@@ -290,7 +282,9 @@ class DondEnv:
             "nb_rounds": self.rounds_per_game,
             "quantities": self.quantities,
             "has_finalized": self.has_finalized,
-            "last_message": self.last_message,
+            "last_raw_response": getattr(self, "last_raw_response", None),
+            "last_processed_response": getattr(self, "last_processed_response", None),
+            "last_message": getattr(self, "last_raw_response", None),  # For backward compatibility
             "agents": self.agents,
             "finalization_visibility": self.finalization_visibility,
             "other_values_visibility": self.other_values_visibility,
@@ -353,7 +347,8 @@ class DondEnv:
         self.role_props = {role: {} for role in self.roles}
         self.points = {role: 0 for role in self.roles}  # Ensure points are reset
         self.agreement_reached = False
-        self.last_message = None
+        self.last_raw_response = None
+        self.last_processed_response = None
         # Reset the conversation message counter for the new round.
         self.message_turn = 0
         # Reset per-round move tracking for every agent.
@@ -382,14 +377,14 @@ class DondEnv:
                 role: 0 for role in self.roles
             }  # Ensure points are initialized
             self.agreement_reached = False
-            self.last_message = None
+            self.last_raw_response = None
+            self.last_processed_response = None
             self.round_nb = 0
             # Remove the old turn counter and use message_turn for conversation messages.
             self.message_turn = 0
             self.is_new_round = True
             self.is_new_game = True
             self.game_over = False
-            self.last_message = None
             self.role_deque = deque(self.roles)
             self.agent_to_role = None
             self.round_agent_roles = []
@@ -628,3 +623,127 @@ def fixed_role_assignator(state, **kwargs):
     agent_to_role = {agents[0]: roles[0], agents[1]: roles[1]}
 
     return agent_to_role
+
+
+def regular_set_points(state, **kwargs):
+    """
+    Sets the points for each role based on their finalizations.
+    This is the default/regular points attribution method.
+    
+    Args:
+        state (dict): The current state of the game.
+        kwargs (dict): Additional keyword arguments (not used here).
+    
+    Returns:
+        tuple: (dict, bool) - A mapping of roles to points and a boolean indicating if the agreement is valid.
+    """
+    roles = state["agent_to_role"].values()
+    items = state["items"]
+    role_values = state["role_values"]
+    role_props = state["role_props"]
+    mode = state["mode"]
+    quantities = state["quantities"]
+    
+    # Check if any role has explicitly rejected (with reject_flag flag)
+    for role in roles:
+        if role_props.get(role, {}).get("reject_flag", False):
+            # Agreement rejected, everyone gets 0 points
+            return {role: 0 for role in roles}, False
+    
+    # Verify if finalizations match the total quantities
+    valid_agreement = True
+    for item in items:
+        total = sum(role_props[role].get(item, 0) for role in roles)
+        if total != quantities[item]:
+            valid_agreement = False
+            break
+    
+    # Calculate utility for each role
+    utilities = {
+        role: sum(
+            role_values[role][item] * role_props[role].get(item, 0)
+            for item in items
+        )
+        for role in roles
+    }
+    
+    # Assign points based on game mode
+    if mode == "coop":
+        total = sum(utilities.values())
+        return {role: total for role in roles}, valid_agreement
+    elif mode == "basic":
+        return {role: utilities[role] for role in roles}, valid_agreement
+    else:
+        # Default to individual utilities if mode is not recognized
+        return {role: utilities[role] for role in roles}, valid_agreement
+
+
+def negotiation_payoff(state, use_max_divisor=True):
+    """
+    Implements the payoff formula r_a = ∑ (p_a * q_a * v_a) / max(q, p_a + p_o) from https://arxiv.org/pdf/2406.14662
+    
+    Where:
+    - r_a is the reward for agent a
+    - p_a is the proposal (quantity taken) by agent a
+    - v_a is the value agent a places on each item
+    - q_a is the total quantity of the item
+    - p_o is the proposal (quantity taken) by the opponent agent
+    - q is the total quantity of the item
+    
+    Args:
+        state (dict): The current state of the game.
+        kwargs (dict): Additional keyword arguments.
+            - min_divisor (int, optional): The minimum divisor value (default is 5)
+            - use_max_divisor (bool, optional): If True, use max(min_divisor, p_a + p_o),
+              otherwise use the total quantity (default is False)
+    
+    Returns:
+        tuple: (dict, bool) - A mapping of roles to points and a boolean indicating if the agreement is valid.
+    """
+    roles = list(state["agent_to_role"].values())
+    items = state["items"]
+    role_values = state["role_values"]
+    role_props = state["role_props"]
+    quantities = state["quantities"]
+    
+    # Check if any role has explicitly rejected (with reject_flag flag)
+    for role in roles:
+        if role_props.get(role, {}).get("reject_flag", False):
+            # Agreement rejected, everyone gets 0 points
+            return {role: 0 for role in roles}, False
+    
+    # Verify if finalizations match the total quantities
+    valid_agreement = True
+    for item in items:
+        total = sum(role_props[role].get(item, 0) for role in roles)
+        if total != quantities[item]:
+            valid_agreement = False
+            break
+    
+    points = {}
+    for i, role in enumerate(roles):
+        opponent_role = roles[1 - i]  
+        
+        total_points = 0
+        
+        for item in items:
+            p_a = role_props[role].get(item, 0)
+            v_a = role_values[role].get(item, 0)
+            q_a = quantities.get(item, 0)  
+            
+            p_o = role_props[opponent_role].get(item, 0)
+            
+            if use_max_divisor:
+                divisor = max(q_a, p_a + p_o)
+            else: 
+                divisor = p_a + p_o
+            
+            item_points = (p_a * q_a * v_a) / divisor if divisor > 0 else 0
+            
+            total_points += item_points
+            
+        points[role] = total_points
+    
+    return points, valid_agreement
+
+

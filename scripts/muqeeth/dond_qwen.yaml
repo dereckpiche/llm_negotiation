@@ -71,6 +71,9 @@ common_agent_kwargs: &common_agent_kwargs
     (You must finalize now in the aforementioned format.)
   time_to_send_message_prompt: |
     (You must send a message now in the aforementioned format.)
+  proposal_parser: regular_proposal_parser
+  proposal_parser_kwargs:
+    {"alice" : "i_take", "bob" : "i_take"}
 
 matches:
   env_class: "DondEnv"
@@ -188,7 +191,6 @@ common_models_init_args: &common_models_init_args
   optimizer_kwargs:
     lr: 1e-5
     weight_decay: 0.0
-
 
 models:
   qwen:
