@@ -167,7 +167,7 @@ def generate_and_train(cfg, base_seed):
 
         # TODO: Moving it here is better since we can plot for every k steps to speedup training
         for agent in agents.values():
-            train_output = train_output_dict[agent.policy_id]
+            # train_output = train_output_dict[agent.policy_id]
             agent_name = agent.agent_name
             # Update agent statistics
             agent_stats_folder = os.path.join(
@@ -185,10 +185,12 @@ def generate_and_train(cfg, base_seed):
 
             with open(agent_stats_file, "r") as f:
                 agent_stats = json.load(f)
-
-            for key in train_output:
-                if key in agent_stats:
-                    agent_stats[key].append(train_output[key])
+                
+            if agent.policy_id in train_output_dict:
+                train_output = train_output_dict[agent.policy_id]
+                for key in train_output:
+                    if key in agent_stats:
+                        agent_stats[key].append(train_output[key])
                 else:
                     agent_stats[key] = [train_output[key]]
 

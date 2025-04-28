@@ -5,7 +5,6 @@ import regex as re
 
 from utils.common_imports import *
 
-
 class DondAgent:
     def __init__(
         self,
@@ -13,10 +12,13 @@ class DondAgent:
         allow_reasoning,
         max_errors,
         policy_id,
+        enable_strategize=False,
+        max_strategize_chars=500,
         value_function_id=None,
         max_reasoning_chars=None,
         intro_prompt=None,
         goal_prompt=None,
+        strategize_prompt=None,
         first_round_prompt=None,
         new_round_prompt=None,
         agent_with_first_move_prompt=None,
@@ -32,6 +34,8 @@ class DondAgent:
         message_parser=None,
         finalization_parser=None,
         finalization_parser_kwargs=None,
+        strategize_parser=None,
+        thinking_parser=None,
     ):
         """
         Initializes the DondAgent.
@@ -59,6 +63,8 @@ class DondAgent:
             time_to_send_message_prompt (str, optional): Prompt for time to send message.
             message_parser (callable, optional): Function to parse message responses.
             finalization_parser (callable, optional): Function to parse finalization responses.
+            strategize_parser (callable, optional): Function to parse strategize responses.
+            thinking_parser (callable, optional): Function to parse thinking (reasoning) responses.
             attribution_map (dict, optional): Mapping of agent names to their attribution keys for finalization.
                 Format: {
                     "agent_name": {
@@ -74,9 +80,12 @@ class DondAgent:
         self.policy_id = policy_id
         self.value_function_id = value_function_id
         self.max_reasoning_chars = max_reasoning_chars
+        self.enable_strategize = enable_strategize
+        self.max_strategize_chars = max_strategize_chars
 
         self.intro_prompt = intro_prompt
         self.goal_prompt = goal_prompt
+        self.strategize_prompt = strategize_prompt
         self.first_round_prompt = first_round_prompt
         self.new_round_prompt = new_round_prompt
         self.agent_with_first_move_prompt = agent_with_first_move_prompt
@@ -84,6 +93,9 @@ class DondAgent:
         self.received_message_prompt = received_message_prompt
         self.other_agent_finalized_prompt = other_agent_finalized_prompt
 
+        self.needs_to_strategize = self.enable_strategize
+        self.has_been_introduced = False
+        
         # Set the new mechanics prompts.
         self.message_mechanics_prompt = message_mechanics_prompt
         self.finalization_mechanics_prompt = finalization_mechanics_prompt
@@ -98,6 +110,8 @@ class DondAgent:
         self.message_parser = globals()[message_parser]
         self.finalization_parser = globals()[finalization_parser]
         self.finalization_parser_kwargs = finalization_parser_kwargs
+        self.strategize_parser = globals()[strategize_parser] if strategize_parser else regular_strategize_parser
+        self.thinking_parser = globals()[thinking_parser] if thinking_parser else regular_thinking_parser
 
         self.game_id = None  # ID of the agent in the game
         self.reset()
@@ -149,6 +163,19 @@ class DondAgent:
             }
             self.add_to_chat_history(model_response)
 
+            # Handle strategize 
+            if self.needs_to_strategize:
+                self.needs_to_strategize = False
+                user_message = self.get_user_message(state, is_error, error_message)
+                self.add_to_chat_history(user_message)
+                return (
+                    self.policy_id,
+                    self.chat_history,
+                    None,
+                    False,
+                    self.get_log_info(),
+                )
+
             # Handle errors
             if is_error:
                 self.retries += 1
@@ -157,6 +184,7 @@ class DondAgent:
                 # Too many mistakes were made: force dummy message
                 if self.retries > self.max_errors:
                     self.retries = 0
+                    if self.needs_to_strategize: self.needs_to_strategize = False
                     # If the policy output indicates a finalization move via the <finalize> tag,
                     # we keep the fallback as "-------". Otherwise (it was time to send a message),
                     # we generate a fallback message truncated to the maximum allowed characters.
@@ -199,6 +227,7 @@ class DondAgent:
             "agent_name": self.agent_name,
             "chat_history": self.chat_history,
             "augmented_chat_history": self.augmented_chat_history,
+            "strategize_content": self.strategize_content,
         }
 
     def render(self):
@@ -236,7 +265,7 @@ class DondAgent:
 
         # Use the new move information to decide on the prompts.
         # If the current agent has not yet made any move in the game, prepend the introductory prompts.
-        if state["game_moves"].get(self.agent_name) == 0:
+        if not self.has_been_introduced:
             user_message += self.format_prompt(self.intro_prompt, state)
             if self.message_mechanics_prompt:
                 user_message += "\n\n" + self.format_prompt(
@@ -256,6 +285,19 @@ class DondAgent:
                 )
             if self.goal_prompt:
                 user_message += "\n\n" + self.format_prompt(self.goal_prompt, state)
+            self.has_been_introduced = True
+
+        if self.needs_to_strategize:
+            user_message += "\n\n" + self.format_prompt(
+                self.strategize_prompt, state
+            )
+            usr_prompt = {
+                "role": "user",
+                "content": user_message,
+                "is_error": False,
+                "round_nb": state["round_number"],
+            }
+            return usr_prompt
 
         # If the current agent has not yet made any move in this round, add round instructions.
         if state["round_moves"].get(self.agent_name, 0) == 0:
@@ -317,7 +359,7 @@ class DondAgent:
         # Basic validation for content outside valid tags
         errors = []
         total_length = len(response)
-        valid_tags = ["think", "message", "finalize"]
+        valid_tags = ["strategize", "think", "message", "finalize"]
         total_tag_content_length = 0
         for tag in valid_tags:
             pattern = rf"<{tag}>.*?</{tag}>"
@@ -328,18 +370,22 @@ class DondAgent:
         if outside_length > 5:
             errors.append("Excessive content outside of valid tags.")
 
+        # Check strategize content if enabled
+        contains_strategize, strategize_errors, processed_strategize = False, [], None
+        if self.enable_strategize:
+            contains_strategize, strategize_errors, processed_strategize = self.strategize_parser(
+                response, state, self.has_strategized, self.max_strategize_chars
+            )
+            if contains_strategize and not strategize_errors:
+                self.strategize_content = processed_strategize
+                self.has_strategized = True
+
         # Check reasoning content
-        think_blocks = re.findall(r"<think>(.*?)</think>", response, flags=re.S)
-        if think_blocks:
-            total_thinking_chars = sum(len(block.strip()) for block in think_blocks)
-            if (
-                self.max_reasoning_chars is not None
-                and total_thinking_chars > self.max_reasoning_chars
-            ):
-                errors.append(
-                    f"The reasoning section exceeds the maximum allowed reasoning characters "
-                    f"({total_thinking_chars} > {self.max_reasoning_chars})."
-                )
+        contains_thinking, thinking_errors, processed_thinking = False, [], None
+        if self.allow_reasoning:
+            contains_thinking, thinking_errors, processed_thinking = self.thinking_parser(
+                response, state, self.max_reasoning_chars
+            )
 
         # Check if the response exceeds the maximum allowed characters per message.
         max_chars = state.get("max_chars_per_message", None)
@@ -361,18 +407,28 @@ class DondAgent:
         ) = self.finalization_parser(response, state, **self.finalization_parser_kwargs)
 
         # Combine errors from all validations
+        if strategize_errors:
+            errors.extend(strategize_errors)
+        if thinking_errors:
+            errors.extend(thinking_errors)
         if message_errors:
             errors.extend(message_errors)
         if finalization_errors:
             errors.extend(finalization_errors)
 
         # Check for conflicting actions
+        if contains_strategize and (contains_message or contains_finalization):
+            # If it's the first move of the first round, strategize and message together are allowed
+            if not (state["round_number"] == 0 and state["round_moves"].get(self.agent_name, 0) == 0 and contains_message):
+                errors.append("You cannot send both a strategize and another action in one response.")
+        
         if contains_message and contains_finalization:
             errors.append(
                 "You cannot send both a message and a finalization in one response."
             )
 
-        if not contains_message and not contains_finalization:
+        # Only require message/finalization if there's no strategize
+        if not contains_strategize and not contains_message and not contains_finalization:
             errors.append(
                 "You must send either a message or a finalization. You have sent nothing."
             )
@@ -386,6 +442,11 @@ class DondAgent:
                     f"{i+1}) {err}" for i, err in enumerate(errors)
                 )
             return True, error_message, False, None, response
+
+        # If this is only a strategize message (no message/finalization), we return a dummy message
+        if contains_strategize and not contains_message and not contains_finalization:
+            dummy_message = "[Strategizing...]"
+            return False, "", False, dummy_message, response
 
         # If no errors, return the appropriate processed content
         if contains_finalization:
@@ -601,6 +662,7 @@ class DondAgent:
                 .replace("{values}", str(values))
                 .replace("{items}", str(items))
                 .replace("{max_reasoning_chars}", str(self.max_reasoning_chars))
+                .replace("{max_strategize_chars}", str(self.max_strategize_chars))
                 .replace("{max_messages}", str(max_msgs))
                 .replace("{min_messages}", str(min_msgs))
                 .replace(
@@ -638,6 +700,7 @@ class DondAgent:
                 .replace(
                     "{cumulative_round_points_coagent}", str(cumulative_coagent_points)
                 )
+                .replace("{strategize_content}", str(self.strategize_content or ""))
             )
         return ""
 
@@ -668,6 +731,8 @@ class DondAgent:
             self.error_message = None
             self.chat_history = []
             self.augmented_chat_history = []
+            self.has_strategized = False
+            self.strategize_content = None
         return self.chat_history  # Return initial observation
 
     def load_checkpoint(self, checkpoint):
@@ -925,3 +990,95 @@ def accept_reject_finalization_parser(response, state, attribution_map=None):
     else:  # reject
         # Simply return the "reject_flag" string to match the finalize method in DondEnv
         return True, errors, "reject_flag"
+
+
+def regular_strategize_parser(response, state, has_strategized, max_strategize_chars):
+    """
+    Default strategize parser for DondAgent.
+
+    Args:
+        response (str): The full response from the agent.
+        state (dict): The current state of the game.
+        has_strategized (bool): Whether the agent has already provided a strategize block.
+        max_strategize_chars (int): Maximum characters allowed in strategize block.
+
+    Returns:
+        tuple: (contains_strategize, errors, processed_strategize)
+    """
+    errors = []
+
+    # Find all strategize tags in the response
+    strategize_blocks = re.findall(r"<strategize>(.*?)</strategize>", response, flags=re.S)
+    num_strategize_blocks = len(strategize_blocks)
+
+    # Check if there is a strategize tag
+    if num_strategize_blocks == 0:
+        return False, [], None
+
+    # Check if agent has already strategized
+    if has_strategized:
+        errors.append("You have already provided a strategize block. You cannot provide another one.")
+        return True, errors, None
+
+    # Check if there is exactly one strategize tag
+    if num_strategize_blocks > 1:
+        errors.append("Multiple <strategize> blocks detected. Please include only one strategize block.")
+        return True, errors, None
+
+    # Extract strategize content
+    strategize_content = strategize_blocks[0].strip()
+
+    # Check if strategize content exceeds max allowed chars
+    if max_strategize_chars is not None and len(strategize_content) > max_strategize_chars:
+        errors.append(
+            f"The strategize section exceeds the maximum allowed characters "
+            f"({len(strategize_content)} > {max_strategize_chars})."
+        )
+        return True, errors, None
+
+    # Check that strategize is provided at the start of the game
+    agent_name = state.get("current_agent", "")
+    if state["round_number"] != 0 or state["round_moves"].get(agent_name, 0) != 0:
+        errors.append("Strategize blocks can only be provided at the start of the game.")
+        return True, errors, None
+
+    return True, errors, strategize_content
+
+
+def regular_thinking_parser(response, state, max_reasoning_chars):
+    """
+    Default thinking (reasoning) parser for DondAgent.
+
+    Args:
+        response (str): The full response from the agent.
+        state (dict): The current state of the game.
+        max_reasoning_chars (int): Maximum characters allowed in thinking blocks.
+
+    Returns:
+        tuple: (contains_thinking, errors, processed_thinking)
+    """
+    errors = []
+
+    # Find all think tags in the response
+    think_blocks = re.findall(r"<think>(.*?)</think>", response, flags=re.S)
+    num_think_blocks = len(think_blocks)
+
+    # Check if there is a think tag
+    if num_think_blocks == 0:
+        return False, [], None
+
+    # Calculate total thinking characters
+    total_thinking_chars = sum(len(block.strip()) for block in think_blocks)
+
+    # Check if thinking content exceeds max allowed chars
+    if max_reasoning_chars is not None and total_thinking_chars > max_reasoning_chars:
+        errors.append(
+            f"The reasoning section exceeds the maximum allowed reasoning characters "
+            f"({total_thinking_chars} > {max_reasoning_chars})."
+        )
+        return True, errors, None
+
+    # Combine all thinking blocks into one if needed
+    processed_thinking = "\n\n".join(block.strip() for block in think_blocks)
+    
+    return True, errors, processed_thinking
