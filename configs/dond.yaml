@@ -103,6 +103,10 @@ matches:
   continuation_prob: 0.85
   same_length_batch: True
 
+  # If set to 0, existing setup will run where utilities are randomly sampled at the beginning of each round.
+  # If set to 1, all utilities will be calculated beforehand but rloo rewards will also be only calculated per game.
+  matches_with_same_roundwise_utilities: 0
+
   log_func: dond_log_match
   log_func_args:
     metrics_func: gather_dond_statistics
@@ -133,7 +137,6 @@ matches:
 
   run_batched_matches_args:
     nb_parallel_matches: -1
-
 
   env_kwargs:
     agents: ['Alice', 'Bob']

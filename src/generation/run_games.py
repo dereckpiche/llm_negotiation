@@ -32,7 +32,7 @@ def run_batched_matches(
     # Initial population of active matches
     for i in range(min(nb_parallel_matches, len(pending_matches))):
         match = pending_matches.pop(0)
-        match_id = id(match)
+        match_id = match["env"].match_id
 
         env = match["env"]
         initial_observations = env.reset()
@@ -134,7 +134,7 @@ def run_batched_matches(
 
             if pending_matches:
                 new_match = pending_matches.pop(0)
-                new_match_id = id(new_match)
+                new_match_id = new_match["env"].match_id
                 # print(f"adding new match {new_match_id} to active matches")
 
                 env = new_match["env"]

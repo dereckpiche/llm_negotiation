@@ -30,15 +30,10 @@ def dond_log_match(path, agent_infos, info, metrics_func=None, metrics_func_args
         os.makedirs(raw_data_path, exist_ok=True)
         os.makedirs(statistics_path, exist_ok=True)
 
+        match_id = info["match_id"]
+
         # Determine the next available file number for raw data
-        raw_files = os.listdir(raw_data_path)
-        raw_numbers = [
-            int(f.split("_")[-1].split(".")[0])
-            for f in raw_files
-            if f.startswith("match_")
-        ]
-        next_raw_number = max(raw_numbers, default=0) + 1
-        raw_file = os.path.join(raw_data_path, f"match_{next_raw_number}.json")
+        raw_file = os.path.join(raw_data_path, f"match_{match_id}.json")
 
         # Log raw match data
         chat_history = agent_info.get("chat_history", [])
@@ -57,16 +52,7 @@ def dond_log_match(path, agent_infos, info, metrics_func=None, metrics_func_args
 
         # Log metrics if a metrics function is provided
         if metrics_func:
-            metrics_files = os.listdir(statistics_path)
-            metrics_numbers = [
-                int(f.split("_")[-1].split(".")[0])
-                for f in metrics_files
-                if f.startswith("metrics_")
-            ]
-            next_metrics_number = max(metrics_numbers, default=0) + 1
-            metrics_file = os.path.join(
-                statistics_path, f"metrics_{next_metrics_number}.json"
-            )
+            metrics_file = os.path.join(statistics_path, f"metrics_{match_id}.json")
 
             metrics = globals()[metrics_func](agent_info, info, **metrics_func_args)
             with open(metrics_file, "w") as f:

@@ -29,9 +29,31 @@ def generate_training_data_from_raw(
     # Find the score of each round of each game of agent associated with "raw_data_folder"
     round_points_agent, round_points_coagent = get_round_points_arrays(raw_data_folder)
 
-    scores = globals()[score_method](
-        round_points_agent, round_points_coagent, **score_method_kwargs
-    )
+    # Initialize nested dictionaries to store SCORES for each match within each minibatch group
+    # Format: {minibatch_id: {match_id: [scores]}}
+    scores = defaultdict(lambda: defaultdict(list))
+
+    # Loop in all the groups and compute the scores only for the minibatch / group
+    for group_id in round_points_agent:
+        # Extract all match ids in a minibatch / group
+        match_ids = sorted(round_points_agent[group_id].keys())
+
+        # Create arrays that store returns for all matches in a minibatch / group
+        agent_points = np.array(
+            [round_points_agent[group_id][match_id] for match_id in match_ids]
+        )
+        coagent_points = np.array(
+            [round_points_coagent[group_id][match_id] for match_id in match_ids]
+        )
+
+        # Compute the scores from returns of a given minibatch / group
+        score = globals()[score_method](
+            agent_points, coagent_points, **score_method_kwargs
+        )
+
+        # Store the scores for each match_id in a minibatch / group
+        for match_id, agent_points in zip(match_ids, score):
+            scores[group_id][match_id] = agent_points
 
     os.makedirs(training_data_folder, exist_ok=True)
     if debug_output:
@@ -65,6 +87,9 @@ def generate_training_data_from_raw(
 
     for i, match_file in enumerate(match_files):
         chat_history = json.load(open(os.path.join(raw_data_folder, match_file), "r"))
+        game_info = chat_history[-1].get("game_info")
+        match_id = game_info["match_id"]
+        group_id = game_info["group_id"]
 
         if exclude_errors:
             chat_history = [
@@ -75,7 +100,8 @@ def generate_training_data_from_raw(
         for message in chat_history:
             if message.get("role") == "assistant":
                 round_number = message.get("round_nb")
-                message["score"] = scores[i, round_number]
+                # Attribute the score corresponding to correct minibatch / group, match and round number.
+                message["score"] = scores[group_id][match_id][round_number]
 
         # Only keep conversation messages, not system info
         chat_history = [
@@ -117,10 +143,18 @@ def get_round_points_arrays(raw_data_folder):
     round_points_agent = np.full((len(matches), max_rounds), None)
     round_points_coagent = np.full((len(matches), max_rounds), None)
 
+    # Initialize nested dictionaries to store RETURNS for each match within each minibatch / group
+    # Format: {minibatch_id: {match_id: [returns]}}
+    group_to_round_points_agent = defaultdict(lambda: defaultdict(list))
+    group_to_round_points_coagent = defaultdict(lambda: defaultdict(list))
+
     for i, match in enumerate(matches):
         game_info = match[-1].get("game_info")
         agent_name = match[-1].get("agent_name")
         nb_rounds = len(game_info.get("round_agreements_reached"))
+        match_id = game_info["match_id"]
+        group_id = game_info["group_id"]
+
         for round in range(nb_rounds):
             agent_role = game_info.get("round_agent_roles", {})[round].get(agent_name)
             coagent_role = next(
@@ -139,7 +173,10 @@ def get_round_points_arrays(raw_data_folder):
                     round
                 ].get(coagent_role)
 
-    return round_points_agent, round_points_coagent
+        group_to_round_points_agent[group_id][match_id] = round_points_agent[i]
+        group_to_round_points_coagent[group_id][match_id] = round_points_coagent[i]
+
+    return group_to_round_points_agent, group_to_round_points_coagent
 
 
 ############################################################
