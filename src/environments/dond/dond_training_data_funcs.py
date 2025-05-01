@@ -29,8 +29,11 @@ def generate_training_data_from_raw(
     # Find the score of each round of each game of agent associated with "raw_data_folder"
     round_points_agent, round_points_coagent = get_round_points_arrays(raw_data_folder)
 
-    scores = globals()[score_method](
-        round_points_agent, round_points_coagent, **score_method_kwargs
+    scores = get_scores(
+        round_points_agent=round_points_agent,
+        round_points_coagent=round_points_coagent,
+        score_method=score_method,
+        score_method_kwargs=score_method_kwargs,
     )
 
     os.makedirs(training_data_folder, exist_ok=True)
@@ -57,7 +60,6 @@ def generate_training_data_from_raw(
         if f.startswith("match_") and f.endswith(".json")
     ]
     match_files.sort(key=lambda x: int(x.split("_")[-1].split(".")[0]))
-    # matches = [json.load(open(os.path.join(raw_data_folder, f), 'r')) for f in match_files]
 
     if not match_files:
         print(f"No raw data files found in {raw_data_folder}")
@@ -65,6 +67,9 @@ def generate_training_data_from_raw(
 
     for i, match_file in enumerate(match_files):
         chat_history = json.load(open(os.path.join(raw_data_folder, match_file), "r"))
+        game_info = get_system_msg(chat_history).get("game_info")
+        match_id = game_info["match_id"]
+        group_id = game_info["group_id"]
 
         if exclude_errors:
             chat_history = [
@@ -75,7 +80,8 @@ def generate_training_data_from_raw(
         for message in chat_history:
             if message.get("role") == "assistant":
                 round_number = message.get("round_nb")
-                message["score"] = scores[i, round_number]
+                # Attribute the score corresponding to correct minibatch / group, match and round number.
+                message["score"] = scores[group_id][match_id][round_number]
 
         # Only keep conversation messages, not system info
         chat_history = [
@@ -90,56 +96,6 @@ def generate_training_data_from_raw(
             json.dump(chat_history, f, indent=4)
 
     return
-
-
-def get_round_points_arrays(raw_data_folder):
-    """
-    Takes a raw_data_folder path, and generates a round reward array for both agents.
-    Each row corresponds to a match.
-    """
-    match_files = [
-        f
-        for f in os.listdir(raw_data_folder)
-        if f.startswith("match_") and f.endswith(".json")
-    ]
-    match_files.sort(key=lambda x: int(x.split("_")[-1].split(".")[0]))
-    matches = [
-        json.load(open(os.path.join(raw_data_folder, f), "r")) for f in match_files
-    ]
-
-    # Determine the maximum number of rounds across all games
-    max_rounds = max(
-        [
-            len(match[-1].get("game_info").get("round_agreements_reached"))
-            for match in matches
-        ]
-    )
-    round_points_agent = np.full((len(matches), max_rounds), None)
-    round_points_coagent = np.full((len(matches), max_rounds), None)
-
-    for i, match in enumerate(matches):
-        game_info = match[-1].get("game_info")
-        agent_name = match[-1].get("agent_name")
-        nb_rounds = len(game_info.get("round_agreements_reached"))
-        for round in range(nb_rounds):
-            agent_role = game_info.get("round_agent_roles", {})[round].get(agent_name)
-            coagent_role = next(
-                (
-                    role
-                    for role in game_info.get("round_agent_roles", {})[round].values()
-                    if role != agent_role
-                ),
-                None,
-            )
-            if agent_role and coagent_role:
-                round_points_agent[i, round] = game_info.get("round_points")[round].get(
-                    agent_role
-                )
-                round_points_coagent[i, round] = game_info.get("round_points")[
-                    round
-                ].get(coagent_role)
-
-    return round_points_agent, round_points_coagent
 
 
 ############################################################
@@ -206,6 +162,105 @@ def rloo_advantage_alignment_scores(
 ############################################################
 # Utils
 ############################################################
+
+
+def get_system_msg(match):
+    system_msg = next((d for d in match if d.get("role") == "system"), None)
+    return system_msg
+
+
+def get_round_points_arrays(raw_data_folder):
+    """
+    Takes a raw_data_folder path, and generates a round reward array for both agents.
+    Each row corresponds to a match.
+    """
+    match_files = [
+        f
+        for f in os.listdir(raw_data_folder)
+        if f.startswith("match_") and f.endswith(".json")
+    ]
+    match_files.sort(key=lambda x: int(x.split("_")[-1].split(".")[0]))
+    matches = [
+        json.load(open(os.path.join(raw_data_folder, f), "r")) for f in match_files
+    ]
+
+    # Determine the maximum number of rounds across all games
+    max_rounds = max(
+        [
+            len(get_system_msg(match).get("game_info").get("round_agreements_reached"))
+            for match in matches
+        ]
+    )
+    round_points_agent = np.full((len(matches), max_rounds), None)
+    round_points_coagent = np.full((len(matches), max_rounds), None)
+
+    # Initialize nested dictionaries to store RETURNS for each match within each minibatch / group
+    # Format: {minibatch_id: {match_id: [returns]}}
+    group_to_round_points_agent = defaultdict(lambda: defaultdict(list))
+    group_to_round_points_coagent = defaultdict(lambda: defaultdict(list))
+
+    for i, match in enumerate(matches):
+        system_msg = get_system_msg(match)
+        game_info = system_msg.get("game_info")
+        agent_name = system_msg.get("agent_name")
+        nb_rounds = len(game_info.get("round_agreements_reached"))
+        match_id = game_info["match_id"]
+        group_id = game_info["group_id"]
+
+        for round in range(nb_rounds):
+            agent_role = game_info.get("round_agent_roles", {})[round].get(agent_name)
+            coagent_role = next(
+                (
+                    role
+                    for role in game_info.get("round_agent_roles", {})[round].values()
+                    if role != agent_role
+                ),
+                None,
+            )
+            if agent_role and coagent_role:
+                round_points_agent[i, round] = game_info.get("round_points")[round].get(
+                    agent_role
+                )
+                round_points_coagent[i, round] = game_info.get("round_points")[
+                    round
+                ].get(coagent_role)
+
+        group_to_round_points_agent[group_id][match_id] = round_points_agent[i]
+        group_to_round_points_coagent[group_id][match_id] = round_points_coagent[i]
+
+    return group_to_round_points_agent, group_to_round_points_coagent
+
+
+def get_scores(
+    round_points_agent, round_points_coagent, score_method, score_method_kwargs
+):
+    # Initialize nested dictionaries to store SCORES for each match within each minibatch group
+    # Format: {minibatch_id: {match_id: [scores]}}
+    scores = defaultdict(lambda: defaultdict(list))
+
+    # Loop in all the groups and compute the scores only for the minibatch / group
+    for group_id in round_points_agent:
+        # Extract all match ids in a minibatch / group
+        match_ids = sorted(round_points_agent[group_id].keys())
+
+        # Create arrays that store returns for all matches in a minibatch / group
+        agent_points = np.array(
+            [round_points_agent[group_id][match_id] for match_id in match_ids]
+        )
+        coagent_points = np.array(
+            [round_points_coagent[group_id][match_id] for match_id in match_ids]
+        )
+
+        # Compute the scores from returns of a given minibatch / group
+        score = globals()[score_method](
+            agent_points, coagent_points, **score_method_kwargs
+        )
+
+        # Store the scores for each match_id in a minibatch / group
+        for match_id, agent_points in zip(match_ids, score):
+            scores[group_id][match_id] = agent_points
+
+    return scores
 
 
 def get_discounted_rewards_to_go(rewards, discount_factor):
@@ -418,9 +473,9 @@ if __name__ == "__main__":
     print("\nTesting rewards_to_rloo_advantages with a 3x3 array:")
     test_rewards = np.array(
         [
-            [1, 2, 3, 0],  # Match 1 rewards
-            [4, 5, 6, 0],  # Match 2 rewards
-            [7, 8, 9, 0],  # Match 3 rewards
+            [1, 2, 3],  # Match 1 rewards
+            [4, 5, 6],  # Match 2 rewards
+            [7, 8, 9],  # Match 3 rewards
         ]
     )
     discount_factor = 0.9
@@ -451,3 +506,24 @@ if __name__ == "__main__":
     print(f"Expected RLOO advantages:\n{expected_rloo}")
     print(f"Function output:\n{rloo_result}")
     print(f"Match? {np.allclose(expected_rloo, rloo_result)}")
+    import time
+    from contextlib import contextmanager
+
+    @contextmanager
+    def time_it(label="Time taken"):
+        start = time.time()
+        try:
+            yield
+        finally:
+            end = time.time()
+            print(f"{label}: {end - start:.4f} seconds")
+
+    nb_games = 8192
+    game_lengths = 50
+    a1 = np.random.random((nb_games, game_lengths))
+    a2 = np.random.random((nb_games, game_lengths))
+    with time_it("Readable"):
+        readable_advantages_to_aa_scores(a1, a2)
+    with time_it("Chad"):
+        advantages_to_aa_scores(a1, a2)
+    print("Done")
