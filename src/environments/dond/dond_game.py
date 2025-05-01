@@ -52,6 +52,12 @@ class DondEnv:
         # Minibatch / group id for which roundwise utilities are same
         self.group_id = group_id
 
+        # TODO: Random seed should be tied to the sytem random seed.
+        if random_seed is None:
+            self.random_seed = random.randint(1, 10**9)
+        else:
+            self.random_seed = random_seed
+
         self.agents = agents
         self.roles = ["starting_negotiator", "responding_negotiator"]
         self.mode = mode
@@ -83,7 +89,10 @@ class DondEnv:
             else role_assignator_func
         )
         self.role_assignator_func_kwargs = role_assignator_func_kwargs or {}
-        self.role_assignator_func_kwargs["game_index"] = game_index
+        self.role_assignator_func_kwargs["seed"] = self.random_seed
+        self.role_assignator_func_kwargs["first_agent"] = (
+            agents[0] if self.group_id % 2 == 0 else agents[1]
+        )  # TODO: make this flexible -- this is a hack, will cause problems later
         self.other_values_visibility = other_values_visibility
 
         # Store the points_attribution_method
@@ -93,12 +102,6 @@ class DondEnv:
             else points_attribution_method
         )
         self.points_attributions_kwargs = points_attributions_kwargs or {}
-
-        # TODO: Random seed should be tied to the sytem random seed.
-        if random_seed is None:
-            self.random_seed = random.randint(1, 10**9)
-        else:
-            self.random_seed = random_seed
 
         self.game_moves = {agent: 0 for agent in agents}
         self.round_moves = {agent: 0 for agent in agents}
@@ -636,15 +639,29 @@ def alternating_role_assignator(state, **kwargs):
     round_number = state["round_number"]
     agents = state["agents"]
     roles = ["starting_negotiator", "responding_negotiator"]
-    game_index = kwargs.get("game_index", 0)
-    round_number += game_index
+    seed = kwargs["seed"]
+    first_agent = kwargs["first_agent"]
+
+    if first_agent == None:
+        rng = np.random.default_rng(seed=seed)
+        random_number = rng.random()
+        if random_number > 0.5:
+            first_agent = agents[0]
+            second_agent = agents[1]
+        else:
+            first_agent = agents[1]
+            second_agent = agents[0]
+    else:
+        for agent in agents:
+            if agent != first_agent:
+                second_agent = agent
 
     if round_number % 2 == 0:
         # Even rounds: agent_0 is "starting_negotiator"
-        agent_to_role = {agents[0]: roles[0], agents[1]: roles[1]}
+        agent_to_role = {first_agent: roles[0], second_agent: roles[1]}
     else:
         # Odd rounds: agent_1 is "starting_negotiator"
-        agent_to_role = {agents[0]: roles[1], agents[1]: roles[0]}
+        agent_to_role = {first_agent: roles[1], second_agent: roles[0]}
 
     return agent_to_role
 

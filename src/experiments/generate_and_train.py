@@ -316,7 +316,7 @@ def create_matches(cfg, base_seed, iteration):
     roundwise_utilities = []
 
     # Number of games that share the same utilities
-    group_size = cfg["matches"]["matches_with_same_roundwise_utilities"]
+    group_size = cfg["matches"]["nb_matches_with_same_roundwise_utilities"]
 
     # Check if each batch should have fixed-length games and shared roundwise utilities.
     if cfg["matches"]["same_length_batch"] and group_size:

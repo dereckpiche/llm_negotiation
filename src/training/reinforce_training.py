@@ -1073,10 +1073,10 @@ def _output_reinforce_step_debug(
             for rec in verification_records:
                 # Determine reinforcement indicator based on effective reinforcement
                 # In REINFORCE, the update direction depends on the reward sign, not the effective_reinforcement directly
-                effective_reinforcement = rec["effective_reinforcement"]
+                ef_effective_reinforcement = rec["effective_reinforcement"]
                 reward = rec["reward"]
 
-                if abs(effective_reinforcement) < reinforcement_threshold:
+                if abs(ef_effective_reinforcement) < reinforcement_threshold:
                     reinforcement_marker = "━"  # Negligible reinforcement
                 elif reward > 0:
                     # Positive reward means we want to INCREASE the probability of this action
@@ -1106,7 +1106,7 @@ def _output_reinforce_step_debug(
                     f"{rec['position']:3d} | {context_info:40s} → {rec['target_token']:15s} | "
                 )
                 f.write(
-                    f"r={rec['reward']:+.2f} | logp={log_prob:.2f} | p={prob:.3f} | eff={effective_reinforcement:+.2f} | {reinforcement_marker}\n"
+                    f"r={rec['reward']:+.2f} | logp={log_prob:.2f} | p={prob:.3f} | eff={ef_effective_reinforcement:+.2f} | {reinforcement_marker}\n"
                 )
 
         # Save compact JSON for programmatic analysis

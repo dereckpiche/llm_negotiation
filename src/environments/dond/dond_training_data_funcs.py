@@ -473,9 +473,9 @@ if __name__ == "__main__":
     print("\nTesting rewards_to_rloo_advantages with a 3x3 array:")
     test_rewards = np.array(
         [
-            [1, 2, 3, 0],  # Match 1 rewards
-            [4, 5, 6, 0],  # Match 2 rewards
-            [7, 8, 9, 0],  # Match 3 rewards
+            [1, 2, 3],  # Match 1 rewards
+            [4, 5, 6],  # Match 2 rewards
+            [7, 8, 9],  # Match 3 rewards
         ]
     )
     discount_factor = 0.9
@@ -506,3 +506,24 @@ if __name__ == "__main__":
     print(f"Expected RLOO advantages:\n{expected_rloo}")
     print(f"Function output:\n{rloo_result}")
     print(f"Match? {np.allclose(expected_rloo, rloo_result)}")
+    import time
+    from contextlib import contextmanager
+
+    @contextmanager
+    def time_it(label="Time taken"):
+        start = time.time()
+        try:
+            yield
+        finally:
+            end = time.time()
+            print(f"{label}: {end - start:.4f} seconds")
+
+    nb_games = 8192
+    game_lengths = 50
+    a1 = np.random.random((nb_games, game_lengths))
+    a2 = np.random.random((nb_games, game_lengths))
+    with time_it("Readable"):
+        readable_advantages_to_aa_scores(a1, a2)
+    with time_it("Chad"):
+        advantages_to_aa_scores(a1, a2)
+    print("Done")

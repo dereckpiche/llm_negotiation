@@ -18,6 +18,9 @@ def dond_log_match(path, agent_infos, info, metrics_func=None, metrics_func_args
         metrics_func (str, optional): Name of the function to calculate metrics.
         metrics_func_args (dict, optional): Arguments for the metrics function.
     """
+    match_id = info["match_id"]
+    group_id = info["group_id"]
+
     # First, perform the normal raw match logging
     for agent_info in agent_infos:
         agent_name = agent_info["agent_name"]
@@ -29,9 +32,6 @@ def dond_log_match(path, agent_infos, info, metrics_func=None, metrics_func_args
         # Ensure directories exist
         os.makedirs(raw_data_path, exist_ok=True)
         os.makedirs(statistics_path, exist_ok=True)
-
-        match_id = info["match_id"]
-        group_id = info["group_id"]
 
         # Determine the next available file number for raw data
         raw_file = os.path.join(
@@ -397,15 +397,9 @@ def dond_log_match(path, agent_infos, info, metrics_func=None, metrics_func_args
     html_path = os.path.join(path, "html")
     os.makedirs(html_path, exist_ok=True)
 
-    # Determine the next available file number for HTML
-    html_files = os.listdir(html_path)
-    html_numbers = [
-        int(f.split("_")[-1].split(".")[0])
-        for f in html_files
-        if f.startswith("game_context_")
-    ]
-    next_html_number = max(html_numbers, default=0) + 1
-    html_file = os.path.join(html_path, f"game_context_{next_html_number}.html")
+    html_file = os.path.join(
+        html_path, f"game_context_mid_{match_id}_gid_{group_id}.html"
+    )
 
     # Save the HTML content to a file
     with open(html_file, "w") as f:
