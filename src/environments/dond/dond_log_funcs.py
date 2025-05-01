@@ -31,9 +31,12 @@ def dond_log_match(path, agent_infos, info, metrics_func=None, metrics_func_args
         os.makedirs(statistics_path, exist_ok=True)
 
         match_id = info["match_id"]
+        group_id = info["group_id"]
 
         # Determine the next available file number for raw data
-        raw_file = os.path.join(raw_data_path, f"match_{match_id}.json")
+        raw_file = os.path.join(
+            raw_data_path, f"match_mid_{match_id}_gid_{group_id}.json"
+        )
 
         # Log raw match data
         chat_history = agent_info.get("chat_history", [])
@@ -52,7 +55,9 @@ def dond_log_match(path, agent_infos, info, metrics_func=None, metrics_func_args
 
         # Log metrics if a metrics function is provided
         if metrics_func:
-            metrics_file = os.path.join(statistics_path, f"metrics_{match_id}.json")
+            metrics_file = os.path.join(
+                statistics_path, f"metrics_mid_{match_id}_gid_{group_id}.json"
+            )
 
             metrics = globals()[metrics_func](agent_info, info, **metrics_func_args)
             with open(metrics_file, "w") as f:

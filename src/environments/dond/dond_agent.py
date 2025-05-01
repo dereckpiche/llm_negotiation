@@ -144,6 +144,7 @@ class DondAgent:
                 "role": "assistant",
                 "content": policy_output,
                 "is_error": is_error,
+                "assistant_formatting_errors": error_message,
                 "is_finalization": is_finalization,
                 "round_nb": state["round_number"],
             }
