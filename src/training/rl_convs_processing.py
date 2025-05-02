@@ -22,13 +22,15 @@ def conversation_to_rl_data(tokenizer, conversation, average_score_over_message)
 
     # Apply chat template to the entire conversation, include the last assistant message
     # we have add_generation_prompt=False since we are not prompting the model
+    # It is adding system prompt even when false for qwen and llama
     formatted_conversation = tokenizer.apply_chat_template(
         conversation,
         add_generation_prompt=False,
         tokenize=False,
-        use_system_prompt=False,
+        use_system_prompt=True,
     )
     # strip "\n" at end of the conversation if present (case for gemma)
+    # TODO (Muqeeth): check if its correct
     if formatted_conversation.endswith("\n"):
         formatted_conversation = formatted_conversation[:-1]
     tokens = tokenizer.encode(
@@ -74,12 +76,12 @@ def conversation_to_rl_data(tokenizer, conversation, average_score_over_message)
             # TODO: for Llama <|start_header_id|>assistant<|end_header_id|>\n\n takes 4 tokens, where mask is still zero
             # for gemma \n<start_of_turn>model\n takes 4 tokens, where mask and score will be zero
             # print(f"decoded text: {tokenizer.decode(tokens[current_position: next_position])}")
-            segment_length = next_position - current_position - 1
+            segment_length = next_position - current_position
             if average_score_over_message:
                 score_value = score_value / (segment_length - 4)
             # the last token is eot_id, so score and mask are zero
-            score_values.extend([0] * 4 + [score_value] * (segment_length - 4) + [0])
-            output_mask.extend([0] * 4 + [mask_value] * (segment_length - 4) + [0])
+            score_values.extend([0] * 4 + [score_value] * (segment_length - 4))
+            output_mask.extend([0] * 4 + [mask_value] * (segment_length - 4))
         else:
             mask_value = 0  # only train on messages from the assistant
             # Extend return values and output masks for the current segment
