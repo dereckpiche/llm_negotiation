@@ -603,9 +603,41 @@ class LocalLLMV2:
 
         return responses
 
-    def export_current_adapter(self) -> None:
+    def export_current_adapter_and_optimizer(self) -> None:
         """
         Exports the current adapter to the configured output directory.
+        Also exports the optimizer state to
+        the output directory if self.export_optimizer is True.
+        """
+        adapter_path = self.adapter_paths[self.current_adapter_name]
+        os.makedirs(adapter_path, exist_ok=True)
+        self.export_adapter(self.current_adapter_name, adapter_path)
+        if self.export_optimizer:
+            optimizer_state_path = self.optimizer_paths[self.current_adapter_name]
+            optimizer_dir = os.path.dirname(optimizer_state_path)
+            os.makedirs(optimizer_dir, exist_ok=True)
+            torch.save(self.optimizer.state_dict(), optimizer_state_path)
+            model_logger.info(f"Optimizer state saved to {optimizer_state_path}")
+
+    def checkpoint_all_adapters(self, checkpoint_indicator: str) -> None:
+        """
+        Checkpoints all adapters to the configured output directory.
+        """
+        for adapter_name in self.adapter_names:
+            output_dir = os.path.join(self.output_directory, "checkpoints")
+            os.makedirs(output_dir, exist_ok=True)
+            date_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            export_path = os.path.join(
+                output_dir, f"{adapter_name}-{checkpoint_indicator}-{date_str}"
+            )
+            self.export_adapter(adapter_name, export_path)
+
+    def export_adapter(self, adapter_name: str, export_path: str) -> None:
+        """
+        Exports the current adapter to the configured output directory.
+
+        If checkpoint is True, the adapter will be saved as a checkpoint in a safe folder, not at
+        the adapter path.
 
         For 'full' adapters, the entire model is saved.
         For 'lora' adapters, only the LoRA parameters are saved.
@@ -618,67 +650,51 @@ class LocalLLMV2:
         Warning:
             This operation may take significant disk space for full model adapters.
         """
-        if not self.export_trained_parameters and not self.export_optimizer:
-            model_logger.info(
-                "Skipping export as both export_trained_parameters and export_optimizer are False"
-            )
-            return
 
-        adapter_path = self.adapter_paths[self.current_adapter_name]
-        adapter_type = self.adapter_types[self.current_adapter_name]
+        adapter_type = self.adapter_types[adapter_name]
 
         # Create output directory if it doesn't exist
-        os.makedirs(adapter_path, exist_ok=True)
+        os.makedirs(export_path, exist_ok=True)
 
         # Save model parameters
         if self.export_trained_parameters:
             if adapter_type == "full":
-                model_logger.info(f"Saving full model to {adapter_path}")
-                self.hf_model.save_pretrained(adapter_path)
+                model_logger.info(f"Saving full model to {export_path}")
+                self.hf_model.save_pretrained(export_path)
             elif adapter_type == "lora":
-                model_logger.info(f"Saving LoRA adapter to {adapter_path}")
+                model_logger.info(f"Saving LoRA adapter to {export_path}")
 
                 # Properly save PEFT adapter
                 if isinstance(self.hf_model, PeftModel):
                     # Ensure the current adapter is active
-                    if self.current_adapter_name != self.hf_model.active_adapter:
+                    if adapter_name != self.hf_model.active_adapter:
                         model_logger.info(
-                            f"Setting active adapter to {self.current_adapter_name} for saving"
+                            f"Setting active adapter to {adapter_name} for saving"
                         )
-                        self.hf_model.set_adapter(self.current_adapter_name)
+                        self.hf_model.set_adapter(adapter_name)
 
-                    # All because HF creates stupid sub folders
-                    temp_adapter_path = os.path.join(adapter_path, "_temp")
+                    # The following code is because HF creates different sub folders with
+                    # with different configs.. TODO: fix this efficiently
+                    temp_export_path = os.path.join(export_path, "_temp")
+                    os.makedirs(temp_export_path, exist_ok=True)
                     self.hf_model.save_pretrained(
-                        temp_adapter_path,
-                        adapter_name=self.current_adapter_name,
+                        temp_export_path,
+                        adapter_name=adapter_name,
                         safe_serialization=True,
                     )
-                    subfolder_path = os.path.join(
-                        temp_adapter_path, self.current_adapter_name
-                    )
+                    subfolder_path = os.path.join(temp_export_path, adapter_name)
                     if os.path.exists(subfolder_path):
                         for item in os.listdir(subfolder_path):
                             src = os.path.join(subfolder_path, item)
-                            dst = os.path.join(adapter_path, item)
+                            dst = os.path.join(export_path, item)
                             shutil.move(src, dst)
-
                     # Clean up temp directory
-                    shutil.rmtree(temp_adapter_path)
+                    shutil.rmtree(temp_export_path)
+
                 else:
                     model_logger.warning(
                         "Model is not a PeftModel instance. Unable to save LoRA adapter."
                     )
-
-        # Save optimizer state
-        if self.export_optimizer:
-            optimizer_state_path = self.optimizer_paths[self.current_adapter_name]
-            optimizer_dir = os.path.dirname(optimizer_state_path)
-            os.makedirs(optimizer_dir, exist_ok=True)
-
-            torch.save(self.optimizer.state_dict(), optimizer_state_path)
-
-            model_logger.info(f"Optimizer state saved to {optimizer_state_path}")
 
     def log_gpu_usage(self, message: str) -> None:
         """

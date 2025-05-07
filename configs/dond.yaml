@@ -9,7 +9,8 @@ experiment:
   method: generate_and_train
   description: "no description"
   nb_epochs: 2000
-  nb_matches_per_iteration: 64
+  nb_matches_per_iteration: 5
+  checkpoint_every_n_iterations: 2
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: true
@@ -70,7 +71,7 @@ common_agent_kwargs: &common_agent_kwargs
     There must be no extraneous text outside the tags. Your proposal should be consistent with itself - the sum of items that you propose for yourself and the items that you propose for the other agent should equal the total available items.
 
   reasoning_mechanics_prompt: |
-    ${prompt_blocks.dond_reasoning_mechanics}
+    In order to think before you act, you are allowed to use {max_reasoning_chars} characters per round. When reasoning, please follow these rules; 1) Enclose your thought process within <think> and </think> tags. 2) Do not include extraneous content outside these tags. 3) Your reasoning is limited to {max_reasoning_chars} characters per response. 4) You are not obligated to reason at each response.
 
   goal_prompt: |
     Your goal is to maximize the sum of the points you will accumulate over the course of the game, not the points of a single round.
@@ -99,8 +100,8 @@ matches:
   env_class: "DondEnv"
   agent_class: "DondAgent"
 
-  max_length: 30
-  continuation_prob: 0.85
+  max_length: 1
+  continuation_prob: 1.0
   same_length_batch: True
 
   # If set to 0, existing setup will run where utilities are randomly sampled at the beginning of each round.
@@ -137,6 +138,7 @@ matches:
 
   run_batched_matches_args:
     nb_parallel_matches: -1
+
 
   env_kwargs:
     agents: ['Alice', 'Bob']
@@ -189,7 +191,7 @@ models:
         repetition_penalty: 1
       vllm_params:
         max_model_len : 13e3
-        gpu_memory_utilization: 0.6
+        gpu_memory_utilization: 0.45
         enable_lora: True
         enable_prefix_caching: True
         enable_sleep_mode : True
@@ -236,7 +238,6 @@ common_training_agent_kwargs: &common_training_agent_kwargs
     score_method: rloo_advantage_alignment_scores
     score_method_kwargs:
       discount_factor: 1.0
-      beta: 1.0
 
 
 training:
@@ -262,144 +263,3 @@ training:
           debug_log_path: "${oc.env:SCRATCH}/${experiment.name}/trainer_debugger"
         train_data_args:
           average_score_over_message: False
-
-
-####################################################################################################
-# PROMPT DEFINITIONS
-####################################################################################################
-
-prompt_blocks:
-
-  initial_play_prompt: |
-    You are the first agent. It is your turn to play. [Msg Limits → {remaining_messages}]
-
-  message_prompt: |
-    Other agent's message: <message>{last_message}</message>. [Msg Limits → {remaining_messages}]
-
-  visible_finalization_prompt: |
-    Other agent's Finalization: {other_agent_finalization}. [Msg Limits → {remaining_messages}]
-
-  hidden_finalization_prompt: |
-    The other agent has submitted their finalization. It is now your turn to finalize. [Msg Limits → {remaining_messages}]
-
-
-############################################################
-# Ultimatum Game Prompts
-############################################################
-
-  barebone_ultimatum: |
-    Welcome, you are playing the splitting game.
-    Game Description:
-      1) In this game, two agents divide 10 coins among themselves.
-      2) A finalization is a proposed division of the coins between the two agents.
-      3) The first agent will make a finalization.
-      The second agent must then make his finalization.
-      Each agent can make a single finalization for the entire game, hence the name.
-      4) In order for both agents to agree, the finalizations must be complementary. If no agreement is reached between the two agents with the two finalizations, both agents will receive zero points. If agreement is reached, the agents will receive the coins corresponding to the finalizations.
-    Response Formatting:
-      1) All of your responses must be within <finalize></finalize> tags.
-      2) The division must be in a JSON-parsable format. Formatting: Final division: <finalize> {"i_take": {"coins": x}, "other_takes": {"coins": y}} </finalize> where "i_take" represents your share and "other_takes" represents the other agent's share of the coins.
-
-  ultimatum_game_multiple_rounds: |
-    Welcome, you are playing a multi-round splitting game.
-    Game Description:
-      1) In this game, two agents will divide a collection of coins over multiple rounds.
-      2) In each round, the available coins must be divided between both agents.
-      3) In every round, both agents submit a finalization proposal outlining how the coins are split.
-      4) If the two agents do not propose the same split, both agents receive zero points for that round.
-      5) Once a agent has proposed a split, the other agent must also propose a split.
-      6) Both agents are assigned a value for each coin. The points each agent receives are the product of the number of coins they get and the coin's value.
-    Response Formatting:
-      1) All your responses in each round must be enclosed within <finalize></finalize> tags.
-      2) Specify the division in a JSON-parsable format. For example: <finalize> {"i_take": {"coins": x}, "other_takes": {"coins": y}} </finalize> where the numbers represent the counts of each object allocated to you and to your opponent.
-
-  unbiased_goal: null
-
-  normal_goal: |
-    Your points will be the number of coins you get at the end of the game.
-
-  agressive_goal: |
-    Your goal is to get as many coins as possible.
-
-  agressive_pair_goal: |
-    Your goal is to get as many coins as possible. This is also the goal of the other agent.
-
-  fair_goal: |
-    Goal: Aim to be fair with both the other agent and yourself.
-
-  submitted_goal: |
-    Goal: Your goal is to do exactly what the other agent wants. You must make the other agent happy.
-
-############################################################
-#                                                          #
-#                      DOND Game Prompts                   #
-#                                                          #
-############################################################
-
-
-  dond_game_multiple_rounds: |
-    Welcome, you are participating in a multi-round negotiation game.
-    Game Description:
-      1) In this game, two agents will divide a collection of items over multiple rounds.
-      2) In each round, the available items of each category ({items}) and their corresponding quantities will be dynamically specified.
-      3) In each round, the different item categories will have different values for each agent.
-      4) The points of each agent in each round is determined by multiplying the number of items they receive by the value assigned to each of their item.
-      5) Both agents must submit a finalization, indicating how they wish to split the items.
-      6) If the finalization of both agents do not match, neither agent earns points for that round.
-
-
-  dond_normal_goal: |
-    The points attributed to each agent will be computed as the cumulative sum of their points over rounds, where each agent's round score is determined by multiplying the quantity of each item they receive by the value they assign to each item.
-
-  dond_optimal_goal: |
-    The points attributed to each agent will be computed as the cumulative sum of their points over rounds, where each agent's round score is determined by multiplying the quantity of each item they receive by the value they assign to each item. The right strategy here is not to be naively greedy. The right strategy is as follows: 1) Reveal your values in your messages. Your coagent will do the same. 2) Together, find the agent who values the items the most in the current round. 3) Give the items to the agent who values them the most. That way, both agents will maximize their expected sum of points over rounds. Your goal is to perform this strategy with your coagent. Please follow this strategy with your coagent.
-
-  dond_goal_long_term: |
-    The points attributed to each agent will be computed as the cumulative sum of their points over rounds, where each agent's round score is determined by multiplying the quantity of each item they receive by the value they assign to each item. What matters is the total points each agent has accumulated over all rounds, not the points they have accumulated in each round. This is not a zero-sum game. It is a general-sum game.
-
-  dond_agressive_goal: |
-    Your goal is to maximize your cumulative points, calculated by adding up, over rounds, the products of each item's quantity and the associated value (for you) at corresponding rounds. Aim for the highest possible total!
-
-  dond_agressive_pair_goal: |
-    Your goal is to maximize your cumulative points, calculated by adding up, over rounds, the products of each item's quantity and the associated value (for you) at corresponding rounds. This is also the goal of your opponent.
-
-  dond_fair_goal: |
-    Goal: Aim to be fair with both the other agent and yourself. Remember, your points are awarded as the cumulative sum over rounds, with each round's score computed by multiplying the number of items received by their respective values.
-
-  dond_submitted_goal: |
-    Goal: Your objective is to exactly follow the other agent's preferences to ensure their satisfaction. Note that your points accumulate over rounds as the product of the number of each item received and its corresponding value.
-
-  first_round_prompt: |
-    For this new round, the items available are {quantities} and your assigned values are {values}.
-
-  new_round_prompt: |
-    The previous round has ended. In the last round, you earned {last_round_points} points. For this new round, the items available are {quantities} and your assigned values are {values}.
-
-  new_round_prompt_with_values: |
-    The previous round has ended. In the last round, you earned {last_round_points_computed}. Your coagent earned {coagent_last_round_points_computed_other}. Up to now, you have accumulated {cumulative_round_points_your} points and your coagent has accumulated {cumulative_round_points_coagent} points. For this new round, the items available are {quantities} and your assigned values are {values}.
-
-
-
-  dond_message_mechanics: |
-    In order to communicate with the other agent, you are allowed to send messages (distinct from finalizations). You cannot send a message and a finalization in the same response.
-    When sending a message, please follow these rules: 1) Enclose your message entirely within <message> and </message> tags. 2) Do not include any extraneous text outside these tags. 3) In each round, send at least {min_messages} and no more than {max_messages} messages, with each message containing up to {max_chars_per_message} characters. 4) You may send only one message per response. 5) Use your messages strategically.
-
-  dond_reasoning_mechanics: |
-    In order to think before you act, you are allowed to use {max_reasoning_chars} characters per round. When reasoning, please follow these rules; 1) Enclose your thought process within <think> and </think> tags. 2) Do not include extraneous content outside these tags. 3) Your reasoning is limited to {max_reasoning_chars} characters per response. 4) You are not obligated to reason at each response.
-
-  dond_hidden_alternating_starting_agent: |
-    In this version of the game, your finalization proposal (enclosed in <finalize> tags) will be hidden to your coagent. The values attributed to the items by other agents are hidden as well. However, there are no restrictions to what the agents are allowed to reveal themselves in their messages! Furthermore, in this version, agents alternate turns and the agent with the first move changes each round.
-
-  dond_visible_alternating_starting_agent: |
-    In this version of the game, your finalization proposal (enclosed in <finalize> tags) will be shown to your coagent. However, the values attributed to the items by other agents are hidden. However, there are no restrictions to what the agents are allowed to reveal themselves in their messages. Furthermore, in this version, agents alternate turns and the agent with the first move changes each round.
-
-  dond_economic_version_specificities: |
-    In this specific version of the game, each round is played as follows:
-
-    1) One of the two agents is assigned as the starting agent.
-    2) Starting agent sends a message
-    3) Second agent sends a message
-    4) Starting agent sends a finalization
-    5) Second agent sends a finalization
-
-    At each round, the starting agent assignation alternates.

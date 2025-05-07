@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 import sys
 
 import hydra
@@ -14,6 +15,10 @@ from experiments.generate_and_train import generate_and_train
 def main(cfg):
     # Get Hydra's runtime directory
     hydra_run_dir = HydraConfig.get().run.dir
+
+    # Output source code in runtime directory for certain reproducibility
+    os.makedirs(hydra_run_dir, exist_ok=True)
+    shutil.copytree("src", os.path.join(hydra_run_dir, "src_code_for_reproducibility"))
 
     # Define specific loggers to configure
     specific_loggers = [

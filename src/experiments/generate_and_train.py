@@ -157,6 +157,11 @@ def generate_and_train(cfg, base_seed):
         initial_logging_time = logging_end_time - logging_start_time
         logging_start_time = time.time()
 
+        # Checkpoint all adapters
+        if iteration % cfg["experiment"]["checkpoint_every_n_iterations"] == 0:
+            for model_name, model in models.items():
+                model.checkpoint_all_adapters(checkpoint_indicator=f"iter_{iteration}")
+
         # TODO: Moving it here is better since we can plot for every k steps to speedup training
         for agent in agents.values():
             agent_name = agent.agent_name
