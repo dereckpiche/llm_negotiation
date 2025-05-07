@@ -7,7 +7,7 @@ from utils.common_imports import *
 class DondEnv:
     def __init__(
         self,
-        game_index,
+        game_id,
         random_seed,
         agents=["alice", "bob"],
         max_messages=None,
@@ -47,7 +47,7 @@ class DondEnv:
         """
 
         # A game can be uniquely identified by the combination of match_id and group_id
-        self.match_id = game_index
+        self.match_id = game_id
 
         # Minibatch / group id for which roundwise utilities are same
         self.group_id = group_id

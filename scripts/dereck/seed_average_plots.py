@@ -151,9 +151,9 @@ if __name__ == "__main__":
     # Example usage
 
     # Example path to experiment folder
-    experiment_folder = "/home/mila/d/dereck.piche/scratch/EXPLORE2"
+    experiment_folder = "/home/mila/d/dereck.piche/scratch/CONFIRM"
 
-    agent_name = "bob"
+    agent_name = "Alice"
 
     # For alice's statistics - using a pattern that finds alice's stats files
     pattern = f"**/seed_*/statistics/{agent_name}/{agent_name}_stats.jsonl"

@@ -16,17 +16,18 @@ mkdir -p "$LOGDIR"
 
 COMMANDS=(
 
-  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=new_base experiment.name=VERIFY/coop_1 experiment.base_seed=399 training.agents.Alice.training_data_func_args.score_method=sum_rloo_scores training.agents.Bob.training_data_func_args.score_method=sum_rloo_scores"
+  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=new_adv_align experiment.name=CONFIRM/advantage_alignment_0_1 experiment.base_seed=56 training.agents.Alice.training_data_func_args.score_method_kwargs.beta=0.1 training.agents.Bob.training_data_func_args.score_method_kwargs.beta=0.1"
 
-  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=new_base experiment.name=VERIFY/coop_1 experiment.base_seed=823 training.agents.Alice.training_data_func_args.score_method=sum_rloo_scores training.agents.Bob.training_data_func_args.score_method=sum_rloo_scores"
+  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=new_adv_align experiment.name=CONFIRM/advantage_alignment_0_5 experiment.base_seed=987 training.agents.Alice.training_data_func_args.score_method_kwargs.beta=0.5 training.agents.Bob.training_data_func_args.score_method_kwargs.beta=0.5"
 
-  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=new_adv_align experiment.name=VERIFY/advantage_alignment experiment.base_seed=1045"
+  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=new_adv_align experiment.name=CONFIRM/advantage_alignment_1 experiment.base_seed=33 training.agents.Alice.training_data_func_args.score_method_kwargs.beta=1.0 training.agents.Bob.training_data_func_args.score_method_kwargs.beta=1.0"
 
-  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=new_base experiment.name=VERIFY/greedy_1 experiment.base_seed=645"
+  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=new_adv_align experiment.name=CONFIRM/advantage_alignment_2 experiment.base_seed=23 training.agents.Alice.training_data_func_args.score_method_kwargs.beta=2.0 training.agents.Bob.training_data_func_args.score_method_kwargs.beta=2.0"
 
-  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=new_base experiment.name=VERIFY/greedy_2 experiment.base_seed=955"
+  "python $SCRIPT_PATH --config-path=/home/mila/d/dereck.piche/llm_negotiation/scripts/dereck --config-name=new_adv_align experiment.name=CONFIRM/advantage_alignment_3 experiment.base_seed=445 training.agents.Alice.training_data_func_args.score_method_kwargs.beta=3.0 training.agents.Bob.training_data_func_args.score_method_kwargs.beta=3.0"
 
 )
+
 
 # COMMANDS=(
 

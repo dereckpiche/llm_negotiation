@@ -518,12 +518,15 @@ if __name__ == "__main__":
             end = time.time()
             print(f"{label}: {end - start:.4f} seconds")
 
-    nb_games = 8192
-    game_lengths = 50
+    nb_games = 10
+    game_lengths = 8
     a1 = np.random.random((nb_games, game_lengths))
     a2 = np.random.random((nb_games, game_lengths))
     with time_it("Readable"):
-        readable_advantages_to_aa_scores(a1, a2)
+        s = readable_advantages_to_aa_scores(a1, a2)
+        print(s)
+
     with time_it("Chad"):
-        advantages_to_aa_scores(a1, a2)
+        s = advantages_to_aa_scores(a1, a2)
+        print(s)
     print("Done")
