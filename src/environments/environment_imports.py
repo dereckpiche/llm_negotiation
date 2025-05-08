@@ -1,7 +1,7 @@
 # Import all environment-related classes and functions
 from environments.ipd.ipd_game import IPDEnv
 from environments.ipd.ipd_agent import IPDAgent
-from environments.ipd.ipd_log_funcs import *
+from src.environments.ipd.ipd_log_match import *
 
 from environments.dond.dond_game import DondEnv
 from environments.dond.dond_agent import DondAgent

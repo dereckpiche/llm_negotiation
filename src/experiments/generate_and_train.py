@@ -154,54 +154,17 @@ def generate_and_train(cfg, base_seed):
 
         training_end_time = time.time()
 
-        initial_logging_time = logging_end_time - logging_start_time
-        logging_start_time = time.time()
 
-        # TODO: Moving it here is better since we can plot for every k steps to speedup training
-        for agent in agents.values():
-            agent_name = agent.agent_name
-            # Update agent statistics
-            agent_stats_folder = os.path.join(
-                output_directory, "statistics", agent_name
-            )
-            os.makedirs(agent_stats_folder, exist_ok=True)
-            agent_stats_file = os.path.join(
-                agent_stats_folder, f"{agent_name}_stats.jsonl"
-            )
 
-            update_agent_statistics(
-                input_path=os.path.join(it_folder, agent_name, "statistics"),
-                output_file=agent_stats_file,
-            )
-
-            with open(agent_stats_file, "r") as f:
-                agent_stats = json.load(f)
-
-            if agent.policy_id in train_output_dict:
-                train_output = train_output_dict[agent.policy_id]
-                for key in train_output:
-                    if key in agent_stats:
-                        agent_stats[key].append(train_output[key])
-                    else:
-                        agent_stats[key] = [train_output[key]]
-
-            with open(agent_stats_file, "w") as f:
-                json.dump(agent_stats, f, indent=4)
-
-        logging_end_time = time.time()
 
         iteration_end_time = time.time()
 
         # Timing calculations
         iteration_duration = iteration_end_time - iteration_start_time
         generation_duration = generation_end_time - generation_start_time
-        logging_duration = (
-            logging_end_time - logging_start_time
-        ) + initial_logging_time
         training_duration = training_end_time - training_start_time
 
         generation_percentage = (generation_duration / iteration_duration) * 100
-        logging_percentage = (logging_duration / iteration_duration) * 100
         training_percentage = (training_duration / iteration_duration) * 100
 
         elapsed_time = iteration_end_time - total_start_time
@@ -215,9 +178,8 @@ def generate_and_train(cfg, base_seed):
 
         compute_logger.info(
             f"Iteration {iteration + 1} took {format_time(iteration_duration)} "
-            f"({generation_percentage:.2f}% Gen, {logging_percentage:.2f}% Log, {training_percentage:.2f}% Train). "
+            f"({generation_percentage:.2f}% Gen, {training_percentage:.2f}% Train). "
             f"Generation: {format_time(generation_duration)}, "
-            f"Logging: {format_time(logging_duration)}, "
             f"Training: {format_time(training_duration)}. "
             f"Estimated remaining time: {format_time(estimated_remaining_time)}. "
             f"Estimated total time: {format_time(estimated_total_time)}. "
@@ -226,15 +188,10 @@ def generate_and_train(cfg, base_seed):
             f"500 more iterations: {format_time(time_est_500)}."
         )
 
-        # Save Python random state
         python_random_state = random.getstate()
-
-        # Save NumPy random state
         numpy_random_state = np.random.get_state()
-
-        # Save PyTorch random state
         torch_random_state = torch.get_rng_state()
-        torch_cuda_random_state = torch.cuda.get_rng_state_all()  # For all GPUs
+        torch_cuda_random_state = torch.cuda.get_rng_state_all()  
 
         # Store in a dictionary (or save to a file)
         random_state_dict = {
@@ -247,27 +204,8 @@ def generate_and_train(cfg, base_seed):
         with open(random_state_dir, "wb") as f:
             pickle.dump(random_state_dict, f)
 
-        print("Saved random states!")
+        
 
-    plotting_start_time = time.time()
-
-    for agent_name in cfg["matches"]["env_kwargs"]["agents"]:
-        agent_stats_folder = os.path.join(output_directory, "statistics", agent_name)
-
-        agent_stats_file = os.path.join(agent_stats_folder, f"{agent_name}_stats.jsonl")
-
-        generate_agent_stats_plots(
-            global_stats_path=agent_stats_file,
-            matplotlib_log_dir=os.path.join(agent_stats_folder, "matplotlib"),
-            tensorboard_log_dir=os.path.join(agent_stats_folder, "tensorboard"),
-            wandb_log_dir=os.path.join(agent_stats_folder, "wandb"),
-        )
-
-    plotting_end_time = time.time()
-
-    plotting_time = plotting_end_time - plotting_start_time
-
-    compute_logger.info(f"Total time taken for plotting: {format_time(plotting_time)}")
 
     total_end_time = time.time()
     total_duration = total_end_time - total_start_time

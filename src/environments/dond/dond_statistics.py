@@ -1,7 +1,10 @@
 from utils.common_imports import *
+from src.utils.statrees import *
 
 
-def gather_dond_statistics(agent_info, info, stats_to_log, format_options=None):
+
+
+def gather_dond_game_statistics(game_info, stats_to_log, format_options=None):
     """
     Gathers specified statistics of a game for a single agent and outputs them in JSONL format.
 
@@ -27,6 +30,8 @@ def gather_dond_statistics(agent_info, info, stats_to_log, format_options=None):
     scores:
         dict: A dictionary (formatted like JSONL) containing the specified game statistics.
     """
+    info = game_info
+
     # Set default format options if not provided
     if format_options is None:
         format_options = ["flat"]

@@ -1,0 +1,84 @@
+{
+    "round_0": {
+        "by_agent": {
+            "Bob": {
+                "agreement_percentage": 0,
+                "round_values": {
+                    "coins": 6
+                },
+                "round_points": 35.0,
+                "optimal_points_difference": 5.0,
+                "items_given_to_self_percentage": 70.0
+            },
+            "Alice": {
+                "agreement_percentage": 0,
+                "round_values": {
+                    "coins": 6
+                },
+                "round_points": 25.0,
+                "optimal_points_difference": -5.0,
+                "items_given_to_self_percentage": 50.0
+            },
+            "more_items_to_value_more_percentage": 0
+        }
+    },
+    "round_1": {
+        "by_agent": {
+            "Bob": {
+                "agreement_percentage": 100,
+                "round_values": {
+                    "coins": 7
+                },
+                "round_points": 21.0,
+                "optimal_points_difference": 21.0,
+                "items_given_to_self_percentage": 30.0
+            },
+            "Alice": {
+                "agreement_percentage": 100,
+                "round_values": {
+                    "coins": 15
+                },
+                "round_points": 105.0,
+                "optimal_points_difference": -45.0,
+                "items_given_to_self_percentage": 70.0
+            },
+            "more_items_to_value_more_percentage": 100
+        }
+    },
+    "totals": {
+        "by_agent": {
+            "Bob": {
+                "agreement_percentage": 100,
+                "round_values": {
+                    "coins": 7
+                },
+                "round_points": 21.0,
+                "optimal_points_difference": 21.0,
+                "items_given_to_self_percentage": 30.0,
+                "total_agreement_percentage": 50.0,
+                "total_optimal_points_difference": 26.0,
+                "total_average_imbalance": 0.41666666666666663,
+                "total_items_given_to_self_percentage": 50.0,
+                "number_of_rounds": 2
+            },
+            "Alice": {
+                "agreement_percentage": 100,
+                "round_values": {
+                    "coins": 15
+                },
+                "round_points": 105.0,
+                "optimal_points_difference": -45.0,
+                "items_given_to_self_percentage": 70.0,
+                "total_agreement_percentage": 50.0,
+                "total_optimal_points_difference": -50.0,
+                "total_average_imbalance": 0.41666666666666663
+            },
+            "both_agents": {
+                "more_items_to_value_more_percentage": 100,
+                "total_imbalance": 0.3978494623655914,
+                "total_sum_points_percentage_of_max": 88.57142857142857,
+                "total_more_items_to_value_more_percentage": 50.0
+            }
+        }
+    }
+}

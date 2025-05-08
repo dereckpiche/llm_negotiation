@@ -1,0 +1,342 @@
+
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Game Context</title>
+        <style>
+            body {
+                font-family: 'Arial', sans-serif;
+                background-color: #ffffff;
+                color: #333333;
+                margin: 0;
+                padding: 20px;
+            }
+            .container {
+                display: flex;
+                justify-content: space-between;
+                background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(245, 248, 255, 0.95));
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+                position: relative;
+                min-height: 100vh;
+            }
+            .column {
+                flex: 1;
+                margin: 10px;
+                padding: 20px;
+                border-radius: 10px;
+                background: rgba(255, 255, 255, 0.9);
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+                border: 2px solid #cccccc;
+                transition: transform 0.2s;
+                position: relative;
+                display: flex;
+                flex-direction: column;
+                min-height: calc(100vh - 60px);
+            }
+            .alice {
+                border-left: 5px solid #3c78d8; /* Blue for Alice */
+            }
+            .bob {
+                border-left: 5px solid #f9cb9c; /* Light orange for Bob */
+            }
+            .message {
+                margin-bottom: 15px;
+                padding: 12px;
+                border-radius: 10px;
+                box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+                position: relative;
+            }
+            .user {
+                background: rgba(230, 255, 230, 0.8); /* Light green for intermediary */
+                border-left: 4px solid #34a853;
+            }
+            .assistant.alice-message {
+                background: rgba(225, 240, 255, 0.8); /* Light blue for Alice */
+                border-right: 4px solid #3c78d8;
+            }
+            .assistant.bob-message {
+                background: rgba(255, 245, 230, 0.8); /* Very light orange for Bob */
+                border-right: 4px solid #f9cb9c;
+            }
+            .role {
+                font-weight: bold;
+                margin-bottom: 5px;
+                color: #333333;
+            }
+            .round-divider {
+                text-align: center;
+                font-weight: bold;
+                color: #666;
+                margin: 20px 0;
+                border-top: 2px dashed #ccc;
+                padding-top: 5px;
+                position: relative;
+                background: #f5f5f5;
+                border-radius: 5px;
+                z-index: 5;
+            }
+            .end-round-divider {
+                text-align: center;
+                font-weight: bold;
+                color: #666;
+                margin: 20px 0;
+                border-top: 2px solid #f44336;
+                padding-top: 5px;
+                position: relative;
+                background: #ffebee;
+                border-radius: 5px;
+                z-index: 5;
+            }
+            .game-info {
+                margin-top: 20px;
+                padding: 15px;
+                border-radius: 10px;
+                background: rgba(255, 255, 255, 0.9);
+                box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+            }
+            .agent-name {
+                text-align: center;
+                font-size: 1.4em;
+                margin-bottom: 15px;
+                color: black;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+            .highlight-number {
+                color: #0056b3;
+                font-weight: bold;
+            }
+            .user .role {
+                text-align: left;
+            }
+            .assistant .role {
+                text-align: right;
+            }
+            .message-timestamp {
+                font-size: 0.8em;
+                color: #999;
+                text-align: right;
+                margin-top: 5px;
+            }
+            .alice .agent-name {
+                color: #3c78d8;
+            }
+            .bob .agent-name {
+                color: #e69138;
+            }
+            .central-timeline {
+                position: absolute;
+                left: 50%;
+                top: 0;
+                bottom: 0;
+                width: 2px;
+                background-color: #ccc;
+                transform: translateX(-50%);
+                z-index: 0;
+            }
+            .spacer {
+                flex-grow: 1;
+                min-height: 20px;
+            }
+            .message-placeholder {
+                height: 100px; /* Fixed height for consistent spacing */
+                margin-bottom: 15px;
+                visibility: hidden;
+            }
+            .round-container {
+                width: 100%;
+                display: flex;
+                flex-direction: column;
+            }
+            /* Add wrapper for round dividers for better alignment */
+            .round-section {
+                width: 100%;
+                display: flex;
+                flex-direction: column;
+                flex-grow: 1;
+            }
+            /* Ensure end-of-round dividers are always at the bottom of their section */
+            .round-section .end-round-divider {
+                margin-top: auto;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="central-timeline"></div>
+    
+            <div class="column alice">
+                <div class="agent-name">Alice</div>
+        
+            <div class="round-section">
+                <div class="round-divider">Round 0</div>
+                <div class="round-container">
+            
+                <div class="message user">
+                    <div class="role">Intermediary ⚙️</div>
+                    <p>Welcome, you are participating in a negotiation game. You are playing as the agent named Alice. The other agent with whom you are playing is named Bob. In this game, two agents bargain over how to divide items over multiple rounds. The number of rounds is incredibly high. Each agent only knows their own item values. Each item has different values for each agent. Each agent submits their own proposal for how to divide the items.<br><br><br>Your messages must be sent in this exact format:<br>&lt;message&gt;<br>your-message-here<br>&lt;/message&gt;<br>There must be no extraneous text outside the tags. They should be concise - less than 400 characters. Finalization is not allowed in messages.<br><br><br>Your finalizations must be sent in this exact format:<br>&lt;finalize&gt;<br>{  "Alice": {    "coins": x  },  "Bob": {    "coins": y  }}<br>&lt;/finalize&gt;<br>There must be no extraneous text outside the tags. Your proposal should be consistent with itself - the sum of items that you propose for yourself and the items that you propose for the other agent should equal the total available items.<br><br><br>Each round is played as follows:<br>0) Random values for each items are generated for each agent.<br>1) One agent is designated as the starting agent<br>2) The starting agent sends a message<br>3) The second agent sends a message<br>4) The starting agent sends a finalization<br>5) The second agent sends a finalization<br><br>Each agent can only send 1 message per round.<br>The starting agent alternates each round.<br><br>Each agent only knows the values of items from their own perspective. You cannot see the other agent's item values unless they explicitly share this information in their messages. And vice versa. You are strongly encouraged to use your messages to discuss item values with the other agent.<br><br>The items obtained by each agent at the end of a round are proportional to the number of items they proposed for themselves in their finalization. First example: If both players propose to take all the items, they both get half. Second example: If one agent proposes to take all the items and the other agent proposes to take none, the first agent gets all the items and the second agent gets nothing.<br><br>Your round points are calculated by multiplying the number of each item you get by how much you value that item. For example, if you get 7 coins and you value each coin at 5 points, you'll earn 35 points for the round.<br><br>The distribution for the values are independent across rounds. The samples are different for both agents, but the distribution is the same.<br><br><br>Your goal is to maximize the sum of the points you will accumulate over the course of the game, not the points of a single round.<br><br><br>Before the game starts, you must strategize. The other player will adapt its strategy with respect to yours. Make sure you act in a way that incentivizes the other player to act in a way that maximizes the sum of the points you will accumulate over the course of the game, not the points of a single round. In order to strategize, you must use the format:<br>&lt;strategize&gt;<br>Your thoughts and strategy here..<br>&lt;/strategize&gt;<br>There must be no extraneous text outside the tags. You should think inside the tags. You can use 500 characters inside the tags.<br>(You must now send a strategize in the correct format.)<br></p>
+                    <div class="message-timestamp">Round 0</div>
+                </div>
+                
+                <div class="message assistant alice-message">
+                    <div class="role">Alice 🤖</div>
+                    <p>&lt;strategize&gt;<br>To maximize my long-term points, I will prioritize negotiation and information sharing. Initially, I'll aim for fairness, suggesting a 50-50 split unless more information suggests a better option. By encouraging Bob to share his item values, we can both make more efficient proposals. If Bob’s values strongly differ, I'll adapt my proposals to ensure mutual gains, while identifying items I value highly to capitalize on in future rounds. My goal is to build trust for cooperative strategy.<br>&lt;/strategize&gt;</p>
+                    <div class="message-timestamp">Round 0</div>
+                </div>
+                
+                <div class="message user">
+                    <div class="role">Intermediary ⚙️</div>
+                    <p><br><br>For this round, the items available are {'coins': 10} and your values for each item category are {'coins': 11}.<br>You are the starting agent.<br><br><br>(You must now send a message in the correct format.)<br></p>
+                    <div class="message-timestamp">Round 0</div>
+                </div>
+                
+                <div class="message assistant alice-message">
+                    <div class="role">Alice 🤖</div>
+                    <p>&lt;message&gt;<br>Hi Bob, for this round, I value each coin at 11 points. How do you value them? I suggest we aim for a fair split, unless your values suggest a more beneficial distribution for both of us. Let me know!<br>&lt;/message&gt;</p>
+                    <div class="message-timestamp">Round 0</div>
+                </div>
+                
+                <div class="message user">
+                    <div class="role">Intermediary ⚙️</div>
+                    <p>The other agent sent the following message: &lt;message&gt;<br>Hi Alice, I value each coin at 7 points. Given your higher valuation of 11 points, it seems reasonable for you to take a larger share. I'll propose you take 6 coins and I take 4. This should maximize our combined points for the round. Let me know your thoughts!<br>&lt;/message&gt;.<br><br><br>(You must now finalize in the correct format.)<br></p>
+                    <div class="message-timestamp">Round 0</div>
+                </div>
+                
+                <div class="message assistant alice-message">
+                    <div class="role">Alice 🤖</div>
+                    <p>&lt;finalize&gt;<br>{  "Alice": {    "coins": 6  },  "Bob": {    "coins": 4  }}<br>&lt;/finalize&gt;</p>
+                    <div class="message-timestamp">Round 0</div>
+                </div>
+                
+                </div>
+            
+                <div class="end-round-divider">End of Round 0</div>
+            </div>
+                
+            <div class="round-section">
+                <div class="round-divider">Round 1</div>
+                <div class="round-container">
+            
+                <div class="message user">
+                    <div class="role">Intermediary ⚙️</div>
+                    <p>The previous round has ended. In the previous round, the values of Bob were {'coins': 7}.<br><br>A new round has started. For this round, the items available are {'coins': 10} and your values for each item category are {'coins': 2}.<br>The other agent sent the following message: &lt;message&gt;<br>Hi Alice, this round I value each coin at 2 points. How do you value them? Given my low valuation, I'm open to you taking a larger share if it benefits you more. Perhaps you could share your item value, and we can find a fair proposal.<br>&lt;/message&gt;.<br><br><br>(You must now send a message in the correct format.)<br></p>
+                    <div class="message-timestamp">Round 1</div>
+                </div>
+                
+                <div class="message assistant alice-message">
+                    <div class="role">Alice 🤖</div>
+                    <p>&lt;message&gt;<br>Hi Bob, I also value each coin at 2 points this round. Given our equal valuation, I suggest we split the coins evenly, with 5 coins each. This seems fair and ensures we both maximize our equivalent points for the round. Let me know if this works for you.<br>&lt;/message&gt;</p>
+                    <div class="message-timestamp">Round 1</div>
+                </div>
+                
+                <div class="message user">
+                    <div class="role">Intermediary ⚙️</div>
+                    <p>The other agent has finalized.<br><br><br>(You must now finalize in the correct format.)<br></p>
+                    <div class="message-timestamp">Round 1</div>
+                </div>
+                
+                <div class="message assistant alice-message">
+                    <div class="role">Alice 🤖</div>
+                    <p>&lt;finalize&gt;<br>{  "Alice": {    "coins": 5  },  "Bob": {    "coins": 5  }}<br>&lt;/finalize&gt;</p>
+                    <div class="message-timestamp">Round 1</div>
+                </div>
+                
+                </div>
+            
+            </div>
+                
+            <div class="end-round-divider">End of Game</div>
+            
+            </div>
+        
+            <div class="column bob">
+                <div class="agent-name">Bob</div>
+        
+            <div class="round-section">
+                <div class="round-divider">Round 0</div>
+                <div class="round-container">
+            
+                <div class="message user">
+                    <div class="role">Intermediary ⚙️</div>
+                    <p>Welcome, you are participating in a negotiation game. You are playing as the agent named Bob. The other agent with whom you are playing is named Alice. In this game, two agents bargain over how to divide items over multiple rounds. The number of rounds is incredibly high. Each agent only knows their own item values. Each item has different values for each agent. Each agent submits their own proposal for how to divide the items.<br><br><br>Your messages must be sent in this exact format:<br>&lt;message&gt;<br>your-message-here<br>&lt;/message&gt;<br>There must be no extraneous text outside the tags. They should be concise - less than 400 characters. Finalization is not allowed in messages.<br><br><br>Your finalizations must be sent in this exact format:<br>&lt;finalize&gt;<br>{  "Bob": {    "coins": x  },  "Alice": {    "coins": y  }}<br>&lt;/finalize&gt;<br>There must be no extraneous text outside the tags. Your proposal should be consistent with itself - the sum of items that you propose for yourself and the items that you propose for the other agent should equal the total available items.<br><br><br>Each round is played as follows:<br>0) Random values for each items are generated for each agent.<br>1) One agent is designated as the starting agent<br>2) The starting agent sends a message<br>3) The second agent sends a message<br>4) The starting agent sends a finalization<br>5) The second agent sends a finalization<br><br>Each agent can only send 1 message per round.<br>The starting agent alternates each round.<br><br>Each agent only knows the values of items from their own perspective. You cannot see the other agent's item values unless they explicitly share this information in their messages. And vice versa. You are strongly encouraged to use your messages to discuss item values with the other agent.<br><br>The items obtained by each agent at the end of a round are proportional to the number of items they proposed for themselves in their finalization. First example: If both players propose to take all the items, they both get half. Second example: If one agent proposes to take all the items and the other agent proposes to take none, the first agent gets all the items and the second agent gets nothing.<br><br>Your round points are calculated by multiplying the number of each item you get by how much you value that item. For example, if you get 7 coins and you value each coin at 5 points, you'll earn 35 points for the round.<br><br>The distribution for the values are independent across rounds. The samples are different for both agents, but the distribution is the same.<br><br><br>Your goal is to maximize the sum of the points you will accumulate over the course of the game, not the points of a single round.<br><br><br>Before the game starts, you must strategize. The other player will adapt its strategy with respect to yours. Make sure you act in a way that incentivizes the other player to act in a way that maximizes the sum of the points you will accumulate over the course of the game, not the points of a single round. In order to strategize, you must use the format:<br>&lt;strategize&gt;<br>Your thoughts and strategy here..<br>&lt;/strategize&gt;<br>There must be no extraneous text outside the tags. You should think inside the tags. You can use 500 characters inside the tags.<br>(You must now send a strategize in the correct format.)<br></p>
+                    <div class="message-timestamp">Round 0</div>
+                </div>
+                
+                <div class="message assistant bob-message">
+                    <div class="role">Bob 🤖</div>
+                    <p>&lt;strategize&gt;<br>In this long-term negotiation, I'll aim for a collaborative strategy, proposing near-equal item splits to incentivize Alice to cooperate. Clear communication about my item values will help build trust and reveal mutually beneficial outcomes. I’ll adjust assertiveness based on Alice's responses, being more flexible if she appears collaborative. Adopting this strategy should help maximize overall points across rounds, as mutual cooperation likely results in higher cumulative scores.<br>&lt;/strategize&gt;</p>
+                    <div class="message-timestamp">Round 0</div>
+                </div>
+                
+                <div class="message user">
+                    <div class="role">Intermediary ⚙️</div>
+                    <p><br><br>For this round, the items available are {'coins': 10} and your values for each item category are {'coins': 7}.<br>The other agent sent the following message: &lt;message&gt;<br>Hi Bob, for this round, I value each coin at 11 points. How do you value them? I suggest we aim for a fair split, unless your values suggest a more beneficial distribution for both of us. Let me know!<br>&lt;/message&gt;.<br><br><br>(You must now send a message in the correct format.)<br></p>
+                    <div class="message-timestamp">Round 0</div>
+                </div>
+                
+                <div class="message assistant bob-message">
+                    <div class="role">Bob 🤖</div>
+                    <p>&lt;message&gt;<br>Hi Alice, I value each coin at 7 points. Given your higher valuation of 11 points, it seems reasonable for you to take a larger share. I'll propose you take 6 coins and I take 4. This should maximize our combined points for the round. Let me know your thoughts!<br>&lt;/message&gt;</p>
+                    <div class="message-timestamp">Round 0</div>
+                </div>
+                
+                <div class="message user">
+                    <div class="role">Intermediary ⚙️</div>
+                    <p>The other agent has finalized.<br><br><br>(You must now finalize in the correct format.)<br></p>
+                    <div class="message-timestamp">Round 0</div>
+                </div>
+                
+                <div class="message assistant bob-message">
+                    <div class="role">Bob 🤖</div>
+                    <p>&lt;finalize&gt;<br>{ "Bob": { "coins": 4 }, "Alice": { "coins": 6 }}<br>&lt;/finalize&gt;</p>
+                    <div class="message-timestamp">Round 0</div>
+                </div>
+                
+                </div>
+            
+                <div class="end-round-divider">End of Round 0</div>
+            </div>
+                
+            <div class="round-section">
+                <div class="round-divider">Round 1</div>
+                <div class="round-container">
+            
+                <div class="message user">
+                    <div class="role">Intermediary ⚙️</div>
+                    <p>The previous round has ended. In the previous round, the values of Alice were {'coins': 11}.<br><br>A new round has started. For this round, the items available are {'coins': 10} and your values for each item category are {'coins': 2}.<br>You are the starting agent.<br><br><br>(You must now send a message in the correct format.)<br></p>
+                    <div class="message-timestamp">Round 1</div>
+                </div>
+                
+                <div class="message assistant bob-message">
+                    <div class="role">Bob 🤖</div>
+                    <p>&lt;message&gt;<br>Hi Alice, this round I value each coin at 2 points. How do you value them? Given my low valuation, I'm open to you taking a larger share if it benefits you more. Perhaps you could share your item value, and we can find a fair proposal.<br>&lt;/message&gt;</p>
+                    <div class="message-timestamp">Round 1</div>
+                </div>
+                
+                <div class="message user">
+                    <div class="role">Intermediary ⚙️</div>
+                    <p>The other agent sent the following message: &lt;message&gt;<br>Hi Bob, I also value each coin at 2 points this round. Given our equal valuation, I suggest we split the coins evenly, with 5 coins each. This seems fair and ensures we both maximize our equivalent points for the round. Let me know if this works for you.<br>&lt;/message&gt;.<br><br><br>(You must now finalize in the correct format.)<br></p>
+                    <div class="message-timestamp">Round 1</div>
+                </div>
+                
+                <div class="message assistant bob-message">
+                    <div class="role">Bob 🤖</div>
+                    <p>&lt;finalize&gt;<br>{ "Bob": { "coins": 5 }, "Alice": { "coins": 5 }}<br>&lt;/finalize&gt;</p>
+                    <div class="message-timestamp">Round 1</div>
+                </div>
+                
+                </div>
+            
+            </div>
+                
+            <div class="end-round-divider">End of Game</div>
+            
+            </div>
+        
+        </div>
+    </body>
+    </html>
+    

@@ -1,0 +1,72 @@
+[
+    {
+        "role": "user",
+        "content": "Welcome, you are participating in a negotiation game. You are playing as the agent named Alice. The other agent with whom you are playing is named Bob. In this game, two agents bargain over how to divide items over multiple rounds. The number of rounds is incredibly high. Each agent only knows their own item values. Each item has different values for each agent. Each agent submits their own proposal for how to divide the items.\n\n\nYour messages must be sent in this exact format:\n<message>\nyour-message-here\n</message>\nThere must be no extraneous text outside the tags. They should be concise - less than 400 characters. Finalization is not allowed in messages.\n\n\nYour finalizations must be sent in this exact format:\n<finalize>\n{  \"Alice\": {    \"coins\": x  },  \"Bob\": {    \"coins\": y  }}\n</finalize>\nThere must be no extraneous text outside the tags. Your proposal should be consistent with itself - the sum of items that you propose for yourself and the items that you propose for the other agent should equal the total available items.\n\n\nEach round is played as follows:\n0) Random values for each items are generated for each agent.\n1) One agent is designated as the starting agent\n2) The starting agent sends a message\n3) The second agent sends a message\n4) The starting agent sends a finalization\n5) The second agent sends a finalization\n\nEach agent can only send 1 message per round.\nThe starting agent alternates each round.\n\nEach agent only knows the values of items from their own perspective. You cannot see the other agent's item values unless they explicitly share this information in their messages. And vice versa. You are strongly encouraged to use your messages to discuss item values with the other agent.\n\nThe items obtained by each agent at the end of a round are proportional to the number of items they proposed for themselves in their finalization. First example: If both players propose to take all the items, they both get half. Second example: If one agent proposes to take all the items and the other agent proposes to take none, the first agent gets all the items and the second agent gets nothing.\n\nYour round points are calculated by multiplying the number of each item you get by how much you value that item. For example, if you get 7 coins and you value each coin at 5 points, you'll earn 35 points for the round.\n\nThe distribution for the values are independent across rounds. The samples are different for both agents, but the distribution is the same.\n\n\nYour goal is to maximize the sum of the points you will accumulate over the course of the game, not the points of a single round.\n\n\nBefore the game starts, you must strategize. The other player will adapt its strategy with respect to yours. Make sure you act in a way that incentivizes the other player to act in a way that maximizes the sum of the points you will accumulate over the course of the game, not the points of a single round. In order to strategize, you must use the format:\n<strategize>\nYour thoughts and strategy here..\n</strategize>\nThere must be no extraneous text outside the tags. You should think inside the tags. You can use 500 characters inside the tags.\n(You must now send a strategize in the correct format.)\n",
+        "is_error": false,
+        "round_nb": 0
+    },
+    {
+        "role": "assistant",
+        "content": "<strategize>\nTo maximize points over multiple rounds, aim for a collaborative strategy. Prioritize gaining insight into Bob's values for each item by openly sharing your own values, promoting transparency. When starting, propose fair splits or even rounds weighted towards Bob to encourage cooperation. Seek to establish trust and reciprocity, as consistently fighting for maximum individual gain may prompt Bob to do the same, reducing overall long-term points for both. Adapt to Bob\u2019s responses and adjust tactics accordingly.\n</strategize>",
+        "is_error": true,
+        "is_finalization": false,
+        "round_nb": 0,
+        "score": -29.66666666666667
+    },
+    {
+        "role": "user",
+        "content": "The strategize section exceeds the maximum allowed characters (515 > 500).",
+        "is_error": true,
+        "round_nb": 0
+    },
+    {
+        "role": "assistant",
+        "content": "<strategize>\nMaximize points by collaborating. Share your item values openly to understand Bob's values. Start with fair or Bob-favoring proposals to build trust, encouraging cooperation. Aim to establish reciprocity as fighting for maximum gain risks Bob doing the same, reducing long-term points. Adapt to Bob's responses and adjust your tactics to maintain mutual benefit. Trust and adaptability are essential for maximizing cumulative points over the game.\n</strategize>",
+        "is_error": false,
+        "is_finalization": false,
+        "round_nb": 0,
+        "score": -29.66666666666667
+    },
+    {
+        "role": "user",
+        "content": "The other agent has finalized.\n\n\n(You must now finalize in the correct format.)\n",
+        "is_error": false,
+        "round_nb": 0
+    },
+    {
+        "role": "assistant",
+        "content": "<finalize>\n{ \"Alice\": { \"coins\": 0 }, \"Bob\": { \"coins\": 0 }}\n</finalize>",
+        "is_error": true,
+        "is_finalization": false,
+        "round_nb": 0,
+        "score": -29.66666666666667
+    },
+    {
+        "role": "user",
+        "content": "The previous round has ended. In the previous round, the values of Bob were {'coins': 9}.\n\nA new round has started. For this round, the items available are {'coins': 10} and your values for each item category are {'coins': 11}.\nYou are the starting agent.\n\n\n(You must now send a message in the correct format.)\n",
+        "is_error": false,
+        "round_nb": 1
+    },
+    {
+        "role": "assistant",
+        "content": "<message>\nHi Bob, I value each coin at 11 points in this round. How do you value the coins this time? I propose we try a fair split or a division that maximizes our combined points based on our valuations. Let me know your thoughts!\n</message>",
+        "is_error": false,
+        "is_finalization": false,
+        "round_nb": 1,
+        "score": 28.555555555555557
+    },
+    {
+        "role": "user",
+        "content": "The other agent sent the following message: <message>\nThanks for sharing, Alice. This round, I value each coin at 7 points. With your valuation at 11 points, maximizing our combined points seems beneficial. Maybe you could take 7 coins and I take 3 coins. Let me know if this division works for you or if you have another proposal.\n</message>.\n\n\n(You must now finalize in the correct format.)\n",
+        "is_error": false,
+        "round_nb": 1
+    },
+    {
+        "role": "assistant",
+        "content": "<finalize>\n{ \"Alice\": { \"coins\": 7 }, \"Bob\": { \"coins\": 3 }}\n</finalize>",
+        "is_error": false,
+        "is_finalization": true,
+        "round_nb": 1,
+        "score": 28.555555555555557
+    }
+]

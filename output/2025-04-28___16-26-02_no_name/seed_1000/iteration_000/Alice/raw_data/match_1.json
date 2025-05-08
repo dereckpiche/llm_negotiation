@@ -1,0 +1,423 @@
+[
+    {
+        "role": "user",
+        "content": "Welcome, you are participating in a negotiation game. You are playing as the agent named Alice. The other agent with whom you are playing is named Bob. In this game, two agents bargain over how to divide items over multiple rounds. The number of rounds is incredibly high. Each agent only knows their own item values. Each item has different values for each agent. Each agent submits their own proposal for how to divide the items.\n\n\nYour messages must be sent in this exact format:\n<message>\nyour-message-here\n</message>\nThere must be no extraneous text outside the tags. They should be concise - less than 400 characters. Finalization is not allowed in messages.\n\n\nYour finalizations must be sent in this exact format:\n<finalize>\n{  \"Alice\": {    \"coins\": x  },  \"Bob\": {    \"coins\": y  }}\n</finalize>\nThere must be no extraneous text outside the tags. Your proposal should be consistent with itself - the sum of items that you propose for yourself and the items that you propose for the other agent should equal the total available items.\n\n\nEach round is played as follows:\n1) One agent is designated as the starting agent\n2) The starting agent sends a message\n3) The second agent sends a message\n4) The starting agent sends a finalization\n5) The second agent sends a finalization\n\nEach agent can only send 1 message per round.\nThe starting agent alternates each round.\n\nEach agent only knows the values of items from their own perspective. You cannot see the other agent's item values unless they explicitly share this information in their messages. And vice versa. You are strongly encouraged to use your messages to discuss item values with the other agent.\n\nThe items obtained by each agent at the end of a round are proportional to the number of items they proposed for themselves in their finalization. First example: If both players propose to take all the items, they both get half. Second example: If one agent proposes to take all the items and the other agent proposes to take none, the first agent gets all the items and the second agent gets nothing.\n\nYour round points are calculated by multiplying the number of each item you get by how much you value that item. For example, if you get 7 coins and you value each coin at 5 points, you'll earn 35 points for the round.\n\n\nYour goal is to maximize the sum of the points you will accumulate over the course of the game, not the points of a single round.\n\n\nBefore the game starts, you must strategize. The other player will adapt its strategy with respect to yours. Make sure you act in a way that incentivizes the other player to act in a way that maximizes the sum of the points you will accumulate over the course of the game, not the points of a single round. In order to strategize, you must use the format:\n<strategize>\nYour thoughts and strategy here..\n</strategize>\nThere must be no extraneous text outside the tags. You should think inside the tags. You can use 500 characters inside the tags.\n(You must now send a strategize in the correct format.)\n\n\n(You must now send a message in the correct format.)\n",
+        "is_error": false,
+        "round_nb": 0
+    },
+    {
+        "role": "assistant",
+        "content": "<strategize>\nThe goal is to maximize long-term points, so building trust and finding win-win divisions in each round is crucial. I'll suggest fair proposals based on my item values and try to gather information about Bob's preferences. Communication is key: I'll be transparent about my item values and encourage Bob to do the same, aiming for a cooperation strategy where we both reveal our interests and negotiate from a position of mutual benefit.\n</strategize>\n\n<message>\nHello Bob! For fair negotiations, let's discuss item values. I value coins at 5 points each. What are your values? Transparency could help us both maximize our long-term points. Looking forward to your response!\n</message>",
+        "is_error": false,
+        "is_finalization": false,
+        "round_nb": 0
+    },
+    {
+        "role": "user",
+        "content": "The other agent sent the following message: <strategize>\nTo maximize my long-term points, I will approach negotiations collaboratively, sharing my item values and seeking common ground. By being transparent about how I value items, I can encourage Alice to propose fair divisions and avoid zero-sum dynamics. My strategy is to build trust and adapt proposals based on Alice's preferences, ensuring both agents have a fair opportunity to maximize their cumulative game points.\n</strategize>.\n\n\n(You must now finalize in the correct format.)\n",
+        "is_error": false,
+        "round_nb": 0
+    },
+    {
+        "role": "assistant",
+        "content": "<finalize>\n{  \"Alice\": {    \"coins\": 5  },  \"Bob\": {    \"coins\": 5  }}\n</finalize>",
+        "is_error": false,
+        "is_finalization": true,
+        "round_nb": 0
+    },
+    {
+        "role": "user",
+        "content": "The previous round has ended. In the previous round, the values of Bob were {'coins': 8}.\n\nA new round has started. For this round, the items available are {'coins': 10} and your values for each item category are {'coins': 4}.\nThe other agent sent the following message: <message>\nHi Alice, in this round, I value each coin at 6 points. Since I know you valued coins at 5 points last round, let's aim for a win-win where each of us maximizes our points. How about I take 6 coins and you take 4? This way, both of us capitalize based on our valuations. Let me know your thoughts!\n</message>.\n\n\n(You must now send a message in the correct format.)\n",
+        "is_error": false,
+        "round_nb": 1
+    },
+    {
+        "role": "assistant",
+        "content": "<message>\nHi Bob! Thanks for sharing your values. This round, I value each coin at 4 points. Your proposal of 6 coins for you and 4 for me is reasonable given our values. It ensures we maximize our points based on what we each value most. I'm onboard with this division if you are. Looking forward to finalizing!\n</message>",
+        "is_error": false,
+        "is_finalization": false,
+        "round_nb": 1
+    },
+    {
+        "role": "user",
+        "content": "The other agent has finalized.\n\n\n(You must now finalize in the correct format.)\n",
+        "is_error": false,
+        "round_nb": 1
+    },
+    {
+        "role": "assistant",
+        "content": "<finalize>\n{  \"Alice\": {    \"coins\": 4  },  \"Bob\": {    \"coins\": 6  }}\n</finalize>",
+        "is_error": false,
+        "is_finalization": true,
+        "round_nb": 1
+    },
+    {
+        "role": "user",
+        "content": "The previous round has ended. In the previous round, the values of Bob were {'coins': 6}.\n\nA new round has started. For this round, the items available are {'coins': 10} and your values for each item category are {'coins': 15}.\nYou are the starting agent.\n\n\n(You must now send a message in the correct format.)\n",
+        "is_error": false,
+        "round_nb": 2
+    },
+    {
+        "role": "assistant",
+        "content": "<message>\nHi Bob! This round, I value each coin at 15 points, which is significantly higher than before. Could you share how much you value coins this round? Understanding each other's valuations will help us find the best division. Looking forward to collaborating on this!\n</message>",
+        "is_error": false,
+        "is_finalization": false,
+        "round_nb": 2
+    },
+    {
+        "role": "user",
+        "content": "The other agent sent the following message: <message>\nHi Alice! This round, I only value each coin at 1 point. Given your higher valuation, I'm inclined to let you claim a larger share this time. How about you take 8 coins, and I'll take 2? This should help maximize both our points based on our respective values. Let me know what you think!\n</message>.\n\n\n(You must now finalize in the correct format.)\n",
+        "is_error": false,
+        "round_nb": 2
+    },
+    {
+        "role": "assistant",
+        "content": "<finalize>\n{  \"Alice\": {    \"coins\": 8  },  \"Bob\": {    \"coins\": 2  }}\n</finalize>",
+        "is_error": false,
+        "is_finalization": true,
+        "round_nb": 2
+    },
+    {
+        "role": "user",
+        "content": "The previous round has ended. In the previous round, the values of Bob were {'coins': 1}.\n\nA new round has started. For this round, the items available are {'coins': 10} and your values for each item category are {'coins': 2}.\nThe other agent sent the following message: <message>\nHi Alice, I currently value each coin at 9 points. Since you valued coins at 15 points last round, I'm curious if your valuation has changed. If it's similar, perhaps we could split the coins evenly, 5 each, to maximize our respective points fairly. Let me know your thoughts or if you have a different suggestion!\n</message>.\n\n\n(You must now send a message in the correct format.)\n",
+        "is_error": false,
+        "round_nb": 3
+    },
+    {
+        "role": "assistant",
+        "content": "<message>\nHi Bob! This round, my valuation for each coin is 2 points. Given your higher valuation at 9 points per coin, I'd be open to you taking a larger share to reflect this. How about you take 7 coins and I take 3? This should allow us both to gain more value based on our current valuations. Let me know if this works for you!\n</message>",
+        "is_error": false,
+        "is_finalization": false,
+        "round_nb": 3
+    },
+    {
+        "role": "user",
+        "content": "The other agent has finalized.\n\n\n(You must now finalize in the correct format.)\n",
+        "is_error": false,
+        "round_nb": 3
+    },
+    {
+        "role": "assistant",
+        "content": "<finalize>\n{  \"Alice\": {    \"coins\": 3  },  \"Bob\": {    \"coins\": 7  }}\n</finalize>",
+        "is_error": false,
+        "is_finalization": true,
+        "round_nb": 3
+    },
+    {
+        "role": "system",
+        "game_info": {
+            "mode": "basic",
+            "agents": [
+                "Alice",
+                "Bob"
+            ],
+            "finalization_visibility": false,
+            "other_values_visibility": false,
+            "round_agent_roles": [
+                {
+                    "Alice": "starting_negotiator",
+                    "Bob": "responding_negotiator"
+                },
+                {
+                    "Alice": "responding_negotiator",
+                    "Bob": "starting_negotiator"
+                },
+                {
+                    "Alice": "starting_negotiator",
+                    "Bob": "responding_negotiator"
+                },
+                {
+                    "Alice": "responding_negotiator",
+                    "Bob": "starting_negotiator"
+                }
+            ],
+            "round_quantities": [
+                {
+                    "coins": 10
+                },
+                {
+                    "coins": 10
+                },
+                {
+                    "coins": 10
+                },
+                {
+                    "coins": 10
+                }
+            ],
+            "round_values": [
+                {
+                    "starting_negotiator": {
+                        "coins": 13
+                    },
+                    "responding_negotiator": {
+                        "coins": 8
+                    }
+                },
+                {
+                    "starting_negotiator": {
+                        "coins": 6
+                    },
+                    "responding_negotiator": {
+                        "coins": 4
+                    }
+                },
+                {
+                    "starting_negotiator": {
+                        "coins": 15
+                    },
+                    "responding_negotiator": {
+                        "coins": 1
+                    }
+                },
+                {
+                    "starting_negotiator": {
+                        "coins": 9
+                    },
+                    "responding_negotiator": {
+                        "coins": 2
+                    }
+                }
+            ],
+            "round_finalizations": [
+                {
+                    "starting_negotiator": {
+                        "coins": 5
+                    },
+                    "responding_negotiator": {}
+                },
+                {
+                    "starting_negotiator": {
+                        "coins": 6
+                    },
+                    "responding_negotiator": {
+                        "coins": 4
+                    }
+                },
+                {
+                    "starting_negotiator": {
+                        "coins": 8
+                    },
+                    "responding_negotiator": {
+                        "coins": 2
+                    }
+                },
+                {
+                    "starting_negotiator": {
+                        "coins": 7
+                    },
+                    "responding_negotiator": {
+                        "coins": 3
+                    }
+                }
+            ],
+            "round_agreements_reached": [
+                false,
+                true,
+                true,
+                true
+            ],
+            "round_points": [
+                {
+                    "starting_negotiator": 0,
+                    "responding_negotiator": 0
+                },
+                {
+                    "starting_negotiator": 36.0,
+                    "responding_negotiator": 16.0
+                },
+                {
+                    "starting_negotiator": 120.0,
+                    "responding_negotiator": 2.0
+                },
+                {
+                    "starting_negotiator": 63.0,
+                    "responding_negotiator": 6.0
+                }
+            ],
+            "game_state": {
+                "mode": "basic",
+                "role_values": {
+                    "starting_negotiator": {
+                        "coins": 11
+                    },
+                    "responding_negotiator": {
+                        "coins": 7
+                    }
+                },
+                "role_props": {
+                    "starting_negotiator": {},
+                    "responding_negotiator": {}
+                },
+                "agent_to_role": {
+                    "Alice": "starting_negotiator",
+                    "Bob": "responding_negotiator"
+                },
+                "is_new_round": false,
+                "is_new_game": false,
+                "game_over": true,
+                "items": [
+                    "coins"
+                ],
+                "message_count": 0,
+                "max_messages": 1,
+                "min_messages": 1,
+                "current_agent": "Alice",
+                "round_number": 4,
+                "nb_rounds": 4,
+                "quantities": {
+                    "coins": 10
+                },
+                "has_finalized": false,
+                "last_raw_response": null,
+                "last_processed_response": null,
+                "last_message": null,
+                "agents": [
+                    "Alice",
+                    "Bob"
+                ],
+                "finalization_visibility": false,
+                "other_values_visibility": false,
+                "round_agent_roles": [
+                    {
+                        "Alice": "starting_negotiator",
+                        "Bob": "responding_negotiator"
+                    },
+                    {
+                        "Alice": "responding_negotiator",
+                        "Bob": "starting_negotiator"
+                    },
+                    {
+                        "Alice": "starting_negotiator",
+                        "Bob": "responding_negotiator"
+                    },
+                    {
+                        "Alice": "responding_negotiator",
+                        "Bob": "starting_negotiator"
+                    }
+                ],
+                "round_quantities": [
+                    {
+                        "coins": 10
+                    },
+                    {
+                        "coins": 10
+                    },
+                    {
+                        "coins": 10
+                    },
+                    {
+                        "coins": 10
+                    }
+                ],
+                "round_values": [
+                    {
+                        "starting_negotiator": {
+                            "coins": 13
+                        },
+                        "responding_negotiator": {
+                            "coins": 8
+                        }
+                    },
+                    {
+                        "starting_negotiator": {
+                            "coins": 6
+                        },
+                        "responding_negotiator": {
+                            "coins": 4
+                        }
+                    },
+                    {
+                        "starting_negotiator": {
+                            "coins": 15
+                        },
+                        "responding_negotiator": {
+                            "coins": 1
+                        }
+                    },
+                    {
+                        "starting_negotiator": {
+                            "coins": 9
+                        },
+                        "responding_negotiator": {
+                            "coins": 2
+                        }
+                    }
+                ],
+                "round_finalizations": [
+                    {
+                        "starting_negotiator": {
+                            "coins": 5
+                        },
+                        "responding_negotiator": {}
+                    },
+                    {
+                        "starting_negotiator": {
+                            "coins": 6
+                        },
+                        "responding_negotiator": {
+                            "coins": 4
+                        }
+                    },
+                    {
+                        "starting_negotiator": {
+                            "coins": 8
+                        },
+                        "responding_negotiator": {
+                            "coins": 2
+                        }
+                    },
+                    {
+                        "starting_negotiator": {
+                            "coins": 7
+                        },
+                        "responding_negotiator": {
+                            "coins": 3
+                        }
+                    }
+                ],
+                "round_agreements_reached": [
+                    false,
+                    true,
+                    true,
+                    true
+                ],
+                "round_points": [
+                    {
+                        "starting_negotiator": 0,
+                        "responding_negotiator": 0
+                    },
+                    {
+                        "starting_negotiator": 36.0,
+                        "responding_negotiator": 16.0
+                    },
+                    {
+                        "starting_negotiator": 120.0,
+                        "responding_negotiator": 2.0
+                    },
+                    {
+                        "starting_negotiator": 63.0,
+                        "responding_negotiator": 6.0
+                    }
+                ],
+                "game_moves": {
+                    "Alice": 8,
+                    "Bob": 8
+                },
+                "round_moves": {
+                    "Alice": 0,
+                    "Bob": 0
+                },
+                "round_messages": {
+                    "Alice": 0,
+                    "Bob": 0
+                },
+                "messages_remaining": {
+                    "Alice": 1,
+                    "Bob": 1
+                }
+            }
+        },
+        "agent_name": "Alice"
+    }
+]
