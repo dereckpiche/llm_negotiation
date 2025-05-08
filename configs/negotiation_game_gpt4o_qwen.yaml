@@ -5,7 +5,7 @@ hydra:
     chdir: false
 
 experiment:
-  name: "${now:%Y-%m-%d___%H-%M-%S}_no_name"
+  name: "gpt_vs_qwen_${now:%Y-%m-%d___%H-%M-%S}"
   method: generate_and_train
   description: "Agents trained on negotiation game with regular RL."
   nb_epochs: 2000
@@ -163,12 +163,12 @@ matches:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "Alice"
-        policy_id: "qwen/sp_adapter"
+        policy_id: "gpt/ad_alice"
     Bob:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "Bob"
-        policy_id: "qwen/sp_adapter"
+        policy_id: "qwen/ad_bob"
 
 temperature: 0.7
 
@@ -191,7 +191,7 @@ models:
         repetition_penalty: 1
       vllm_params:
         max_model_len : 13e3
-        gpu_memory_utilization: 0.45
+        gpu_memory_utilization: 0.6
         enable_lora: True
         enable_prefix_caching: True
         enable_sleep_mode : True
@@ -212,7 +212,7 @@ models:
       export_trained_parameters: True
       export_optimizer: True
       adapter_configs:
-        sp_adapter:
+        ad_bob:
           type: "lora"
           optimizer_method: "Adam"
           optimizer_kwargs:
@@ -224,6 +224,11 @@ models:
             lora_alpha: 128
             lora_dropout: 0.0
             target_modules: "all-linear"
+  gpt:
+    class: server_llm
+    init_args:
+      api_key: <api-key>
+      model: gpt-4o
 
 
 ####################################################################################################
@@ -255,7 +260,7 @@ training:
 
   qwen:
     adapters:
-      sp_adapter:
+      ad_bob:
         train_func: train_reinforce_main
         train_func_args:
           gradient_checkpointing: true
