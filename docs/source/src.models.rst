@@ -14,4 +14,7 @@ Submodules
 
    src.models.dummy_local_llm
    src.models.local_llm
+   src.models.new_local_llm
    src.models.server_llm
+   src.models.updatable_worker
+   src.models.vllm_worker_wrap

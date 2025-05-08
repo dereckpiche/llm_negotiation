@@ -1,3 +1,9 @@
+"""
+This file contains the methods used to convert raw data into training data
+for the Negotiation game. (Also called Deal or No Deal).
+"""
+
+
 import json
 import os
 from collections import defaultdict

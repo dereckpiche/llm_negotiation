@@ -47,6 +47,7 @@ class IPDAgent:
         self.allow_reasoning = allow_reasoning
         self.max_reasoning_chars = max_reasoning_chars
         self.chat_history = []
+        self.round_nb = 0
 
     def reset(self):
         """Reset the agent state."""
@@ -57,7 +58,7 @@ class IPDAgent:
         self.previous_action = None
 
     def step(
-        self, observation_from_env: Dict[str, Any], policy_output: str = None
+        self, observation_from_env: Any, policy_output: str = None
     ) -> Tuple[str, Dict[str, Any], str, bool, Dict[str, Any]]:
         """
         Update the agent state based on the observation and process the policy output.
@@ -74,8 +75,10 @@ class IPDAgent:
             info: Additional information about the agent
         """
 
+        round_nb = observation_from_env.round_nb
+
         # If it's the first round, we need to send the intro prompt
-        if observation_from_env["round_number"] == 0:
+        if round_nb == 0:
             policy_input = self.intro_prompt
             return (
                 self.policy_id,
@@ -85,36 +88,45 @@ class IPDAgent:
                 {"agent_id": self.agent_id, "error": "First round"},
             )
 
-        if action == "C":
-            self.chat_history.append({"role": "user", "content": policy_output})
+        # If new round
+        if round_nb > self.round_nb:
+            other_player_id = (
+                observation_from_env.agent_ids[1]
+                if self.agent_id == observation_from_env.agent_ids[0]
+                else observation_from_env.agent_ids[0]
+            )
+            other_player_action = observation_from_env.actions[-1][other_player_id]
+            user_message = (
+                f"Last round, the other player's action was: {other_player_action}."
+            )
+            self.chat_history.append({"role": "user", "content": user_message})
+            self.round_nb = round_nb
             return (
                 self.policy_id,
                 None,
-                action,
-                True,
+                None,
+                False,
                 {"agent_id": self.agent_id, "error": None},
             )
-
-        elif action == "D":
-            self.chat_history.append({"role": "user", "content": policy_output})
+        # If not new round we take action
+        if action == "C" or action == "D":
+            self.chat_history.append({"role": "assistant", "content": policy_output})
             return (
-                self.policy_id,
+                None,
                 None,
                 action,
                 True,
                 {"agent_id": self.agent_id, "error": None},
             )
         else:
-            self.chat_history.append({"role": "user", "content": policy_output})
+            self.chat_history.append({"role": "assistant", "content": policy_output})
             return (
                 self.policy_id,
                 None,
                 None,
-                False,
-                {"agent_id": self.agent_id, "error": "Invalid action"},
+                True,
+                {"agent_id": self.agent_id, "error": "Invalid action."},
             )
-
-        return self.policy_id, None, action, True, info
 
     def get_log_info(self) -> Dict[str, Any]:
         """
@@ -123,14 +135,12 @@ class IPDAgent:
         Returns:
             log_info: Information about the agent for logging
         """
-        return {
+        log_info = {
             "agent_id": self.agent_id,
             "policy_id": self.policy_id,
-            "current_round": self.current_round,
-            "total_reward": self.total_reward,
-            "history": self.history,
-            "previous_action": self.previous_action,
+            "chat_history": self.chat_history,
         }
+        return log_info
 
     def render(self) -> str:
         """

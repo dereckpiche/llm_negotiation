@@ -4,6 +4,25 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 
+class IPDGameState:
+    """
+    State of the Iterated Prisoner's Dilemma game.
+    """
+
+    def __init__(self):
+        self.match_id = None
+        self.group_id = None
+        self.agent_ids = None
+        self.round_nb = None
+        self.history = None
+        self.total_rewards = None
+        self.rewards = None
+        self.actions = None
+        self.done = None
+        self.info = None
+        self.observation = None
+
+
 class IPDEnv:
     """
     Iterated Prisoner's Dilemma environment following the MarlEnvironment standard.
@@ -41,63 +60,27 @@ class IPDEnv:
             sucker: Payoff for cooperating when other agent defects
             seed: Random seed for reproducibility
         """
-        self.rounds_per_game = rounds_per_game
-        self.reward = reward
-        self.punishment = punishment
-        self.temptation = temptation
-        self.sucker = sucker
+        self.agent_ids = agents
+        self.player_0_id = agents[0]
+        self.player_1_id = agents[1]
+        self.reset()
 
-        self.agents = agents
-        self.group_id = group_id
-        self.game_id = game_id
-        self.match_id = game_id
-
-        # Set random seed if provided
-        if random_seed is not None:
-            random.seed(random_seed)
-            np.random.seed(random_seed)
-
-        # Initialize game state
-        self.current_round = 0
-        self.agent_ids = self.agents
-        self.history = []
-        self.total_rewards = {agent_id: 0.0 for agent_id in self.agent_ids}
-        self.action_space = ["C", "D"]  # Cooperate or Defect
-
-    def reset(self) -> Dict[str, Dict[str, Any]]:
+    def reset(self):
         """
         Reset the environment to an initial state and return the initial observation.
-
-        Returns:
-            observation (dict): A dictionary where keys are agent identifiers and values are observations.
         """
-        self.current_round = 0
-        self.history = []
-        self.total_rewards = {agent_id: 0.0 for agent_id in self.agent_ids}
-
-        # Initial observation for each agent
-        observations = {}
-        for agent_id in self.agent_ids:
-            observations[agent_id] = {
-                "current_round": self.current_round,
-                "rounds_per_game": self.rounds_per_game,
-                "history": self.history.copy(),
-                "total_reward": self.total_rewards[agent_id],
-                "payoff_matrix": {
-                    "reward": self.reward,
-                    "punishment": self.punishment,
-                    "temptation": self.temptation,
-                    "sucker": self.sucker,
-                },
-            }
-
-        return observations
+        self.state = IPDGameState()
+        self.state.agent_ids = self.agent_ids
+        self.state.match_id = self.match_id
+        self.state.group_id = self.group_id
+        return self.state
 
     def step(
         self, actions: Dict[str, str]
     ) -> Tuple[Dict[str, Dict[str, Any]], bool, Dict[str, Any]]:
         """
         Take a step in the environment using the provided actions.
+        Here, the observations are just the states of the game.
 
         Args:
             actions (dict): A dictionary where keys are agent identifiers and values are actions ('C' or 'D').
@@ -119,68 +102,40 @@ class IPDEnv:
         alice_action = actions["Alice"]
         bob_action = actions["Bob"]
 
-        if alice_action == "C" and bob_action == "C":
+        p0_action = actions[self.player_0_id]
+        p1_action = actions[self.player_1_id]
+
+        if p0_action == "C" and p1_action == "C":
             # Both cooperate
-            round_rewards["Alice"] = self.reward
-            round_rewards["Bob"] = self.reward
-        elif alice_action == "D" and bob_action == "D":
+            round_rewards[self.player_0_id] = self.reward
+            round_rewards[self.player_1_id] = self.reward
+        elif p0_action == "D" and p1_action == "D":
             # Both defect
-            round_rewards["Alice"] = self.punishment
-            round_rewards["Bob"] = self.punishment
-        elif alice_action == "C" and bob_action == "D":
+            round_rewards[self.player_0_id] = self.punishment
+            round_rewards[self.player_1_id] = self.punishment
+        elif p0_action == "C" and p1_action == "D":
             # Alice cooperates, Bob defects
-            round_rewards["Alice"] = self.sucker
-            round_rewards["Bob"] = self.temptation
-        else:  # alice_action == "D" and bob_action == "C"
+            round_rewards[self.player_0_id] = self.sucker
+            round_rewards[self.player_1_id] = self.temptation
+        elif p0_action == "D" and p1_action == "C":
             # Alice defects, Bob cooperates
-            round_rewards["Alice"] = self.temptation
-            round_rewards["bob"] = self.sucker
+            round_rewards[self.player_0_id] = self.temptation
+            round_rewards[self.player_1_id] = self.sucker
+        else:
+            # TODO: find clean solution for this
+            round_rewards[self.player_0_id] = 0
+            round_rewards[self.player_1_id] = 0
 
         # Update game state
-        self.history.append(
-            {
-                "round": self.current_round,
-                "actions": actions.copy(),
-                "rewards": round_rewards.copy(),
-            }
-        )
+        self.state.round_nb += 1
+        self.state.history.append(actions)
+        self.state.rewards.append(round_rewards)
+        self.state.actions.append(actions)
+        self.state.total_rewards += round_rewards
 
-        # Update total rewards
-        for agent_id in self.agent_ids:
-            self.total_rewards[agent_id] += round_rewards[agent_id]
+        done = self.state.round_nb >= self.rounds_per_game
 
-        # Increment round counter
-        self.current_round += 1
-
-        # Check if game is done
-        done = self.current_round >= self.rounds_per_game
-
-        # Prepare observations for next round
-        observations = {}
-        for agent_id in self.agent_ids:
-            observations[agent_id] = {
-                "current_round": self.current_round,
-                "rounds_per_game": self.rounds_per_game,
-                "history": self.history.copy(),
-                "last_round_actions": actions.copy(),
-                "last_round_reward": round_rewards[agent_id],
-                "total_reward": self.total_rewards[agent_id],
-                "payoff_matrix": {
-                    "reward": self.reward,
-                    "punishment": self.punishment,
-                    "temptation": self.temptation,
-                    "sucker": self.sucker,
-                },
-            }
-
-        # Prepare info dictionary
-        info = {
-            "round_history": self.history.copy(),
-            "total_rewards": self.total_rewards.copy(),
-            "current_round": self.current_round,
-        }
-
-        return observations, done, info
+        return self.state, done, {}
 
     def get_log_info(self) -> Dict[str, Any]:
         """
@@ -189,19 +144,7 @@ class IPDEnv:
         Returns:
             log_info (dict): Information about the environment required to log the game.
         """
-        return {
-            "environment": "Iterated Prisoner's Dilemma",
-            "rounds_per_game": self.rounds_per_game,
-            "payoff_matrix": {
-                "reward": self.reward,
-                "punishment": self.punishment,
-                "temptation": self.temptation,
-                "sucker": self.sucker,
-            },
-            "history": self.history.copy(),
-            "total_rewards": self.total_rewards.copy(),
-            "current_round": self.current_round,
-        }
+        return self.state
 
     def render(self) -> str:
         """
@@ -210,34 +153,7 @@ class IPDEnv:
         Returns:
             str: A string representation of the current state.
         """
-        output = []
-        output.append(
-            f"Iterated Prisoner's Dilemma - Round {self.current_round}/{self.rounds_per_game}"
-        )
-        output.append(
-            f"Payoff Matrix: R={self.reward}, P={self.punishment}, T={self.temptation}, S={self.sucker}"
-        )
-        output.append("\nHistory:")
-
-        if not self.history:
-            output.append("No rounds played yet.")
-        else:
-            output.append("Round\tAlice\tBob\tAlice Reward\tBob Reward")
-            for entry in self.history:
-                round_num = entry["round"]
-                alice_action = entry["actions"]["Alice"]
-                bob_action = entry["actions"]["Bob"]
-                alice_reward = entry["rewards"]["Alice"]
-                bob_reward = entry["rewards"]["Bob"]
-                output.append(
-                    f"{round_num}\t{alice_action}\t{bob_action}\t{alice_reward}\t{bob_reward}"
-                )
-
-        output.append("\nTotal Rewards:")
-        for agent_id in self.agent_ids:
-            output.append(f"{agent_id}: {self.total_rewards[agent_id]}")
-
-        return "\n".join(output)
+        pass
 
     def close(self) -> None:
         """

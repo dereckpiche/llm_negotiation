@@ -626,3 +626,33 @@ def check_items_allocation_to_higher_value_agent(
 
     # Check if majority of items went to agents valuing them more
     return 1 if total_items > 0 and items_to_higher_value_agent > total_items / 2 else 0
+
+
+def generate_frequency_counts(input_path):
+    agreement_percent_values = []
+    items_given_to_self_values = []
+
+    for filename in os.listdir(input_path):
+        if filename.endswith(".json"):
+            file_path = os.path.join(input_path, filename)
+            with open(file_path, "r") as f:
+                data = json.load(f)
+
+            for rounds, values in data.items():
+                agreement_percent_values.append(values["agreement_percentage"])
+                items_given_to_self_values.append(values["items_given_to_self"])
+
+    # Convert lists to frequency counts
+    agreement_percent_freq_counts = dict(Counter(agreement_percent_values))
+    items_given_to_self_freq_counts = dict(Counter(items_given_to_self_values))
+
+    # Combine into a final dictionary
+    freq_stats = {
+        "agreement_percent_freq": agreement_percent_freq_counts,
+        "items_given_to_self_freq": items_given_to_self_freq_counts,
+    }
+
+    output_path = os.path.join(input_path, "frequency_stats.json")
+    # Save to JSON
+    with open(output_path, "w") as f:
+        json.dump(freq_stats, f, indent=4)
