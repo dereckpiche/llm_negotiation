@@ -23,7 +23,6 @@ class DondEnv:
         finalization_visibility=False,
         other_values_visibility=False,
         mode="basic",
-        roundwise_utilities=[],
         group_id=0,
     ):
         """
@@ -69,7 +68,7 @@ class DondEnv:
             if isinstance(random_setup_func, str)
             else random_setup_func
         )
-        self.random_setup_kwargs = random_setup_kwargs
+        self.random_setup_kwargs = random_setup_kwargs.copy()
         if random_setup_kwargs is not None:
             self.random_setup_kwargs["random_seed"] = random_seed
         else:
@@ -108,7 +107,23 @@ class DondEnv:
         self.round_messages = {agent: 0 for agent in agents}
 
         # Roundwise utilities for the corresponding minibatch / group.
-        self.roundwise_utilities = roundwise_utilities
+        self.roundwise_utilities = []
+
+        # If group_id is -1, then we default to the old behaviour
+        if self.group_id >= 0:
+            for round_idx in range(self.rounds_per_game):
+                seed = (
+                    self.random_seed
+                    - self.match_id
+                    + (self.group_id * self.rounds_per_game)
+                    + round_idx
+                )
+
+                self.roundwise_utilities.append(
+                    globals()[random_setup_func](
+                        **random_setup_kwargs, random_seed=seed
+                    )
+                )
 
         self.reset()
 
@@ -341,6 +356,9 @@ class DondEnv:
                 agent: self.max_messages - self.round_messages.get(agent, 0)
                 for agent in self.agents
             },
+            "random_seed": self.random_seed,
+            "match_id": self.match_id,
+            "group_id": self.group_id,
         }
         return state
 

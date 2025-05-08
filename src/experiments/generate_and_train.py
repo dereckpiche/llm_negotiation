@@ -321,41 +321,8 @@ def create_matches(cfg, base_seed, iteration):
         same_length_batch=cfg["matches"]["same_length_batch"],
     )
 
-    roundwise_utilities = []
-
     # Number of games that share the same utilities
     group_size = cfg["matches"]["nb_matches_with_same_roundwise_utilities"]
-
-    # Check if each batch should have fixed-length games and shared roundwise utilities.
-    if cfg["matches"]["same_length_batch"] and group_size:
-        # Number of distinct utility sets needed (one per group of matches)
-        num_distinct_util_sets = int(np.ceil(nb_matches / group_size))
-
-        # Setup function and its arguments
-        random_setup_func = cfg["matches"]["env_kwargs"]["random_setup_func"]
-        random_setup_kwargs = cfg["matches"]["env_kwargs"]["random_setup_kwargs"]
-
-        # Since the batch has same game lengths
-        num_rounds = game_lengths[0]
-
-        # For each group of games with the same utility setup
-        for group_idx in range(num_distinct_util_sets):
-            match_utilities = []
-
-            for round_idx in range(num_rounds):
-                seed = (
-                    base_seed
-                    + (iteration * nb_matches)
-                    + (group_idx * num_rounds)
-                    + round_idx
-                )
-                match_utilities.append(
-                    globals()[random_setup_func](
-                        **random_setup_kwargs, random_seed=seed
-                    )
-                )
-
-            roundwise_utilities.append(match_utilities)
 
     for i in range(nb_matches):
         matches.append(
@@ -365,20 +332,14 @@ def create_matches(cfg, base_seed, iteration):
                 game_index=i,
                 game_length=game_lengths[i],
                 # Minibatch / group id for which roundwise utilities are same
-                group_id=i // group_size if group_size else 0,
-                # Roundwise utilities for the corresponding minibatch / group.
-                roundwise_utilities=roundwise_utilities[i // group_size]
-                if roundwise_utilities
-                else [],
+                group_id=i // group_size if group_size else -1,
             )
         )
 
     return matches
 
 
-def create_blank_match(
-    cfg, seed=0, game_index=0, game_length=10, group_id=0, roundwise_utilities=[]
-):
+def create_blank_match(cfg, seed=0, game_index=0, game_length=10, group_id=0):
     """
     Initializes a match for any game, using a functional approach to instantiate
     environment and agent classes based on configuration.
@@ -420,7 +381,6 @@ def create_blank_match(
         random_seed=seed,
         **env_kwargs,
         rounds_per_game=game_length,
-        roundwise_utilities=roundwise_utilities,
         group_id=group_id,
     )  # Pass the unique seed here
 
