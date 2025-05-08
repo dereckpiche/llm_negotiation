@@ -1,14 +1,15 @@
 hydra:
   run:
-    dir: "${oc.env:SCRATCH}/llm_negotiation/${experiment.name}"
+    dir: "${oc.env:SCRATCH}/llm_negotiation/exp_out/${experiment.name}"
   job:
     chdir: false
 
 experiment:
-  name: "${now:%Y-%m-%d___%H-%M-%S}_no_name"
+  name: "negotiation_game"
+  # name: "${now:%Y-%m-%d___%H-%M-%S}_no_name" (having timestamp is good for debugging, but it is difficult to restart with preemption)
   method: generate_and_train
   description: "Agents trained on negotiation game with regular RL."
-  nb_epochs: 2000
+  nb_epochs: 500
   nb_matches_per_iteration: 64
   checkpoint_every_n_iterations: 25
   reinit_matches_each_it: true

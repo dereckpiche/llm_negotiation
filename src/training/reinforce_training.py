@@ -30,7 +30,7 @@ def reinforce_train(
     kl_loss_coef=0,
     temperature=1.0,
     device="cuda:0",
-    gradient_clipping=None,
+    gradient_clipping=1.0,
     debug_log_path=None,
     debug_enabled=False,
 ):
