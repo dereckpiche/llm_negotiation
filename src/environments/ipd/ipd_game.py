@@ -38,6 +38,7 @@ class IPDEnv:
     def __init__(
         self,
         agents: List[str],
+        rng: np.random.RandomState,
         group_id: int,
         game_id: int,
         rounds_per_game: int = 10,

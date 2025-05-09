@@ -300,7 +300,7 @@ def create_matches(cfg, env_rng, iteration):
                 cfg,
                 # Maintain the same RNG for a group / minibatch.
                 rng=copy.deepcopy(env_rng),
-                game_index=i,
+                game_id=i,
                 game_length=game_lengths[i],
                 # Minibatch / group id for which roundwise utilities are same
                 group_id=i // group_size if group_size else -1,
@@ -310,7 +310,7 @@ def create_matches(cfg, env_rng, iteration):
     return matches, env_rng
 
 
-def create_blank_match(cfg, rng, game_index=0, game_length=10, group_id=0):
+def create_blank_match(cfg, rng, game_id=0, game_length=10, group_id=0):
     """
     Initializes a match for any game, using a functional approach to instantiate
     environment and agent classes based on configuration.
@@ -338,13 +338,11 @@ def create_blank_match(cfg, rng, game_index=0, game_length=10, group_id=0):
     env_kwargs = dict(cfg["matches"]["env_kwargs"])
 
     env = EnvClass(
-        game_index=game_index,
         rng=rng,
-        **env_kwargs,
         game_id=game_id,
-        random_seed=seed,
-        rounds_per_game=game_length,
         group_id=group_id,
+        rounds_per_game=game_length,
+        **env_kwargs,
     )
 
     # Add the logging function and args to the match dictionary
