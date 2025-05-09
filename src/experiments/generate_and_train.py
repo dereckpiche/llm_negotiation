@@ -1,3 +1,4 @@
+import copy
 import logging
 import os
 import pickle
@@ -55,6 +56,8 @@ def generate_and_train(cfg, base_seed):
     torch.cuda.manual_seed(base_seed)  # PyTorch (GPU)
     torch.cuda.manual_seed_all(base_seed)  # If using multi-GPU
 
+    env_rng = np.random.default_rng(base_seed)
+
     random_state_dir = f"{output_directory}/random_state.pkl"
     # Load saved states
     if os.path.exists(random_state_dir):
@@ -72,6 +75,9 @@ def generate_and_train(cfg, base_seed):
     for iteration in range(
         cfg["experiment"]["start_epoch"], cfg["experiment"]["nb_epochs"]
     ):
+        # Create a new RNG instance by splitting the current one (simulates RNG splitting)
+        env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
+
         iteration_start_time = time.time()
 
         it_folder = os.path.join(output_directory, f"iteration_{iteration:03}")
@@ -79,8 +85,9 @@ def generate_and_train(cfg, base_seed):
 
         generation_start_time = time.time()
 
-        # Create independent matches based on the number in config
-        matches = create_matches(cfg, base_seed, iteration)
+        # Create independent matches based on the number in config.
+        # Return modified RNG so that a different split is generated for the next iteration.
+        matches, env_rng = create_matches(cfg, env_rng, iteration)
 
         agents = matches[0]["agents"]
         agent_names = agents.keys()
@@ -310,7 +317,7 @@ def init_models(cfg, base_seed, output_directory):
     return models
 
 
-def create_matches(cfg, base_seed, iteration):
+def create_matches(cfg, env_rng, iteration):
     matches = []
 
     nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
@@ -325,10 +332,14 @@ def create_matches(cfg, base_seed, iteration):
     group_size = cfg["matches"]["nb_matches_with_same_roundwise_utilities"]
 
     for i in range(nb_matches):
+        if group_size == 0 or i % group_size == 0:
+            env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
+
         matches.append(
             create_blank_match(
                 cfg,
-                seed=base_seed + (iteration * nb_matches) + i,
+                # Maintain the same RNG for a group / minibatch.
+                rng=copy.deepcopy(env_rng),
                 game_index=i,
                 game_length=game_lengths[i],
                 # Minibatch / group id for which roundwise utilities are same
@@ -336,10 +347,10 @@ def create_matches(cfg, base_seed, iteration):
             )
         )
 
-    return matches
+    return matches, env_rng
 
 
-def create_blank_match(cfg, seed=0, game_index=0, game_length=10, group_id=0):
+def create_blank_match(cfg, rng, game_index=0, game_length=10, group_id=0):
     """
     Initializes a match for any game, using a functional approach to instantiate
     environment and agent classes based on configuration.
@@ -378,7 +389,7 @@ def create_blank_match(cfg, seed=0, game_index=0, game_length=10, group_id=0):
     # Create match with instantiated environment and agents
     env = EnvClass(
         game_index=game_index,
-        random_seed=seed,
+        rng=rng,
         **env_kwargs,
         rounds_per_game=game_length,
         group_id=group_id,
