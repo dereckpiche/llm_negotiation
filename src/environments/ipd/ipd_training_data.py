@@ -7,7 +7,7 @@ from environments.scores import *
 from utils.common_imports import *
 
 
-def generate_training_data_from_raw(
+def ipd_generate_training_data_from_raw(
     raw_data_folder,
     training_data_folder,
     exclude_errors=False,
@@ -28,7 +28,9 @@ def generate_training_data_from_raw(
     """
 
     # Find the score of each round of each game of agent associated with "raw_data_folder"
-    round_points_agent, round_points_coagent = get_round_points_arrays(raw_data_folder)
+    round_points_agent, round_points_coagent = ipd_get_round_points_arrays(
+        raw_data_folder
+    )
 
     scores = globals()[score_method](
         round_points_agent, round_points_coagent, **score_method_kwargs
@@ -92,7 +94,7 @@ def generate_training_data_from_raw(
     return
 
 
-def get_round_points_arrays(raw_data_folder):
+def ipd_get_round_points_arrays(raw_data_folder):
     """
     Takes a raw_data_folder path, and generates a round reward array for both agents.
     Each row corresponds to a match.

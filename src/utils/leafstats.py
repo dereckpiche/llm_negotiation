@@ -18,7 +18,7 @@ from torch.utils.tensorboard import SummaryWriter
 # )
 
 
-def append_statree(tree1: Dict, tree2: Dict):
+def append_leafstats(tree1: Dict, tree2: Dict):
     """
     Append each corresponding leaf of tree2 to tree1.
     """
@@ -26,7 +26,7 @@ def append_statree(tree1: Dict, tree2: Dict):
         if key not in tree1:
             tree1[key] = value
         elif isinstance(value, dict):
-            append_statree(tree1[key], value)
+            append_leafstats(tree1[key], value)
         elif isinstance(value, list):
             if isinstance(tree1[key], list):
                 tree1[key].extend(value)
@@ -39,14 +39,14 @@ def append_statree(tree1: Dict, tree2: Dict):
                 tree1[key] = [tree1[key], value]
 
 
-def get_mean_statree(tree: Dict) -> Dict:
+def get_mean_leafstats(tree: Dict) -> Dict:
     """
-    scores a statree where each leaf is replaced by the mean of the leaf values.
+    scores a leafstats where each leaf is replaced by the mean of the leaf values.
     """
     result = {}
     for key, value in tree.items():
         if isinstance(value, dict):
-            result[key] = get_mean_statree(value)
+            result[key] = get_mean_leafstats(value)
         elif isinstance(value, list):
             cleaned_values = [v for v in value if v is not None]
             result[key] = np.mean(cleaned_values) if cleaned_values else None
@@ -55,9 +55,9 @@ def get_mean_statree(tree: Dict) -> Dict:
     return result
 
 
-def get_mean_statrees(trees: List[Dict]) -> Dict:
+def get_mean_leafstats(trees: List[Dict]) -> Dict:
     """
-    Computes a smart element-wise mean across multiple statrees.
+    Computes a smart element-wise mean across multiple leafstats.
 
     For each path that exists in any of the input trees:
     - If the path contains arrays in multiple trees, computes the element-wise mean
@@ -65,10 +65,10 @@ def get_mean_statrees(trees: List[Dict]) -> Dict:
     - If a path exists in only some trees, still computes the mean using available data
 
     Args:
-        trees: List of statree dictionaries to compute means from
+        trees: List of leafstats dictionaries to compute means from
 
     Returns:
-        A new statree where each leaf is the element-wise mean of the corresponding array leaves in the input trees
+        A new leafstats where each leaf is the element-wise mean of the corresponding array leaves in the input trees
     """
     if not trees:
         return {}
@@ -93,7 +93,7 @@ def get_mean_statrees(trees: List[Dict]) -> Dict:
 
         # If all values are dictionaries, recursively compute means
         if all(isinstance(v, dict) for v in values_at_key):
-            result[key] = get_mean_statrees(values_at_key)
+            result[key] = get_mean_leafstats(values_at_key)
 
         # If any value is a list, compute element-wise means
         elif any(isinstance(v, list) for v in values_at_key):
@@ -139,14 +139,14 @@ def get_mean_statrees(trees: List[Dict]) -> Dict:
     return result
 
 
-def get_var_statree(tree: Dict) -> Dict:
+def get_var_leafstats(tree: Dict) -> Dict:
     """
-    scores a statree where each leaf is replaced by the variance of the leaf values.
+    scores a leafstats where each leaf is replaced by the variance of the leaf values.
     """
     result = {}
     for key, value in tree.items():
         if isinstance(value, dict):
-            result[key] = get_var_statree(value)
+            result[key] = get_var_leafstats(value)
         elif isinstance(value, list):
             cleaned_values = [v for v in value if v is not None]
             result[key] = np.var(cleaned_values) if cleaned_values else None
@@ -155,15 +155,15 @@ def get_var_statree(tree: Dict) -> Dict:
     return result
 
 
-def plot_statree(tree: Dict, folder: str, path: str = ""):
+def plot_leafstats(tree: Dict, folder: str, path: str = ""):
     """
-    Plots the leaves of the statree and saves them to the specified folder.
+    Plots the leaves of the leafstats and saves them to the specified folder.
     """
     os.makedirs(folder, exist_ok=True)
     for key, value in tree.items():
         new_path = f"{path}/{key}" if path else key
         if isinstance(value, dict):
-            plot_statree(value, folder, new_path)
+            plot_leafstats(value, folder, new_path)
         elif isinstance(value, list):
             plt.figure()
             plt.plot(value)
@@ -172,14 +172,30 @@ def plot_statree(tree: Dict, folder: str, path: str = ""):
             plt.close()
 
 
-def tb_statree(tree: Dict, writer, path: str = ""):
+def save_leafstats(tree: Dict, folder: str, path: str = ""):
     """
-    Logs the leaves of the statree to TensorBoard.
+    Saves the leaves of the leafstats to the specified folder.
+    """
+    os.makedirs(folder, exist_ok=True)
+    for key, value in tree.items():
+        new_path = f"{path}/{key}" if path else key
+        if isinstance(value, dict):
+            save_leafstats(value, folder, new_path)
+        elif isinstance(value, list):
+            with open(
+                os.path.join(folder, f"{new_path.replace('/', '_')}.json"), "w"
+            ) as f:
+                json.dump(value, f, indent=4)
+
+
+def tb_leafstats(tree: Dict, writer, path: str = ""):
+    """
+    Logs the leaves of the leafstats to TensorBoard.
     """
     for key, value in tree.items():
         new_path = f"{path}/{key}" if path else key
         if isinstance(value, dict):
-            tb_statree(value, writer, new_path)
+            tb_leafstats(value, writer, new_path)
         elif isinstance(value, list):
             for i, v in enumerate(value):
                 if v is not None:
@@ -195,24 +211,24 @@ def update_agent_statistics(input_path, output_file):
         output_file (str): Path to the JSON file where statistics are stored.
     """
 
-    # Build statree by appending each dict from JSON files in "input_path" folder
-    statree = {}
+    # Build leafstats by appending each dict from JSON files in "input_path" folder
+    leafstats = {}
     for filename in os.listdir(input_path):
         if filename.endswith(".json"):
             with open(os.path.join(input_path, filename), "r") as f:
                 data = json.load(f)
-                append_statree(statree, data)
-    # Get epoch mean statree
-    mean_statree = get_mean_statree(statree)
+                append_leafstats(leafstats, data)
+    # Get epoch mean leafstats
+    mean_leafstats = get_mean_leafstats(leafstats)
 
-    # Add mean statree to global stats file
+    # Add mean leafstats to global stats file
     if os.path.exists(output_file):
         with open(output_file, "r") as f:
             global_stats = json.load(f)
     else:
         global_stats = {}
 
-    append_statree(global_stats, mean_statree)
+    append_leafstats(global_stats, mean_leafstats)
 
     with open(output_file, "w") as f:
         json.dump(global_stats, f, indent=4)
@@ -236,14 +252,14 @@ def generate_agent_stats_plots(
     with open(global_stats_path, "r") as f:
         global_stats = json.load(f)
 
-    plot_statree(global_stats, folder=matplotlib_log_dir)
+    plot_leafstats(global_stats, folder=matplotlib_log_dir)
 
     # Log statistics to TensorBoard
     writer = SummaryWriter(tensorboard_log_dir)
-    tb_statree(global_stats, writer)
+    tb_leafstats(global_stats, writer)
     writer.close()
 
-    # wb_statree(global_stats)
+    # wb_leafstats(global_stats)
 
 
 if __name__ == "__main__":
@@ -268,14 +284,14 @@ if __name__ == "__main__":
     #     show_grand_mean=True
     # )
 
-    # Example 3: Computing means across multiple statrees
+    # Example 3: Computing means across multiple leafstats
     # trees = []
     # for path in ["/path/to/tree1.json", "/path/to/tree2.json", "/path/to/tree3.json"]:
     #     with open(path, 'r') as f:
     #         trees.append(json.load(f))
     #
     # # Compute the mean across all trees
-    # mean_tree = get_mean_statrees(trees)
+    # mean_tree = get_mean_leafstats(trees)
     #
     # # Save the resulting mean tree
     # with open("/path/to/output/mean_tree.json", 'w') as f:

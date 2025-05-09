@@ -15,7 +15,6 @@ class IPDGameState:
         self.agent_ids = None
         self.number_of_rounds = None
         self.round_nb = 0
-        self.history = []
         self.rewards = []
         self.actions = []
         self.done = False
@@ -107,19 +106,19 @@ class IPDEnv:
         p0_action = actions[self.player_0_id]
         p1_action = actions[self.player_1_id]
 
-        if p0_action == "<Cooperate>" and p1_action == "<Cooperate>":
+        if p0_action == "C" and p1_action == "C":
             # Both cooperate
             round_rewards[self.player_0_id] = self.reward
             round_rewards[self.player_1_id] = self.reward
-        elif p0_action == "<Defect>" and p1_action == "<Defect>":
+        elif p0_action == "D" and p1_action == "D":
             # Both defect
             round_rewards[self.player_0_id] = self.punishment
             round_rewards[self.player_1_id] = self.punishment
-        elif p0_action == "<Cooperate>" and p1_action == "<Defect>":
+        elif p0_action == "C" and p1_action == "D":
             # Alice cooperates, Bob defects
             round_rewards[self.player_0_id] = self.sucker
             round_rewards[self.player_1_id] = self.temptation
-        elif p0_action == "<Defect>" and p1_action == "<Cooperate>":
+        elif p0_action == "D" and p1_action == "C":
             # Alice defects, Bob cooperates
             round_rewards[self.player_0_id] = self.temptation
             round_rewards[self.player_1_id] = self.sucker
@@ -130,7 +129,6 @@ class IPDEnv:
 
         # Update game state
         self.state.round_nb += 1
-        self.state.history.append(actions)
         self.state.rewards.append(round_rewards)
         self.state.actions.append(actions)
 

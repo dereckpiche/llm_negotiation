@@ -5,8 +5,8 @@ import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../"))
 from src.utils.log_statistics import (
-    append_statree,
-    get_mean_statree,
+    append_leafstats,
+    get_mean_leafstats,
     update_agent_statistics,
 )
 
@@ -92,50 +92,50 @@ for it_folder in it_folders:
             f"temp/{agent_name}_second", f"{agent_name}_second_stats.json"
         )
 
-        # Build statree by appending each dict from JSON files in "input_path" folder
-        statree = {}
+        # Build leafstats by appending each dict from JSON files in "input_path" folder
+        leafstats = {}
 
         for filename in first_stat_files:
             if filename.endswith(".json"):
                 with open(filename, "r") as f:
                     data = json.load(f)
-                    append_statree(statree, data)
+                    append_leafstats(leafstats, data)
 
-        # Get epoch mean statree
-        mean_statree = get_mean_statree(statree)
+        # Get epoch mean leafstats
+        mean_leafstats = get_mean_leafstats(leafstats)
 
-        # Add mean statree to global stats file
+        # Add mean leafstats to global stats file
         if os.path.exists(first_output_file):
             with open(first_output_file, "r") as f:
                 global_stats = json.load(f)
         else:
             global_stats = {}
 
-        append_statree(global_stats, mean_statree)
+        append_leafstats(global_stats, mean_leafstats)
 
         with open(first_output_file, "w") as f:
             json.dump(global_stats, f, indent=4)
 
-        # Build statree by appending each dict from JSON files in "input_path" folder
-        statree = {}
+        # Build leafstats by appending each dict from JSON files in "input_path" folder
+        leafstats = {}
 
         for filename in second_stat_files:
             if filename.endswith(".json"):
                 with open(filename, "r") as f:
                     data = json.load(f)
-                    append_statree(statree, data)
+                    append_leafstats(leafstats, data)
 
-        # Get epoch mean statree
-        mean_statree = get_mean_statree(statree)
+        # Get epoch mean leafstats
+        mean_leafstats = get_mean_leafstats(leafstats)
 
-        # Add mean statree to global stats file
+        # Add mean leafstats to global stats file
         if os.path.exists(second_output_file):
             with open(second_output_file, "r") as f:
                 global_stats = json.load(f)
         else:
             global_stats = {}
 
-        append_statree(global_stats, mean_statree)
+        append_leafstats(global_stats, mean_leafstats)
 
         with open(second_output_file, "w") as f:
             json.dump(global_stats, f, indent=4)

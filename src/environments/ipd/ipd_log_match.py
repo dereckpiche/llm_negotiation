@@ -2,7 +2,6 @@ import json
 import os
 from typing import Any, Dict, List, Optional
 
-from environments.ipd.ipd_statistics import gather_ipd_statistics
 from environments.two_chats_to_html import two_chats_to_html
 from utils.class_to_dict import class_to_dict
 
@@ -56,6 +55,7 @@ def log_ipd_match(
         with open(raw_data_file, "w") as f:
             json.dump(chat_history_with_info, f, indent=4)
 
+    # Now generate the HTML visualization
     html_content = two_chats_to_html(
         agent_infos[0]["chat_history"], agent_infos[1]["chat_history"]
     )

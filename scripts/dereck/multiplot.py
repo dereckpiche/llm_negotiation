@@ -16,7 +16,7 @@ import numpy as np
 
 sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
 
-from src.utils.log_statistics import common_plot_statrees
+from src.utils.log_statistics import common_plot_leafstats
 
 
 def find_statistic_files(folder_path: str, pattern: str = "**/*.jsonl") -> List[str]:
@@ -34,7 +34,7 @@ def find_statistic_files(folder_path: str, pattern: str = "**/*.jsonl") -> List[
     return glob.glob(search_path, recursive=True)
 
 
-def collect_statrees(
+def collect_leafstats(
     input_folders: Union[str, List[str]],
     pattern: str = "**/*.jsonl",
     filter_func: Optional[Callable[[str], bool]] = None,
@@ -48,13 +48,13 @@ def collect_statrees(
         filter_func: Optional function to filter file paths (takes a path, returns bool)
 
     Returns:
-        List of tuples (statree, source_path)
+        List of tuples (leafstats, source_path)
     """
     # Handle single folder or list of folders
     if isinstance(input_folders, str):
         input_folders = [input_folders]
 
-    statrees_with_sources = []
+    leafstats_with_sources = []
 
     # Process each input folder
     for folder in input_folders:
@@ -69,7 +69,7 @@ def collect_statrees(
 
         print(f"Found {len(json_files)} JSON files in {folder}")
 
-        # Load statrees from JSON files
+        # Load leafstats from JSON files
         for file_path in json_files:
             try:
                 with open(file_path, "r") as f:
@@ -83,13 +83,13 @@ def collect_statrees(
                         # Use the filename if we can't find a seed number
                         label = os.path.basename(file_path).split(".")[0]
 
-                    statrees_with_sources.append((data, label))
+                    leafstats_with_sources.append((data, label))
             except json.JSONDecodeError:
                 print(f"Error: Could not parse JSON in {file_path}")
             except Exception as e:
                 print(f"Error loading {file_path}: {str(e)}")
 
-    return statrees_with_sources
+    return leafstats_with_sources
 
 
 def plot_multiple_runs(
@@ -118,31 +118,34 @@ def plot_multiple_runs(
     # Ensure output directory exists
     os.makedirs(output_path, exist_ok=True)
 
-    # Collect all statrees from the input folders with their source labels
-    statrees_with_sources = collect_statrees(input_folders, pattern)
+    # Collect all leafstats from the input folders with their source labels
+    leafstats_with_sources = collect_leafstats(input_folders, pattern)
 
-    if not statrees_with_sources:
+    if not leafstats_with_sources:
         print("No statistic data found in the provided folders!")
         return
 
-    print(f"Collected {len(statrees_with_sources)} statistic trees")
+    print(f"Collected {len(leafstats_with_sources)} statistic trees")
 
     # Prepare data for plotting with different colors for each run
-    statrees_with_info = []
+    leafstats_with_info = []
 
     # Use a colormap to get different colors
     # Choose a colormap that gives visually distinct colors
-    cmap = plt.cm.get_cmap("tab10", len(statrees_with_sources))
+    cmap = plt.cm.get_cmap("tab10", len(leafstats_with_sources))
 
-    # Add each statree with a unique color and label
-    for i, (statree, label) in enumerate(statrees_with_sources):
+    # Add each leafstats with a unique color and label
+    for i, (leafstats, label) in enumerate(leafstats_with_sources):
         color = cmap(i)
-        statrees_with_info.append(
-            (statree, {"color": color, "alpha": 0.8, "linewidth": 1.5, "label": label})
+        leafstats_with_info.append(
+            (
+                leafstats,
+                {"color": color, "alpha": 0.8, "linewidth": 1.5, "label": label},
+            )
         )
 
     # Generate plots
-    common_plot_statrees(statrees_with_info, output_path)
+    common_plot_leafstats(leafstats_with_info, output_path)
 
     print(f"Multi-color plots saved to {output_path}")
 

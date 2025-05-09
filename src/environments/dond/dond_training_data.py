@@ -13,7 +13,7 @@ import pandas as pd
 from environments.scores import *
 
 
-def generate_training_data_from_raw(
+def dond_generate_training_data_from_raw(
     raw_data_folder,
     training_data_folder,
     exclude_errors=False,
@@ -34,9 +34,11 @@ def generate_training_data_from_raw(
     """
 
     # Find the score of each round of each game of agent associated with "raw_data_folder"
-    round_points_agent, round_points_coagent = get_round_points_arrays(raw_data_folder)
+    round_points_agent, round_points_coagent = dond_get_round_points_arrays(
+        raw_data_folder
+    )
 
-    scores = get_scores(
+    scores = dond_get_scores(
         round_points_agent=round_points_agent,
         round_points_coagent=round_points_coagent,
         score_method=score_method,
@@ -110,7 +112,7 @@ def get_system_msg(match):
     return system_msg
 
 
-def get_round_points_arrays(raw_data_folder):
+def dond_get_round_points_arrays(raw_data_folder):
     """
     Takes a raw_data_folder path, and generates a round reward array for both agents.
     Each row corresponds to a match.
@@ -172,7 +174,7 @@ def get_round_points_arrays(raw_data_folder):
     return group_to_round_points_agent, group_to_round_points_coagent
 
 
-def get_scores(
+def dond_get_scores(
     round_points_agent, round_points_coagent, score_method, score_method_kwargs
 ):
     # Initialize nested dictionaries to store SCORES for each match within each minibatch group

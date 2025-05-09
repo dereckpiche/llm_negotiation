@@ -39,6 +39,7 @@ class IPDAgent:
             max_reasoning_chars: Maximum number of characters for reasoning
         """
         self.agent_id = agent_id
+        self.agent_name = agent_id  # TODO: fix this (for backward comp.)
         self.policy_id = policy_id
         self.intro_prompt = intro_prompt
         self.goal_prompt = goal_prompt
@@ -102,9 +103,16 @@ class IPDAgent:
                 else observation_from_env.agent_ids[0]
             )
             other_player_action = observation_from_env.actions[-1][other_player_id]
-            user_message = (
-                f"Last round, the other player's action was: {other_player_action}."
-            )
+
+            if other_player_action == "C":
+                user_message = f"Last round, the other player cooperated."
+            elif other_player_action == "D":
+                user_message = f"Last round, the other player defected."
+            else:
+                raise ValueError(
+                    f"Last round, the other player did not play a valid action."
+                )
+
             self.chat_history.append(
                 {
                     "role": "user",
@@ -116,36 +124,26 @@ class IPDAgent:
             return (self.policy_id, self.chat_history, None, False, None)
 
         # If not new round we take action
-        if policy_output == "<Cooperate>" or policy_output == "<Defect>":
-            self.chat_history.append(
-                {
-                    "role": "assistant",
-                    "content": policy_output,
-                    "round_number": round_nb,
-                }
-            )
-            return (
-                None,
-                None,
-                policy_output,
-                True,
-                None,
-            )
+        if policy_output == "<Cooperate>":
+            action = "C"
+        elif policy_output == "<Defect>":
+            action = "D"
         else:
-            self.chat_history.append(
-                {
-                    "role": "assistant",
-                    "content": policy_output,
-                    "round_number": round_nb,
-                }
-            )
-            return (
-                None,
-                None,
-                "ERROR",
-                True,
-                None,
-            )
+            action = "ERROR"
+        self.chat_history.append(
+            {
+                "role": "assistant",
+                "content": policy_output,
+                "round_number": round_nb,
+            }
+        )
+        return (
+            None,
+            None,
+            action,
+            True,
+            None,
+        )
 
     def get_log_info(self) -> Dict[str, Any]:
         """

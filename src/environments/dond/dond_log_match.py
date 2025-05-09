@@ -82,12 +82,10 @@ def dond_log_match(path, agent_infos, info, metrics_func=None, metrics_func_args
                 json.dump(metrics, f, indent=4)
 
     # Now generate the HTML visualization
-    # Generate HTML content with a vertical split
-
     html_content = two_chats_to_html(
         agent_infos[0]["chat_history"], agent_infos[1]["chat_history"]
     )
 
-    # Save the HTML content to a file
+    html_file = os.path.join(path, f"match_mid_{match_id}_gid_{group_id}.html")
     with open(html_file, "w") as f:
         f.write(html_content)

@@ -1,13 +1,13 @@
-def common_plot_statrees(
-    statrees_with_info: List[Tuple[Dict, dict]], output_dir: str, path: str = ""
+def common_plot_leafstats(
+    leafstats_with_info: List[Tuple[Dict, dict]], output_dir: str, path: str = ""
 ):
     """
-    Plot multiple statrees on the same graph for comparison.
+    Plot multiple leafstats on the same graph for comparison.
 
     Args:
-        statrees_with_info: List of tuples, each containing (statree, plot_info)
+        leafstats_with_info: List of tuples, each containing (leafstats, plot_info)
             where plot_info is a dict with keys:
-            - 'color': color to use for this statree's lines
+            - 'color': color to use for this leafstats's lines
             - 'alpha': transparency level (0-1)
             - 'linewidth': width of the plotted line
             - 'linestyle': style of the line ('-', '--', ':', etc.)
@@ -15,14 +15,14 @@ def common_plot_statrees(
             - 'is_mean': boolean indicating if this is a mean line (for styling)
             - Any other matplotlib Line2D property can be passed
         output_dir: Directory to save the plots
-        path: Current path in the statree hierarchy for recursive calls
+        path: Current path in the leafstats hierarchy for recursive calls
     """
     os.makedirs(output_dir, exist_ok=True)
 
-    # First, find all unique keys across all statrees at this level
+    # First, find all unique keys across all leafstats at this level
     all_keys = set()
-    for statree, _ in statrees_with_info:
-        all_keys.update(statree.keys())
+    for leafstats, _ in leafstats_with_info:
+        all_keys.update(leafstats.keys())
 
     for key in all_keys:
         new_path = f"{path}/{key}" if path else key
@@ -31,9 +31,9 @@ def common_plot_statrees(
         dicts_at_key = []
         lists_at_key = []
 
-        for statree, plot_info in statrees_with_info:
-            if key in statree:
-                value = statree[key]
+        for leafstats, plot_info in leafstats_with_info:
+            if key in leafstats:
+                value = leafstats[key]
                 if isinstance(value, dict):
                     dicts_at_key.append((value, plot_info))
                 elif isinstance(value, list):
@@ -41,7 +41,7 @@ def common_plot_statrees(
 
         # If we found dictionaries, recurse into them
         if dicts_at_key:
-            common_plot_statrees(dicts_at_key, output_dir, new_path)
+            common_plot_leafstats(dicts_at_key, output_dir, new_path)
 
         # If we found lists, plot them
         if lists_at_key:
