@@ -1,11 +1,11 @@
+import json
+import os
 from collections import Counter
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
-import json
-import os
-from src.utils.statrees import *
 
+from utils.statrees import *
 
 
 def gather_ipd_statistics(raw_data_folder: str):
@@ -24,10 +24,7 @@ def gather_ipd_statistics(raw_data_folder: str):
 
     for game in data:
         game_log = game[-1]["game_info"]
-        
-        pass 
+
+        pass
 
     return statistics
-    
-
-

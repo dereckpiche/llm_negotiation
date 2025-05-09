@@ -9,7 +9,9 @@ from collections import defaultdict
 
 import numpy as np
 import pandas as pd
-from src.environments.scores import *
+
+from environments.scores import *
+
 
 def generate_training_data_from_raw(
     raw_data_folder,
@@ -101,7 +103,6 @@ def generate_training_data_from_raw(
             json.dump(chat_history, f, indent=4)
 
     return
-
 
 
 def get_system_msg(match):
@@ -201,5 +202,3 @@ def get_scores(
             scores[group_id][match_id] = agent_points
 
     return scores
-
-

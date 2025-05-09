@@ -1,3 +1,8 @@
+"""
+This file contains the code to generate and train the models.
+"""
+
+
 import logging
 import os
 import pickle
@@ -8,28 +13,15 @@ import hydra
 import numpy as np
 import torch
 
-from environments.dond.dond_agent import DondAgent
-from environments.dond.dond_game import (
-    DondEnv,
-    bicameral_vals_assignator,
-    dond_random_setup,
-    fixed_manual,
-    independent_random_vals,
-    random_quant_fixed_vals,
-)
-from environments.dond.dond_training_data_funcs import *
-from environments.environment_imports import *
+# Local imports
+from environments.env_imports import *
 from generation.run_games import run_batched_matches
 from models.dummy_local_llm import DummyLocalLLM
-
-# Local imports
 from models.local_llm import LocalLLM
 from models.new_local_llm import LocalLLMV2
 from models.server_llm import ServerLLM
 from training.train_main import *
 from utils.common_imports import *
-from utils.log_statistics import *
-from utils.log_statistics import generate_agent_stats_plots, update_agent_statistics
 from utils.update_start_epoch import update_start_epoch
 
 # TODO (Muqeeth): * might cause circular import errors. Check with Dereck what methods we should actually import
@@ -154,9 +146,6 @@ def generate_and_train(cfg, base_seed):
 
         training_end_time = time.time()
 
-
-
-
         iteration_end_time = time.time()
 
         # Timing calculations
@@ -191,7 +180,7 @@ def generate_and_train(cfg, base_seed):
         python_random_state = random.getstate()
         numpy_random_state = np.random.get_state()
         torch_random_state = torch.get_rng_state()
-        torch_cuda_random_state = torch.cuda.get_rng_state_all()  
+        torch_cuda_random_state = torch.cuda.get_rng_state_all()
 
         # Store in a dictionary (or save to a file)
         random_state_dict = {
@@ -204,9 +193,6 @@ def generate_and_train(cfg, base_seed):
         with open(random_state_dir, "wb") as f:
             pickle.dump(random_state_dict, f)
 
-        
-
-
     total_end_time = time.time()
     total_duration = total_end_time - total_start_time
     compute_logger.info(
@@ -215,6 +201,7 @@ def generate_and_train(cfg, base_seed):
 
 
 def init_models(cfg, base_seed, output_directory):
+    # TODO: just do a globals[] call
     models = {}
     for model_name in cfg["models"].keys():
         if cfg["models"][model_name]["class"] == "local_llm":
@@ -302,11 +289,14 @@ def create_blank_match(cfg, seed=0, game_id=0, game_length=10, group_id=0):
     )
 
     # Add the logging function and args to the match dictionary
+    log_func = lambda path, agent_infos, info: globals()[cfg["matches"]["log_func"]](
+        path, agent_infos, info, **cfg["matches"]["log_func_args"]
+    )
+
     match = {
         "env": env,
         "agents": agents,
         "log_func": globals()[cfg["matches"]["log_func"]],
-        "log_func_args": cfg["matches"]["log_func_args"],
     }
 
     return match

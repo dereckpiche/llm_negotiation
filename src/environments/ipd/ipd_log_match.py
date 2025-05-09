@@ -2,14 +2,16 @@ import json
 import os
 from typing import Any, Dict, List, Optional
 
-from src.environments.ipd.ipd_statistics import gather_ipd_statistics
-from src.environments.two_chats_to_html import two_chats_to_html
+from environments.ipd.ipd_statistics import gather_ipd_statistics
+from environments.two_chats_to_html import two_chats_to_html
+from utils.class_to_dict import class_to_dict
+
 
 def log_ipd_match(
     path: str,
     agent_infos: List[Dict[str, Any]],
     info: Dict[str, Any],
-    ) -> Dict[str, Any]:
+) -> Dict[str, Any]:
     """
     Log the IPD match.
     Args:
@@ -20,17 +22,17 @@ def log_ipd_match(
         A dictionary containing the match information.
     """
 
-    
-    match_id = info["match_id"]
-    group_id = info["group_id"]
+    match_id = info.match_id
+    group_id = info.group_id
 
     for agent_info in agent_infos:
-
         agent_id = agent_info["agent_id"]
 
         # Define paths for raw data and statistics subfolders
         raw_data_path = os.path.join(path, agent_id, "raw_data")
-        raw_data_file = os.path.join(raw_data_path, f"match_mid_{match_id}_gid_{group_id}.json")
+        raw_data_file = os.path.join(
+            raw_data_path, f"match_mid_{match_id}_gid_{group_id}.json"
+        )
         statistics_path = os.path.join(path, agent_id, "statistics")
 
         # Ensure directories exist
@@ -41,6 +43,9 @@ def log_ipd_match(
         chat_history = agent_info.get("chat_history", [])
 
         chat_history_with_info = chat_history.copy()
+
+        info = class_to_dict(info)
+
         game_info_message = {
             "role": "system",
             "game_info": info,

@@ -1,11 +1,28 @@
 import json
 import os
 
+from environments.dond.dond_statistics import *
+from environments.dond.dond_training_data import *
+from environments.two_chats_to_html import two_chats_to_html
 from utils.common_imports import *
-from utils.two_chats_to_html import two_chats_to_html
 
-from .dond_statistics_funcs import *
-from .dond_training_data_funcs import *
+
+def log_dond_stats_evolution(path, outpath=None):
+    """
+    Logs the evolution of DOND statistics over time.
+
+    Args:
+        path (str): Base path to save the data.
+
+    outpath (str, optional): Path to save the output.
+    """
+    if outpath is None:
+        outpath = path
+
+    # Get all the statistics files
+    stats_files = glob.glob(os.path.join(path, "**", "*.json"), recursive=True)
+
+    # TODO: get all folder names that start
 
 
 def dond_log_match(path, agent_infos, info, metrics_func=None, metrics_func_args=None):

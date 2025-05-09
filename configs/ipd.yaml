@@ -9,7 +9,7 @@ experiment:
   method: generate_and_train
   description: "no description"
   nb_epochs: 2000
-  nb_matches_per_iteration: 5
+  nb_matches_per_iteration: 64
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: true
@@ -26,7 +26,8 @@ common_agent_kwargs: &common_agent_kwargs
   max_reasoning_chars: 0
 
   intro_prompt: |
-    Welcome to the Iterated Prisoner's Dilemma game!
+    Welcome to the Iterated Prisoner's Dilemma game! You are playing against another agent.
+
 
     Game Rules:
     1. You and another agent will play multiple rounds of the Prisoner's Dilemma.
@@ -38,6 +39,13 @@ common_agent_kwargs: &common_agent_kwargs
     4. The goal is to maximize your total points over all rounds.
     5. You will see the history of previous rounds, including both agents' choices and points earned.
 
+    In order to cooperate, you must write "<Cooperate>" and nothing else.
+    In order to defect, you must write "<Defect>" and nothing else.
+
+    During the entire game, you must only write "<Cooperate>" or "<Defect>". If you write anything else, your response will be considered as an error.
+
+    The game starts now:
+
   goal_prompt: |
     Your goal is to maximize your utility.
 
@@ -45,15 +53,15 @@ matches:
   env_class: "IPDEnv"
   agent_class: "IPDAgent"
 
-  max_length: 30
-  continuation_prob: 0.85
+  max_length: 1
+  continuation_prob: 1
   same_length_batch: True
 
   # If set to 0, existing setup will run where utilities are randomly sampled at the beginning of each round.
   # If set to 1, all utilities will be calculated beforehand but rloo rewards will also be only calculated per game.
   nb_matches_with_same_roundwise_utilities: False
 
-  log_func: ipd_log_raw_conversations
+  log_func: log_ipd_match
   log_func_args:
     metrics_func: gather_ipd_statistics
     metrics_func_args:
@@ -107,7 +115,7 @@ temperature: 0.7
 models:
   qwen:
     name: 'qwen'
-    class: dummy_local_llm
+    class: local_llm_v2
     init_args:
       max_model_length: 10000
       device: "cuda"
@@ -122,7 +130,7 @@ models:
         repetition_penalty: 1
       vllm_params:
         max_model_len : 13e3
-        gpu_memory_utilization: 0.6
+        gpu_memory_utilization: 0.45
         enable_lora: True
         enable_prefix_caching: True
         enable_sleep_mode : True

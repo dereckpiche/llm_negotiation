@@ -1,4 +1,4 @@
-from environments.dond.dond_log_funcs import *
+from environments.env_imports import *
 from utils.common_imports import *
 
 
@@ -45,7 +45,6 @@ def run_batched_matches(
             "pending_actions": {},
             "policy_outputs": {agent_id: None for agent_id in match["agents"]},
             "log_func": match["log_func"],
-            "log_func_args": match["log_func_args"],
         }
 
     policy_inputs = {}  # {policy_id: {match_id: {agent_id: input}}}
@@ -123,7 +122,6 @@ def run_batched_matches(
                         export_path,
                         agent_infos,
                         env_info,
-                        **match_data["log_func_args"]
                     )
                     completed_matches.append(match_id)
 

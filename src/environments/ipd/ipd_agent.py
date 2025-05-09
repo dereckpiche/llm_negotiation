@@ -78,14 +78,20 @@ class IPDAgent:
         round_nb = observation_from_env.round_nb
 
         # If it's the first round, we need to send the intro prompt
-        if round_nb == 0:
-            policy_input = self.intro_prompt
+        if round_nb == 0 and len(self.chat_history) == 0:
+            self.chat_history.append(
+                {
+                    "role": "user",
+                    "content": self.intro_prompt,
+                    "round_number": round_nb,
+                }
+            )
             return (
                 self.policy_id,
-                policy_input,
+                self.chat_history,
                 None,
                 False,
-                {"agent_id": self.agent_id, "error": "First round"},
+                None,
             )
 
         # If new round
@@ -99,33 +105,46 @@ class IPDAgent:
             user_message = (
                 f"Last round, the other player's action was: {other_player_action}."
             )
-            self.chat_history.append({"role": "user", "content": user_message})
-            self.round_nb = round_nb
-            return (
-                self.policy_id,
-                None,
-                None,
-                False,
-                {"agent_id": self.agent_id, "error": None},
+            self.chat_history.append(
+                {
+                    "role": "user",
+                    "content": user_message,
+                    "round_number": round_nb,
+                }
             )
+            self.round_nb = round_nb
+            return (self.policy_id, self.chat_history, None, False, None)
+
         # If not new round we take action
-        if action == "C" or action == "D":
-            self.chat_history.append({"role": "assistant", "content": policy_output})
+        if policy_output == "<Cooperate>" or policy_output == "<Defect>":
+            self.chat_history.append(
+                {
+                    "role": "assistant",
+                    "content": policy_output,
+                    "round_number": round_nb,
+                }
+            )
             return (
                 None,
                 None,
-                action,
+                policy_output,
                 True,
-                {"agent_id": self.agent_id, "error": None},
+                None,
             )
         else:
-            self.chat_history.append({"role": "assistant", "content": policy_output})
+            self.chat_history.append(
+                {
+                    "role": "assistant",
+                    "content": policy_output,
+                    "round_number": round_nb,
+                }
+            )
             return (
-                self.policy_id,
                 None,
                 None,
+                "ERROR",
                 True,
-                {"agent_id": self.agent_id, "error": "Invalid action."},
+                None,
             )
 
     def get_log_info(self) -> Dict[str, Any]:

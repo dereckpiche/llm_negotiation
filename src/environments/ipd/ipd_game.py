@@ -13,14 +13,13 @@ class IPDGameState:
         self.match_id = None
         self.group_id = None
         self.agent_ids = None
-        self.round_nb = None
-        self.history = None
-        self.total_rewards = None
-        self.rewards = None
-        self.actions = None
-        self.done = None
-        self.info = None
-        self.observation = None
+        self.number_of_rounds = None
+        self.round_nb = 0
+        self.history = []
+        self.rewards = []
+        self.actions = []
+        self.done = False
+        self.info = {}
 
 
 class IPDEnv:
@@ -60,9 +59,17 @@ class IPDEnv:
             sucker: Payoff for cooperating when other agent defects
             seed: Random seed for reproducibility
         """
+        self.reward = reward
+        self.punishment = punishment
+        self.temptation = temptation
+        self.sucker = sucker
+        self.rounds_per_game = rounds_per_game
+
         self.agent_ids = agents
         self.player_0_id = agents[0]
         self.player_1_id = agents[1]
+        self.match_id = game_id
+        self.group_id = group_id
         self.reset()
 
     def reset(self):
@@ -73,7 +80,8 @@ class IPDEnv:
         self.state.agent_ids = self.agent_ids
         self.state.match_id = self.match_id
         self.state.group_id = self.group_id
-        return self.state
+        self.state.number_of_rounds = self.rounds_per_game
+        return {self.player_0_id: self.state, self.player_1_id: self.state}
 
     def step(
         self, actions: Dict[str, str]
@@ -90,12 +98,6 @@ class IPDEnv:
             done (bool): Whether the episode has ended.
             info (dict): Additional information about the environment.
         """
-        # Validate actions
-        for agent_id, action in actions.items():
-            if action not in self.action_space:
-                raise ValueError(
-                    f"Invalid action '{action}' for agent '{agent_id}'. Valid actions are {self.action_space}."
-                )
 
         # Calculate rewards based on the prisoner's dilemma payoff matrix
         round_rewards = {}
@@ -105,19 +107,19 @@ class IPDEnv:
         p0_action = actions[self.player_0_id]
         p1_action = actions[self.player_1_id]
 
-        if p0_action == "C" and p1_action == "C":
+        if p0_action == "<Cooperate>" and p1_action == "<Cooperate>":
             # Both cooperate
             round_rewards[self.player_0_id] = self.reward
             round_rewards[self.player_1_id] = self.reward
-        elif p0_action == "D" and p1_action == "D":
+        elif p0_action == "<Defect>" and p1_action == "<Defect>":
             # Both defect
             round_rewards[self.player_0_id] = self.punishment
             round_rewards[self.player_1_id] = self.punishment
-        elif p0_action == "C" and p1_action == "D":
+        elif p0_action == "<Cooperate>" and p1_action == "<Defect>":
             # Alice cooperates, Bob defects
             round_rewards[self.player_0_id] = self.sucker
             round_rewards[self.player_1_id] = self.temptation
-        elif p0_action == "D" and p1_action == "C":
+        elif p0_action == "<Defect>" and p1_action == "<Cooperate>":
             # Alice defects, Bob cooperates
             round_rewards[self.player_0_id] = self.temptation
             round_rewards[self.player_1_id] = self.sucker
@@ -131,11 +133,10 @@ class IPDEnv:
         self.state.history.append(actions)
         self.state.rewards.append(round_rewards)
         self.state.actions.append(actions)
-        self.state.total_rewards += round_rewards
 
         done = self.state.round_nb >= self.rounds_per_game
 
-        return self.state, done, {}
+        return {self.player_0_id: self.state, self.player_1_id: self.state}, done, {}
 
     def get_log_info(self) -> Dict[str, Any]:
         """

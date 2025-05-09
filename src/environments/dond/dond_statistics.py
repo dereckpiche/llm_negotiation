@@ -1,7 +1,5 @@
 from utils.common_imports import *
-from src.utils.statrees import *
-
-
+from utils.statrees import *
 
 
 def gather_dond_game_statistics(game_info, stats_to_log, format_options=None):

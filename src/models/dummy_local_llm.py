@@ -1,12 +1,8 @@
 from typing import List
-from utils.common_imports import *
 
 from models.local_llm import *
-
-from typing import List
 from utils.common_imports import *
 
-from models.local_llm import *
 
 class DummyLocalLLM(LocalLLM):
     def __init__(self, *args, **kwargs):
@@ -28,7 +24,7 @@ class DummyLocalLLM(LocalLLM):
         pass
 
     def prompt(self, contexts) -> str:
-        return ["Bzzzzzzzzzzz"] * len(contexts)
+        return ["C"] * len(contexts)
 
     def export_current_adapter(self) -> None:
         pass
@@ -41,4 +37,3 @@ class DummyLocalLLM(LocalLLM):
 
     def set_adapter(self, adapter_name):
         pass
-

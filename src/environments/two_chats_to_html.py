@@ -1,8 +1,16 @@
+from typing import Any, Dict, List
+
+
 def two_chats_to_html(
     chat_history_1: List[Dict[str, Any]], chat_history_2: List[Dict[str, Any]]
 ) -> str:
     """
     Convert two chat histories to an HTML file.
+    Args:
+        chat_history_1: List[Dict[str, Any]],
+        chat_history_2: List[Dict[str, Any]]
+    Returns:
+        str: The HTML content.
     """
 
     html_content = """
@@ -176,6 +184,9 @@ def two_chats_to_html(
             <div class="central-timeline"></div>
     """
 
+    # TODO: Make this flexible
+    agent_names = ["Alice", "Bob"]
+
     # Extract all messages from all agents with their global order
     all_messages = []
     chats = [chat_history_1, chat_history_2]
@@ -215,14 +226,14 @@ def two_chats_to_html(
         all_rounds = [0]  # Default to round 0 if no rounds found but messages exist
 
     # Group messages by agent and round
-    messages_by_agent = {agent_info["agent_name"]: [] for agent_info in agent_infos}
+    messages_by_agent = {agent_name: [] for agent_name in agent_names}
 
     for message in all_messages:
         agent_name = message["agent_name"]
         messages_by_agent[agent_name].append(message)
 
     # Group messages by round for each agent
-    rounds_by_agent = {agent_name: {} for agent_name in messages_by_agent.keys()}
+    rounds_by_agent = {agent_name: {} for agent_name in agent_names}
 
     for agent_name, messages in messages_by_agent.items():
         for message in messages:
@@ -242,8 +253,7 @@ def two_chats_to_html(
         max_messages_per_round[round_nb] = max_count
 
     # Render agent columns
-    for agent_info in agent_infos:
-        agent_name = agent_info["agent_name"]
+    for agent_name in agent_names:
         agent_class = "alice" if agent_name.lower() == "alice" else "bob"
 
         html_content += f"""
@@ -335,3 +345,5 @@ def two_chats_to_html(
     </body>
     </html>
     """
+
+    return html_content
