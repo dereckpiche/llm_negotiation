@@ -126,12 +126,12 @@ class LocalLLM:
         # set random seeds
         self.base_seed = base_seed
         self.adapter_names = adapter_names
-        
+
         # Initialize base model
         self.hf_model = AutoModelForCausalLM.from_pretrained(
             **self.pretrained_args,
         )
-        
+
         # Initialize PEFT models for each adapter
         for adapter_name in adapter_names:
             adapter_path = self.adapter_paths[adapter_name]
@@ -139,23 +139,23 @@ class LocalLLM:
                 model_logger.info(f"Loading adapter {adapter_name} from {adapter_path}")
                 # Load existing PEFT model
                 self.peft_models[adapter_name] = PeftModel.from_pretrained(
-                    self.hf_model,
-                    adapter_path,
-                    adapter_name=adapter_name
+                    self.hf_model, adapter_path, adapter_name=adapter_name
                 )
             else:
                 # Create new PEFT model
                 self.peft_models[adapter_name] = get_peft_model(
-                    self.hf_model, 
-                    self.lora_config,
-                    adapter_name=adapter_name
+                    self.hf_model, self.lora_config, adapter_name=adapter_name
                 )
-                
+
         self.optimizer = None
         self.adapter_optimizers = {}
         for adapter_name in adapter_names:
             # Set up optimizer for each adapter
-            trainable_params = [p for p in self.peft_models[adapter_name].parameters() if p.requires_grad]
+            trainable_params = [
+                p
+                for p in self.peft_models[adapter_name].parameters()
+                if p.requires_grad
+            ]
             self.adapter_optimizers[adapter_name] = getattr(
                 torch.optim, optimizer_method
             )(trainable_params, **optimizer_kwargs)
@@ -190,7 +190,7 @@ class LocalLLM:
 
         self.current_adapter_name = adapter_name
         adapter_path = self.adapter_paths[self.current_adapter_name]
-        
+
         if self.train_with == "hf":
             # Set current model to the PEFT model with the specified adapter
             self.hf_model = self.peft_models[adapter_name]
@@ -327,7 +327,7 @@ class LocalLLM:
 
         return responses
 
-    def export_current_adapter(self) -> None:
+    def export_current_adapter_and_optimizer(self) -> None:
         """
         Saves only the LoRA weights to a specified directory. If the directory
         already exists, it deletes the existing directory before saving.

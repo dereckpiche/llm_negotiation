@@ -1,0 +1,26 @@
+defaults:
+  - negotiation_game.yaml
+
+experiment:
+  name: "${now:%Y-%m-%d___%H-%M-%S}_adv_align"
+  description: "Agents trained on negotiation game with advantage alignment."
+  seed: 1045
+
+training:
+  agents:
+    Alice:
+      training_data_func_args:
+        score_method: rloo_advantage_alignment_scores
+        score_method_kwargs:
+          discount_factor: 1.0
+          beta: 1.0
+          time_decay: False
+          regulate_var: False
+    Bob:
+      training_data_func_args:
+        score_method: rloo_advantage_alignment_scores
+        score_method_kwargs:
+          discount_factor: 1.0
+          beta: 1.0
+          time_decay: False
+          regulate_var: False

@@ -3,6 +3,7 @@ This file contains the code to generate and train the models.
 """
 
 
+import copy
 import logging
 import os
 import pickle
@@ -47,6 +48,8 @@ def generate_and_train(cfg, base_seed):
     torch.cuda.manual_seed(base_seed)  # PyTorch (GPU)
     torch.cuda.manual_seed_all(base_seed)  # If using multi-GPU
 
+    env_rng = np.random.default_rng(base_seed)
+
     random_state_dir = f"{output_directory}/random_state.pkl"
     # Load saved states
     if os.path.exists(random_state_dir):
@@ -64,6 +67,9 @@ def generate_and_train(cfg, base_seed):
     for iteration in range(
         cfg["experiment"]["start_epoch"], cfg["experiment"]["nb_epochs"]
     ):
+        # Create a new RNG instance by splitting the current one (simulates RNG splitting)
+        env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
+
         iteration_start_time = time.time()
 
         it_folder = os.path.join(output_directory, f"iteration_{iteration:03}")
@@ -71,8 +77,9 @@ def generate_and_train(cfg, base_seed):
 
         generation_start_time = time.time()
 
-        # Create independent matches based on the number in config
-        matches = create_matches(cfg, base_seed, iteration)
+        # Create independent matches based on the number in config.
+        # Return modified RNG so that a different split is generated for the next iteration.
+        matches, env_rng = create_matches(cfg, env_rng, iteration)
 
         agents = matches[0]["agents"]
         agent_names = agents.keys()
@@ -145,6 +152,50 @@ def generate_and_train(cfg, base_seed):
                         train_output_dict[policy_id] = train_output
 
         training_end_time = time.time()
+
+        initial_logging_time = logging_end_time - logging_start_time
+        logging_start_time = time.time()
+
+        # Checkpoint all adapters
+        if iteration % cfg["experiment"]["checkpoint_every_n_iterations"] == 0:
+            for model_name, model in models.items():
+                if hasattr(model, "adapter_paths"):
+                    model.checkpoint_all_adapters(
+                        checkpoint_indicator=f"iter_{iteration}"
+                    )
+
+        # TODO: Moving it here is better since we can plot for every k steps to speedup training
+        for agent in agents.values():
+            agent_name = agent.agent_name
+            # Update agent statistics
+            agent_stats_folder = os.path.join(
+                output_directory, "statistics", agent_name
+            )
+            os.makedirs(agent_stats_folder, exist_ok=True)
+            agent_stats_file = os.path.join(
+                agent_stats_folder, f"{agent_name}_stats.jsonl"
+            )
+
+            update_agent_statistics(
+                input_path=os.path.join(it_folder, agent_name, "statistics"),
+                output_file=agent_stats_file,
+            )
+
+            with open(agent_stats_file, "r") as f:
+                agent_stats = json.load(f)
+
+            if agent.policy_id in train_output_dict:
+                train_output = train_output_dict[agent.policy_id]
+                for key in train_output:
+                    if key in agent_stats:
+                        agent_stats[key].append(train_output[key])
+                    else:
+                        agent_stats[key] = [train_output[key]]
+
+            with open(agent_stats_file, "w") as f:
+                json.dump(agent_stats, f, indent=4)
+
+        logging_end_time = time.time()
 
         iteration_end_time = time.time()
 
@@ -227,7 +278,7 @@ def init_models(cfg, base_seed, output_directory):
     return models
 
 
-def create_matches(cfg, base_seed, iteration):
+def create_matches(cfg, env_rng, iteration):
     matches = []
     nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
     game_lengths = get_stochastic_game_lengths(
@@ -236,24 +287,30 @@ def create_matches(cfg, base_seed, iteration):
         continuation_prob=cfg["matches"]["continuation_prob"],
         same_length_batch=cfg["matches"]["same_length_batch"],
     )
-    # Number of games that share the same group ID
+
+    # Number of games that share the same utilities
     group_size = cfg["matches"]["nb_matches_with_same_roundwise_utilities"]
 
     for i in range(nb_matches):
+        if group_size == 0 or i % group_size == 0:
+            env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
+
         matches.append(
             create_blank_match(
                 cfg,
-                seed=base_seed + (iteration * nb_matches) + i,
-                game_id=i,
+                # Maintain the same RNG for a group / minibatch.
+                rng=copy.deepcopy(env_rng),
+                game_index=i,
                 game_length=game_lengths[i],
-                group_id=i // group_size if group_size else 0,
+                # Minibatch / group id for which roundwise utilities are same
+                group_id=i // group_size if group_size else -1,
             )
         )
 
-    return matches
+    return matches, env_rng
 
 
-def create_blank_match(cfg, seed=0, game_id=0, game_length=10, group_id=0):
+def create_blank_match(cfg, rng, game_index=0, game_length=10, group_id=0):
     """
     Initializes a match for any game, using a functional approach to instantiate
     environment and agent classes based on configuration.
@@ -281,6 +338,8 @@ def create_blank_match(cfg, seed=0, game_id=0, game_length=10, group_id=0):
     env_kwargs = dict(cfg["matches"]["env_kwargs"])
 
     env = EnvClass(
+        game_index=game_index,
+        rng=rng,
         **env_kwargs,
         game_id=game_id,
         random_seed=seed,

@@ -18,7 +18,7 @@ def train_main(
     train_output = globals()[train_func](
         hf_model, paths, train_func_args, train_data_args, output_path=output_path
     )
-    hf_model.export_current_adapter()
+    hf_model.export_current_adapter_and_optimizer()
     return train_output
 
 

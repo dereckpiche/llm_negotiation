@@ -1,6 +1,9 @@
+from concurrent.futures import ThreadPoolExecutor
 from typing import List
-from utils.common_imports import *
+
 from openai import OpenAI
+
+from utils.common_imports import *
 
 
 class ServerLLM:
@@ -13,7 +16,7 @@ class ServerLLM:
         self,
         name: str = "openai_agent",
         api_key: str = "",
-        model: str = "gpt-3.5-turbo"  # default OpenAI model
+        model: str = "gpt-4o",  # default OpenAI model
     ) -> None:
         """
         Initializes the ServerLLM.
@@ -32,6 +35,12 @@ class ServerLLM:
             self.client = OpenAI(api_key=api_key)
         self.model = model
 
+    def _sync_fetch(self, prompt: dict) -> str:
+        response = self.client.chat.completions.create(
+            model=self.model, messages=prompt, max_tokens=150
+        )
+        return response.choices[0].message.content.strip()
+
     def prompt(self, contexts: List[dict]) -> str:
         """
         Generates a response from the OpenAI model based on the provided contexts.
@@ -45,18 +54,9 @@ class ServerLLM:
         if not contexts:
             return ""
 
-        # Call the OpenAI API to generate a response
-        responses = []
-        for prompt in contexts:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=prompt,
-                max_tokens=150  # Adjust as needed
-            )
+        with ThreadPoolExecutor(max_workers=min(64, len(contexts))) as executor:
+            responses = list(executor.map(self._sync_fetch, contexts))
 
-            responses.append(response.choices[0].message.content.strip())
-
-        # Extract and return the generated text
         return responses
 
     def set_adapter(self, name: str) -> None:
@@ -67,5 +67,3 @@ class ServerLLM:
             name (str): The name of the adapter to switch to.
         """
         pass
-
-

@@ -30,7 +30,7 @@ def reinforce_train(
     kl_loss_coef=0,
     temperature=1.0,
     device="cuda:0",
-    gradient_clipping=None,
+    gradient_clipping=1.0,
     debug_log_path=None,
     debug_enabled=False,
 ):
@@ -237,17 +237,18 @@ def reinforce_train(
             attention_mask = attention_mask.to(device)  # (B, S)
 
             # Forward pass
-            outputs = model(input_ids=context_batch, attention_mask=attention_mask)
-
-            logits = outputs[0]  # (B, S, V)
+            logits = model(input_ids=context_batch, attention_mask=attention_mask)[
+                0
+            ]  # (B, S, V)
 
             # Apply temperature scaling before computing log probabilities
             assert temperature > 0, "Temperature must be greater than 0."
 
-            logits = logits / temperature  # (B, S, V)
+            logits /= temperature  # (B, S, V)
 
             # Compute new log probabilities
             log_probs = F.log_softmax(logits, dim=-1)  # (B, S, V)
+
             # Apply mask to log probabilities and values
             action_log_probs = log_probs.gather(
                 dim=-1, index=action_batch.unsqueeze(-1)
@@ -255,10 +256,23 @@ def reinforce_train(
                 -1
             )  # (B,S)
 
-            entropy = -log_probs * F.softmax(logits, dim=-1)  # (B, S, V)
-            entropy = entropy.sum(dim=-1)  # (B, S)
+            rewarded_action_log_probs = action_log_probs * (
+                return_batch * mask_batch
+            )  # (B, S)
 
-            kl_div = 0
+            # Compute entropy
+            if entropy_coef != 0.0:
+                # Dimensions after Softmax are (B, S, V). Chaining operations to reduce memory overhead.
+                entropy = (-log_probs * F.softmax(logits, dim=-1)).sum(dim=-1)  # (B, S)
+
+                rewarded_action_log_probs += entropy_coef * (
+                    entropy * mask_batch
+                )  # (B, S)
+
+                del entropy
+
+            del log_probs
+
             if kl_loss_coef != 0.0:
                 kl_div = compute_kl_div(
                     model,
@@ -268,22 +282,24 @@ def reinforce_train(
                     index=action_batch,
                     temperature=temperature,
                 )
-            per_token_kl = kl_loss_coef * (kl_div * mask_batch)
 
-            rewarded_action_log_probs = action_log_probs * (
-                return_batch * mask_batch
-            ) + entropy_coef * (
-                entropy * mask_batch
-            )  # (B,S)
+                per_token_kl = kl_loss_coef * (kl_div * mask_batch)
 
-            rewarded_action_log_probs = rewarded_action_log_probs - per_token_kl
+                del kl_div
+
+                rewarded_action_log_probs -= per_token_kl
+
+                del per_token_kl
 
             # Avoid division by zero by adding a small epsilon value to the denominator
             epsilon = 1e-8
+
             loss = -rewarded_action_log_probs.sum(dim=1) / (
                 torch.sum(mask_batch, dim=1) + epsilon
             )  # (B,)
+
             loss = loss.mean()
+
             train_output_dict["loss"].append(loss.item())
 
             # ------------------------------------------------------------------
@@ -301,13 +317,26 @@ def reinforce_train(
                     action_log_probs=action_log_probs,
                     return_batch=return_batch,
                     mask_batch=mask_batch,
-                    entropy=entropy,
-                    per_token_kl=per_token_kl,
+                    entropy=0,
+                    per_token_kl=0,
                 )
 
-            loss = loss / gradient_accumulation_steps
+            loss /= gradient_accumulation_steps
             model_accelerator.backward(loss)
             train_logger.info(f"Accumulated a gradient on loss of {loss.item()}.")
+
+            del action_batch
+            del context_batch
+            del return_batch
+            del mask_batch
+            del attention_mask
+
+            del logits
+            del loss
+            del action_log_probs
+            del rewarded_action_log_probs
+
+            torch.cuda.empty_cache()
 
             if ((i + mb_size) // mb_size) % gradient_accumulation_steps == 0:
                 if gradient_clipping and model_accelerator.sync_gradients:
