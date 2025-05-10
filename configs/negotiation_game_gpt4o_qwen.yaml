@@ -5,7 +5,8 @@ hydra:
     chdir: false
 
 experiment:
-  name: "gpt_vs_qwen_${now:%Y-%m-%d___%H-%M-%S}"
+  name: "gpt_vs_qwen"
+  # name: "${now:%Y-%m-%d___%H-%M-%S}_gpt_vs_qwen"
   method: generate_and_train
   description: "Agents trained on negotiation game with regular RL."
   nb_epochs: 2000

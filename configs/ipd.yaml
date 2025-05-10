@@ -1,11 +1,12 @@
 hydra:
   run:
-    dir: "${oc.env:SCRATCH}/${experiment.name}"
+    dir: "${oc.env:SCRATCH}/llm_negotiation/${experiment.name}"
   job:
     chdir: false
 
 experiment:
-  name: "${now:%Y-%m-%d___%H-%M-%S}_IPD"
+  name: "IPD"
+  # name: "${now:%Y-%m-%d___%H-%M-%S}_IPD"
   method: generate_and_train
   description: "no description"
   nb_epochs: 2000

@@ -2,7 +2,7 @@ defaults:
   - negotiation_game.yaml
 
 experiment:
-  name: "sum_of_rewards"
+  name: "negotiation_game_sum_of_rewards"
   # name: "${now:%Y-%m-%d___%H-%M-%S}_sum_of_rewards"
   description: "Negotiation game with agents trained on sum of rewards."
 

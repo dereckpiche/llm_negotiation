@@ -1,11 +1,12 @@
 hydra:
+  run:
+    dir: "${oc.env:SCRATCH}/llm_negotiation/${experiment.name}"
   job:
     chdir: false
-    name: ultimatum
-  run:
-    dir: ${oc.env:EXP_OUT}/${hydra.job.name}/
 
 experiment:
+  name: "ultimatum"
+  # name: "${now:%Y-%m-%d___%H-%M-%S}_ultimatum"
   method: generate_and_train
   description: "no description"
   nb_epochs: 2000
