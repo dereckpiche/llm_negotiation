@@ -3,6 +3,8 @@
 home/
 test_venv/
 home
+output/
+outputs/
 results
 .vscode/
 slurm_logs/
