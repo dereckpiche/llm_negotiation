@@ -8,7 +8,7 @@ experiment:
 
 training:
   agents:
-    alice:
+    Alice:
       training_data_func_args:
         score_method: rloo_advantage_alignment_scores
         score_method_kwargs:
@@ -16,7 +16,7 @@ training:
           beta: 1.0
           time_decay: False
           regulate_var: False
-    bob:
+    Bob:
       training_data_func_args:
         score_method: rloo_advantage_alignment_scores
         score_method_kwargs:

@@ -111,7 +111,7 @@ class DondAgent:
             policy_output (str, optional): The output of the policy (LLM response).
 
         Returns:
-            policy_id (str): The policy identifier.
+            policy_id (str): The policy identifier. This is the policy to which we are sending the policy_input.
             policy_input (dict): The input to the policy.
             action : The official action to be sent to the environment.
             done (bool): Whether the LLM action is ready to be sent to the environment.

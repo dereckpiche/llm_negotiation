@@ -13,7 +13,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
 
-from src.utils.log_statistics import common_plot_statrees, get_mean_statrees
+from src.utils.log_statistics import common_plot_leafstats, get_mean_leafstats
 
 
 def find_statistic_files(folder_path: str, pattern: str = "**/*.jsonl") -> List[str]:
@@ -31,7 +31,7 @@ def find_statistic_files(folder_path: str, pattern: str = "**/*.jsonl") -> List[
     return glob.glob(search_path, recursive=True)
 
 
-def collect_statrees(
+def collect_leafstats(
     input_folders: Union[str, List[str]],
     pattern: str = "**/*.jsonl",
     filter_func: Optional[Callable[[str], bool]] = None,
@@ -45,13 +45,13 @@ def collect_statrees(
         filter_func: Optional function to filter file paths (takes a path, returns bool)
 
     Returns:
-        List of loaded statrees
+        List of loaded leafstats
     """
     # Handle single folder or list of folders
     if isinstance(input_folders, str):
         input_folders = [input_folders]
 
-    statrees = []
+    leafstats = []
 
     # Process each input folder
     for folder in input_folders:
@@ -66,18 +66,18 @@ def collect_statrees(
 
         print(f"Found {len(json_files)} JSON files in {folder}")
 
-        # Load statrees from JSON files
+        # Load leafstats from JSON files
         for file_path in json_files:
             try:
                 with open(file_path, "r") as f:
                     data = json.load(f)
-                    statrees.append(data)
+                    leafstats.append(data)
             except json.JSONDecodeError:
                 print(f"Error: Could not parse JSON in {file_path}")
             except Exception as e:
                 print(f"Error loading {file_path}: {str(e)}")
 
-    return statrees
+    return leafstats
 
 
 def plot_multipled_seeds(
@@ -107,53 +107,53 @@ def plot_multipled_seeds(
     # Ensure output directory exists
     os.makedirs(output_path, exist_ok=True)
 
-    # Collect all statrees from the input folders
-    all_statrees = collect_statrees(input_folders, pattern)
+    # Collect all leafstats from the input folders
+    all_leafstats = collect_leafstats(input_folders, pattern)
 
-    if not all_statrees:
+    if not all_leafstats:
         print("No statistic data found in the provided folders!")
         return
 
-    print(f"Collected {len(all_statrees)} statistic trees")
+    print(f"Collected {len(all_leafstats)} statistic trees")
 
-    # Compute the mean across all statrees
-    mean_statree = get_mean_statrees(all_statrees)
+    # Compute the mean across all leafstats
+    mean_leafstats = get_mean_leafstats(all_leafstats)
 
     # Prepare data for plotting
-    statrees_with_info = []
+    leafstats_with_info = []
 
-    # Add individual statrees with light blue styling
-    for statree in all_statrees:
-        statrees_with_info.append(
-            (statree, {"color": "lightblue", "alpha": 0.5, "linewidth": 1})
+    # Add individual leafstats with light blue styling
+    for leafstats in all_leafstats:
+        leafstats_with_info.append(
+            (leafstats, {"color": "lightblue", "alpha": 0.5, "linewidth": 1})
         )
 
-    # Add mean statree with dark blue styling
-    statrees_with_info.append(
+    # Add mean leafstats with dark blue styling
+    leafstats_with_info.append(
         (
-            mean_statree,
+            mean_leafstats,
             {"color": "darkblue", "alpha": 1.0, "linewidth": 2, "label": "Average"},
         )
     )
 
     # Generate plots
-    common_plot_statrees(statrees_with_info, output_path)
+    common_plot_leafstats(leafstats_with_info, output_path)
 
-    # Save the mean statree as JSON
-    mean_output_path = os.path.join(output_path, "mean_statree.json")
+    # Save the mean leafstats as JSON
+    mean_output_path = os.path.join(output_path, "mean_leafstats.json")
     with open(mean_output_path, "w") as f:
-        json.dump(mean_statree, f, indent=2)
+        json.dump(mean_leafstats, f, indent=2)
 
-    print(f"Plots and mean statree saved to {output_path}")
+    print(f"Plots and mean leafstats saved to {output_path}")
 
 
 if __name__ == "__main__":
     # Example usage
 
     # Example path to experiment folder
-    experiment_folder = "/home/mila/d/dereck.piche/scratch/EXPLORE2"
+    experiment_folder = "/home/mila/d/dereck.piche/scratch/CONFIRM"
 
-    agent_name = "bob"
+    agent_name = "Alice"
 
     # For alice's statistics - using a pattern that finds alice's stats files
     pattern = f"**/seed_*/statistics/{agent_name}/{agent_name}_stats.jsonl"

@@ -1,3 +1,8 @@
+"""
+This file contains the code to generate and train the models.
+"""
+
+
 import copy
 import logging
 import os
@@ -9,28 +14,15 @@ import hydra
 import numpy as np
 import torch
 
-from environments.dond.dond_agent import DondAgent
-from environments.dond.dond_game import (
-    DondEnv,
-    bicameral_vals_assignator,
-    dond_random_setup,
-    fixed_manual,
-    independent_random_vals,
-    random_quant_fixed_vals,
-)
-from environments.dond.dond_training_data_funcs import *
-from environments.environment_imports import *
+# Local imports
+from environments.env_imports import *
 from generation.run_games import run_batched_matches
 from models.dummy_local_llm import DummyLocalLLM
-
-# Local imports
 from models.local_llm import LocalLLM
 from models.new_local_llm import LocalLLMV2
 from models.server_llm import ServerLLM
 from training.train_main import *
 from utils.common_imports import *
-from utils.log_statistics import *
-from utils.log_statistics import generate_agent_stats_plots, update_agent_statistics
 from utils.update_start_epoch import update_start_epoch
 
 # TODO (Muqeeth): * might cause circular import errors. Check with Dereck what methods we should actually import
@@ -210,13 +202,9 @@ def generate_and_train(cfg, base_seed):
         # Timing calculations
         iteration_duration = iteration_end_time - iteration_start_time
         generation_duration = generation_end_time - generation_start_time
-        logging_duration = (
-            logging_end_time - logging_start_time
-        ) + initial_logging_time
         training_duration = training_end_time - training_start_time
 
         generation_percentage = (generation_duration / iteration_duration) * 100
-        logging_percentage = (logging_duration / iteration_duration) * 100
         training_percentage = (training_duration / iteration_duration) * 100
 
         elapsed_time = iteration_end_time - total_start_time
@@ -230,9 +218,8 @@ def generate_and_train(cfg, base_seed):
 
         compute_logger.info(
             f"Iteration {iteration + 1} took {format_time(iteration_duration)} "
-            f"({generation_percentage:.2f}% Gen, {logging_percentage:.2f}% Log, {training_percentage:.2f}% Train). "
+            f"({generation_percentage:.2f}% Gen, {training_percentage:.2f}% Train). "
             f"Generation: {format_time(generation_duration)}, "
-            f"Logging: {format_time(logging_duration)}, "
             f"Training: {format_time(training_duration)}. "
             f"Estimated remaining time: {format_time(estimated_remaining_time)}. "
             f"Estimated total time: {format_time(estimated_total_time)}. "
@@ -241,15 +228,10 @@ def generate_and_train(cfg, base_seed):
             f"500 more iterations: {format_time(time_est_500)}."
         )
 
-        # Save Python random state
         python_random_state = random.getstate()
-
-        # Save NumPy random state
         numpy_random_state = np.random.get_state()
-
-        # Save PyTorch random state
         torch_random_state = torch.get_rng_state()
-        torch_cuda_random_state = torch.cuda.get_rng_state_all()  # For all GPUs
+        torch_cuda_random_state = torch.cuda.get_rng_state_all()
 
         # Store in a dictionary (or save to a file)
         random_state_dict = {
@@ -262,28 +244,6 @@ def generate_and_train(cfg, base_seed):
         with open(random_state_dir, "wb") as f:
             pickle.dump(random_state_dict, f)
 
-        print("Saved random states!")
-
-    plotting_start_time = time.time()
-
-    for agent_name in cfg["matches"]["env_kwargs"]["agents"]:
-        agent_stats_folder = os.path.join(output_directory, "statistics", agent_name)
-
-        agent_stats_file = os.path.join(agent_stats_folder, f"{agent_name}_stats.jsonl")
-
-        generate_agent_stats_plots(
-            global_stats_path=agent_stats_file,
-            matplotlib_log_dir=os.path.join(agent_stats_folder, "matplotlib"),
-            tensorboard_log_dir=os.path.join(agent_stats_folder, "tensorboard"),
-            wandb_log_dir=os.path.join(agent_stats_folder, "wandb"),
-        )
-
-    plotting_end_time = time.time()
-
-    plotting_time = plotting_end_time - plotting_start_time
-
-    compute_logger.info(f"Total time taken for plotting: {format_time(plotting_time)}")
-
     total_end_time = time.time()
     total_duration = total_end_time - total_start_time
     compute_logger.info(
@@ -292,6 +252,7 @@ def generate_and_train(cfg, base_seed):
 
 
 def init_models(cfg, base_seed, output_directory):
+    # TODO: just do a globals[] call
     models = {}
     for model_name in cfg["models"].keys():
         if cfg["models"][model_name]["class"] == "local_llm":
@@ -319,7 +280,6 @@ def init_models(cfg, base_seed, output_directory):
 
 def create_matches(cfg, env_rng, iteration):
     matches = []
-
     nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
     game_lengths = get_stochastic_game_lengths(
         max_length=cfg["matches"]["max_length"],
@@ -340,7 +300,7 @@ def create_matches(cfg, env_rng, iteration):
                 cfg,
                 # Maintain the same RNG for a group / minibatch.
                 rng=copy.deepcopy(env_rng),
-                game_index=i,
+                game_id=i,
                 game_length=game_lengths[i],
                 # Minibatch / group id for which roundwise utilities are same
                 group_id=i // group_size if group_size else -1,
@@ -350,7 +310,7 @@ def create_matches(cfg, env_rng, iteration):
     return matches, env_rng
 
 
-def create_blank_match(cfg, rng, game_index=0, game_length=10, group_id=0):
+def create_blank_match(cfg, rng, game_id=0, game_length=10, group_id=0):
     """
     Initializes a match for any game, using a functional approach to instantiate
     environment and agent classes based on configuration.
@@ -375,32 +335,25 @@ def create_blank_match(cfg, rng, game_index=0, game_length=10, group_id=0):
     # Get environment class from config
     env_class_name = cfg["matches"]["env_class"]
     EnvClass = globals()[env_class_name]
-
-    # Build a fresh copy of game args to safely update random setup parameters
     env_kwargs = dict(cfg["matches"]["env_kwargs"])
 
-    # Handle random setup kwargs if they exist in the config
-    if "random_setup_kwargs" in env_kwargs:
-        setup_kwargs = env_kwargs.get("random_setup_kwargs", {})
-        setup_kwargs = dict(setup_kwargs)  # shallow copy
-        # Put back the cleaned up random_setup_kwargs
-        env_kwargs["random_setup_kwargs"] = setup_kwargs
-
-    # Create match with instantiated environment and agents
     env = EnvClass(
-        game_index=game_index,
         rng=rng,
-        **env_kwargs,
-        rounds_per_game=game_length,
+        game_id=game_id,
         group_id=group_id,
-    )  # Pass the unique seed here
+        rounds_per_game=game_length,
+        **env_kwargs,
+    )
 
     # Add the logging function and args to the match dictionary
+    log_func = lambda path, agent_infos, info: globals()[cfg["matches"]["log_func"]](
+        path, agent_infos, info, **cfg["matches"]["log_func_args"]
+    )
+
     match = {
         "env": env,
         "agents": agents,
         "log_func": globals()[cfg["matches"]["log_func"]],
-        "log_func_args": cfg["matches"]["log_func_args"],
     }
 
     return match

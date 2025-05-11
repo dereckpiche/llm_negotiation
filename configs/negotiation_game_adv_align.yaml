@@ -2,7 +2,8 @@ defaults:
   - negotiation_game.yaml
 
 experiment:
-  name: "${now:%Y-%m-%d___%H-%M-%S}_adv_align"
+  name: "negotiation_game_adv_align"
+  # name: "${now:%Y-%m-%d___%H-%M-%S}negotiation_game_adv_align"
   description: "Agents trained on negotiation game with advantage alignment."
   seed: 1045
 

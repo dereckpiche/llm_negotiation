@@ -1,10 +1,10 @@
-import environments.dond.dond_game
-import environments.dond.dond_agent
-import environments.dond.dond_training_data_funcs
-
-import environments.ipd.ipd_game
-import environments.ipd.ipd_agent
-import environments.ipd.ipd_training_data_funcs
-
-
-
+from environments.dond.dond_agent import *
+from environments.dond.dond_game import *
+from environments.dond.dond_log_match import *
+from environments.dond.dond_statistics import *
+from environments.dond.dond_training_data import *
+from environments.ipd.ipd_agent import *
+from environments.ipd.ipd_game import *
+from environments.ipd.ipd_log_match import *
+from environments.ipd.ipd_statistics import *
+from environments.ipd.ipd_training_data import *
