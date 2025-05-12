@@ -161,7 +161,7 @@ def plot_leafstats(tree: Dict, folder: str, path: str = ""):
     """
     os.makedirs(folder, exist_ok=True)
     for key, value in tree.items():
-        new_path = f"{path}/{key}" if path else key
+        new_path = f"{path}_{key}"
         if isinstance(value, dict):
             plot_leafstats(value, folder, new_path)
         elif isinstance(value, list):
@@ -169,6 +169,59 @@ def plot_leafstats(tree: Dict, folder: str, path: str = ""):
             plt.plot(value)
             plt.title(new_path)
             plt.savefig(os.path.join(folder, f"{new_path.replace('/', '_')}.png"))
+            plt.close()
+
+
+def plot_EMA_leafstats(tree: Dict, folder: str, path: str = "", alpha: float = 0.1):
+    """
+    Plots the exponential moving average of the leaves of the leafstats and saves them to the specified folder.
+    """
+    os.makedirs(folder, exist_ok=True)
+    for key, value in tree.items():
+        new_path = f"{path}/{key}" if path else key
+        if isinstance(value, dict):
+            plot_EMA_leafstats(value, folder, new_path, alpha)
+        elif isinstance(value, list):
+            value = np.array(value)
+            nb_elements = len(value)
+            coefficients = (1 - alpha) ** np.arange(nb_elements, 0, -1)
+            value = np.cumsum(value * coefficients)
+            value /= (1 - alpha) ** np.arange(nb_elements - 1, -1, -1)  # renormalize
+            out_path = f"EMA_alpha_{alpha}_{path}_{key}"
+            out_path = os.path.join(folder, f"{out_path.replace('/', '_')}.png")
+            # import pdb; pdb.set_trace()
+            plt.figure()
+            plt.plot(value)
+            plt.title(new_path)
+            plt.savefig(out_path)
+            plt.close()
+
+
+def plot_SMA_leafstats(tree: Dict, folder: str, path: str = "", window: int = 7):
+    """
+    Plots the simple moving average of the leaves of the leafstats and saves them to the specified folder.
+    """
+    os.makedirs(folder, exist_ok=True)
+    for key, value in tree.items():
+        new_path = f"{path}/{key}" if path else key
+        if isinstance(value, dict):
+            plot_SMA_leafstats(value, folder, new_path, window)
+        elif isinstance(value, list):
+            value = np.array(value)
+            nb_elements = len(value)
+
+            assert window % 2 == 1  # Even numbers are annoying for centered windows
+            value = np.convolve(v=value, a=np.ones(window) / window, mode="same")
+            # Adjust out of window for start and finish
+            value[: window // 2] *= window / np.arange(window // 2 + 1, window)
+            value[-window // 2 + 1 :] *= window / np.arange(window - 1, window // 2, -1)
+
+            out_path = f"SMA_window_{window}_{path}_{key}"
+            out_path = os.path.join(folder, f"{out_path.replace('/', '_')}.png")
+            plt.figure()
+            plt.plot(value)
+            plt.title(new_path)
+            plt.savefig(out_path)
             plt.close()
 
 
