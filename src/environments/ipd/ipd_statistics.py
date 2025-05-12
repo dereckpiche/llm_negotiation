@@ -465,7 +465,14 @@ def get_ipd_iterations_stats_tree(iterations_path, agent_id, stat_funcs):
 
 
 def get_and_save_iterations_stats(
-    iterations_path, agent_id, stat_funcs, save=True, plot=False, output_path=None
+    iterations_path,
+    agent_id,
+    stat_funcs,
+    save=True,
+    plot=False,
+    plot_EMA=True,
+    plot_SMA=True,
+    output_path=None,
 ):
     """
     Get, save and optionally plot statistics for all iterations of a given agent.
@@ -484,6 +491,10 @@ def get_and_save_iterations_stats(
     leafstats = get_ipd_iterations_stats_tree(iterations_path, agent_id, stat_funcs)
     if plot:
         plot_leafstats(leafstats, output_path)
+    if plot_EMA:
+        plot_EMA_leafstats(leafstats, output_path)
+    if plot_SMA:
+        plot_SMA_leafstats(leafstats, output_path)
     if save:
         save_leafstats(leafstats, output_path)
 
@@ -512,4 +523,7 @@ if __name__ == "__main__":
     ]
 
     # Run with arguments from command line
-    get_and_save_iterations_stats(path, args.agent_id, stat_functions, plot=args.plot)
+    get_and_save_iterations_stats(
+        path, args.agent_id, stat_functions, plot=True, plot_EMA=True
+    )
+    print(f"Done logging IPD statistics for {args.path}.")
