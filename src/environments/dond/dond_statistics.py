@@ -691,19 +691,17 @@ def get_and_save_iterations_stats(
 
 
 if __name__ == "__main__":
-    path = "/home/mila/d/dereck.piche/scratch/final_dond_seed_1/seed_1"
-    data = get_raw_data_files(path, "alice")
+    path = "/home/mila/d/dereck.piche/scratch/llm_negotiation/REPRODUCE/greedy/seed_645"
 
     stat_functions = [
         calc_sum_points_percentage_of_max,
-        # calc_items_given_to_self,
-        # calc_total_agreement_percentage,
-        # calc_total_points,
-        # calc_agreement_imbalance,
-        # get_proposal_frequency_stats,
+        calc_items_given_to_self,
+        get_proposal_frequency_stats,
     ]
 
     # Calculate statistics
-    get_and_save_iterations_stats(path, "alice", stat_functions, plot=True)
-    # stats = get_dond_iteration_stats(data, stat_functions)
-    # import pdb; pdb.set_trace()
+    get_and_save_iterations_stats(
+        iterations_path=path, agent_id="Alice", stat_funcs=stat_functions, plot=True
+    )
+
+    print("Done")

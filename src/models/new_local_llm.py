@@ -139,11 +139,46 @@ class LocalLLMV2:
         self.adapter_configs = adapter_configs
         self.adapter_names = self.adapter_configs.keys()
 
-        # Path management
+        # Path management / imports
+        self.adapter_paths = {}
+        for adapter_name in self.adapter_names:
+            adapter_config = self.adapter_configs[adapter_name]
+            adapter_path = os.path.join(self.output_directory, adapter_name, "model")
+            hf_server_import_adapter_path = adapter_config.get(
+                "hf_server_import_adapter_path", None
+            )
+            local_import_adapter_path = adapter_config.get(
+                "local_import_adapter_path", None
+            )
+            if hf_server_import_adapter_path is not None:
+                model_logger.info(
+                    f"Downloading adapter {adapter_name}\
+                    from {hf_server_import_adapter_path}"
+                )
+                from huggingface_hub import snapshot_download
+
+                snapshot_download(
+                    repo_id=hf_server_import_adapter_path, local_dir=adapter_path
+                )
+                adapter_path = os.path.join(adapter_path, hf_server_import_adapter_path)
+            elif local_import_adapter_path is not None:
+                model_logger.info(
+                    f"Copying adapter {adapter_name}\
+                     from {local_import_adapter_path} to {adapter_path}"
+                )
+                shutil.copytree(
+                    src=local_import_adapter_path,
+                    dst=adapter_path,
+                    dirs_exist_ok=True,
+                )
+            self.adapter_paths[adapter_name] = adapter_path
+
         self.adapter_paths = {
             adapter_name: os.path.join(self.output_directory, adapter_name, "model")
             for adapter_name in self.adapter_names
         }
+
+        # Copy external adapters to local directory (ensures we don't modify the original ones)
 
         self.optimizer_paths = {
             adapter_name: os.path.join(

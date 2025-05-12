@@ -1,8 +1,6 @@
 """
 This file contains the code to generate and train the models.
 """
-
-
 import copy
 import logging
 import os
@@ -157,7 +155,12 @@ def generate_and_train(cfg, base_seed):
         logging_start_time = time.time()
 
         # Checkpoint all adapters
-        if iteration % cfg["experiment"]["checkpoint_every_n_iterations"] == 0:
+        checkpoint_frequency = cfg["experiment"]["checkpoint_every_n_iterations"]
+        if (
+            checkpoint_frequency != -1
+            and iteration % checkpoint_frequency == 0
+            and iteration != 0
+        ):
             for model_name, model in models.items():
                 if hasattr(model, "adapter_paths"):
                     model.checkpoint_all_adapters(
