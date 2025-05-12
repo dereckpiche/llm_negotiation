@@ -109,7 +109,7 @@ class IPDAgent:
             elif other_player_action == "D":
                 user_message = f"Last round, the other player defected."
             else:
-                raise ValueError(
+                user_message = (
                     f"Last round, the other player did not play a valid action."
                 )
 
@@ -124,9 +124,9 @@ class IPDAgent:
             return (self.policy_id, self.chat_history, None, False, None)
 
         # If not new round we take action
-        if policy_output == "<Cooperate>":
+        if policy_output in ["<Cooperate>", "<A>"]:
             action = "C"
-        elif policy_output == "<Defect>":
+        elif policy_output in ["<Defect>", "<B>"]:
             action = "D"
         else:
             action = "ERROR"

@@ -41,11 +41,11 @@ class IPDEnv:
         rng: np.random.RandomState,
         group_id: int,
         game_id: int,
-        rounds_per_game: int = 10,
-        reward: float = 3.0,  # Both cooperate
-        punishment: float = 1.0,  # Both defect
-        temptation: float = 5.0,  # Defector's reward when other cooperates
-        sucker: float = 0.0,  # Cooperator's reward when other defects
+        rounds_per_game: int,
+        reward: float,  # Both cooperate
+        punishment: float,  # Both defect
+        temptation: float,  # Defector's reward when other cooperates
+        sucker: float,  # Cooperator's reward when other defects
         random_seed: Optional[int] = None,
     ):
         """

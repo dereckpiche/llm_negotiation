@@ -74,6 +74,13 @@ def calc_cooperation_rate(data, format_options=None):
     return "cooperation_rate", cooperation_rate
 
 
+def get_number_of_rounds(data, format_options=None):
+    game_data = data[0]
+    game_info = game_data[-1].get("game_info", {})
+    nb_rounds = game_info.get("round_nb")
+    return "number_of_rounds", nb_rounds
+
+
 def calc_defection_rate(data, format_options=None):
     """
     Calculates the percentage of rounds where the agent defected.
@@ -518,8 +525,9 @@ if __name__ == "__main__":
 
     stat_functions = [
         calc_cooperation_rate,
-        calc_defection_rate,
+        calc_mutual_cooperation_rate,
         calc_retaliation_rate,
+        get_number_of_rounds,
     ]
 
     # Run with arguments from command line
