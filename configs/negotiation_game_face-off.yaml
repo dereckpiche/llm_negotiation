@@ -6,7 +6,7 @@ experiment:
   # name: "${now:%Y-%m-%d___%H-%M-%S}_no_name" (having timestamp is good for debugging, but it is difficult to restart with preemption)
   description: "Agents facing off."
   nb_epochs: 1
-  nb_matches_per_iteration: 5
+  nb_matches_per_iteration: 256
   checkpoint_every_n_iterations: -1 # don't save checkpoint
   base_seed: 344
 
@@ -15,7 +15,7 @@ experiment:
 ####################################################################################################
 
 matches:
-  max_length: 15
+  max_length: 10
   continuation_prob: 1.0
   same_length_batch: True
   nb_matches_with_same_roundwise_utilities: 0
@@ -44,10 +44,15 @@ temperature: 0.7
 models:
   qwen:
     init_args:
+      vllm_params:
+        gpu_memory_utilization: 0.9
       adapter_configs:
         adapter_alice:
           type: "lora"
-          hf_server_import_adapter_path: dereckpichemila/greedy_qwen # path to hf folder that contains configs and .safetensors
+          hf_server_import_kwargs:
+            repo_id: LLMnegotiation/sum_of_rewards
+            repo_type: model
+            allow_patterns: ["seed_344/sp_adapter/model/*"]
           optimizer_method: "SGD"
           optimizer_kwargs: {}
           lora_kwargs:
@@ -56,9 +61,13 @@ models:
             lora_alpha: 128
             lora_dropout: 0.0
             target_modules: "all-linear"
+
         adapter_bob:
           type: "lora"
-          # hf_server_import_adapter_path: dereckpichemila/greedy_qwen # path to hf folder that contains configs and .safetensors
+          hf_server_import_kwargs:
+            repo_id: LLMnegotiation/greedy_rl
+            repo_type: model
+            allow_patterns: ["seed_645/sp_adapter/model/*"]
           optimizer_method: "SGD"
           optimizer_kwargs: {}
           lora_kwargs:
