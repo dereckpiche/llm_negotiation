@@ -139,11 +139,42 @@ class LocalLLMV2:
         self.adapter_configs = adapter_configs
         self.adapter_names = self.adapter_configs.keys()
 
-        # Path management
-        self.adapter_paths = {
-            adapter_name: os.path.join(self.output_directory, adapter_name, "model")
-            for adapter_name in self.adapter_names
-        }
+        # Path management / imports
+        self.adapter_paths = {}
+        for adapter_name in self.adapter_names:
+            adapter_config = self.adapter_configs[adapter_name]
+            adapter_path = os.path.join(self.output_directory, adapter_name, "model")
+            hf_server_import_kwargs = adapter_config.get(
+                "hf_server_import_kwargs", None
+            )
+            local_import_adapter_path = adapter_config.get(
+                "local_import_adapter_path", None
+            )
+            if hf_server_import_kwargs is not None:
+                # dealing with hf shenanigans again here - sorry
+                model_logger.info(
+                    f"Downloading adapter {adapter_name}\
+                    from {hf_server_import_kwargs}"
+                )
+                from huggingface_hub import snapshot_download
+
+                snapshot_download(**hf_server_import_kwargs, local_dir=adapter_path)
+                additional_path = hf_server_import_kwargs.get("allow_patterns")[0]
+                additional_path = additional_path[:-2]  # remove /model
+                adapter_path = os.path.join(adapter_path, additional_path)
+            elif local_import_adapter_path is not None:
+                model_logger.info(
+                    f"Copying adapter {adapter_name}\
+                     from {local_import_adapter_path} to {adapter_path}"
+                )
+                shutil.copytree(
+                    src=local_import_adapter_path,
+                    dst=adapter_path,
+                    dirs_exist_ok=True,
+                )
+            self.adapter_paths[adapter_name] = adapter_path
+
+        # Copy external adapters to local directory (ensures we don't modify the original ones)
 
         self.optimizer_paths = {
             adapter_name: os.path.join(

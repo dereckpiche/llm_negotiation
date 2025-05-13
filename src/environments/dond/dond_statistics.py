@@ -686,24 +686,42 @@ def get_and_save_iterations_stats(
     leafstats = get_dond_iterations_stats_tree(iterations_path, agent_id, stat_funcs)
     if plot:
         plot_leafstats(leafstats, output_path)
+    print(leafstats)
     if save:
-        save_leafstats(leafstats, output_path)
+        save_leafstats(tree=leafstats, folder=output_path)
 
 
 if __name__ == "__main__":
-    path = "/home/mila/d/dereck.piche/scratch/final_dond_seed_1/seed_1"
-    data = get_raw_data_files(path, "alice")
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Calculate IPD game statistics.")
+    parser.add_argument(
+        "--path",
+        type=str,
+        required=True,
+        help="Path to the directory containing iterations",
+    )
+    parser.add_argument(
+        "--agent_id", type=str, required=True, help="ID of the agent to analyze"
+    )
+    args = parser.parse_args()
 
     stat_functions = [
         calc_sum_points_percentage_of_max,
-        # calc_items_given_to_self,
-        # calc_total_agreement_percentage,
-        # calc_total_points,
-        # calc_agreement_imbalance,
-        # get_proposal_frequency_stats,
+        calc_items_given_to_self,
+        calc_items_allocation_efficiency,
+        get_proposal_frequency_stats,
     ]
 
     # Calculate statistics
-    get_and_save_iterations_stats(path, "alice", stat_functions, plot=True)
-    # stats = get_dond_iteration_stats(data, stat_functions)
-    # import pdb; pdb.set_trace()
+    get_and_save_iterations_stats(
+        iterations_path=args.path,
+        agent_id=args.agent_id,
+        stat_funcs=stat_functions,
+        plot=True,
+    )
+    # get_and_save_iterations_stats(
+    #     iterations_path=path, agent_id="Bob", stat_funcs=stat_functions, plot=True
+    # )
+
+    print("Done")

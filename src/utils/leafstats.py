@@ -234,7 +234,12 @@ def save_leafstats(tree: Dict, folder: str, path: str = ""):
         new_path = f"{path}/{key}" if path else key
         if isinstance(value, dict):
             save_leafstats(value, folder, new_path)
-        elif isinstance(value, list):
+        elif (
+            isinstance(value, list)
+            or isinstance(value, np.ndarray)
+            or isinstance(value, float)
+            or isinstance(value, int)
+        ):
             with open(
                 os.path.join(folder, f"{new_path.replace('/', '_')}.json"), "w"
             ) as f:

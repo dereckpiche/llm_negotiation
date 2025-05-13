@@ -27,13 +27,13 @@ After running the experiments, you can generate statistics for the DoND environm
 Make sure to go into the file and adjust the source path to the path of the data you want to analyze.
 
 ```bash
-PYTHONPATH=src python -m src.environments.dond.dond_statistics
+PYTHONPATH=src python -m src.environments.dond.dond_statistics --path /path/to/your/dond/data --agent_id Alice
 ```
 
 ### Iterated Prisoner's Dilemma (IPD)
 
 ```bash
-PYTHONPATH=src python -m src.environments.ipd.ipd_statistics --path /path/to/your/ipd/data --agent_id alice --plot
+PYTHONPATH=src python -m src.environments.ipd.ipd_statistics --path /path/to/your/ipd/data --agent_id Alice
 ```
 
 ### Diplomacy
