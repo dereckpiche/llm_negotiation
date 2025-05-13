@@ -5,7 +5,7 @@ hydra:
     chdir: false
 
 experiment:
-  name: "IPD"
+  name: "reg_ipd_hidden_lr_1e-6"
   # name: "${now:%Y-%m-%d___%H-%M-%S}_IPD"
   method: generate_and_train
   description: "no description"
@@ -15,7 +15,7 @@ experiment:
   checkpoint_every_n_iterations: 25
   start_epoch: 0
   resume_experiment: true
-  base_seed: 1000
+  base_seed: 4564
 
 ####################################################################################################
 #                                           GENERATION

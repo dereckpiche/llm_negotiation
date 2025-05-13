@@ -2,7 +2,7 @@ defaults:
   - negotiation_game.yaml
 
 experiment:
-  name: "negotiation_game_faceoff_${now:%Y-%m-%d___%H-%M-%S}"
+  name: "faceoff_greedy_vs_default"
   # name: "${now:%Y-%m-%d___%H-%M-%S}_no_name" (having timestamp is good for debugging, but it is difficult to restart with preemption)
   description: "Agents facing off."
   nb_epochs: 1
@@ -26,7 +26,6 @@ matches:
   run_batched_matches_args:
     nb_parallel_matches: -1
 
-
   agents:
     Alice:
       kwargs:
@@ -47,12 +46,16 @@ models:
       vllm_params:
         gpu_memory_utilization: 0.9
       adapter_configs:
+
         adapter_alice:
           type: "lora"
-          hf_server_import_kwargs:
-            repo_id: LLMnegotiation/sum_of_rewards
-            repo_type: model
-            allow_patterns: ["seed_344/sp_adapter/model/*"]
+          # hf_server_import_kwargs:
+          #   # repo_id: LLMnegotiation/sum_of_rewards
+          #   # repo_type: model
+          #   # allow_patterns: ["seed_344/sp_adapter/model/*"]
+          #   repo_id: LLMnegotiation/greedy_rl
+          #   repo_type: model
+          #   allow_patterns: ["seed_645/sp_adapter/model/*"]
           optimizer_method: "SGD"
           optimizer_kwargs: {}
           lora_kwargs:
@@ -65,9 +68,13 @@ models:
         adapter_bob:
           type: "lora"
           hf_server_import_kwargs:
+            # repo_id: LLMnegotiation/sum_of_rewards
+            # repo_type: model
+            # allow_patterns: ["seed_344/sp_adapter/model/*"]
             repo_id: LLMnegotiation/greedy_rl
             repo_type: model
             allow_patterns: ["seed_645/sp_adapter/model/*"]
+
           optimizer_method: "SGD"
           optimizer_kwargs: {}
           lora_kwargs:
