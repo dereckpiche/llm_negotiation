@@ -203,7 +203,7 @@ def calc_agreement_imbalance(data, format_options=None):
     return "agreement_imbalance", imbalance
 
 
-def calc_items_allocation_efficiency(data, format_options=None):
+def get_percentage_of_items_allocated_to_higher_value_agent(data, format_options=None):
     """
     Calculates how efficiently items
     were allocated to the agent that values them more.
@@ -213,7 +213,7 @@ def calc_items_allocation_efficiency(data, format_options=None):
         format_options (list, optional): Formatting options
 
     Returns:
-        tuple: ("items_allocation_efficiency", percentage value)
+        tuple: ("percentage_of_items_allocated_to_higher_value_agent", percentage value)
     """
 
     # Sub-method that checks if majority of items got attributed
@@ -242,11 +242,7 @@ def calc_items_allocation_efficiency(data, format_options=None):
             else:
                 items_to_higher_value_agent += (agent_count + coagent_count) / 2
 
-        return (
-            1
-            if total_items > 0 and items_to_higher_value_agent > total_items / 2
-            else 0
-        )
+        return 100 * items_to_higher_value_agent / total_items
 
     total_higher_value_rounds = 0
     total_rounds = 0
@@ -303,7 +299,7 @@ def calc_items_allocation_efficiency(data, format_options=None):
     else:
         efficiency_percentage = 0
 
-    return "items_allocation_efficiency", efficiency_percentage
+    return "percentage_of_items_allocated_to_higher_value_agent", efficiency_percentage
 
 
 def calc_optimal_points_diff(data, format_options=None):
@@ -681,7 +677,7 @@ def get_and_save_iterations_stats(
     iterations_path, agent_id, stat_funcs, save=True, plot=False, output_path=None
 ):
     if output_path is None:
-        output_path = os.path.join(iterations_path, "0_statistics")
+        output_path = os.path.join(iterations_path, "0_statistics", agent_id)
         os.makedirs(output_path, exist_ok=True)
     leafstats = get_dond_iterations_stats_tree(iterations_path, agent_id, stat_funcs)
     if plot:
@@ -709,7 +705,7 @@ if __name__ == "__main__":
     stat_functions = [
         calc_sum_points_percentage_of_max,
         calc_items_given_to_self,
-        calc_items_allocation_efficiency,
+        get_percentage_of_items_allocated_to_higher_value_agent,
         get_proposal_frequency_stats,
     ]
 
