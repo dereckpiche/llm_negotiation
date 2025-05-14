@@ -16,6 +16,7 @@ class IPDGameState:
         self.number_of_rounds = None
         self.round_nb = 0
         self.rewards = []
+        self.raw_actions = []
         self.actions = []
         self.done = False
         self.info = {}
@@ -106,6 +107,22 @@ class IPDEnv:
 
         p0_action = actions[self.player_0_id]
         p1_action = actions[self.player_1_id]
+
+        self.state.raw_actions.append(actions)
+
+        # Neurips hack TODO: clean up
+        if p0_action in ["<Cooperate>", "<A>"]:
+            p0_action = "C"
+        else:
+            p0_action = "D"
+
+        if p1_action in ["<Cooperate>", "<A>"]:
+            p1_action = "C"
+        else:
+            p1_action = "D"
+
+        actions[self.player_0_id] = p0_action
+        actions[self.player_1_id] = p1_action
 
         if p0_action == "C" and p1_action == "C":
             # Both cooperate

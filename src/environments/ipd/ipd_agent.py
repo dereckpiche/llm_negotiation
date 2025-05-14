@@ -102,16 +102,10 @@ class IPDAgent:
                 if self.agent_id == observation_from_env.agent_ids[0]
                 else observation_from_env.agent_ids[0]
             )
-            other_player_action = observation_from_env.actions[-1][other_player_id]
-
-            if other_player_action == "C":
-                user_message = f"Last round, the other player cooperated."
-            elif other_player_action == "D":
-                user_message = f"Last round, the other player defected."
-            else:
-                user_message = (
-                    f"Last round, the other player did not play a valid action."
-                )
+            other_player_action = observation_from_env.raw_actions[-1].get(
+                other_player_id, "N/A"
+            )
+            user_message = f"Last round, the other agent played {other_player_action}."
 
             self.chat_history.append(
                 {
@@ -124,10 +118,8 @@ class IPDAgent:
             return (self.policy_id, self.chat_history, None, False, None)
 
         # If not new round we take action
-        if policy_output in ["<Cooperate>", "<A>"]:
-            action = "C"
-        elif policy_output in ["<Defect>", "<B>"]:
-            action = "D"
+        if policy_output in ["<Cooperate>", "<A>", "<Defect>", "<B>"]:
+            action = policy_output
         else:
             action = "ERROR"
         self.chat_history.append(

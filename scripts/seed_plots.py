@@ -3,14 +3,18 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 
-plot_name = "test_plot"
-TITLE = "Seed Averaged Points on Agreement"
+plot_name = "ipd_defect_rate"
+TITLE = "Covert IPD: Mutual Defection Rate Over Time"
 X_AXIS = "Training Steps"
-Y_AXIS = "Cooperation Rate"
+Y_AXIS = "Mutual Defection Rate"
+
+
 filepaths = [
-    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_launch_2/seed_915/0_statistics/cooperation_rate.json",
-    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_launch_3/seed_915/0_statistics/cooperation_rate.json",
+    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_covert/seed_123/0_statistics/mutual_defection_rate.json",
+    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_covert/seed_657/0_statistics/mutual_defection_rate.json",
+    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_covert/seed_934/0_statistics/mutual_defection_rate.json",
 ]
+
 # mapping = {
 #     "09-30-18_seed_33": "33",
 #     "09-30-35_seed_53": "53",
@@ -53,5 +57,5 @@ plt.title(TITLE)
 plt.xlabel(X_AXIS)
 plt.ylabel(Y_AXIS)
 plt.legend()
-plt.savefig(f"{plot_name}.svg", format="svg", bbox_inches="tight")
+plt.savefig(f"{plot_name}.pdf", format="pdf", bbox_inches="tight")
 plt.close()

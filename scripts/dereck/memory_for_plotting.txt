@@ -1,0 +1,10 @@
+plot_name = "coop_rate"
+TITLE = "Overt IPD: Mutual Cooperation Rate Over Time"
+X_AXIS = "Training Steps"
+Y_AXIS = "Mutual Cooperation Rate"
+
+filepaths = [
+    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt/seed_155/0_statistics/mutual_cooperation_rate.json",
+    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt/seed_256/0_statistics/mutual_cooperation_rate.json",
+    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt/seed_856/0_statistics/mutual_cooperation_rate.json"
+]

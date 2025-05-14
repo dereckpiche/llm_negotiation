@@ -5,6 +5,7 @@ test_venv/
 home
 *.svg
 output/
+*.pdf
 outputs/
 results
 .vscode/
