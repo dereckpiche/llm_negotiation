@@ -3,6 +3,7 @@
 home/
 test_venv/
 home
+*.svg
 output/
 outputs/
 results
