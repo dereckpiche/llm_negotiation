@@ -526,6 +526,7 @@ if __name__ == "__main__":
     stat_functions = [
         calc_cooperation_rate,
         calc_mutual_cooperation_rate,
+        calc_mutual_defection_rate,
         calc_retaliation_rate,
         get_number_of_rounds,
     ]

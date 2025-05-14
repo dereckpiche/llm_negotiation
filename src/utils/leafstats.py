@@ -197,7 +197,7 @@ def plot_EMA_leafstats(tree: Dict, folder: str, path: str = "", alpha: float = 0
             plt.close()
 
 
-def plot_SMA_leafstats(tree: Dict, folder: str, path: str = "", window: int = 7):
+def plot_SMA_leafstats(tree: Dict, folder: str, path: str = "", window: int = 33):
     """
     Plots the simple moving average of the leaves of the leafstats and saves them to the specified folder.
     """

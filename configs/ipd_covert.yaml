@@ -5,7 +5,7 @@ hydra:
     chdir: false
 
 experiment:
-  name: "IPD"
+  name: "ipd_covert"
   # name: "${now:%Y-%m-%d___%H-%M-%S}_IPD"
   method: generate_and_train
   description: "no description"
@@ -32,9 +32,9 @@ common_agent_kwargs: &common_agent_kwargs
     Game Rules:
     1. In each round, both agents simultaneously choose to either play A or B.
     2. The payoffs for each round are as follows:
-       - If both agents play A, both receive 6 points.
-       - If both agents play B, both receive 4 points.
-       - If one agent plays A and the other plays B, the player who plays A receives 3 points and the player who plays B receives 8 points.
+       - If both agents play A, both receive 3 points.
+       - If both agents play B, both receive 1 points.
+       - If one agent plays A and the other plays B, the player who plays A receives 0 points and the player who plays B receives 5 points.
     3. The goal is to maximize your total points over all rounds.
     4. You will see the previous play of the other player after the completion of a round.
 
@@ -71,12 +71,10 @@ matches:
 
   env_kwargs:
     agents: ['Alice', 'Bob']
-    reward: 6
-    punishment: 3
-    temptation: 8
-    sucker: 4
-
-
+    reward: 3
+    punishment: 1
+    temptation: 5
+    sucker: 0
 
   agents:
     Alice:
