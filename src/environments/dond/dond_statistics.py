@@ -228,10 +228,9 @@ def get_coins_allocation_efficiency(data, format_options=None):
         print(items_to_agent)
         print(items_to_coagent)
         if agent_values["coins"] > coagent_values["coins"]:
-            return 100 * items_to_agent / 10
+            return 100 * items_to_agent / (items_to_agent + items_to_coagent)
         elif coagent_values["coins"] > agent_values["coins"]:
-            print(items_to_coagent)
-            return 100 * items_to_coagent / 10
+            return 100 * items_to_coagent / (items_to_agent + items_to_coagent)
         else:
             return 100
 
