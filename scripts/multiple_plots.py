@@ -30,10 +30,11 @@ for agent, file_name in filepaths.items():
         data[agent] = np.array(s)
 
 plt.figure()
-# colors = []
+plt.grid(True)
 
-for agent, instance in data.items():
-    plt.plot(instance, label=agent)
+for i, (agent, instance) in enumerate(data.items()):
+    color = "#0000FF" if i == 1 else None  # Blue for the second curve
+    plt.plot(instance, label=agent, color=color)
 
 # Formatting and saving the plot
 plt.title(TITLE)

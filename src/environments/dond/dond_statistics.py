@@ -36,6 +36,27 @@ from utils.common_imports import *
 from utils.leafstats import *
 
 ############################################################
+# Helper functions
+############################################################
+
+
+def compute_welfare_max_strat_points_for_round(
+    agent_values, coagent_values, quantities
+):
+    agent_optimal = 0
+    coagent_optimal = 0
+    for item in quantities:
+        if agent_values[item] > coagent_values[item]:
+            agent_optimal += agent_values[item] * quantities[item]
+        elif agent_values[item] < coagent_values[item]:
+            coagent_optimal += coagent_values[item] * quantities[item]
+        else:
+            agent_optimal += 0.5 * agent_values[item] * quantities[item]
+            coagent_optimal += 0.5 * coagent_values[item] * quantities[item]
+    return agent_optimal, coagent_optimal
+
+
+############################################################
 # Modular Statistics functions
 ############################################################
 
@@ -269,7 +290,7 @@ def get_coins_allocation_efficiency(data, format_options=None):
     return "coins_allocation_efficiency", efficiency_percentage
 
 
-def calc_optimal_points_diff(data, format_options=None):
+def calc_welfare_max_strat_points_diff(data, format_options=None):
     """
     Calculates the difference between actual points and optimal points.
 
@@ -278,7 +299,7 @@ def calc_optimal_points_diff(data, format_options=None):
         format_options (list, optional): Formatting options
 
     Returns:
-        tuple: ("optimal_points_diff", {"agent": diff, "coagent": diff})
+        tuple: ("welfare_max_strat_points_diff", {"agent": diff, "coagent": diff})
     """
     agent_actual = 0
     coagent_actual = 0
@@ -315,7 +336,7 @@ def calc_optimal_points_diff(data, format_options=None):
                 round_points = game_info["round_points"][i]
 
                 # Calculate optimal points
-                opt_agent, opt_coagent = compute_optimal_points_for_round(
+                opt_agent, opt_coagent = compute_welfare_max_strat_points_for_round(
                     values, coagent_values, quantities
                 )
 
@@ -330,7 +351,144 @@ def calc_optimal_points_diff(data, format_options=None):
     agent_diff = agent_actual - agent_optimal
     coagent_diff = coagent_actual - coagent_optimal
 
-    return "optimal_points_diff", {"agent": agent_diff, "coagent": coagent_diff}
+    return "welfare_max_strat_points_diff", {
+        "agent": agent_diff,
+        "coagent": coagent_diff,
+    }
+
+
+def calc_welfare_max_strat_points_diff(data, format_options=None):
+    """
+    Calculates the difference between actual points and optimal points.
+
+    Args:
+        data (list): Raw data files containing game information
+        format_options (list, optional): Formatting options
+
+    Returns:
+        tuple: ("welfare_max_strat_points_diff", {"agent": diff, "coagent": diff})
+    """
+    agent_actual = 0
+    coagent_actual = 0
+    agent_optimal = 0
+    coagent_optimal = 0
+
+    for game_data in data:
+        game_info = game_data[-1].get("game_info", {})
+        agent_name = game_data[-1].get("agent_name")
+
+        if not agent_name or not game_info:
+            continue
+
+        # Process each round
+        for i, state in enumerate(game_info["round_agent_roles"]):
+            agent_role = state.get(agent_name)
+            if not agent_role:
+                continue
+
+            # Find co-agent
+            coagent_name = next(
+                (name for name in state.keys() if name != agent_name), None
+            )
+            coagent_role = state.get(coagent_name)
+
+            if (
+                i < len(game_info["round_values"])
+                and i < len(game_info["round_quantities"])
+                and i < len(game_info["round_points"])
+            ):
+                values = game_info["round_values"][i][agent_role]
+                coagent_values = game_info["round_values"][i][coagent_role]
+                quantities = game_info["round_quantities"][i]
+                round_points = game_info["round_points"][i]
+
+                # Calculate optimal points
+                opt_agent, opt_coagent = compute_welfare_max_strat_points_for_round(
+                    values, coagent_values, quantities
+                )
+
+                # Accumulate actual points
+                agent_actual += round_points.get(agent_role, 0)
+                coagent_actual += round_points.get(coagent_role, 0)
+
+                # Accumulate optimal points
+                agent_optimal += opt_agent
+                coagent_optimal += opt_coagent
+
+    agent_diff = agent_actual - agent_optimal
+    coagent_diff = coagent_actual - coagent_optimal
+
+    return "welfare_max_strat_points_diff", {
+        "agent": agent_diff,
+        "coagent": coagent_diff,
+    }
+
+
+def calc_welfare_max_strat_ratio_percentage(data, format_options=None):
+    """
+    Calculates the ratio between actual points and optimal points.
+
+    Args:
+        data (list): Raw data files containing game information
+        format_options (list, optional): Formatting options
+
+    Returns:
+        tuple: ("welfare_max_strat_ratio_percentage", {"agent": ratio, "coagent": ratio})
+    """
+    agent_actual = 0
+    coagent_actual = 0
+    agent_optimal = 0
+    coagent_optimal = 0
+
+    for game_data in data:
+        game_info = game_data[-1].get("game_info", {})
+        agent_name = game_data[-1].get("agent_name")
+
+        if not agent_name or not game_info:
+            continue
+
+        # Process each round
+        for i, state in enumerate(game_info["round_agent_roles"]):
+            agent_role = state.get(agent_name)
+            if not agent_role:
+                continue
+
+            # Find co-agent
+            coagent_name = next(
+                (name for name in state.keys() if name != agent_name), None
+            )
+            coagent_role = state.get(coagent_name)
+
+            if (
+                i < len(game_info["round_values"])
+                and i < len(game_info["round_quantities"])
+                and i < len(game_info["round_points"])
+            ):
+                values = game_info["round_values"][i][agent_role]
+                coagent_values = game_info["round_values"][i][coagent_role]
+                quantities = game_info["round_quantities"][i]
+                round_points = game_info["round_points"][i]
+
+                # Calculate optimal points
+                opt_agent, opt_coagent = compute_welfare_max_strat_points_for_round(
+                    values, coagent_values, quantities
+                )
+
+                # Accumulate actual points
+                agent_actual += round_points.get(agent_role, 0)
+                coagent_actual += round_points.get(coagent_role, 0)
+
+                # Accumulate optimal points
+                agent_optimal += opt_agent
+                coagent_optimal += opt_coagent
+
+    agent_ratio = 100 * agent_actual / (agent_optimal + 1e-6)
+    coagent_ratio = 100 * coagent_actual / (coagent_optimal + 1e-6)
+
+    return "welfare_max_strat_ratio_percentage", {
+        "agent": agent_ratio,
+        "coagent": coagent_ratio,
+    }
 
 
 def calc_items_given_to_self(data, format_options=None):
@@ -483,19 +641,6 @@ def calc_sum_points_percentage_of_max(data, format_options=None):
         tuple: ("sum_points_percentage_of_max", percentage value)
     """
 
-    def compute_optimal_points_for_round(agent_values, coagent_values, quantities):
-        agent_optimal = 0
-        coagent_optimal = 0
-        for item in quantities:
-            if agent_values[item] > coagent_values[item]:
-                agent_optimal += agent_values[item] * quantities[item]
-            elif agent_values[item] < coagent_values[item]:
-                coagent_optimal += coagent_values[item] * quantities[item]
-            else:
-                agent_optimal += 0.5 * agent_values[item] * quantities[item]
-                coagent_optimal += 0.5 * coagent_values[item] * quantities[item]
-        return agent_optimal, coagent_optimal
-
     total_points_agent = 0
     total_points_coagent = 0
     total_optimal_agent = 0
@@ -531,7 +676,7 @@ def calc_sum_points_percentage_of_max(data, format_options=None):
                 round_points = game_info["round_points"][i]
 
                 # Calculate optimal points
-                opt_agent, opt_coagent = compute_optimal_points_for_round(
+                opt_agent, opt_coagent = compute_welfare_max_strat_points_for_round(
                     values, coagent_values, quantities
                 )
 
@@ -673,6 +818,7 @@ if __name__ == "__main__":
         calc_items_given_to_self,
         get_coins_allocation_efficiency,
         get_proposal_frequency_stats,
+        calc_welfare_max_strat_ratio_percentage,
     ]
 
     # Calculate statistics

@@ -3,16 +3,22 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 
-plot_name = "ipd_defect_rate"
-TITLE = "Covert IPD: Mutual Defection Rate Over Time"
+plot_name = "ipd_coop_rate"
 X_AXIS = "Training Steps"
-Y_AXIS = "Mutual Defection Rate"
+Y_AXIS = "Mutual Cooperation Rate"
+max_steps = 80
 
+
+# filepaths = [
+#     "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_covert/seed_123/0_statistics/mutual_defection_rate.json",
+#     "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_covert/seed_657/0_statistics/mutual_defection_rate.json",
+#     "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_covert/seed_934/0_statistics/mutual_defection_rate.json",
+# ]
 
 filepaths = [
-    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_covert/seed_123/0_statistics/mutual_defection_rate.json",
-    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_covert/seed_657/0_statistics/mutual_defection_rate.json",
-    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_covert/seed_934/0_statistics/mutual_defection_rate.json",
+    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt/seed_155/0_statistics/mutual_cooperation_rate.json",
+    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt/seed_256/0_statistics/mutual_cooperation_rate.json",
+    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt/seed_856/0_statistics/mutual_cooperation_rate.json",
 ]
 
 # mapping = {
@@ -37,6 +43,7 @@ for file_name in filepaths:
             data.append(np.array(s))
 
 min_length = min(len(arr) for arr in data)
+min_length = min(min_length, max_steps)
 data = [arr[:min_length] for arr in data]
 
 metric_data = np.array(data)
@@ -45,17 +52,20 @@ metric_mean = np.mean(metric_data, axis=0)
 metric_std = np.std(metric_data, axis=0)
 
 plt.figure()
+plt.grid(True)
 
 for instance in metric_data:
-    plt.plot(instance, color="lightblue", alpha=0.5)
+    plt.plot(
+        instance, color="#556B2F", alpha=0.2
+    )  # DarkOliveGreen with reduced visibility
 
-# Overlay mean curve with dark blue
-plt.plot(metric_mean, linewidth=2, color="darkblue", label=f"Average")
+# Overlay mean curve with a dark green and no dots
+plt.plot(metric_mean, linewidth=3, color="#006400", label=f"Average")  # DarkGreen
 
 # Formatting and saving the plot
-plt.title(TITLE)
-plt.xlabel(X_AXIS)
-plt.ylabel(Y_AXIS)
-plt.legend()
+plt.xlabel(X_AXIS, fontsize=14)
+plt.ylabel(Y_AXIS, fontsize=14)
+plt.xticks(fontsize=12)
+plt.yticks(fontsize=12)
 plt.savefig(f"{plot_name}.pdf", format="pdf", bbox_inches="tight")
 plt.close()
