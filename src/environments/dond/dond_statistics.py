@@ -224,13 +224,11 @@ def get_coins_allocation_efficiency(data, format_options=None):
     ):
         items_to_agent = agent_points / agent_values["coins"]
         items_to_coagent = coagent_points / coagent_values["coins"]
-        print("--------------------------------")
-        print(items_to_agent)
-        print(items_to_coagent)
+        sum_items = items_to_agent + items_to_coagent + 1e-6
         if agent_values["coins"] > coagent_values["coins"]:
-            return 100 * items_to_agent / (items_to_agent + items_to_coagent)
+            return 100 * items_to_agent / sum_items
         elif coagent_values["coins"] > agent_values["coins"]:
-            return 100 * items_to_coagent / (items_to_agent + items_to_coagent)
+            return 100 * items_to_coagent / sum_items
         else:
             return 100
 
@@ -651,7 +649,6 @@ def get_and_save_iterations_stats(
     leafstats = get_dond_iterations_stats_tree(iterations_path, agent_id, stat_funcs)
     if plot:
         plot_leafstats(leafstats, output_path)
-    print(leafstats)
     if save:
         save_leafstats(tree=leafstats, folder=output_path)
 
