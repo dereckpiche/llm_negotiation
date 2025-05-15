@@ -203,8 +203,9 @@ def calc_agreement_imbalance(data, format_options=None):
     return "agreement_imbalance", imbalance
 
 
-def get_percentage_of_items_allocated_to_higher_value_agent(data, format_options=None):
+def get_coins_allocation_efficiency(data, format_options=None):
     """
+    TODO: extend for multiple item categories
     Calculates how efficiently items
     were allocated to the agent that values them more.
 
@@ -213,93 +214,62 @@ def get_percentage_of_items_allocated_to_higher_value_agent(data, format_options
         format_options (list, optional): Formatting options
 
     Returns:
-        tuple: ("percentage_of_items_allocated_to_higher_value_agent", percentage value)
+        tuple: ("coins_allocation_efficiency", percentage value)
     """
 
-    # Sub-method that checks if majority of items got attributed
-    # to the agent that values them more
+    # Sub-method that checks the percentage of items that were
+    # attribute to the player that valued them most
     def check_items_allocation_to_higher_value_agent(
-        agent_values, coagent_values, finalization, coagent_finalization
+        agent_values, coagent_values, agent_points, coagent_points
     ):
-        if not finalization or not coagent_finalization:
-            return None
-        total_items = 0
-        items_to_higher_value_agent = 0
-        for item in finalization:
-            if (
-                item not in coagent_finalization
-                or item not in agent_values
-                or item not in coagent_values
-            ):
-                continue
-            agent_count = finalization.get(item, 0)
-            coagent_count = coagent_finalization.get(item, 0)
-            total_items += agent_count + coagent_count
-            if agent_values[item] > coagent_values[item]:
-                items_to_higher_value_agent += agent_count
-            elif coagent_values[item] > agent_values[item]:
-                items_to_higher_value_agent += coagent_count
-            else:
-                items_to_higher_value_agent += (agent_count + coagent_count) / 2
+        items_to_agent = agent_points / agent_values["coins"]
+        items_to_coagent = coagent_points / coagent_values["coins"]
+        print("--------------------------------")
+        print(items_to_agent)
+        print(items_to_coagent)
+        if agent_values["coins"] > coagent_values["coins"]:
+            return 100 * items_to_agent / 10
+        elif coagent_values["coins"] > agent_values["coins"]:
+            print(items_to_coagent)
+            return 100 * items_to_coagent / 10
+        else:
+            return 100
 
-        return 100 * items_to_higher_value_agent / total_items
-
-    total_higher_value_rounds = 0
+    sum_percentages = 0
     total_rounds = 0
 
     for game_data in data:
         game_info = game_data[-1].get("game_info", {})
         agent_name = game_data[-1].get("agent_name")
 
-        if not agent_name or not game_info:
-            continue
-
         # Process each round with agreements
-        for i, state in enumerate(game_info["round_agent_roles"]):
-            if (
-                i >= len(game_info["round_agreements_reached"])
-                or not game_info["round_agreements_reached"][i]
-            ):
-                continue
-
+        for round_nb, state in enumerate(game_info["round_agent_roles"]):
             agent_role = state.get(agent_name)
-            if not agent_role:
-                continue
-
-            # Find co-agent
             coagent_name = next(
                 (name for name in state.keys() if name != agent_name), None
             )
             coagent_role = state.get(coagent_name)
 
-            if i < len(game_info["round_values"]) and i < len(
-                game_info["round_finalizations"]
-            ):
-                values = game_info["round_values"][i][agent_role]
-                coagent_values = game_info["round_values"][i][coagent_role]
+            values = game_info["round_values"][round_nb][agent_role]
+            coagent_values = game_info["round_values"][round_nb][coagent_role]
+            points = game_info["round_points"][round_nb][agent_role]
+            coagent_points = game_info["round_points"][round_nb][coagent_role]
 
-                agent_finalization = game_info["round_finalizations"][i].get(
-                    agent_role, {}
-                )
-                coagent_finalization = game_info["round_finalizations"][i].get(
-                    coagent_role, {}
-                )
-
-                is_efficient = check_items_allocation_to_higher_value_agent(
-                    values, coagent_values, agent_finalization, coagent_finalization
-                )
-
-                if is_efficient:
-                    total_higher_value_rounds += 1
-
-                total_rounds += 1
+            percentage = check_items_allocation_to_higher_value_agent(
+                agent_values=values,
+                coagent_values=coagent_values,
+                agent_points=points,
+                coagent_points=coagent_points,
+            )
+            sum_percentages += percentage
+            total_rounds += 1
 
     if total_rounds > 0:
-        efficiency_percentage = (total_higher_value_rounds / total_rounds) * 100
+        efficiency_percentage = sum_percentages / total_rounds
     else:
         efficiency_percentage = 0
 
-    return "percentage_of_items_allocated_to_higher_value_agent", efficiency_percentage
+    return "coins_allocation_efficiency", efficiency_percentage
 
 
 def calc_optimal_points_diff(data, format_options=None):
@@ -705,7 +675,7 @@ if __name__ == "__main__":
     stat_functions = [
         calc_sum_points_percentage_of_max,
         calc_items_given_to_self,
-        get_percentage_of_items_allocated_to_higher_value_agent,
+        get_coins_allocation_efficiency,
         get_proposal_frequency_stats,
     ]
 
