@@ -107,7 +107,7 @@ matches:
 
   # If set to 0, existing setup will run where utilities are randomly sampled at the beginning of each round.
   # If set to 1, all utilities will be calculated beforehand but rloo rewards will also be only calculated per game.
-  nb_matches_with_same_roundwise_utilities: 2
+  nb_matches_with_same_roundwise_utilities: 8
 
   log_func: dond_log_match
 
