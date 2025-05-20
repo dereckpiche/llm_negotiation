@@ -1,6 +1,6 @@
 hydra:
   run:
-    dir: "${oc.env:SCRATCH}/llm_negotiation/${experiment.name}"
+    dir: "${oc.env:SCRATCH}/llm_negotiation/${experiment.name}_${experiment.base_seed}"
   job:
     chdir: false
 
@@ -9,8 +9,9 @@ experiment:
   # name: "${now:%Y-%m-%d___%H-%M-%S}_ultimatum"
   method: generate_and_train
   description: "no description"
-  nb_epochs: 2000
+  nb_epochs: 6000
   nb_matches_per_iteration: 32
+  checkpoint_every_n_iterations: 25
   # TODO (Dereck): reinit_matches_each_it is not used anywhere in the code
   reinit_matches_each_it: true
   start_epoch: 0
@@ -25,6 +26,15 @@ experiment:
 matches:
   env_class: "DondEnv"
   agent_class: "DondAgent"
+
+  max_length: 1
+  continuation_prob: 1
+  same_length_batch: True
+
+  # If set to 0, existing setup will run where utilities are randomly sampled at the beginning of each round.
+  # If set to 1, all utilities will be calculated beforehand but rloo rewards will also be only calculated per game.
+  nb_matches_with_same_roundwise_utilities: 0
+
   log_func: dond_log_match
   log_func_args:
     metrics_func: gather_dond_statistics
@@ -43,8 +53,7 @@ matches:
     nb_parallel_matches: -1
 
   env_kwargs:
-    agents: ['alice', 'bob']
-    rounds_per_game: 1
+    agents: ['Alice', 'Bob']
     max_messages: 0
     min_messages: 0
     max_chars_per_message: 1000
@@ -57,15 +66,27 @@ matches:
       val_responding_negotiator: [1]
     role_assignator_func: fixed_role_assignator
     role_assignator_func_kwargs: {}
+    points_attribution_method: regular_set_points
+    points_attributions_kwargs: {}
 
   agents:
-    alice:
+    Alice:
       kwargs:
-        agent_name: "alice"
-        policy_id: 'llama/ad_alice'
+        agent_name: "Alice"
+        policy_id: 'qwen/ad_alice'
         allow_reasoning: false
         max_errors: 1
         max_reasoning_chars: 0
+        message_parser: regular_message_parser
+        finalization_parser: regular_finalization_parser
+        finalization_parser_kwargs:
+          attribution_map:
+            Alice:
+              i_take_key: "Alice"
+              other_takes_key: "Bob"
+            Bob:
+              i_take_key: "Bob"
+              other_takes_key: "Alice"
         intro_prompt: ${prompt_blocks.barebone_ultimatum}
         goal_prompt: ${prompt_blocks.fair_goal}
         new_round_prompt: null
@@ -74,13 +95,23 @@ matches:
         first_round_prompt: null
         other_agent_finalized_prompt: ${prompt_blocks.visible_finalization_prompt}
 
-    bob:
+    Bob:
       kwargs:
-        agent_name: "bob"
-        policy_id: 'llama/ad_bob'
+        agent_name: "Bob"
+        policy_id: 'qwen/ad_bob'
         allow_reasoning: false
         max_errors: 1
         max_reasoning_chars: 0
+        message_parser: regular_message_parser
+        finalization_parser: regular_finalization_parser
+        finalization_parser_kwargs:
+          attribution_map:
+            Alice:
+              i_take_key: "Alice"
+              other_takes_key: "Bob"
+            Bob:
+              i_take_key: "Bob"
+              other_takes_key: "Alice"
         intro_prompt: ${prompt_blocks.barebone_ultimatum}
         goal_prompt: ${prompt_blocks.fair_goal}
         new_round_prompt: null
@@ -91,65 +122,117 @@ matches:
 
 temperature: 1
 
-common_models_init_args: &common_models_init_args
-  max_model_length: 10000
-  include_value_head: false
-  device: "cuda"
-  model_name: "/network/weights/llama.var/llama_3.1/Meta-Llama-3.1-8B-Instruct"
-  pretrained_args:
-    pretrained_model_name_or_path: ${models.llama.init_args.model_name}
-    torch_dtype: "bfloat16"
-    device_map: "auto"
-    attn_implementation: "flash_attention_2"
-  bits_and_bytes_args: null
-    #load_in_8bit: False
-    #load_in_4bit: true
-  lora_args:
-    task_type: CAUSAL_LM
-    r: 64
-    lora_alpha: 32
-    lora_dropout: 0.0
-    target_modules: "all-linear"
-
-  generation_args:
-    max_new_tokens: 120
-    do_sample: True
-    temperature: ${temperature}
-    top_k: 0.0
-    top_p: 1.0
-    repetition_penalty: 1
-
-  vllm_params:
-    max_model_len : 13e3
-    gpu_memory_utilization: 0.45
-    enable_prefix_caching: True
-    enable_sleep_mode : True
-
-  keep_vllm_during_training: False
-  keep_hf_during_training: True
-  keep_hf_during_eval: False
-  keep_vllm_during_eval: True
-  eval_with: "vllm"
-  train_with: "hf"
-  optimizer_method: "AdamW"
-  optimizer_kwargs:
-    lr: 3e-6
-    weight_decay: 0.0
+# common_models_init_args: &common_models_init_args
+#   max_model_length: 10000
+#   device: "cuda"
+#   model_name: "/network/weights/llama.var/llama_3.1/Meta-Llama-3.1-8B-Instruct"
+#   pretrained_args:
+#     pretrained_model_name_or_path: ${models.llama.init_args.model_name}
+#     torch_dtype: "bfloat16"
+#     device_map: "auto"
+#     attn_implementation: "flash_attention_2"
+#   bits_and_bytes_args: null
+#     #load_in_8bit: False
+#     #load_in_4bit: true
+#   lora_args:
+#     task_type: CAUSAL_LM
+#     r: 64
+#     lora_alpha: 32
+#     lora_dropout: 0.0
+#     target_modules: "all-linear"
+#   generation_args:
+#     max_new_tokens: 120
+#     do_sample: True
+#     temperature: ${temperature}
+#     top_k: 0.0
+#     top_p: 1.0
+#     repetition_penalty: 1
+#   vllm_params:
+#     max_model_len : 13e3
+#     gpu_memory_utilization: 0.45
+#     enable_prefix_caching: True
+#     enable_sleep_mode : True
+#   keep_vllm_during_training: False
+#   keep_hf_during_training: True
+#   keep_hf_during_eval: False
+#   keep_vllm_during_eval: True
+#   eval_with: "vllm"
+#   train_with: "hf"
+#   optimizer_method: "AdamW"
+#   optimizer_kwargs:
+#     lr: 3e-6
+#     weight_decay: 0.0
 
 models:
-  llama:
-    class: local_llm
+  qwen:
+    name: 'qwen'
+    class: local_llm_v2
     init_args:
-      <<: *common_models_init_args
-      name: 'llama'
-      adapter_names: ['ad_alice', 'ad_bob']
+      max_model_length: 10000
+      device: "cuda"
+      model_name: "Qwen/Qwen2.5-7B-Instruct"
+      bits_and_bytes_args: null
+      generation_args:
+        max_new_tokens: 120
+        do_sample: True
+        temperature: ${temperature}
+        top_k: 0
+        top_p: 1.0
+        repetition_penalty: 1
+      vllm_params:
+        max_model_len : 13e3
+        gpu_memory_utilization: 0.55
+        enable_lora: True
+        enable_prefix_caching: True
+        enable_sleep_mode : True
+        max_lora_rank: 64
+        dtype: "bfloat16"
+      hf_model_init_kwargs:
+        torch_dtype: "bfloat16"
+        device_map: "auto"
+        attn_implementation: "flash_attention_2"
+      eval_with: "vllm"
+      train_with: "hf"
+      optimizer_on_gpu_during_training: True
+      fully_switch_vllm_weights_after_training: False
+      keep_vllm_during_training: True
+      keep_vllm_during_eval: True
+      sleep_vllm_during_training: True
+      wake_vllm_during_eval: True
+      export_trained_parameters: True
+      export_optimizer: True
+      adapter_configs:
+        ad_alice:
+          type: "lora"
+          optimizer_method: "Adam"
+          optimizer_kwargs:
+            lr: 1e-5
+            weight_decay: 0.0
+          lora_kwargs:
+            task_type: "CAUSAL_LM"
+            r: 64
+            lora_alpha: 128
+            lora_dropout: 0.0
+            target_modules: "all-linear"
+        ad_bob:
+          type: "lora"
+          optimizer_method: "Adam"
+          optimizer_kwargs:
+            lr: 1e-5
+            weight_decay: 0.0
+          lora_kwargs:
+            task_type: "CAUSAL_LM"
+            r: 64
+            lora_alpha: 128
+            lora_dropout: 0.0
+            target_modules: "all-linear"
 
 ####################################################################################################
 # TRAINING
 ####################################################################################################
 
 common_training_agent_kwargs: &common_training_agent_kwargs
-  training_data_func: generate_training_data_from_raw
+  training_data_func: dond_generate_training_data_from_raw
   training_data_func_args:
     exclude_errors: True
     debug_output: True
@@ -161,20 +244,22 @@ common_adapter_kwargs: &common_adapter_kwargs
   train_func_args:
     gradient_checkpointing: true
     temperature: ${temperature}
-    entropy_coef: 0.01
-    kl_loss_coef: 0.01
+    entropy_coef: 0.05
+    kl_loss_coef: 0.00
+    debug_enabled: True
+    debug_log_path: "${hydra:run.dir}/trainer_debugger"
   train_data_args:
-    average_score_over_message: True
+    average_score_over_message: False
 
 training:
 
   agents:
-    alice:
+    Alice:
       <<: *common_training_agent_kwargs
-    bob:
+    Bob:
       <<: *common_training_agent_kwargs
 
-  llama:
+  qwen:
     adapters:
       ad_alice:
         train_func: train_reinforce_main
@@ -245,4 +330,4 @@ prompt_blocks:
 
       1) Responses must be within <finalize> </finalize> tags.
 
-      2) Use JSON format: <finalize> {"i_take": {"coins": x}, "other_agent_gets": {"coins": y}} </finalize>.
+      2) Use JSON format: <finalize> {finalize_sample} </finalize>.

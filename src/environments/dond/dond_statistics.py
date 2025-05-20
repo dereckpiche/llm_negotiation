@@ -91,9 +91,13 @@ def get_proposal_frequency_stats(data, format_options=None):
             for item, quantity in agent_proposal.items():
                 if item not in proposal_counts:
                     proposal_counts[item] = {}
-                if quantity not in proposal_counts[item]:
-                    proposal_counts[item][quantity] = 0
-                proposal_counts[item][quantity] += 1
+                try:
+                    if quantity not in proposal_counts[item]:
+                        proposal_counts[item][quantity] = 0
+                    proposal_counts[item][quantity] += 1
+                except:
+                    print("Quantity: ", quantity)
+                    print("Proposal counts: ", proposal_counts)
 
     return "proposal_frequency_by_category", proposal_counts
 
@@ -699,6 +703,101 @@ def calc_sum_points_percentage_of_max(data, format_options=None):
         percentage = 0
 
     return "sum_points_percentage_of_max", percentage
+
+
+def calc_points_on_agreement(data, format_options=None):
+    total_points = 0
+    nb_agreement_reached_games = 0
+
+    for game_data in data:
+        game_info = game_data[-1].get("game_info", {})
+        agent_name = game_data[-1].get("agent_name")
+
+        if not agent_name or not game_info:
+            continue
+
+        # Process each round
+        for i, state in enumerate(game_info["round_agent_roles"]):
+            agent_role = state.get(agent_name)
+            if not agent_role:
+                continue
+
+            if i >= len(game_info["round_finalizations"]) or i >= len(
+                game_info["round_quantities"]
+            ):
+                continue
+
+            invalid_finalization = False
+
+            for item, finalization in (
+                game_info["round_finalizations"][i].get(agent_role, {}).items()
+            ):
+                if item in game_info["round_quantities"][i]:
+                    if int(finalization) > int(game_info["round_quantities"][i][item]):
+                        invalid_finalization = True
+                        break
+
+            if invalid_finalization:
+                continue
+
+            agreement_reached = game_info["round_agreements_reached"][i]
+
+            if agreement_reached:
+                total_points += game_info["round_points"][i].get(agent_role, {})
+                nb_agreement_reached_games += 1
+
+    if nb_agreement_reached_games > 0:
+        points_on_agreement = total_points / nb_agreement_reached_games
+    else:
+        points_on_agreement = 0
+
+    return "points_on_agreement", points_on_agreement
+
+
+def calculate_agreement_percentage(data, format_options=None):
+    total_agreements = 0
+
+    for game_data in data:
+        game_info = game_data[-1].get("game_info", {})
+        agent_name = game_data[-1].get("agent_name")
+
+        if not agent_name or not game_info:
+            continue
+
+        # Process each round
+        for i, state in enumerate(game_info["round_agent_roles"]):
+            agent_role = state.get(agent_name)
+            if not agent_role:
+                continue
+
+            if i >= len(game_info["round_finalizations"]) or i >= len(
+                game_info["round_quantities"]
+            ):
+                continue
+
+            invalid_finalization = False
+
+            for item, finalization in (
+                game_info["round_finalizations"][i].get(agent_role, {}).items()
+            ):
+                if item in game_info["round_quantities"][i]:
+                    if int(finalization) > int(game_info["round_quantities"][i][item]):
+                        invalid_finalization = True
+                        break
+
+            if invalid_finalization:
+                continue
+
+            agreement_reached = game_info["round_agreements_reached"][i]
+
+            if agreement_reached:
+                total_agreements += 1
+                # total_points += game_info["round_points"][i].get(agent_role, {})
+                # nb_agreement_reached_games += 1
+
+    agreement_percentage = 100 * total_agreements / len(data)
+
+    return "agreement_percentage", agreement_percentage
 
 
 ########################################################
