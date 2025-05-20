@@ -801,9 +801,21 @@ def regular_finalization_parser(response, state, attribution_map=None):
                         errors.append("The finalization is not properly formatted.")
                         return True, errors, None
 
-                    if my_items.get(item, 0) + other_items.get(
-                        item, 0
-                    ) != expected_item_quantities.get(item, 0):
+                    item_quantity = expected_item_quantities.get(item, 0)
+
+                    if (
+                        my_items.get(item) > item_quantity
+                        or other_items.get(item) > item_quantity
+                    ):
+                        errors.append(
+                            f"The finalization proposal can only have at most {expected_item_quantities.get(item, 0)} {item}."
+                        )
+                        return True, errors, None
+
+                    if (
+                        my_items.get(item, 0) + other_items.get(item, 0)
+                        != item_quantity
+                    ):
                         errors.append(
                             "The quantities don't sum up to the total quantities available."
                         )
@@ -841,9 +853,18 @@ def regular_finalization_parser(response, state, attribution_map=None):
                     errors.append("The finalization is not properly formatted.")
                     return True, errors, None
 
-                if i_take.get(item, 0) + other_takes.get(
-                    item, 0
-                ) != expected_item_quantities.get(item, 0):
+                item_quantity = expected_item_quantities.get(item, 0)
+
+                if (
+                    my_items.get(item) > item_quantity
+                    or other_items.get(item) > item_quantity
+                ):
+                    errors.append(
+                        f"The finalization proposal can only have at most {expected_item_quantities.get(item, 0)} {item}."
+                    )
+                    return True, errors, None
+
+                if i_take.get(item, 0) + other_takes.get(item, 0) != item_quantity:
                     errors.append(
                         "The quantities don't sum up to the total quantities available."
                     )

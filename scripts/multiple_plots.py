@@ -33,7 +33,7 @@ color_mapping = {
     # Add more agents and their associated colors here
 }
 
-plt.figure()
+plt.figure(figsize=(8, 5.7))  # Wider figure for legend
 plt.grid(True)
 
 for agent, file_list in filepaths.items():
