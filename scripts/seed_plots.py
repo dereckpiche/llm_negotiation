@@ -3,10 +3,11 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 
-plot_name = "ipd_coop_rate"
+plot_name = "eventual_defection"
 X_AXIS = "Training Steps"
-Y_AXIS = "Mutual Cooperation Rate"
-max_steps = 80
+Y_AXIS = "Mutual Defection Rate"
+max_steps = 1750
+color = "#556B2F"  # DARKGREEN  = #556B2F RED = #790D12
 
 
 # filepaths = [
@@ -15,11 +16,33 @@ max_steps = 80
 #     "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_covert/seed_934/0_statistics/mutual_defection_rate.json",
 # ]
 
-filepaths = [
-    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt/seed_155/0_statistics/mutual_cooperation_rate.json",
-    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt/seed_256/0_statistics/mutual_cooperation_rate.json",
-    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt/seed_856/0_statistics/mutual_cooperation_rate.json",
+# filepaths = [
+#     "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt/seed_155/0_statistics/mutual_cooperation_rate.json",
+#     "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt/seed_256/0_statistics/mutual_cooperation_rate.json",
+#     "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt/seed_856/0_statistics/mutual_cooperation_rate.json",
+# ]
+
+# milad_efficiency_file_paths = [
+#     "/home/mila/d/dereck.piche/scratch/llm_negotiation/REPRODUCE/greedy/seed_645/0_statistics/Alice/coins_allocation_efficiency.json",
+#     "/home/mila/d/dereck.piche/scratch/llm_negotiation/seed_42_iterations/0_statistics/Alice/coins_allocation_efficiency.json",
+#     "/home/mila/d/dereck.piche/scratch/llm_negotiation/seed_1003_iterations/0_statistics/Alice/coins_allocation_efficiency.json"
+# ]
+
+# milad_efficiency_file_paths = [
+#     "/home/mila/d/dereck.piche/scratch/llm_negotiation/REPRODUCE/greedy/seed_645/0_statistics/Alice/items_given_to_self_percentage.json",
+#     "/home/mila/d/dereck.piche/scratch/llm_negotiation/seed_42_iterations/0_statistics/Alice/items_given_to_self_percentage.json",
+#     "/home/mila/d/dereck.piche/scratch/llm_negotiation/seed_1003_iterations/0_statistics/Alice/items_given_to_self_percentage.json"
+# ]
+
+
+eventual_defection = [
+    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt/seed_856/0_statistics/mutual_defection_rate.json",
+    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt/seed_256/0_statistics/mutual_defection_rate.json",
+    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt/seed_155/0_statistics/mutual_defection_rate.json",
 ]
+
+
+filepaths = eventual_defection
 
 # mapping = {
 #     "09-30-18_seed_33": "33",
@@ -55,12 +78,11 @@ plt.figure()
 plt.grid(True)
 
 for instance in metric_data:
-    plt.plot(
-        instance, color="#556B2F", alpha=0.2
-    )  # DarkOliveGreen with reduced visibility
+    plt.plot(instance, color=color, alpha=0.2)  # DarkOliveGreen with reduced visibility
 
 # Overlay mean curve with a dark green and no dots
-plt.plot(metric_mean, linewidth=3, color="#006400", label=f"Average")  # DarkGreen
+plt.plot(metric_mean, linewidth=3, color=color, label=f"Average")  # DarkGreen
+
 
 # Formatting and saving the plot
 plt.xlabel(X_AXIS, fontsize=14)

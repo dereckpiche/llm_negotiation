@@ -135,7 +135,7 @@ models:
           type: "lora"
           optimizer_method: "Adam"
           optimizer_kwargs:
-            lr: 1e-6
+            lr: 1e-5
             weight_decay: 0.0
           lora_kwargs:
             task_type: "CAUSAL_LM"
@@ -179,7 +179,7 @@ training:
         train_func_args:
           gradient_checkpointing: true
           temperature: ${temperature}
-          entropy_coef: 0.05
+          entropy_coef: 0.1
           kl_loss_coef: 0.0
           debug_enabled: True
           debug_log_path: "${oc.env:SCRATCH}/${experiment.name}/trainer_debugger"

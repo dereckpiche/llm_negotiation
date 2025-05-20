@@ -327,47 +327,47 @@ def calc_mutual_defection_rate(data, format_options=None):
 #     return "sucker_rate", sucker_rate
 
 
-# def calc_retaliation_rate(data, format_options=None):
-#     """
-#     Calculates how often the agent defects after the opponent defects.
+def calc_retaliation_rate(data, format_options=None):
+    """
+    Calculates how often the agent defects after the opponent defects.
 
-#     Args:
-#         data (list): Raw data files containing game information
-#         format_options (list, optional): Formatting options
+    Args:
+        data (list): Raw data files containing game information
+        format_options (list, optional): Formatting options
 
-#     Returns:
-#         tuple: ("retaliation_rate", percentage value)
-#     """
-#     retaliation_count = 0
-#     defection_count = 0
+    Returns:
+        tuple: ("retaliation_rate", percentage value)
+    """
+    retaliation_count = 0
+    defection_count = 0
 
-#     for game_data in data:
-#         game_info = game_data[-1].get("game_info", {})
-#         agent_id = game_data[-1].get("agent_id")
+    for game_data in data:
+        game_info = game_data[-1].get("game_info", {})
+        agent_id = game_data[-1].get("agent_id")
 
-#         if not agent_id or not game_info:
-#             continue
+        if not agent_id or not game_info:
+            continue
 
-#         # Find opponent ID
-#         agent_ids = game_info.get("agent_ids", [])
-#         opponent_id = next((id for id in agent_ids if id != agent_id), None)
+        # Find opponent ID
+        agent_ids = game_info.get("agent_ids", [])
+        opponent_id = next((id for id in agent_ids if id != agent_id), None)
 
-#         actions = game_info.get("actions", [])
-#         for i in range(1, len(actions)):  # Skip the first round
-#             prev_opponent_action = actions[i - 1].get(opponent_id)
-#             current_agent_action = actions[i].get(agent_id)
+        actions = game_info.get("actions", [])
+        for i in range(1, len(actions)):  # Skip the first round
+            prev_opponent_action = actions[i - 1].get(opponent_id)
+            current_agent_action = actions[i].get(agent_id)
 
-#             if prev_opponent_action == "D" and current_agent_action:
-#                 defection_count += 1
-#                 if current_agent_action == "D":
-#                     retaliation_count += 1
+            if prev_opponent_action in ["D", "<Defect>", "<B>"]:
+                defection_count += 1
+                if current_agent_action in ["D", "<Defect>", "<B>"]:
+                    retaliation_count += 1
 
-#     if defection_count > 0:
-#         retaliation_rate = (retaliation_count / defection_count) * 100
-#     else:
-#         retaliation_rate = 0
+    if defection_count > 0:
+        retaliation_rate = (retaliation_count / defection_count) * 100
+    else:
+        retaliation_rate = 0
 
-#     return "retaliation_rate", retaliation_rate
+    return "retaliation_rate", retaliation_rate
 
 
 def calc_rounds_count(data, format_options=None):
@@ -536,6 +536,7 @@ if __name__ == "__main__":
         calc_mutual_cooperation_rate,
         calc_mutual_defection_rate,
         get_number_of_rounds,
+        calc_retaliation_rate,
     ]
 
     # Run with arguments from command line
