@@ -1,7 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
 from typing import List
 
-from openai import OpenAI
+import backoff
+from openai import OpenAI, RateLimitError
 
 from utils.common_imports import *
 
@@ -35,6 +36,7 @@ class ServerLLM:
             self.client = OpenAI(api_key=api_key)
         self.model = model
 
+    @backoff.on_exception(backoff.expo, RateLimitError)
     def _sync_fetch(self, prompt: dict) -> str:
         response = self.client.chat.completions.create(
             model=self.model, messages=prompt, max_tokens=150

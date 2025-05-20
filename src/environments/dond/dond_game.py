@@ -696,7 +696,7 @@ def regular_set_points(state, **kwargs):
     # Verify if finalizations match the total quantities
     valid_agreement = True
     for item in items:
-        total = sum(role_props[role].get(item, 0) for role in roles)
+        total = sum(int(role_props[role].get(item, 0)) for role in roles)
         if total != quantities[item]:
             valid_agreement = False
             break
@@ -704,12 +704,16 @@ def regular_set_points(state, **kwargs):
     # Calculate utility for each role
     utilities = {
         role: sum(
-            role_values[role][item] * role_props[role].get(item, 0) for item in items
+            int(role_values[role][item]) * int(role_props[role].get(item, 0))
+            for item in items
         )
         for role in roles
     }
 
     # Assign points based on game mode
+    if not valid_agreement:
+        return {role: 0 for role in roles}, valid_agreement
+
     if mode == "coop":
         total = sum(utilities.values())
         return {role: total for role in roles}, valid_agreement
