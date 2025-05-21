@@ -182,6 +182,7 @@ training:
           gradient_checkpointing: true
           temperature: ${temperature}
           entropy_coef: 0.1
+          restrict_tokens: ["C", "D"]
           kl_loss_coef: 0.0
           debug_enabled: True
           debug_log_path: "${oc.env:SCRATCH}/llm_negotiation/${experiment.name}/training_debugger"
