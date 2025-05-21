@@ -24,6 +24,7 @@ def reinforce_train(
     mb_size=1,
     mb_per_step=-1,
     output_path=None,
+    restrict_tokens=None,
     tokenizer=None,
     gradient_checkpointing=False,
     entropy_coef=0,
@@ -193,7 +194,7 @@ def reinforce_train(
 
     # Determine if debug logging is enabled
     debug_enabled = debug_enabled and debug_log_path is not None
-    if debug_enabled and tokenizer is None:
+    if tokenizer is None:
         # Try to find a tokenizer from the model
         tokenizer = find_tokenizer_from_model(model)
         debug_enabled = debug_enabled and tokenizer is not None
@@ -241,6 +242,24 @@ def reinforce_train(
                 0
             ]  # (B, S, V)
 
+            # Mask non-restricted tokens
+            if restrict_tokens is not None:
+                allowed_token_ids = []
+                for token in restrict_tokens:
+                    token_ids = tokenizer(token, add_special_tokens=False)["input_ids"]
+                    allowed_token_ids.append(token_ids[0])
+                allowed_token_ids = torch.tensor(
+                    allowed_token_ids, device=logits.device
+                )
+                # Mask log_probs and probs to only allowed tokens
+                mask = torch.zeros_like(logits).bool()  # (B, S, V)
+                mask[..., allowed_token_ids] = True
+                logits = torch.where(
+                    mask,
+                    logits,
+                    torch.tensor(float("-inf"), device=logits.device),
+                )
+
             # Apply temperature scaling before computing log probabilities
             assert temperature > 0, "Temperature must be greater than 0."
 
@@ -248,6 +267,13 @@ def reinforce_train(
 
             # Compute new log probabilities
             log_probs = F.log_softmax(logits, dim=-1)  # (B, S, V)
+
+            if restrict_tokens is not None:
+                log_probs = torch.where(
+                    mask,
+                    log_probs,
+                    torch.tensor(0.0, device=logits.device),
+                )
 
             # Apply mask to log probabilities and values
             action_log_probs = log_probs.gather(
@@ -262,7 +288,6 @@ def reinforce_train(
 
             # Compute entropy
             if entropy_coef != 0.0:
-                # Dimensions after Softmax are (B, S, V). Chaining operations to reduce memory overhead.
                 entropy = (-log_probs * F.softmax(logits, dim=-1)).sum(dim=-1)  # (B, S)
 
                 rewarded_action_log_probs += entropy_coef * (
@@ -1135,7 +1160,7 @@ def _output_reinforce_step_debug(
                     f"{rec['position']:3d} | {context_info:40s} → {rec['target_token']:15s} | "
                 )
                 f.write(
-                    f"r={rec['reward']:+.2f} | logp={log_prob:.2f} | p={prob:.3f} | eff={ef_effective_reinforcement:+.2f} | {reinforcement_marker}\n"
+                    f"r={rec['reward']:+.2f} | logp={log_prob:.5f} | p={prob:.5f} | eff={ef_effective_reinforcement:+.2f} | {reinforcement_marker}\n"
                 )
 
         # Save compact JSON for programmatic analysis

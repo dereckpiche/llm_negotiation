@@ -108,6 +108,7 @@ class LocalLLMV2:
         train_with="hf",
         base_seed: int = 42,
         vllm_params={},
+        restrict_tokens=None,
         optimizer_on_gpu_during_training=True,
         fully_switch_vllm_weights_after_training=False,
         sleep_vllm_during_training=True,
@@ -131,6 +132,7 @@ class LocalLLMV2:
         self.model_name = model_name
         self.hf_model_init_kwargs = hf_model_init_kwargs
         self.max_model_length = max_model_length
+        self.restrict_tokens = restrict_tokens
 
         # Tracking current state
         self.current_adapter_name = None
@@ -592,6 +594,7 @@ class LocalLLMV2:
 
         Args:
             contexts (List[dict]): Chat contexts for generation.
+            self.restrict_tokens (List[str], optional): List of allowed string tokens. If provided, restricts generation to only these tokens.
 
         Returns:
             list: List of generated responses from the model.
@@ -609,9 +612,35 @@ class LocalLLMV2:
             contexts, tokenize=False, add_generation_prompt=True
         )
 
+        sampling_params = self.vllm_sampling_params
+        # If self.restrict_tokens is provided, convert to token ids and set allowed_token_ids
+        if self.restrict_tokens is not None:
+            allowed_token_ids = []
+            for token in self.restrict_tokens:
+                # Tokenize and take the first token id (assume single-token for each string)
+                token_ids = self.tokenizer(token, add_special_tokens=False)["input_ids"]
+                if len(token_ids) != 1:
+                    model_logger.warning(
+                        f"Token '{token}' does not map to a single token. Skipping."
+                    )
+                    continue
+                allowed_token_ids.append(token_ids[0])
+            if not allowed_token_ids:
+                model_logger.error(
+                    "No valid allowed_token_ids found for self.restrict_tokens. Generation will not be restricted."
+                )
+            else:
+                # Clone sampling_params and set allowed_token_ids
+                sampling_params = sampling_params.clone()
+                sampling_params.allowed_token_ids = allowed_token_ids
+                sampling_params.max_tokens = (
+                    1  # Ensure only one output is generated when restricting tokens
+                )
+                sampling_params.min_tokens = 1
+
         if self.eval_with == "vllm":
             # Disable deterministic seed for more diversity
-            self.vllm_sampling_params.seed = None
+            sampling_params.seed = None
 
             if self.current_lora_request is not None:
                 model_logger.info(
@@ -623,7 +652,7 @@ class LocalLLMV2:
             # Generate responses
             decoded = self.vllm_model.generate(
                 texts,
-                sampling_params=self.vllm_sampling_params,
+                sampling_params=sampling_params,
                 lora_request=self.current_lora_request,
             )
             responses = [d.outputs[0].text for d in decoded]

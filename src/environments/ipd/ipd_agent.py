@@ -44,11 +44,12 @@ class IPDAgent:
         self.intro_prompt = intro_prompt
         self.goal_prompt = goal_prompt
         self.strategy_prompt = strategy_prompt
-        self.max_errors = max_errors
+        self.max_errors = max_errors  # max number of retries (due to formatting error) allowed per round
         self.allow_reasoning = allow_reasoning
         self.max_reasoning_chars = max_reasoning_chars
         self.chat_history = []
         self.round_nb = 0
+        self.nb_retries = 0
 
     def reset(self):
         """Reset the agent state."""
@@ -84,7 +85,7 @@ class IPDAgent:
                 {
                     "role": "user",
                     "content": self.intro_prompt,
-                    "round_number": round_nb,
+                    "round_nb": round_nb,
                 }
             )
             return (
@@ -105,30 +106,47 @@ class IPDAgent:
             other_player_action = observation_from_env.raw_actions[-1].get(
                 other_player_id, "N/A"
             )
+            # import pdb; pdb.set_trace()
             user_message = f"Last round, the other agent played {other_player_action}."
 
             self.chat_history.append(
                 {
                     "role": "user",
                     "content": user_message,
-                    "round_number": round_nb,
+                    "round_nb": round_nb,
                 }
             )
             self.round_nb = round_nb
             return (self.policy_id, self.chat_history, None, False, None)
 
+        # Get action string settings from observation/game state if available
+        cooperate_actions = observation_from_env.cooperate_actions
+        defect_actions = observation_from_env.defect_actions
         # If not new round we take action
-        if policy_output in ["<Cooperate>", "<A>", "<Defect>", "<B>"]:
-            action = policy_output
-        else:
-            action = "ERROR"
         self.chat_history.append(
             {
                 "role": "assistant",
                 "content": policy_output,
-                "round_number": round_nb,
+                "round_nb": round_nb,
             }
         )
+        if policy_output in cooperate_actions + defect_actions:
+            action = policy_output
+        elif self.nb_retries < self.max_errors:
+            self.chat_history.append(
+                {
+                    "role": "user",
+                    "content": "You have made a formatting error. Try again.",
+                    "is_error": True,
+                    "round_nb": round_nb,
+                }
+            )
+            self.nb_retries += 1
+            return (self.policy_id, self.chat_history, None, False, None)
+        else:
+            action = "ERROR"
+
+        self.nb_retries = 0  # reset retry counter
         return (
             None,
             None,

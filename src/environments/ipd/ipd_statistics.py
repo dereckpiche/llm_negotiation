@@ -37,6 +37,12 @@ from utils.leafstats import *
 ############################################################
 
 
+def get_action_settings_from_game_info(game_info):
+    cooperate_actions = game_info.get("cooperate_actions", ["C", "<Cooperate>", "<A>"])
+    defect_actions = game_info.get("defect_actions", ["D", "<Defect>", "<B>"])
+    return cooperate_actions, defect_actions
+
+
 def calc_cooperation_rate(data, format_options=None):
     """
     Calculates the percentage of rounds where the agent cooperated.
@@ -58,19 +64,18 @@ def calc_cooperation_rate(data, format_options=None):
         if not agent_id or not game_info:
             continue
 
+        cooperate_actions, _ = get_action_settings_from_game_info(game_info)
         actions = game_info.get("actions", [])
         for round_actions in actions:
             agent_action = round_actions.get(agent_id)
             if agent_action:
                 total_rounds += 1
-                if agent_action in ["C", "<Cooperate>", "<A>"]:
+                if agent_action in cooperate_actions:
                     total_cooperations += 1
 
-    if total_rounds > 0:
-        cooperation_rate = (total_cooperations / total_rounds) * 100
-    else:
-        cooperation_rate = 0
-
+    cooperation_rate = (
+        (total_cooperations / total_rounds) * 100 if total_rounds > 0 else 0
+    )
     return "cooperation_rate", cooperation_rate
 
 
@@ -102,19 +107,16 @@ def calc_defection_rate(data, format_options=None):
         if not agent_id or not game_info:
             continue
 
+        _, defect_actions = get_action_settings_from_game_info(game_info)
         actions = game_info.get("actions", [])
         for round_actions in actions:
             agent_action = round_actions.get(agent_id)
             if agent_action:
                 total_rounds += 1
-                if agent_action == ["D", "<Defect>", "<B>"]:
+                if agent_action in defect_actions:
                     total_defections += 1
 
-    if total_rounds > 0:
-        defection_rate = (total_defections / total_rounds) * 100
-    else:
-        defection_rate = 0
-
+    defection_rate = (total_defections / total_rounds) * 100 if total_rounds > 0 else 0
     return "defection_rate", defection_rate
 
 
@@ -172,7 +174,7 @@ def calc_mutual_cooperation_rate(data, format_options=None):
         if not agent_id or not game_info:
             continue
 
-        # Find opponent ID
+        cooperate_actions, _ = get_action_settings_from_game_info(game_info)
         agent_ids = game_info.get("agent_ids", [])
         opponent_id = next((id for id in agent_ids if id != agent_id), None)
 
@@ -182,18 +184,15 @@ def calc_mutual_cooperation_rate(data, format_options=None):
             opponent_action = round_actions.get(opponent_id)
             if agent_action and opponent_action:
                 total_rounds += 1
-                if agent_action in ["C", "<Cooperate>", "<A>"] and opponent_action in [
-                    "C",
-                    "<Cooperate>",
-                    "<A>",
-                ]:
+                if (
+                    agent_action in cooperate_actions
+                    and opponent_action in cooperate_actions
+                ):
                     mutual_cooperations += 1
 
-    if total_rounds > 0:
-        mutual_cooperation_rate = (mutual_cooperations / total_rounds) * 100
-    else:
-        mutual_cooperation_rate = 0
-
+    mutual_cooperation_rate = (
+        (mutual_cooperations / total_rounds) * 100 if total_rounds > 0 else 0
+    )
     return "mutual_cooperation_rate", mutual_cooperation_rate
 
 
@@ -218,7 +217,7 @@ def calc_mutual_defection_rate(data, format_options=None):
         if not agent_id or not game_info:
             continue
 
-        # Find opponent ID
+        _, defect_actions = get_action_settings_from_game_info(game_info)
         agent_ids = game_info.get("agent_ids", [])
         opponent_id = next((id for id in agent_ids if id != agent_id), None)
 
@@ -228,18 +227,12 @@ def calc_mutual_defection_rate(data, format_options=None):
             opponent_action = round_actions.get(opponent_id)
             if agent_action and opponent_action:
                 total_rounds += 1
-                if agent_action in ["D", "<Defect>", "<B>"] and opponent_action in [
-                    "D",
-                    "<Defect>",
-                    "<B>",
-                ]:
+                if agent_action in defect_actions and opponent_action in defect_actions:
                     mutual_defections += 1
 
-    if total_rounds > 0:
-        mutual_defection_rate = (mutual_defections / total_rounds) * 100
-    else:
-        mutual_defection_rate = 0
-
+    mutual_defection_rate = (
+        (mutual_defections / total_rounds) * 100 if total_rounds > 0 else 0
+    )
     return "mutual_defection_rate", mutual_defection_rate
 
 
@@ -348,7 +341,7 @@ def calc_retaliation_rate(data, format_options=None):
         if not agent_id or not game_info:
             continue
 
-        # Find opponent ID
+        _, defect_actions = get_action_settings_from_game_info(game_info)
         agent_ids = game_info.get("agent_ids", [])
         opponent_id = next((id for id in agent_ids if id != agent_id), None)
 
@@ -357,16 +350,14 @@ def calc_retaliation_rate(data, format_options=None):
             prev_opponent_action = actions[i - 1].get(opponent_id)
             current_agent_action = actions[i].get(agent_id)
 
-            if prev_opponent_action in ["D", "<Defect>", "<B>"]:
+            if prev_opponent_action in defect_actions:
                 defection_count += 1
-                if current_agent_action in ["D", "<Defect>", "<B>"]:
+                if current_agent_action in defect_actions:
                     retaliation_count += 1
 
-    if defection_count > 0:
-        retaliation_rate = (retaliation_count / defection_count) * 100
-    else:
-        retaliation_rate = 0
-
+    retaliation_rate = (
+        (retaliation_count / defection_count) * 100 if defection_count > 0 else 0
+    )
     return "retaliation_rate", retaliation_rate
 
 

@@ -76,8 +76,8 @@ def ipd_generate_training_data_from_raw(
         # Attribute scores to actions
         for message in chat_history:
             if message.get("role") == "assistant":
-                round_number = message.get("round_number")
-                message["score"] = float(scores[i, round_number])
+                round_nb = message.get("round_nb")
+                message["score"] = float(scores[i, round_nb])
 
         # Only keep conversation messages, not system info
         chat_history = [

@@ -5,7 +5,7 @@ hydra:
     chdir: false
 
 experiment:
-  name: "ipd_overt_for_appendix"
+  name: "ipd_overt_restricted"
   # name: "${now:%Y-%m-%d___%H-%M-%S}_IPD"
   method: generate_and_train
   description: "no description"
@@ -15,7 +15,7 @@ experiment:
   checkpoint_every_n_iterations: 25
   start_epoch: 0
   resume_experiment: true
-  base_seed: 87
+  base_seed: 948
 
 ####################################################################################################
 #                                           GENERATION
@@ -38,10 +38,10 @@ common_agent_kwargs: &common_agent_kwargs
     3. The goal is to maximize your total points over all rounds.
     4. You will see the previous play of the other player after the completion of a round.
 
-    In order to play Cooperate, you must write "<Cooperate>" and nothing else.
-    In order to play Defect, you must write "<Defect>" and nothing else.
+    In order to play Cooperate, you must write "C" and nothing else.
+    In order to play Defect, you must write "D" and nothing else.
 
-    During the entire game, you must only write "<Cooperate>" or "<Defect>". If you write anything else, your response will be considered as an error.
+    During the entire game, you must only write "C" or "D". If you write anything else, your response will be considered as an error.
 
     The game starts now:
 
@@ -70,6 +70,8 @@ matches:
 
 
   env_kwargs:
+    cooperate_actions: ["C"]
+    defect_actions: ["D"]
     agents: ['Alice', 'Bob']
     reward: 3
     punishment: 1
@@ -94,9 +96,10 @@ temperature: 0.7
 models:
   qwen:
     name: 'qwen'
-    class: local_llm_v2
+    class: local_llm_v2 # local_llm_v2
     init_args:
       max_model_length: 10000
+      restrict_tokens: ["C", "D"]
       device: "cuda"
       model_name: "Qwen/Qwen2.5-7B-Instruct"
       bits_and_bytes_args: null
@@ -178,9 +181,10 @@ training:
         train_func_args:
           gradient_checkpointing: true
           temperature: ${temperature}
-          entropy_coef: 0.05
+          entropy_coef: 0.1
+          restrict_tokens: ["C", "D"]
           kl_loss_coef: 0.0
           debug_enabled: True
-          debug_log_path: "${oc.env:SCRATCH}/${experiment.name}/trainer_debugger"
+          debug_log_path: "${oc.env:SCRATCH}/llm_negotiation/${experiment.name}/training_debugger"
         train_data_args:
           average_score_over_message: False
