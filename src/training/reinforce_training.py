@@ -262,8 +262,44 @@ def reinforce_train(
 
             # Compute entropy
             if entropy_coef != 0.0:
-                # Dimensions after Softmax are (B, S, V). Chaining operations to reduce memory overhead.
-                entropy = (-log_probs * F.softmax(logits, dim=-1)).sum(dim=-1)  # (B, S)
+                # If model has restricted_tokens, only compute entropy over those tokens
+                if (
+                    hasattr(model, "restricted_tokens")
+                    and model.restricted_tokens is not None
+                ):
+                    allowed_token_ids = []
+                    for token in model.restricted_tokens:
+                        token_ids = model.tokenizer(token, add_special_tokens=False)[
+                            "input_ids"
+                        ]
+                        if len(token_ids) != 1:
+                            train_logger.warning(
+                                f"Token '{token}' does not map to a single token. Skipping."
+                            )
+                            continue
+                        allowed_token_ids.append(token_ids[0])
+                    allowed_token_ids = torch.tensor(
+                        allowed_token_ids, device=log_probs.device
+                    )
+                    # Mask log_probs and probs to only allowed tokens
+                    mask = torch.zeros_like(log_probs).bool()  # (B, S, V)
+                    mask[..., allowed_token_ids] = True
+                    masked_log_probs = torch.where(
+                        mask,
+                        log_probs,
+                        torch.tensor(float("-inf"), device=log_probs.device),
+                    )
+                    masked_probs = torch.where(
+                        mask,
+                        F.softmax(logits, dim=-1),
+                        torch.tensor(0.0, device=log_probs.device),
+                    )
+                    entropy = (-masked_log_probs * masked_probs).sum(dim=-1)  # (B, S)
+                else:
+                    # Standard entropy over all tokens
+                    entropy = (-log_probs * F.softmax(logits, dim=-1)).sum(
+                        dim=-1
+                    )  # (B, S)
 
                 rewarded_action_log_probs += entropy_coef * (
                     entropy * mask_batch
@@ -1135,7 +1171,7 @@ def _output_reinforce_step_debug(
                     f"{rec['position']:3d} | {context_info:40s} → {rec['target_token']:15s} | "
                 )
                 f.write(
-                    f"r={rec['reward']:+.2f} | logp={log_prob:.2f} | p={prob:.3f} | eff={ef_effective_reinforcement:+.2f} | {reinforcement_marker}\n"
+                    f"r={rec['reward']:+.2f} | logp={log_prob:.5f} | p={prob:.5f} | eff={ef_effective_reinforcement:+.2f} | {reinforcement_marker}\n"
                 )
 
         # Save compact JSON for programmatic analysis

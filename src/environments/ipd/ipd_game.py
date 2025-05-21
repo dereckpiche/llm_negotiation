@@ -1,3 +1,4 @@
+import copy
 import random
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -20,6 +21,9 @@ class IPDGameState:
         self.actions = []
         self.done = False
         self.info = {}
+        self.cooperate_actions = ["C"]
+        self.defect_actions = ["D"]
+        self.gibberish_action = "GIBBERISH"
 
 
 class IPDEnv:
@@ -48,6 +52,9 @@ class IPDEnv:
         temptation: float,  # Defector's reward when other cooperates
         sucker: float,  # Cooperator's reward when other defects
         random_seed: Optional[int] = None,
+        cooperate_actions: Optional[list] = None,
+        defect_actions: Optional[list] = None,
+        gibberish_action: str = "GIBBERISH",
     ):
         """
         Initialize the Iterated Prisoner's Dilemma environment.
@@ -71,6 +78,15 @@ class IPDEnv:
         self.player_1_id = agents[1]
         self.match_id = game_id
         self.group_id = group_id
+        self.gibberish_action = gibberish_action
+        self.cooperate_actions = (
+            cooperate_actions
+            if cooperate_actions is not None
+            else ["C", "<Cooperate>", "<A>"]
+        )
+        self.defect_actions = (
+            defect_actions if defect_actions is not None else ["D", "<Defect>", "<B>"]
+        )
         self.reset()
 
     def reset(self):
@@ -82,6 +98,10 @@ class IPDEnv:
         self.state.match_id = self.match_id
         self.state.group_id = self.group_id
         self.state.number_of_rounds = self.rounds_per_game
+        # Propagate action string settings to state
+        self.state.cooperate_actions = self.cooperate_actions
+        self.state.defect_actions = self.defect_actions
+        self.state.gibberish_action = self.gibberish_action
         return {self.player_0_id: self.state, self.player_1_id: self.state}
 
     def step(
@@ -102,46 +122,44 @@ class IPDEnv:
 
         # Calculate rewards based on the prisoner's dilemma payoff matrix
         round_rewards = {}
-        alice_action = actions["Alice"]
-        bob_action = actions["Bob"]
+        p0_action = actions["Alice"]
+        p1_action = actions["Bob"]
+        # import pdb; pdb.set_trace()
 
-        p0_action = actions[self.player_0_id]
-        p1_action = actions[self.player_1_id]
+        self.state.raw_actions.append(copy.deepcopy(actions))
+        actions = copy.deepcopy(actions)
 
-        self.state.raw_actions.append(actions)
-
-        # Neurips hack TODO: clean up
-        if p0_action in ["<Cooperate>", "<A>"]:
-            p0_action = "C"
-        else:
-            p0_action = "D"
-
-        if p1_action in ["<Cooperate>", "<A>"]:
-            p1_action = "C"
-        else:
-            p1_action = "D"
-
-        actions[self.player_0_id] = p0_action
-        actions[self.player_1_id] = p1_action
-
-        if p0_action == "C" and p1_action == "C":
+        if (
+            p0_action in self.state.cooperate_actions
+            and p1_action in self.state.cooperate_actions
+        ):
             # Both cooperate
             round_rewards[self.player_0_id] = self.reward
             round_rewards[self.player_1_id] = self.reward
-        elif p0_action == "D" and p1_action == "D":
+        elif (
+            p0_action in self.state.defect_actions
+            and p1_action in self.state.defect_actions
+        ):
             # Both defect
             round_rewards[self.player_0_id] = self.punishment
             round_rewards[self.player_1_id] = self.punishment
-        elif p0_action == "C" and p1_action == "D":
+        elif (
+            p0_action in self.state.cooperate_actions
+            and p1_action in self.state.defect_actions
+        ):
             # Alice cooperates, Bob defects
             round_rewards[self.player_0_id] = self.sucker
             round_rewards[self.player_1_id] = self.temptation
-        elif p0_action == "D" and p1_action == "C":
+        elif (
+            p0_action in self.state.defect_actions
+            and p1_action in self.state.cooperate_actions
+        ):
             # Alice defects, Bob cooperates
             round_rewards[self.player_0_id] = self.temptation
             round_rewards[self.player_1_id] = self.sucker
         else:
             # TODO: find clean solution for this
+            # If any of the players outputs Gibberish set rewards to 0
             round_rewards[self.player_0_id] = 0
             round_rewards[self.player_1_id] = 0
 
