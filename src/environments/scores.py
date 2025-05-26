@@ -30,19 +30,24 @@ def r2g_scores(rewards_agent_1, rewards_agent_2, discount_factor):
     )
 
 
-def rloo_scores(rewards_agent_1, rewards_agent_2, discount_factor):
+def rloo_scores(
+    rewards_agent_1, rewards_agent_2, discount_factor, normalizing_factor=1.0
+):
     """
     TODO: documentation
     """
-
+    rewards_agent_1 = rewards_agent_1 / normalizing_factor
     return rewards_to_rloo_advantages(rewards_agent_1, discount_factor=discount_factor)
 
 
-def sum_rloo_scores(rewards_agent_1, rewards_agent_2, discount_factor):
+def sum_rloo_scores(
+    rewards_agent_1, rewards_agent_2, discount_factor, normalizing_factor=1.0
+):
     """
     Sum of discounted rewards-to-go scores.
     """
-
+    rewards_agent_1 = rewards_agent_1 / normalizing_factor
+    rewards_agent_2 = rewards_agent_2 / normalizing_factor
     r1 = rewards_to_rloo_advantages(rewards_agent_1, discount_factor=discount_factor)
     r2 = rewards_to_rloo_advantages(rewards_agent_2, discount_factor=discount_factor)
 
@@ -51,18 +56,22 @@ def sum_rloo_scores(rewards_agent_1, rewards_agent_2, discount_factor):
 
 def rloo_advantage_alignment_scores(
     rewards_agent_1,
-    rewards_agent2,
+    rewards_agent_2,
     discount_factor=1.0,
     beta=1.0,
     regulate_var=False,
     time_decay=False,
+    normalizing_factor=1.0,
 ):
     """
     TODO: documentation
     """
+    n = rewards_agent_1.shape[0]
+    rewards_agent_1 = rewards_agent_1 / normalizing_factor
+    rewards_agent_2 = rewards_agent_2 / normalizing_factor
 
     a1 = rewards_to_rloo_advantages(rewards_agent_1, discount_factor=discount_factor)
-    a2 = rewards_to_rloo_advantages(rewards_agent2, discount_factor=discount_factor)
+    a2 = rewards_to_rloo_advantages(rewards_agent_2, discount_factor=discount_factor)
     advantage_alignment_scores = advantages_to_aa_scores(
         a1,
         a2,
@@ -71,12 +80,17 @@ def rloo_advantage_alignment_scores(
         regulate_var=regulate_var,
         time_decay=time_decay,
     )
-    return advantage_alignment_scores
+    rloo_advantages_alignment_scores = advantage_alignment_scores - (
+        np.sum(advantage_alignment_scores, axis=0, keepdims=True)
+        - advantage_alignment_scores
+    ) / (n - 1)
+    return rloo_advantages_alignment_scores
 
 
 ############################################################
 # Score Utils
 ############################################################
+
 
 def get_discounted_rewards_to_go(rewards, discount_factor):
     """
@@ -135,7 +149,16 @@ def advantages_to_aa_scores(
     discounted_a1 = a1 * (gamma * np.ones(shape=(1, T))) ** (-np.arange(0, T, 1))
     discounted_sums_a1 = discounted_a1 @ (np.triu(np.ones((T, T))) - np.identity(T))
     t_discounts = (gamma * np.ones(shape=(1, T))) ** (np.arange(0, T, 1))
-    alignment_terms = gamma * t_discounts * discounted_sums_a1 * a2
+    # alignment_terms = np.sign(gamma * t_discounts * discounted_sums_a1) * a2
+    original_terms = gamma * t_discounts * discounted_sums_a1 * beta
+    upper_mask = original_terms > 1
+    lower_mask = original_terms < -1
+    clipped_values = np.clip(gamma * t_discounts * discounted_sums_a1 * beta, -1, 1)
+    clipping_ratio = (np.sum(upper_mask) + np.sum(lower_mask)) / upper_mask.size
+    print(f"ratio of clipping {clipping_ratio}")
+    alignment_terms = clipped_values * a2
+    # alignment_terms = np.clip(gamma * t_discounts * discounted_sums_a1 * beta, -1, 1) * a2
+    # alignment_terms = gamma * t_discounts * discounted_sums_a1 * a2
 
     # Normalize alignment terms (across same time step)
     if regulate_var:
@@ -147,7 +170,7 @@ def advantages_to_aa_scores(
         t_values = np.arange(1, T + 1)
         alignment_terms = alignment_terms / t_values
 
-    adv_align_terms = a1 + beta * alignment_terms
+    adv_align_terms = a1 + alignment_terms
 
     return adv_align_terms
 

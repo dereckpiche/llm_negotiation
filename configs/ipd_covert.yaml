@@ -9,7 +9,7 @@ experiment:
   # name: "${now:%Y-%m-%d___%H-%M-%S}_IPD"
   method: generate_and_train
   description: "no description"
-  nb_epochs: 2000
+  nb_epochs: 500
   nb_matches_per_iteration: 64
   reinit_matches_each_it: true
   checkpoint_every_n_iterations: 25
@@ -53,7 +53,7 @@ matches:
   agent_class: "IPDAgent"
 
   max_length: 30
-  continuation_prob: 0.85
+  continuation_prob: 1.0
   same_length_batch: True
 
   # If set to 0, existing setup will run where utilities are randomly sampled at the beginning of each round.
@@ -88,7 +88,7 @@ matches:
         agent_id: "Bob"
         policy_id: "qwen/sp_adapter"
 
-temperature: 0.7
+temperature: 1.0
 
 
 models:
@@ -161,6 +161,7 @@ training:
         score_method: rloo_scores
         score_method_kwargs:
           discount_factor: 1.0
+          normalizing_factor: 5.0
 
     Bob:
       training_data_func: ipd_generate_training_data_from_raw
@@ -170,6 +171,7 @@ training:
         score_method: rloo_scores
         score_method_kwargs:
           discount_factor: 1.0
+          normalizing_factor: 5.0
 
   qwen:
     adapters:
@@ -178,9 +180,9 @@ training:
         train_func_args:
           gradient_checkpointing: true
           temperature: ${temperature}
-          entropy_coef: 0.0
+          entropy_coef: 0.01
           kl_loss_coef: 0.0
           debug_enabled: True
-          debug_log_path: "${oc.env:SCRATCH}/${experiment.name}/trainer_debugger"
+          debug_log_path: "${oc.env:SCRATCH}/llm_negotiation/${experiment.name}/trainer_debugger"
         train_data_args:
           average_score_over_message: False
