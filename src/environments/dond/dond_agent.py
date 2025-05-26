@@ -582,6 +582,19 @@ class DondAgent:
                         coagent_name = agent_name
                         break
 
+            # Get finalization of other player last round
+            last_round_coagent_finalization = None
+            if (
+                state.get("round_finalizations")
+                and len(state["round_finalizations"]) > 0
+            ):
+                last_round_finalizations = state["round_finalizations"][-1]
+                other_role = state["round_agent_roles"][-1].get(coagent_name)
+                if other_role and other_role in last_round_finalizations:
+                    last_round_coagent_finalization = last_round_finalizations[
+                        other_role
+                    ]
+
             return (
                 prompt.replace(
                     "{rounds_per_game}", str(state.get("rounds_per_game", ""))
@@ -596,6 +609,10 @@ class DondAgent:
                     coagent_last_round_points_computed,
                 )
                 .replace("{last_round_coagent_values}", str(last_round_coagent_values))
+                .replace(
+                    "{last_round_coagent_finalization}",
+                    str(last_round_coagent_finalization),
+                )
                 .replace("{current_round}", str(state.get("current_round", "")))
                 .replace("{nb_rounds}", str(state["round_number"] + 1))
                 .replace("{quantities}", str(state.get("quantities", "")))

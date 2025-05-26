@@ -30,7 +30,6 @@ def conversation_to_rl_data(tokenizer, conversation, average_score_over_message)
         use_system_prompt=True,
     )
     # strip "\n" at end of the conversation if present (case for gemma)
-    # TODO (Muqeeth): check if its correct
     if formatted_conversation.endswith("\n"):
         formatted_conversation = formatted_conversation[:-1]
     tokens = tokenizer.encode(

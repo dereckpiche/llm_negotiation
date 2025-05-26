@@ -23,7 +23,6 @@ from training.train_main import *
 from utils.common_imports import *
 from utils.update_start_epoch import update_start_epoch
 
-# TODO (Muqeeth): * might cause circular import errors. Check with Dereck what methods we should actually import
 compute_logger = logging.getLogger("compute_logger")
 
 

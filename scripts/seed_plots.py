@@ -3,7 +3,7 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 
-plot_name = "eventual_defection"
+plot_name = "eventual_defection_restricted"
 X_AXIS = "Training Steps"
 Y_AXIS = "Mutual Defection Rate"
 max_steps = 1750
@@ -36,9 +36,9 @@ color = "#556B2F"  # DARKGREEN  = #556B2F RED = #790D12
 
 
 eventual_defection = [
-    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt/seed_856/0_statistics/mutual_defection_rate.json",
-    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt/seed_256/0_statistics/mutual_defection_rate.json",
-    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt/seed_155/0_statistics/mutual_defection_rate.json",
+    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt_restricted_final_appendix_seed_85/seed_85/0_statistics/mutual_cooperation_rate.json",
+    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt_restricted_final_appendix_seed_105/seed_105/0_statistics/mutual_cooperation_rate.json",
+    "/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt_restricted_final_appendix_seed_945/seed_945/0_statistics/mutual_cooperation_rate.json",
 ]
 
 
