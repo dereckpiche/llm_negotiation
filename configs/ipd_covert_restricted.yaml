@@ -5,7 +5,7 @@ hydra:
     chdir: false
 
 experiment:
-  name: "ipd_overt_restricted"
+  name: "ipd_covert_restricted"
   # name: "${now:%Y-%m-%d___%H-%M-%S}_IPD"
   method: generate_and_train
   description: "no description"
@@ -15,33 +15,33 @@ experiment:
   checkpoint_every_n_iterations: 25
   start_epoch: 0
   resume_experiment: true
-  base_seed: 948
+  base_seed: 1000
 
 ####################################################################################################
 #                                           GENERATION
 ####################################################################################################
 
 common_agent_kwargs: &common_agent_kwargs
-  max_errors: 3
+  max_errors: 0
   allow_reasoning: false
   max_reasoning_chars: 0
 
   intro_prompt: |
-    Welcome to Iterated Prisoner's Dilemma. You are playing against another agent.
+    Welcome to a game. You are playing against another agent.
 
     Game Rules:
-    1. In each round, both agents simultaneously choose to either play Cooperate or Defect.
+    1. In each round, both agents simultaneously choose to either play A or B.
     2. The payoffs for each round are as follows:
-       - If both agents play Cooperate, both receive 3 points.
-       - If both agents play Defect, both receive 1 points.
-       - If one agent plays Cooperate and the other plays Defect, the player who plays Cooperate receives 0 points and the player who plays Defect receives 5 points.
+       - If both agents play A, both receive 3 points.
+       - If both agents play B, both receive 1 points.
+       - If one agent plays A and the other plays B, the player who plays A receives 0 points and the player who plays B receives 5 points.
     3. The goal is to maximize your total points over all rounds.
     4. You will see the previous play of the other player after the completion of a round.
 
-    In order to play Cooperate, you must write "C" and nothing else.
-    In order to play Defect, you must write "D" and nothing else.
+    In order to play A, you must write "A" and nothing else.
+    In order to play B, you must write "B" and nothing else.
 
-    During the entire game, you must only write "C" or "D". If you write anything else, your response will be considered as an error.
+    During the entire game, you must only write "A" or "B". If you write anything else, your response will be considered as an error.
 
     The game starts now:
 
@@ -70,14 +70,13 @@ matches:
 
 
   env_kwargs:
-    cooperate_actions: ["C"]
-    defect_actions: ["D"]
     agents: ['Alice', 'Bob']
+    cooperate_actions: ["A"]
+    defect_actions: ["B"]
     reward: 3
     punishment: 1
     temptation: 5
     sucker: 0
-
 
   agents:
     Alice:
@@ -93,13 +92,14 @@ matches:
 
 temperature: 0.7
 
+
 models:
   qwen:
     name: 'qwen'
-    class: local_llm_v2 # local_llm_v2
+    class: local_llm_v2
     init_args:
+      restrict_tokens: ["A", "B"]
       max_model_length: 10000
-      restrict_tokens: ["C", "D"]
       device: "cuda"
       model_name: "Qwen/Qwen2.5-7B-Instruct"
       bits_and_bytes_args: null
@@ -159,7 +159,7 @@ training:
     Alice:
       training_data_func: ipd_generate_training_data_from_raw
       training_data_func_args:
-        exclude_errors: True
+        exclude_errors: False
         debug_output: True
         score_method: rloo_scores
         score_method_kwargs:
@@ -168,7 +168,7 @@ training:
     Bob:
       training_data_func: ipd_generate_training_data_from_raw
       training_data_func_args:
-        exclude_errors: True
+        exclude_errors: False
         debug_output: True
         score_method: rloo_scores
         score_method_kwargs:
@@ -181,10 +181,10 @@ training:
         train_func_args:
           gradient_checkpointing: true
           temperature: ${temperature}
-          entropy_coef: 0.05
-          restrict_tokens: ["C", "D"]
+          restrict_tokens: ["A", "B"]
+          entropy_coef: 0.0
           kl_loss_coef: 0.0
           debug_enabled: True
-          debug_log_path: "${oc.env:SCRATCH}/llm_negotiation/${experiment.name}/training_debugger"
+          debug_log_path: "${oc.env:SCRATCH}/${experiment.name}/trainer_debugger"
         train_data_args:
           average_score_over_message: False

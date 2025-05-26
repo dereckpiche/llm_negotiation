@@ -49,12 +49,6 @@ def main(cfg):
         logger.addHandler(handler)
         logger.propagate = False  # Prevent duplicate logs
 
-    # TODO (Muqeeth): This is causing ipdb to not work properly. There is a way to do simple logging with python. But I'm not sure how the correct path is set.
-    # # Redirect stdout and stderr to root logger
-    # root_logger = logging.getLogger(f"root")
-    # sys.stdout = LoggerStream(root_logger.info)
-    # sys.stderr = LoggerStream(root_logger.error)
-
     # Run the experiment specified in the configuration
     globals()[cfg.experiment.method](
         OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict"),

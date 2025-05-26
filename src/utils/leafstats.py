@@ -7,16 +7,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 
-# import wandb
-# from comet_ml import Experiment
-
-# experiment = Experiment(
-#     api_key="IvI06nn59lLap4y0JRrwlTViy",
-#     project_name="llm_negotiation",
-#     log_env_gpu=True,
-#     log_env_cpu=True
-# )
-
 
 def append_leafstats(tree1: Dict, tree2: Dict):
     """
@@ -318,43 +308,3 @@ def generate_agent_stats_plots(
     writer.close()
 
     # wb_leafstats(global_stats)
-
-
-if __name__ == "__main__":
-    # Example usage of the improved plotting functions
-
-    # Example 1: Plot seed-averaged statistics for a single agent
-    # plot_seed_averaged_stats_improved(
-    #     stat_paths=["/path/to/seed1/stats", "/path/to/seed2/stats"],
-    #     output_dir="/path/to/output",
-    #     agent_name="alice"
-    # )
-
-    # Example 2: Compare multiple experiments and show grand mean
-    # plot_multi_experiment_comparison(
-    #     experiment_dirs=[
-    #         ("/path/to/experiment1", "Baseline"),
-    #         ("/path/to/experiment2", "Improved Method"),
-    #         ("/path/to/experiment3", "Advanced Technique")
-    #     ],
-    #     output_dir="/path/to/comparison_output",
-    #     agent_name="alice",
-    #     show_grand_mean=True
-    # )
-
-    # Example 3: Computing means across multiple leafstats
-    # trees = []
-    # for path in ["/path/to/tree1.json", "/path/to/tree2.json", "/path/to/tree3.json"]:
-    #     with open(path, 'r') as f:
-    #         trees.append(json.load(f))
-    #
-    # # Compute the mean across all trees
-    # mean_tree = get_mean_leafstats(trees)
-    #
-    # # Save the resulting mean tree
-    # with open("/path/to/output/mean_tree.json", 'w') as f:
-    #     json.dump(mean_tree, f, indent=2)
-
-    # Original example (still works)
-    folder = "/home/mila/d/dereck.piche/scratch/finalseeds"
-    plot_seed_averaged_stats(folder, ["alice", "bob"])

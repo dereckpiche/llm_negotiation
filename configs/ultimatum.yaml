@@ -12,7 +12,6 @@ experiment:
   nb_epochs: 6000
   nb_matches_per_iteration: 32
   checkpoint_every_n_iterations: 25
-  # TODO (Dereck): reinit_matches_each_it is not used anywhere in the code
   reinit_matches_each_it: true
   start_epoch: 0
   resume_experiment: true

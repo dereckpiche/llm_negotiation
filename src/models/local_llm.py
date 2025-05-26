@@ -242,7 +242,6 @@ class LocalLLM:
                 self.log_gpu_usage(f"Before loading VLLM model with {adapter_name}.")
 
                 start_time = time.time()
-                # TODO (Muqeeth): check if its okay to have seed fixed since we update lora parameters anyway.
                 self.vllm_model = LLM(
                     self.model_name,
                     enable_lora=True,
@@ -286,7 +285,6 @@ class LocalLLM:
         if len(contexts) == 0:
             return []
 
-        # TODO (Muqeeth): Vllm has issue with repeating bos_token twice (https://github.com/vllm-project/vllm/pull/15695/files)
         texts = self.tokenizer.apply_chat_template(
             contexts, tokenize=False, add_generation_prompt=True
         )
@@ -348,6 +346,5 @@ class LocalLLM:
         model_logger.info(f"Optimizer state saved to {optimizer_state_path}")
 
         # For vllm
-        # TODO (Muqeeth): check with Dereck if this is needed.
         with open(os.path.join(adapter_path, "config.json"), "w") as f:
             json.dump({"model_type": "llama"}, f)

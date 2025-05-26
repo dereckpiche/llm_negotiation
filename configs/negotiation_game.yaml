@@ -81,7 +81,7 @@ common_agent_kwargs: &common_agent_kwargs
     For this round, the items available are {quantities} and your values for each item category are {values}.
 
   new_round_prompt: |
-    The previous round has ended. In the previous round, the values of {coagent_name} were {last_round_coagent_values}.
+    The previous round has ended. In the previous round, {coagent_name} proposed {last_round_coagent_finalization} for themselves and had values {last_round_coagent_values}.
 
     A new round has started. For this round, the items available are {quantities} and your values for each item category are {values}.
   agent_with_first_move_prompt: |
