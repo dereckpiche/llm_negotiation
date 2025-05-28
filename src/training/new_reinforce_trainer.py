@@ -11,6 +11,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 from training.reinforce_trainer_config import RtConfig
+from training.reinforce_trainer_tally import RtTally
 from utils.common_imports import *
 
 train_logger = logging.getLogger("train_logger")
@@ -34,8 +35,15 @@ class ReinforceTrainer:
         self.config = config
         self.accelerator = Accelerator()
         self.model, self.optimizer = self.accelerator.prepare(model, optimizer)
+        self.tally = RtTally(tokenizer=tokenizer)
 
-    def get_expected_entropy(self, logits: torch.Tensor, action_mask: torch.Tensor):
+    def get_expected_entropy(
+        self,
+        contexts: torch.Tensor,
+        shifted_contexts: torch.Tensor,
+        logits: torch.Tensor,
+        action_mask: torch.Tensor,
+    ):
         """
         Computes entropy were actions are LLM-generated strings of tokens.
         """
@@ -45,10 +53,23 @@ class ReinforceTrainer:
             B, S, T = logits.shape
         except:
             print("Missing batch dimension.")
-        entropy = -torch.special.xlogy(
+        token_entropy_terms = -torch.special.xlogy(
             input=F.log_softmax(logits, dim=-1), other=F.softmax(logits, dim=-1)
-        ).sum()
-        return entropy / B
+        )  # (B, S, T)
+
+        # Log entropy terms for each token generated
+        generated_tokens_entr = torch.gather(
+            input=token_entropy_terms, dim=-1, index=shifted_contexts[:, :, None].long()
+        )
+        self.tally.add_contextualized_token_metrics(
+            contexts=contexts,
+            path=["token_entropy_terms"],
+            metrics=generated_tokens_entr.squeeze(),
+            action_mask=action_mask,
+        )
+
+        expected_entropy = token_entropy_terms.sum() / B  # Scalar
+        return expected_entropy
 
     def get_kl_divergence(
         self,
@@ -180,7 +201,6 @@ class ReinforceTrainer:
             )  # (B, S)
 
             # Forward pass
-            print(contexts_mb.shape)
             logits = self.model(input_ids=contexts_mb, attention_mask=attention_mask)[
                 0
             ]  # (B, S, V)
@@ -207,15 +227,20 @@ class ReinforceTrainer:
 
             # Add value term to loss
             mb_value = -rewarded_action_log_probs.sum() / mb_size
-            step_metrics["mb_values"].append(mb_value.item())
+            self.tally.add_metric(path=["mb_value_loss_terms"], metric=mb_value.item())
             loss += mb_value
 
             # Add entropy regularization term to loss
             if self.config.entropy_coeff != 0.0:
                 mb_entropy = self.get_expected_entropy(
-                    logits=logits, action_mask=action_mask_mb
+                    contexts=contexts_mb,
+                    shifted_contexts=shifted_contexts_mb,
+                    logits=logits,
+                    action_mask=action_mask_mb,
                 )
-                step_metrics["mb_entropies"].append(mb_entropy.item())
+                self.tally.add_metric(
+                    path=["mb_entropy_loss_terms"], metric=mb_entropy.item()
+                )
                 loss += self.config.entropy_coeff * mb_entropy
 
             # Add KL-divergence regularization term to loss
@@ -227,7 +252,7 @@ class ReinforceTrainer:
                     action_log_probs=action_log_probs,
                     index=shifted_contexts_mb,
                 )
-                step_metrics["mb_kl_terms"].append(mb_kl.item())
+                self.tally.add_metric(path=["mb_kl_loss_terms"], metric=mb_kl.item())
                 loss += self.config.kl_coeff * mb_kl
 
             del log_probs

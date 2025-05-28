@@ -10,6 +10,7 @@ class RtConfig:
         restrict_tokens: Union[list[str], None],
         mini_batch_size: int,
         use_gradient_checkpointing: bool,
+        top_k_for_logging: int,
         logging_path: str,
         temperature: float,
         device="cuda:0",
@@ -27,6 +28,9 @@ class RtConfig:
                 through at once. This only affects the GPU usage.
             gradient_clipping:
                 Maximum norm of the gradient component before it gets clipped.
+            top_k_for_logging:
+                For every token generation of the model, the trainer takes
+                the k tokens with highest probability mass and token-level entropy, kl, etc.
             logging_path:
                 Path at which metrics are logged.
         """
@@ -36,6 +40,7 @@ class RtConfig:
         self.restrict_tokens = restrict_tokens
         self.mini_batch_size = mini_batch_size
         self.use_gradient_checkpointing = use_gradient_checkpointing
+        self.top_k_for_logging = top_k_for_logging
         self.logging_path = logging_path
         self.temperature = temperature
         self.device = device

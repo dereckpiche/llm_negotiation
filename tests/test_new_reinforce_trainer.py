@@ -31,6 +31,7 @@ def test_new_reinforce_trainer():
         entropy_coeff=0.01,
         kl_coeff=0.01,
         gradient_clipping=1.0,
+        top_k_for_logging=3,
         restrict_tokens=None,
         mini_batch_size=2,
         use_gradient_checkpointing=False,
@@ -49,8 +50,8 @@ def test_new_reinforce_trainer():
 
     # Dummy data
     contexts = [
-        torch.tensor([35, 1, 2, 3, 4, 5]),
-        torch.tensor([35, 6, 7, 8, 9, 10]),
+        torch.tensor([60, 87, 69, 98, 96, 69]),
+        torch.tensor([35, 45, 65, 76, 64, 10]),
     ]
     scores = [
         torch.tensor([0.0, 0.3, 0.0, 1.0, 1.0, 0.0]),
@@ -60,6 +61,10 @@ def test_new_reinforce_trainer():
 
     # Run a reinforce step
     trainer.apply_reinforce_step(contexts, scores, action_masks)
+    tally = trainer.tally
+    import pdb
+
+    pdb.set_trace()
     print("Reinforce step completed.")
 
 
