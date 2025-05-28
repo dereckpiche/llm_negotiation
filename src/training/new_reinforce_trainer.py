@@ -26,6 +26,9 @@ class ReinforceTrainer:
         config: RtConfig,
     ):
         self.model = model
+        self.tokenizer = tokenizer
+        if self.tokenizer.pad_token_id is None:
+            self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         self.optimizer = optimizer
         self.lr_scheduler = lr_scheduler
         self.config = config
@@ -44,7 +47,7 @@ class ReinforceTrainer:
             print("Missing batch dimension.")
         entropy = -torch.special.xlogy(
             input=F.log_softmax(logits, dim=-1), other=F.softmax(logits, dim=-1)
-        ).sum(dim=-1)
+        ).sum()
         return entropy / B
 
     def get_kl_divergence(
@@ -59,7 +62,10 @@ class ReinforceTrainer:
         # Ref 1: http://joschu.net/blog/kl-approx.html
         # Ref 2: https://github.dev/huggingface/trl/blob/main/trl/trainer/grpo_trainer.py#L945
         """
+
         self.model.eval()
+
+        # TODO: (Dereck) Complete this code
 
         # Disable policy adapter to run inference on base model
         with torch.no_grad():
@@ -81,7 +87,7 @@ class ReinforceTrainer:
             torch.exp(ref_model_action_log_probs - action_log_probs)
             - (ref_model_action_log_probs - action_log_probs)
             - 1
-        )
+        ).sum()
 
         return kl_div
 
@@ -115,15 +121,16 @@ class ReinforceTrainer:
 
         See https://huggingface.co/docs/accelerate/usage_guides/gradient_accumulation#converting-it-to-accelerate
         """
-        step_metrics = {}
+        step_metrics = {"mb_values": [], "mb_entropies": [], "mb_kl_terms": []}
         self.model.train()
         loss = 0.0
         mb_size = self.config.mini_batch_size
+        device = self.accelerator.device
         nb_rollouts = len(contexts)
+        gradient_accumulation_steps = nb_rollouts / mb_size
 
         for mb in range(0, len(contexts), mb_size):
             # Convert sequences to padded tensor minibatches
-            device = self.model_accelerator.device
 
             contexts_mb = [c[:-1] for c in contexts[mb : mb + mb_size]]
             contexts_mb = (
@@ -161,7 +168,7 @@ class ReinforceTrainer:
             action_mask_mb = [am[1:] for am in action_masks[mb : mb + mb_size]]
             action_mask_mb = (
                 pad_sequence(
-                    sequences=action_masks_mb, padding_value=0.0, batch_first=True
+                    sequences=action_mask_mb, padding_value=0.0, batch_first=True
                 )
                 .float()
                 .to(device)
@@ -173,7 +180,8 @@ class ReinforceTrainer:
             )  # (B, S)
 
             # Forward pass
-            logits = model(input_ids=context_batch, attention_mask=attention_mask)[
+            print(contexts_mb.shape)
+            logits = self.model(input_ids=contexts_mb, attention_mask=attention_mask)[
                 0
             ]  # (B, S, V)
 
@@ -194,7 +202,7 @@ class ReinforceTrainer:
             )  # (B, S)
 
             rewarded_action_log_probs = torch.special.xlogy(
-                input=scores_mb * action_mask_mb, other=torch.action_log_probs
+                input=scores_mb * action_mask_mb, other=action_log_probs
             )  # (B, S)
 
             # Add value term to loss
@@ -228,8 +236,8 @@ class ReinforceTrainer:
             self.accelerator.backward(loss)
 
             # ensure gpu memory is freed
+            del contexts_mb
             del shifted_contexts_mb
-            del context_batch
             del scores_mb
             del action_mask_mb
             del attention_mask
@@ -239,22 +247,22 @@ class ReinforceTrainer:
             del rewarded_action_log_probs
             torch.cuda.empty_cache()
 
-        self.accelerator.sync_gradients
+        # self.accelerator.sync_gradients
 
         # Clip gradients and take step
-        if gradient_clipping is not None:
-            grad_norm = model_accelerator.clip_grad_norm_(
-                model.parameters(), gradient_clipping
+        if self.config.gradient_clipping is not None:
+            grad_norm = self.accelerator.clip_grad_norm_(
+                self.model.parameters(), self.config.gradient_clipping
             )
             step_metrics["gradient_norm"] = grad_norm.item()
 
         # Take step
-        optimizer.step()
-        optimizer.zero_grad()
+        self.optimizer.step()
+        self.optimizer.zero_grad()
 
         # Clear
         # TODO: verify
-        self.accelerator.clear(model, optimizer)
+        self.accelerator.clear(self.model, self.optimizer)
         import gc
 
         gc.collect()

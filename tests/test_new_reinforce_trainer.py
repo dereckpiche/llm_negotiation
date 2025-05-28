@@ -49,8 +49,8 @@ def test_new_reinforce_trainer():
 
     # Dummy data
     contexts = [
-        torch.tensor([50256, 1, 2, 3, 4, 5]),
-        torch.tensor([50256, 6, 7, 8, 9, 10]),
+        torch.tensor([35, 1, 2, 3, 4, 5]),
+        torch.tensor([35, 6, 7, 8, 9, 10]),
     ]
     scores = [
         torch.tensor([0.0, 0.3, 0.0, 1.0, 1.0, 0.0]),
