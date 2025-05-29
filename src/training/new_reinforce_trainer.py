@@ -37,6 +37,56 @@ class ReinforceTrainer:
         self.model, self.optimizer = self.accelerator.prepare(model, optimizer)
         self.tally = RtTally(tokenizer=tokenizer)
 
+    def get_training_data(self, path: str):
+        """
+        TODO: docstring
+        Converts external folder of json conversation
+        files into lists of training torch tensors.
+        """
+        all_contexts = []
+        all_scores = []
+        all_action_masks = []
+
+        for path in os.listdir(path):
+            # Load conversation from json file
+            with open(path) as f:
+                conversation = json.load(f)
+
+            formatted_conversation = tokenizer.apply_chat_template(
+                conversation,
+                add_generation_prompt=False,
+                tokenize=False,
+                use_system_prompt=True,
+            )
+
+            context = tokenizer.encode(
+                formatted_conversation, return_tensors="pt", add_special_tokens=False
+            ).squeeze(0)
+
+            scores = torch.zeros(tokens.shape)
+            action_mask = torch.zeros(tokens.shape)
+
+            for i, message in enumerate(conversation):
+                role = message.get("role", None)
+                if role != "assistant":
+                    continue
+                score = message.get("score", None)
+                nb_tokens_before_response = self.tokenizer.apply_chat_template(
+                    conversation,
+                    add_generation_prompt=True,
+                    tokenize=True,
+                    use_system_prompt="pt",
+                ).shape[0]
+                nb_tokens_in_response = len(self.tokenizer.convert_ids_to_tokens(tids))
+                scores[nb_tokens_before_response:nb_tokens_in_response] = score
+                action_mask[nb_tokens_before_response:nb_tokens_in_response] = 1.0
+
+            all_contexts.append(context)
+            all_scores.append(scores)
+            all_action_masks.append(action_mask)
+
+        return all_contexts, all_scores, all_action_masks
+
     def get_expected_entropy(
         self,
         contexts: torch.Tensor,

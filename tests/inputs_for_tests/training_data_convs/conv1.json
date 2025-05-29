@@ -1,0 +1,123 @@
+[
+    {
+        "role": "user",
+        "content": "Welcome to the Iterated Prisoner's Dilemma game! You are playing against another agent.\n\n\nGame Rules:\n1. You and another agent will play multiple rounds of the Prisoner's Dilemma.\n2. In each round, both agents simultaneously choose to either Cooperate (C) or Defect (D).\n3. The payoffs for each round are as follows:\n   - If both agents cooperate, both receive 3 points.\n   - If both agents defect, both receive 1 point.\n   - If one agent cooperates and the other defects, the cooperator receives 0 points and the defector receives 5 points.\n4. The goal is to maximize your total points over all rounds.\n5. You will see the history of previous rounds, including both agents' choices and points earned.\n\nIn order to cooperate, you must write \"<Cooperate>\" and nothing else.\nIn order to defect, you must write \"<Defect>\" and nothing else.\n\nDuring the entire game, you must only write \"<Cooperate>\" or \"<Defect>\". If you write anything else, your response will be considered as an error.\n\nThe game starts now:\n",
+        "round_number": 0
+    },
+    {
+        "role": "assistant",
+        "content": "<Cooperate>",
+        "round_number": 0,
+        "score": 3.5238095238095255
+    },
+    {
+        "role": "user",
+        "content": "Last round, the other player cooperated.",
+        "round_number": 1
+    },
+    {
+        "role": "assistant",
+        "content": "<Defect>",
+        "round_number": 1,
+        "score": -1.6780045351473873
+    },
+    {
+        "role": "user",
+        "content": "Last round, the other player cooperated.",
+        "round_number": 2
+    },
+    {
+        "role": "assistant",
+        "content": "<Defect>",
+        "round_number": 2,
+        "score": 0.0
+    },
+    {
+        "role": "user",
+        "content": "Last round, the other player defected.",
+        "round_number": 3
+    },
+    {
+        "role": "assistant",
+        "content": "<Cooperate>",
+        "round_number": 3,
+        "score": 10.985638699924408
+    },
+    {
+        "role": "user",
+        "content": "Last round, the other player defected.",
+        "round_number": 4
+    },
+    {
+        "role": "assistant",
+        "content": "<Cooperate>",
+        "round_number": 4,
+        "score": -15.319475938523556
+    },
+    {
+        "role": "user",
+        "content": "Last round, the other player cooperated.",
+        "round_number": 5
+    },
+    {
+        "role": "assistant",
+        "content": "<Defect>",
+        "round_number": 5,
+        "score": -21.453010833963212
+    },
+    {
+        "role": "user",
+        "content": "Last round, the other player cooperated.",
+        "round_number": 6
+    },
+    {
+        "role": "assistant",
+        "content": "<Defect>",
+        "round_number": 6,
+        "score": -10.303099017384724
+    },
+    {
+        "role": "user",
+        "content": "Last round, the other player defected.",
+        "round_number": 7
+    },
+    {
+        "role": "assistant",
+        "content": "<Cooperate>",
+        "round_number": 7,
+        "score": 9.837238599143355
+    },
+    {
+        "role": "user",
+        "content": "Last round, the other player defected.",
+        "round_number": 8
+    },
+    {
+        "role": "assistant",
+        "content": "<Cooperate>",
+        "round_number": 8,
+        "score": -37.88964474678761
+    },
+    {
+        "role": "user",
+        "content": "Last round, the other player cooperated.",
+        "round_number": 9
+    },
+    {
+        "role": "assistant",
+        "content": "<Defect>",
+        "round_number": 9,
+        "score": -44.02317964222727
+    },
+    {
+        "role": "user",
+        "content": "Last round, the other player cooperated.",
+        "round_number": 10
+    },
+    {
+        "role": "assistant",
+        "content": "<Defect>",
+        "round_number": 10,
+        "score": -26.49987402368355
+    }
+]
