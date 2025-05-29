@@ -47,39 +47,51 @@ class ReinforceTrainer:
         all_scores = []
         all_action_masks = []
 
-        for path in os.listdir(path):
+        for filepath in os.listdir(path):
             # Load conversation from json file
-            with open(path) as f:
+            with open(os.path.join(path, filepath)) as f:
                 conversation = json.load(f)
 
-            formatted_conversation = tokenizer.apply_chat_template(
+            formatted_conversation = self.tokenizer.apply_chat_template(
                 conversation,
                 add_generation_prompt=False,
                 tokenize=False,
                 use_system_prompt=True,
             )
 
-            context = tokenizer.encode(
+            context = self.tokenizer.encode(
                 formatted_conversation, return_tensors="pt", add_special_tokens=False
-            ).squeeze(0)
+            ).squeeze()
 
-            scores = torch.zeros(tokens.shape)
-            action_mask = torch.zeros(tokens.shape)
+            scores = torch.zeros(context.shape)
+            action_mask = torch.zeros(context.shape)
 
             for i, message in enumerate(conversation):
                 role = message.get("role", None)
                 if role != "assistant":
                     continue
+                response = message.get("content", None)
                 score = message.get("score", None)
-                nb_tokens_before_response = self.tokenizer.apply_chat_template(
-                    conversation,
-                    add_generation_prompt=True,
-                    tokenize=True,
-                    use_system_prompt="pt",
-                ).shape[0]
-                nb_tokens_in_response = len(self.tokenizer.convert_ids_to_tokens(tids))
-                scores[nb_tokens_before_response:nb_tokens_in_response] = score
-                action_mask[nb_tokens_before_response:nb_tokens_in_response] = 1.0
+                nb_tokens_before_response = (
+                    self.tokenizer.apply_chat_template(
+                        conversation[:i],
+                        add_generation_prompt=True,
+                        tokenize=True,
+                        return_tensors="pt",
+                    )
+                    .squeeze()
+                    .shape[0]
+                )
+                nb_tokens_in_response = len(self.tokenizer.encode(response))
+                scores[
+                    nb_tokens_before_response : nb_tokens_before_response
+                    + nb_tokens_in_response
+                ] = score
+                print(nb_tokens_before_response, nb_tokens_in_response)
+                action_mask[
+                    nb_tokens_before_response : nb_tokens_before_response
+                    + nb_tokens_in_response
+                ] = 1.0
 
             all_contexts.append(context)
             all_scores.append(scores)

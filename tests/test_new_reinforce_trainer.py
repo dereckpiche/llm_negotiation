@@ -1,5 +1,6 @@
 import os
 
+import pandas as pd
 import torch
 import torch.optim as optim
 from peft import LoraConfig, get_peft_model
@@ -11,7 +12,7 @@ from training.reinforce_trainer_config import RtConfig
 
 def test_new_reinforce_trainer():
     # Use a tiny model for testing
-    model_name = "arnir0/Tiny-LLM"
+    model_name = "HuggingFaceTB/SmolLM-135M-Instruct"  # or arnir0/Tiny-LLM
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(model_name)
     lora_config = LoraConfig(
@@ -64,8 +65,22 @@ def test_new_reinforce_trainer():
     tally = trainer.tally
     import pdb
 
-    pdb.set_trace()
     print("Reinforce step completed.")
+
+    all_contexts, all_scores, all_action_masks = trainer.get_training_data(
+        "tests/inputs_for_tests/training_data_convs"
+    )
+    context = all_contexts[0]
+    scores = all_scores[0]
+    action_mask = all_action_masks[0]
+    df = pd.DataFrame(
+        data={
+            "Token": tokenizer.convert_ids_to_tokens(context.tolist()),
+            "Score": scores.tolist(),
+            "Action Mask": action_mask.tolist(),
+        }
+    )
+    df.to_csv("tests/outputs_for_tests/processed_conv.csv")
 
 
 if __name__ == "__main__":
