@@ -13,14 +13,14 @@
     },
     {
         "role": "user",
-        "content": "This happened. That happened.",
+        "content": "This happened. Oh. That happened.",
         "round_number": 1
     },
     {
         "role": "assistant",
-        "content": "Now I will play x.",
-        "reward": -1,
-        "co_reward": 10
+        "content": "Now I will play I. And then P.",
+        "reward": 9,
+        "co_reward": 1
     },
     {
         "role": "user",
@@ -28,18 +28,8 @@
     },
     {
         "role": "assistant",
-        "content": "Now I will play U.",
-        "reward": 4,
-        "co_reward": -9
-    },
-    {
-        "role": "user",
-        "content": "This has occured again. You must now do P."
-    },
-    {
-        "role": "assistant",
-        "content": "Now I will play Z.",
-        "reward": -1,
-        "co_reward": 4
+        "content": "Now I will play at.",
+        "reward": 66,
+        "co_reward": -3
     }
 ]

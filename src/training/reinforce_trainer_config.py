@@ -13,6 +13,9 @@ class RtConfig:
         top_k_for_logging: int,
         logging_path: str,
         temperature: float,
+        discount_factor: float,
+        use_sum_rewards: bool,
+        use_advantage_alignment: bool,
         device="cuda:0",
     ):
         """
@@ -31,6 +34,12 @@ class RtConfig:
             top_k_for_logging:
                 For every token generation of the model, the trainer takes
                 the k tokens with highest probability mass and token-level entropy, kl, etc.
+            discount_factor:
+                TODO
+            use_sum_rewards:
+                TODO
+            use_advantage_alignment:
+                TODO
             logging_path:
                 Path at which metrics are logged.
         """
@@ -44,3 +53,6 @@ class RtConfig:
         self.logging_path = logging_path
         self.temperature = temperature
         self.device = device
+        self.discount_factor = discount_factor
+        self.use_sum_rewards = use_sum_rewards
+        self.use_advantage_alignment = use_advantage_alignment

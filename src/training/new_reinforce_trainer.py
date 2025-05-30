@@ -17,7 +17,13 @@ from utils.common_imports import *
 train_logger = logging.getLogger("train_logger")
 
 
-class ReinforceTrainer:
+class ReinforceTrainerWRS:
+    """
+    REINFORCE trainer with reward shaping.
+    To be used in a multi-agent context.
+    Generalizes to single-agent case if used carefully.
+    """
+
     def __init__(
         self,
         model: AutoModelForCausalLM,
@@ -26,6 +32,7 @@ class ReinforceTrainer:
         lr_scheduler: torch.optim.lr_scheduler,
         config: RtConfig,
     ):
+        # TODO: add lr scheduler to accelerator
         self.model = model
         self.tokenizer = tokenizer
         if self.tokenizer.pad_token_id is None:
@@ -37,6 +44,117 @@ class ReinforceTrainer:
         self.model, self.optimizer = self.accelerator.prepare(model, optimizer)
         self.tally = RtTally(tokenizer=tokenizer)
 
+    def advantages_to_aa_scores(
+        self,
+        a1: np.array,
+        a2: np.array,
+    ):
+        """
+        Calculate the advantage alignment scores with vectorization.
+
+        Args:
+            a1 (np.ndarray):
+                The first advantage array.
+            a2 (np.ndarray):
+                The second advantage array.
+            gamma (float, optional):
+                The discount factor. Defaults to 0.9.
+            beta (float, optional):
+                The shaping factor. Defaults to 1.0.
+            regulate_var (bool, optional):
+                Whether to regulate variance. Defaults to False.
+            time_decay (bool, optional):
+            Whether to apply 1/t regularization. Defaults to False.
+
+        Returns:
+            adv_align_terms (np.ndarray): The advantage alignment terms.
+
+        The advantage alignment score is calculated as:
+        .. math::
+            A^*(s_t, a_t, b_t) = A^1(s_t, a_t, b_t) + \\beta \\gamma \\cdot
+            \\left( \\sum_{k < t} \\gamma^{t-k} A^1(s_k, a_k, b_k) \\right)
+            A^2(s_t, a_t, b_t)
+
+        Refer to https://arxiv.org/abs/2406.14662
+
+        """
+        # TODO: use self.config
+
+        # Regular alignment terms
+        T = a1.shape[1]
+        discounted_a1 = a1 * (gamma * np.ones(shape=(1, T))) ** (-np.arange(0, T, 1))
+        discounted_sums_a1 = discounted_a1 @ (np.triu(np.ones((T, T))) - np.identity(T))
+        t_discounts = (gamma * np.ones(shape=(1, T))) ** (np.arange(0, T, 1))
+        alignment_terms = gamma * t_discounts * discounted_sums_a1 * a2
+
+        # Normalize alignment terms (across same time step)
+        if regulate_var:
+            reg_coef = np.std(a1[:, -1]) / (np.std(alignment_terms[:, -1]) + 1e-10)
+            alignment_terms = reg_coef * alignment_terms
+
+        # 1/t Regularization
+        if time_decay:
+            t_values = np.arange(1, T + 1)
+            alignment_terms = alignment_terms / t_values
+
+        adv_align_terms = a1 + beta * alignment_terms
+
+        return adv_align_terms
+
+    def discount_returns(self, rewards: torch.Tensor):
+        """
+        TODO: docstring
+        """
+        dr = torch.zeros(rewards.shape)
+        T = rewards.shape[0]
+        for i in range(T - 2, -1):
+            dr[i] = rewards[i] + self.config.discount_factor * dr[i + 1]
+        return dr
+
+    def get_response_scores_from_data(self, path: str):
+        """
+        This is where the reward shaping occurs.
+
+        Process all of the rewards in the data at once.
+        Obtains the score attributed to each of the agent's responses.
+        #TODO: docstring
+        """
+        all_response_scores = {}
+
+        for filepath in os.listdir(path):
+            rewards = []
+            co_rewards = []
+            full_path = open(os.path.join(path, filepath))
+
+            # Extract the rewards from conversation history
+            # Each response corresponds to one component
+            # of the score vector
+            with open(os.path.join(path, filepath)) as f:
+                conversation = json.load(f)
+                for message in conversation:
+                    r = message.get("reward", None)
+                    co_r = message.get("co_reward", None)
+                    if r != None:
+                        rewards.append(r)
+                        co_rewards.append(co_r)
+
+            s = torch.Tensor(rewards)
+            co_s = torch.Tensor(co_rewards)
+
+            if self.config.use_sum_rewards:
+                s = s + co_s
+                co_s = s
+
+            s = self.discount_returns(rewards=s)
+            co_s = self.discount_returns(rewards=co_s)
+
+            if self.config.use_advantage_alignment:
+                s = self.advantages_to_aa_scores(a1=s, a2=co_s)
+
+            all_response_scores[filepath] = s
+
+        return all_response_scores
+
     def get_training_data(self, path: str):
         """
         TODO: docstring
@@ -47,18 +165,18 @@ class ReinforceTrainer:
         all_scores = []
         all_action_masks = []
 
+        all_per_response_scores = self.get_response_scores_from_data(path=path)
+
         for filepath in os.listdir(path):
             # Load conversation from json file
             with open(os.path.join(path, filepath)) as f:
                 conversation = json.load(f)
-
             formatted_conversation = self.tokenizer.apply_chat_template(
                 conversation,
                 add_generation_prompt=False,
                 tokenize=False,
                 use_system_prompt=True,
             )
-
             context = self.tokenizer.encode(
                 formatted_conversation, return_tensors="pt", add_special_tokens=False
             ).squeeze()
@@ -66,12 +184,17 @@ class ReinforceTrainer:
             scores = torch.zeros(context.shape)
             action_mask = torch.zeros(context.shape)
 
+            per_response_scores = all_per_response_scores[filepath]
+
+            response_score_pos = 0
             for i, message in enumerate(conversation):
+                # TODO: verify that EOS token is properly included
                 role = message.get("role", None)
                 if role != "assistant":
                     continue
                 response = message.get("content", None)
-                score = message.get("score", None)
+                score = per_response_scores[response_score_pos]
+                response_score_pos += 1
                 nb_tokens_before_response = (
                     self.tokenizer.apply_chat_template(
                         conversation[:i],
@@ -82,16 +205,13 @@ class ReinforceTrainer:
                     .squeeze()
                     .shape[0]
                 )
+                # TODO: write this cleanly
+
                 nb_tokens_in_response = len(self.tokenizer.encode(response))
-                scores[
-                    nb_tokens_before_response : nb_tokens_before_response
-                    + nb_tokens_in_response
-                ] = score
-                print(nb_tokens_before_response, nb_tokens_in_response)
-                action_mask[
-                    nb_tokens_before_response : nb_tokens_before_response
-                    + nb_tokens_in_response
-                ] = 1.0
+                a = nb_tokens_before_response
+                b = nb_tokens_in_response
+                scores[a : a + b + 1] = score
+                action_mask[a : a + b + 1] = 1.0
 
             all_contexts.append(context)
             all_scores.append(scores)
@@ -143,7 +263,8 @@ class ReinforceTrainer:
         """
         TODO
         # Ref 1: http://joschu.net/blog/kl-approx.html
-        # Ref 2: https://github.dev/huggingface/trl/blob/main/trl/trainer/grpo_trainer.py#L945
+        # Ref 2: https://github.dev/huggingface/trl/
+        # blob/main/trl/trainer/grpo_trainer.py#L945
         """
 
         self.model.eval()
@@ -157,8 +278,10 @@ class ReinforceTrainer:
                     input_ids=input_ids, attention_mask=attention_mask
                 )[0]
         self.model.train()
-        ref_model_logits = ref_model_logits / self.config.temperature  # (B, S, V)
-        ref_model_log_probs = F.log_softmax(ref_model_logits, dim=-1)  # (B, S, V)
+        ref_model_logits = ref_model_logits / self.config.temperature
+        # (B, S, V)
+        ref_model_log_probs = F.log_softmax(ref_model_logits, dim=-1)
+        # (B, S, V)
         ref_model_action_log_probs = ref_model_log_probs.gather(
             dim=-1, index=index.unsqueeze(-1)
         ).squeeze(
@@ -202,9 +325,9 @@ class ReinforceTrainer:
         """
         TODO: docstring
 
-        See https://huggingface.co/docs/accelerate/usage_guides/gradient_accumulation#converting-it-to-accelerate
+        See https://huggingface.co/docs/accelerate/usage_guides/
+        gradient_accumulation#converting-it-to-accelerate
         """
-        step_metrics = {"mb_values": [], "mb_entropies": [], "mb_kl_terms": []}
         self.model.train()
         loss = 0.0
         mb_size = self.config.mini_batch_size
@@ -341,7 +464,7 @@ class ReinforceTrainer:
             grad_norm = self.accelerator.clip_grad_norm_(
                 self.model.parameters(), self.config.gradient_clipping
             )
-            step_metrics["gradient_norm"] = grad_norm.item()
+            self.tally.add_metric(path=["gradient_norm"], metric=grad_norm.item())
 
         # Take step
         self.optimizer.step()
@@ -354,3 +477,13 @@ class ReinforceTrainer:
 
         gc.collect()
         torch.cuda.empty_cache()
+
+    def apply_reinforce_step_on_data_folder(self, path: str):
+        """
+        TODO: docstring
+        """
+        contexts, scores, action_masks = self.get_training_data(path=path)
+
+        self.apply_reinforce_step(
+            contexts=contexts, scores=scores, action_masks=action_masks
+        )
