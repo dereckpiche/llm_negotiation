@@ -46,8 +46,8 @@ class ReinforceTrainerWRS:
 
     def advantages_to_aa_scores(
         self,
-        a1: np.array,
-        a2: np.array,
+        a1: np.ndarray,
+        a2: np.ndarray,
     ):
         """
         Calculate the advantage alignment scores with vectorization.
@@ -78,7 +78,14 @@ class ReinforceTrainerWRS:
         Refer to https://arxiv.org/abs/2406.14662
 
         """
-        # TODO: use self.config
+        if len(a1.shape) == 1:
+            a1 = a1[None, :]
+        if len(a2.shape) == 1:
+            a2 = a2[None, :]
+        a1 = np.array(a1)
+        a2 = np.array(a2)
+        gamma = self.config.discount_factor
+        beta = self.config.ad_align_beta
 
         # Regular alignment terms
         T = a1.shape[1]
@@ -88,24 +95,28 @@ class ReinforceTrainerWRS:
         alignment_terms = gamma * t_discounts * discounted_sums_a1 * a2
 
         # Normalize alignment terms (across same time step)
-        if regulate_var:
+        if self.config.use_variance_regularization_in_ad_align:
             reg_coef = np.std(a1[:, -1]) / (np.std(alignment_terms[:, -1]) + 1e-10)
             alignment_terms = reg_coef * alignment_terms
 
-        # 1/t Regularization
-        if time_decay:
+        # 1/1+t Regularization
+        if self.config.use_time_regularization_in_ad_align:
             t_values = np.arange(1, T + 1)
             alignment_terms = alignment_terms / t_values
 
+        self.tally.add_metric(
+            path=["advantage_alignment_terms"], metric=alignment_terms
+        )
+
         adv_align_terms = a1 + beta * alignment_terms
 
-        return adv_align_terms
+        return adv_align_terms.squeeze()
 
-    def discount_returns(self, rewards: torch.Tensor):
+    def discount_returns(self, rewards: np.ndarray):
         """
         TODO: docstring
         """
-        dr = torch.zeros(rewards.shape)
+        dr = np.zeros(rewards.shape)
         T = rewards.shape[0]
         for i in range(T - 2, -1):
             dr[i] = rewards[i] + self.config.discount_factor * dr[i + 1]
@@ -118,6 +129,10 @@ class ReinforceTrainerWRS:
         Process all of the rewards in the data at once.
         Obtains the score attributed to each of the agent's responses.
         #TODO: docstring
+        Args:
+
+        Returns:
+            all_response_scores : list[torch.Tensor]
         """
         all_response_scores = {}
 
@@ -138,8 +153,12 @@ class ReinforceTrainerWRS:
                         rewards.append(r)
                         co_rewards.append(co_r)
 
-            s = torch.Tensor(rewards)
-            co_s = torch.Tensor(co_rewards)
+            s = np.array(rewards)
+            co_s = np.array(co_rewards)
+
+            self.tally.add_metric(path=["rewards"], metric=s)
+
+            self.tally.add_metric(path=["co_rewards"], metric=co_s)
 
             if self.config.use_sum_rewards:
                 s = s + co_s
@@ -148,10 +167,14 @@ class ReinforceTrainerWRS:
             s = self.discount_returns(rewards=s)
             co_s = self.discount_returns(rewards=co_s)
 
+            self.tally.add_metric(path=["discounted_returns"], metric=s)
+
+            self.tally.add_metric(path=["co_discounted_returns"], metric=co_s)
+
             if self.config.use_advantage_alignment:
                 s = self.advantages_to_aa_scores(a1=s, a2=co_s)
 
-            all_response_scores[filepath] = s
+            all_response_scores[filepath] = torch.Tensor(s)
 
         return all_response_scores
 

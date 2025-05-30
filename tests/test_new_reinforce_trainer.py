@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 
 import pandas as pd
 import torch
@@ -8,6 +9,27 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from training.new_reinforce_trainer import ReinforceTrainerWRS
 from training.reinforce_trainer_config import RtConfig
+
+now = datetime.now()
+logging_path = os.path.join(os.getcwd(), "tests/outputs_for_tests/{now}")
+rt_config = RtConfig(
+    entropy_coeff=0.01,
+    kl_coeff=0.01,
+    gradient_clipping=1.0,
+    top_k_for_logging=3,
+    restrict_tokens=None,
+    mini_batch_size=2,
+    use_gradient_checkpointing=False,
+    logging_path=logging_path,
+    temperature=1.0,
+    device="cuda:0",
+    discount_factor=0.9,
+    use_sum_rewards=True,
+    use_advantage_alignment=True,
+    use_variance_regularization_in_ad_align=True,
+    use_time_regularization_in_ad_align=True,
+    ad_align_beta=1.0,
+)
 
 
 def test_simple_step():
@@ -102,38 +124,18 @@ def test_train_on_folder():
     optimizer = optim.AdamW(model.parameters(), lr=1e-4)
     lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.9)
 
-    from datetime import datetime
-
-    now = datetime.now()
-    logging_path = os.path.join(os.getcwd(), "tests/outputs_for_tests/{now}")
-
-    config = RtConfig(
-        entropy_coeff=0.01,
-        kl_coeff=0.01,
-        gradient_clipping=1.0,
-        top_k_for_logging=3,
-        restrict_tokens=None,
-        mini_batch_size=2,
-        use_gradient_checkpointing=False,
-        logging_path=logging_path,
-        temperature=1.0,
-        device="cuda:0",
-        discount_factor=0.9,
-        use_sum_rewards=False,
-        use_advantage_alignment=False,
-    )
-
     trainer = ReinforceTrainerWRS(
         model=model,
         tokenizer=tokenizer,
         optimizer=optimizer,
         lr_scheduler=lr_scheduler,
-        config=config,
+        config=rt_config,
     )
 
     trainer.apply_reinforce_step_on_data_folder(
         "tests/inputs_for_tests/training_data_convs"
     )
+    trainer.tally.save(path="tests/outputs_for_tests/tally_test_output.json")
 
     print("Done")
 

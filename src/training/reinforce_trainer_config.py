@@ -16,6 +16,9 @@ class RtConfig:
         discount_factor: float,
         use_sum_rewards: bool,
         use_advantage_alignment: bool,
+        use_variance_regularization_in_ad_align: bool,
+        use_time_regularization_in_ad_align: bool,
+        ad_align_beta: float,
         device="cuda:0",
     ):
         """
@@ -40,6 +43,12 @@ class RtConfig:
                 TODO
             use_advantage_alignment:
                 TODO
+            use_variance_regularization_in_ad_align:
+                TODO
+            use_time_regularization_in_ad_align:
+                TODO
+            ad_align_beta:
+                TODO
             logging_path:
                 Path at which metrics are logged.
         """
@@ -56,3 +65,8 @@ class RtConfig:
         self.discount_factor = discount_factor
         self.use_sum_rewards = use_sum_rewards
         self.use_advantage_alignment = use_advantage_alignment
+        self.use_variance_regularization_in_ad_align = (
+            use_variance_regularization_in_ad_align
+        )
+        self.use_time_regularization_in_ad_align = use_time_regularization_in_ad_align
+        self.ad_align_beta = ad_align_beta

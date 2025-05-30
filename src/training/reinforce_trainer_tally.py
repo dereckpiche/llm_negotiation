@@ -1,5 +1,9 @@
 import copy
+import json
+import os
+from typing import Union
 
+import numpy as np
 import torch
 from transformers import AutoTokenizer
 
@@ -43,14 +47,19 @@ class RtTally:
             dictio = dictio.setdefault(sp, {})
         dictio[path[-1]] = value
 
-    def add_metric(self, path: str, metric: any):
+    def add_metric(self, path: str, metric: Union[float, int, str, np.ndarray, dict]):
         """
         TODO: docstring
         """
+        assert isinstance(
+            metric, Union[float, int, str, np.ndarray, dict]
+        ), "Metric of incorrect type"
         current_metric = self.get_at_path(dictio=self.tally, path=path)
-        if current_metric == None:
+        if isinstance(metric, Union[np.ndarray, torch.Tensor]):
+            metric = list(metric)
+        elif current_metric == None:
             self.set_at_path(dictio=self.tally, path=path, value=metric)
-        elif isinstance(current_metric, list):
+        elif isinstance(current_metric, list) and not isinstance(metric, list):
             current_metric.append(metric)
             self.set_at_path(dictio=self.tally, path=path, value=current_metric)
         else:
@@ -87,6 +96,7 @@ class RtTally:
                     }
                     self.add_metric(path=path, metric=metric)
 
-    def save(path: str):
-        os.makedirs(name=path, exist_ok=True)
-        json.dump(path, self.tally)
+    def save(self, path: str):
+        # os.makedirs(name=path, exist_ok=True)
+        with open(path, "w") as fp:
+            json.dump(self.tally, fp)
