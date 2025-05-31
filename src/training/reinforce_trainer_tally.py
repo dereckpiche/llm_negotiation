@@ -77,6 +77,12 @@ class RtTally:
         """
         TODO: docstring
         """
+
+        if len(contexts.shape) == 1:
+            contexts = contexts.unsqueeze(0)
+        if len(metrics.shape) == 1:
+            metrics = metrics.unsqueeze(0)
+
         assert len(contexts.shape) == 2, "Contexts tensor does not have the right shape"
         assert len(metrics.shape) == 2, "Metrics tensor does not have the right shape"
 

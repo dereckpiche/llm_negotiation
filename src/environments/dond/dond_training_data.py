@@ -10,16 +10,14 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 
-from environments.scores import *
-
 
 def dond_generate_training_data_from_raw(
-    raw_data_folder,
-    training_data_folder,
-    exclude_errors=False,
-    debug_output=True,
-    score_method=None,
-    score_method_kwargs=None,
+    raw_data_folder: str,
+    training_data_folder: str,
+    exclude_errors: bool,
+    debug_output: bool,
+    substract_group_wise_loo_mean_rewards: bool,
+    substract_rloo_mean_rewards: bool,
 ):
     """
     Generates training data from raw match data by calculating scores.
@@ -38,12 +36,10 @@ def dond_generate_training_data_from_raw(
         raw_data_folder
     )
 
-    scores = dond_get_scores(
-        round_points_agent=round_points_agent,
-        round_points_coagent=round_points_coagent,
-        score_method=score_method,
-        score_method_kwargs=score_method_kwargs,
-    )
+    (
+        normalized_round_points_agent,
+        normalized_round_points_coagent,
+    ) = dond_get_normalized_round_points(raw_data_folder)
 
     os.makedirs(training_data_folder, exist_ok=True)
     if debug_output:
@@ -58,8 +54,13 @@ def dond_generate_training_data_from_raw(
         pd.DataFrame(round_points_coagent).to_csv(
             os.path.join(debug_output_folder, "round_points_coagent.csv"), index=False
         )
-        pd.DataFrame(scores).to_csv(
-            os.path.join(debug_output_folder, "scores.csv"), index=False
+        pd.DataFrame(normalized_round_points_agent).to_csv(
+            os.path.join(debug_output_folder, "normalized_round_points_agent.csv"),
+            index=False,
+        )
+        pd.DataFrame(normalized_round_points_coagent).to_csv(
+            os.path.join(debug_output_folder, "normalized_round_points_coagent.csv"),
+            index=False,
         )
 
     # Create training data, giving each action their score
@@ -90,7 +91,12 @@ def dond_generate_training_data_from_raw(
             if message.get("role") == "assistant":
                 round_number = message.get("round_nb")
                 # Attribute the score corresponding to correct minibatch / group, match and round number.
-                message["score"] = scores[group_id][match_id][round_number]
+                message["reward"] = normalized_round_points_agent[group_id][match_id][
+                    round_number
+                ]
+                message["co_reward"] = normalized_round_points_coagent[group_id][
+                    match_id
+                ][round_number]
 
         # Only keep conversation messages, not system info
         chat_history = [
@@ -174,12 +180,24 @@ def dond_get_round_points_arrays(raw_data_folder):
     return group_to_round_points_agent, group_to_round_points_coagent
 
 
-def dond_get_scores(
-    round_points_agent, round_points_coagent, score_method, score_method_kwargs
+def dond_get_normalized_round_points(
+    round_points_agent: np.ndarray,
+    round_points_coagent: np.ndarray,
+    substract_group_wise_loo_mean_rewards: bool,
+    substract_rloo_mean_rewards: bool,
 ):
     # Initialize nested dictionaries to store SCORES for each match within each minibatch group
     # Format: {minibatch_id: {match_id: [scores]}}
-    scores = defaultdict(lambda: defaultdict(list))
+
+    normalized_rp_agent = defaultdict(lambda: defaultdict(list))
+    normalized_rp_coagent = defaultdict(lambda: defaultdict(list))
+
+    def sub_loo_mr(array: np.ndarray):
+        return array - (np.sum(array, axis=0, keepdims=True) - array) / (n - 1)
+
+    if substract_loo_mean_rewards:
+        round_points_agent = sub_loo_mr(round_points_agent)
+        round_points_coagent = sub_loo_mr(round_points_coagent)
 
     # Loop in all the groups and compute the scores only for the minibatch / group
     for group_id in round_points_agent:
@@ -195,12 +213,15 @@ def dond_get_scores(
         )
 
         # Compute the scores from returns of a given minibatch / group
-        score = globals()[score_method](
-            agent_points, coagent_points, **score_method_kwargs
-        )
+        if substract_group_wise_loo_mean_rewards:
+            agent_points = sub_loo_mr(agent_points)
+            coagent_points = sub_loo_mr(coagent_points)
 
         # Store the scores for each match_id in a minibatch / group
-        for match_id, agent_points in zip(match_ids, score):
-            scores[group_id][match_id] = agent_points
+        for match_id, agent_point, coagent_point in zip(
+            match_ids, agent_points, coagent_points
+        ):
+            normalized_rp_agent[group_id][match_id] = agent_points
+            normalized_rp_coagent[group_id][match_id] = coagent_points
 
-    return scores
+    return normalized_rp_agent, normalized_rp_coagent

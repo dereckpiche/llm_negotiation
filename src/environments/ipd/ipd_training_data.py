@@ -3,7 +3,6 @@ This file contains the methods used to convert raw data into training data
 for the Negotiation game. (Also called Deal or No Deal).
 """
 
-from environments.scores import *
 from utils.common_imports import *
 
 
@@ -12,28 +11,27 @@ def ipd_generate_training_data_from_raw(
     training_data_folder,
     exclude_errors=False,
     debug_output=True,
-    score_method=None,
-    score_method_kwargs=None,
 ):
     """
     Generates training data from raw match data by calculating scores.
 
     Args:
-        raw_data_folder (str): Path to the folder containing raw match data.
-        training_data_folder (str): Path to save the processed training data.
-        discount_factor (float): The discount factor to apply to future scores.
-        exclude_errors (bool): If True, exclude messages with "is_error" set to True.
-        score_normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list
+        raw_data_folder (str):
+            Path to the folder containing raw match data.
+        training_data_folder (str):
+            Path to save the processed training data.
+        discount_factor (float):
+            The discount factor to apply to future scores.
+        exclude_errors (bool):
+            If True, exclude messages with "is_error" set to True.
+        score_normalize_func (callable, optional):
+            Function that takes a list of raw scores and returns a new list
             of shaped scores.
     """
 
     # Find the score of each round of each game of agent associated with "raw_data_folder"
     round_points_agent, round_points_coagent = ipd_get_round_points_arrays(
         raw_data_folder
-    )
-
-    scores = globals()[score_method](
-        round_points_agent, round_points_coagent, **score_method_kwargs
     )
 
     os.makedirs(training_data_folder, exist_ok=True)
@@ -48,9 +46,6 @@ def ipd_generate_training_data_from_raw(
         )
         pd.DataFrame(round_points_coagent).to_csv(
             os.path.join(debug_output_folder, "round_points_coagent.csv"), index=False
-        )
-        pd.DataFrame(scores).to_csv(
-            os.path.join(debug_output_folder, "scores.csv"), index=False
         )
 
     # Create training data, giving each action their score
@@ -77,7 +72,8 @@ def ipd_generate_training_data_from_raw(
         for message in chat_history:
             if message.get("role") == "assistant":
                 round_nb = message.get("round_nb")
-                message["score"] = float(scores[i, round_nb])
+                message["reward"] = float(round_points_agent[i, round_nb])
+                message["co_reward"] = float(round_points_coagent[i, round_nb])
 
         # Only keep conversation messages, not system info
         chat_history = [

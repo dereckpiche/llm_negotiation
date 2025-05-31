@@ -35,6 +35,7 @@ class ReinforceTrainerWRS:
         # TODO: add lr scheduler to accelerator
         self.model = model
         self.tokenizer = tokenizer
+        self.tokenizer.padding_side = "left"  # needed for flash attention
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         self.optimizer = optimizer
@@ -122,7 +123,7 @@ class ReinforceTrainerWRS:
             dr[i] = rewards[i] + self.config.discount_factor * dr[i + 1]
         return dr
 
-    def get_response_scores_from_data(self, path: str):
+    def get_response_scores_from_data(self, paths: list[str]):
         """
         This is where the reward shaping occurs.
 
@@ -136,15 +137,13 @@ class ReinforceTrainerWRS:
         """
         all_response_scores = {}
 
-        for filepath in os.listdir(path):
+        for filepath in paths:
             rewards = []
             co_rewards = []
-            full_path = open(os.path.join(path, filepath))
-
             # Extract the rewards from conversation history
             # Each response corresponds to one component
             # of the score vector
-            with open(os.path.join(path, filepath)) as f:
+            with open(filepath) as f:
                 conversation = json.load(f)
                 for message in conversation:
                     r = message.get("reward", None)
@@ -170,7 +169,6 @@ class ReinforceTrainerWRS:
             self.tally.add_metric(path=["discounted_returns"], metric=s)
 
             self.tally.add_metric(path=["co_discounted_returns"], metric=co_s)
-
             if self.config.use_advantage_alignment:
                 s = self.advantages_to_aa_scores(a1=s, a2=co_s)
 
@@ -178,7 +176,7 @@ class ReinforceTrainerWRS:
 
         return all_response_scores
 
-    def get_training_data(self, path: str):
+    def get_training_data(self, paths: list[str]):
         """
         TODO: docstring
         Converts external folder of json conversation
@@ -188,11 +186,11 @@ class ReinforceTrainerWRS:
         all_scores = []
         all_action_masks = []
 
-        all_per_response_scores = self.get_response_scores_from_data(path=path)
+        all_per_response_scores = self.get_response_scores_from_data(paths=paths)
 
-        for filepath in os.listdir(path):
+        for filepath in paths:
             # Load conversation from json file
-            with open(os.path.join(path, filepath)) as f:
+            with open(filepath) as f:
                 conversation = json.load(f)
             formatted_conversation = self.tokenizer.apply_chat_template(
                 conversation,
@@ -254,18 +252,21 @@ class ReinforceTrainerWRS:
         """
         # TODO: check if this is right,
         # Not simple with actions being strings
+        # import pdb; pdb.set_trace()
         try:
             B, S, T = logits.shape
         except:
             print("Missing batch dimension.")
-        token_entropy_terms = -torch.special.xlogy(
-            input=F.log_softmax(logits, dim=-1), other=F.softmax(logits, dim=-1)
-        )  # (B, S, T)
+
+        # TODO: check if numerically stable
+        token_entropy_terms = -F.softmax(logits, dim=-1) * F.log_softmax(logits, dim=-1)
+        # (B, S, T)
 
         # Log entropy terms for each token generated
         generated_tokens_entr = torch.gather(
             input=token_entropy_terms, dim=-1, index=shifted_contexts[:, :, None].long()
         )
+        # import pdb; pdb.set_trace()
         self.tally.add_contextualized_token_metrics(
             contexts=contexts,
             path=["token_entropy_terms"],
@@ -341,9 +342,9 @@ class ReinforceTrainerWRS:
 
     def apply_reinforce_step(
         self,
-        contexts: list[int],
-        scores: list[int],
-        action_masks: list[int],
+        contexts: list[torch.Tensor],
+        scores: list[torch.Tensor],
+        action_masks: list[torch.Tensor],
     ):
         """
         TODO: docstring
@@ -355,6 +356,7 @@ class ReinforceTrainerWRS:
         loss = 0.0
         mb_size = self.config.mini_batch_size
         device = self.accelerator.device
+        self.tokenizer.padding_side = "left"
         nb_rollouts = len(contexts)
         gradient_accumulation_steps = nb_rollouts / mb_size
 
@@ -362,33 +364,47 @@ class ReinforceTrainerWRS:
             # Convert sequences to padded tensor minibatches
 
             contexts_mb = [c[:-1] for c in contexts[mb : mb + mb_size]]
-            contexts_mb = (
-                pad_sequence(
-                    sequences=contexts_mb,
-                    padding_value=self.tokenizer.pad_token_id,
-                    batch_first=True,
-                )
-                .long()
-                .to(device)
+            # contexts_mb = (
+            #     pad_sequence(
+            #         sequences=contexts_mb,
+            #         padding_value=self.tokenizer.pad_token_id,
+            #         batch_first=True,
+            #         padding_side="left",
+            #     )
+            #     .long()
+            #     .to(device)
+            # )
+            tok_out = self.tokenizer.pad(
+                {"input_ids": contexts_mb}, padding="longest", return_tensors="pt"
             )
+            contexts_mb = tok_out.input_ids.to(device)
+            attention_mask = tok_out.attention_mask.to(device)
 
             shifted_contexts_mb = [c[1:] for c in contexts[mb : mb + mb_size]]
-            shifted_contexts_mb = (
-                pad_sequence(
-                    sequences=shifted_contexts_mb,
-                    padding_value=self.tokenizer.pad_token_id,
-                    batch_first=True,
-                )
-                .long()
-                .to(device)
+            tok_out = self.tokenizer.pad(
+                {"input_ids": shifted_contexts_mb},
+                padding="longest",
+                return_tensors="pt",
             )
+            shifted_contexts_mb = tok_out.input_ids.to(device)
+            # shifted_contexts_mb = (
+            #     pad_sequence(
+            #         sequences=shifted_contexts_mb,
+            #         padding_value=self.tokenizer.pad_token_id,
+            #         batch_first=True,
+            #         padding_side="left",
+            #     )
+            #     .long()
+            #     .to(device)
+            # )
 
             scores_mb = [s[1:] for s in scores[mb : mb + mb_size]]
             scores_mb = (
                 pad_sequence(
                     sequences=scores_mb,
-                    padding_value=self.tokenizer.pad_token_id,
+                    padding_value=0.0,
                     batch_first=True,
+                    padding_side="left",
                 )
                 .float()
                 .to(device)
@@ -397,16 +413,19 @@ class ReinforceTrainerWRS:
             action_mask_mb = [am[1:] for am in action_masks[mb : mb + mb_size]]
             action_mask_mb = (
                 pad_sequence(
-                    sequences=action_mask_mb, padding_value=0.0, batch_first=True
+                    sequences=action_mask_mb,
+                    padding_value=0.0,
+                    batch_first=True,
+                    padding_side="left",
                 )
                 .float()
                 .to(device)
             )
 
-            # Create attention mask to ignore padding tokens
-            attention_mask = (
-                (contexts_mb != self.tokenizer.pad_token_id).long().to(device)
-            )  # (B, S)
+            # # Create attention mask to ignore padding tokens
+            # attention_mask = (
+            #     (contexts_mb != self.tokenizer.pad_token_id).long().to(device)
+            # )  # (B, S)
 
             # Forward pass
             logits = self.model(input_ids=contexts_mb, attention_mask=attention_mask)[
@@ -463,19 +482,20 @@ class ReinforceTrainerWRS:
                 self.tally.add_metric(path=["mb_kl_loss_terms"], metric=mb_kl.item())
                 loss += self.config.kl_coeff * mb_kl
 
-            del log_probs
-
+            # Accumulate gradient
             loss /= gradient_accumulation_steps
             self.accelerator.backward(loss)
 
+            loss = 0.0
+
             # ensure gpu memory is freed
+            del log_probs
             del contexts_mb
             del shifted_contexts_mb
             del scores_mb
             del action_mask_mb
             del attention_mask
             del logits
-            del loss
             del action_log_probs
             del rewarded_action_log_probs
             torch.cuda.empty_cache()
@@ -501,12 +521,25 @@ class ReinforceTrainerWRS:
         gc.collect()
         torch.cuda.empty_cache()
 
-    def apply_reinforce_step_on_data_folder(self, path: str):
+    def apply_reinforce_step_on_paths(self, paths: list[str]):
         """
         TODO: docstring
         """
-        contexts, scores, action_masks = self.get_training_data(path=path)
+        contexts, scores, action_masks = self.get_training_data(paths=paths)
 
         self.apply_reinforce_step(
             contexts=contexts, scores=scores, action_masks=action_masks
         )
+
+    def export_training_metrics(self):
+        """
+        TODO: docstring
+        """
+        from datetime import datetime
+
+        now = datetime.now()
+        os.makedirs(name=self.config.logging_path, exist_ok=True)
+        savepath = os.path.join(
+            self.config.logging_path, f"training_metrics_{now}.json"
+        )
+        self.tally.save(path=savepath)

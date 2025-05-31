@@ -212,24 +212,19 @@ models:
 training:
 
   agents:
-
     Alice:
       training_data_func: dond_generate_training_data_from_raw
       training_data_func_args:
         exclude_errors: False
         debug_output: True
-        score_method: rloo_scores
-        score_method_kwargs:
-          discount_factor: 1.0
 
     Bob:
       training_data_func: dond_generate_training_data_from_raw
       training_data_func_args:
         exclude_errors: False
         debug_output: True
-        score_method: rloo_scores
-        score_method_kwargs:
-          discount_factor: 1.0
+
+
 
   qwen:
     adapters:

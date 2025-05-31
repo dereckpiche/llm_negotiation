@@ -19,7 +19,9 @@ from models.dummy_local_llm import DummyLocalLLM
 from models.local_llm import LocalLLM
 from models.new_local_llm import LocalLLMV2
 from models.server_llm import ServerLLM
-from training.train_main import *
+from training.reinforce_trainer import *
+from training.reinforce_trainer_config import *
+from training.reinforce_trainer_tally import *
 from utils.common_imports import *
 from utils.update_start_epoch import update_start_epoch
 
@@ -126,27 +128,41 @@ def generate_and_train(cfg, base_seed):
                     policy_id = f"{model_name}/{adapter_name}"
                     model.prepare_adapter_train(adapter_name)
 
-                    data_paths = []
+                    training_file_paths = []
                     for agent in agents.values():
                         if agent.policy_id == policy_id:
                             agent_export_path = os.path.join(
                                 it_folder, agent.agent_name, "training"
                             )
-                            data_paths.append(agent_export_path)
+                            # TODO: export on all json paths
+                            filepaths = [
+                                os.path.join(agent_export_path, path)
+                                for path in os.listdir(agent_export_path)
+                            ]
+                            training_file_paths += filepaths
 
-                    if data_paths:
+                    if training_file_paths:
                         adapter_args = cfg["training"][model_name]["adapters"][
                             adapter_name
                         ]
-                        train_output = train_main(
-                            hf_model=model,
-                            paths=data_paths,
-                            train_func=adapter_args["train_func"],
-                            train_func_args=adapter_args["train_func_args"],
-                            train_data_args=adapter_args["train_data_args"],
-                            output_path=it_folder,
+
+                        train_output_path = os.path.join(
+                            it_folder, "training_metrics", adapter_name
                         )
-                        train_output_dict[policy_id] = train_output
+
+                        trainer = ReinforceTrainerWRS(
+                            model=model.hf_model,
+                            optimizer=model.optimizer,
+                            tokenizer=model.tokenizer,
+                            lr_scheduler=None,
+                            config=RtConfig(
+                                **adapter_args["trainer_config"],
+                                logging_path=train_output_path,
+                            ),
+                        )
+                        trainer.apply_reinforce_step_on_paths(paths=training_file_paths)
+                        trainer.export_training_metrics()
+                        del trainer
 
         training_end_time = time.time()
 
@@ -165,37 +181,6 @@ def generate_and_train(cfg, base_seed):
                     model.checkpoint_all_adapters(
                         checkpoint_indicator=f"iter_{iteration}"
                     )
-
-        # TODO: Moving it here is better since we can plot for every k steps to speedup training
-        for agent in agents.values():
-            agent_name = agent.agent_name
-            # Update agent statistics
-            agent_stats_folder = os.path.join(
-                output_directory, "statistics", agent_name
-            )
-            os.makedirs(agent_stats_folder, exist_ok=True)
-            agent_stats_file = os.path.join(
-                agent_stats_folder, f"{agent_name}_stats.jsonl"
-            )
-
-            update_agent_statistics(
-                input_path=os.path.join(it_folder, agent_name, "statistics"),
-                output_file=agent_stats_file,
-            )
-
-            with open(agent_stats_file, "r") as f:
-                agent_stats = json.load(f)
-
-            if agent.policy_id in train_output_dict:
-                train_output = train_output_dict[agent.policy_id]
-                for key in train_output:
-                    if key in agent_stats:
-                        agent_stats[key].append(train_output[key])
-                    else:
-                        agent_stats[key] = [train_output[key]]
-
-            with open(agent_stats_file, "w") as f:
-                json.dump(agent_stats, f, indent=4)
 
         logging_end_time = time.time()
 
