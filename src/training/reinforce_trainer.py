@@ -24,6 +24,9 @@ class ReinforceTrainerWRS:
     Generalizes to single-agent case if used carefully.
     """
 
+    # TODO: add GAE
+    # TODO: add value function
+
     def __init__(
         self,
         model: AutoModelForCausalLM,
@@ -95,6 +98,10 @@ class ReinforceTrainerWRS:
         t_discounts = (gamma * np.ones(shape=(1, T))) ** (np.arange(0, T, 1))
         alignment_terms = gamma * t_discounts * discounted_sums_a1 * a2
 
+        self.tally.add_metric(
+            path=["advantage_alignment_terms"], metric=alignment_terms
+        )
+
         # Normalize alignment terms (across same time step)
         if self.config.use_variance_regularization_in_ad_align:
             reg_coef = np.std(a1[:, -1]) / (np.std(alignment_terms[:, -1]) + 1e-10)
@@ -106,7 +113,7 @@ class ReinforceTrainerWRS:
             alignment_terms = alignment_terms / t_values
 
         self.tally.add_metric(
-            path=["advantage_alignment_terms"], metric=alignment_terms
+            path=["normalized_advantage_alignment_terms"], metric=alignment_terms
         )
 
         adv_align_terms = a1 + beta * alignment_terms
@@ -169,6 +176,7 @@ class ReinforceTrainerWRS:
             self.tally.add_metric(path=["discounted_returns"], metric=s)
 
             self.tally.add_metric(path=["co_discounted_returns"], metric=co_s)
+
             if self.config.use_advantage_alignment:
                 s = self.advantages_to_aa_scores(a1=s, a2=co_s)
 
@@ -273,8 +281,7 @@ class ReinforceTrainerWRS:
             metrics=generated_tokens_entr.squeeze(),
             action_mask=action_mask,
         )
-
-        expected_entropy = token_entropy_terms.sum() / B  # Scalar
+        expected_entropy = token_entropy_terms.sum()
         return expected_entropy
 
     def get_kl_divergence(
@@ -357,23 +364,26 @@ class ReinforceTrainerWRS:
         mb_size = self.config.mini_batch_size
         device = self.accelerator.device
         self.tokenizer.padding_side = "left"
+
         nb_rollouts = len(contexts)
-        gradient_accumulation_steps = nb_rollouts / mb_size
+        self.tally.add_metric(
+            path=["nb_rollouts"],
+            metric=nb_rollouts)
+
+        # Count total number of tokens trained on
+        total_nb_action_tokens = 0
+        for am in action_masks:
+            nb_tkns = am.shape[0]
+            self.tally.add_metric(
+                path=["nb_tokens", "action_tokens"],
+                metric=nb_tokens)
+            total_nb_action_tokens += nb_tkns
+
 
         for mb in range(0, len(contexts), mb_size):
             # Convert sequences to padded tensor minibatches
 
             contexts_mb = [c[:-1] for c in contexts[mb : mb + mb_size]]
-            # contexts_mb = (
-            #     pad_sequence(
-            #         sequences=contexts_mb,
-            #         padding_value=self.tokenizer.pad_token_id,
-            #         batch_first=True,
-            #         padding_side="left",
-            #     )
-            #     .long()
-            #     .to(device)
-            # )
             tok_out = self.tokenizer.pad(
                 {"input_ids": contexts_mb}, padding="longest", return_tensors="pt"
             )
@@ -387,16 +397,6 @@ class ReinforceTrainerWRS:
                 return_tensors="pt",
             )
             shifted_contexts_mb = tok_out.input_ids.to(device)
-            # shifted_contexts_mb = (
-            #     pad_sequence(
-            #         sequences=shifted_contexts_mb,
-            #         padding_value=self.tokenizer.pad_token_id,
-            #         batch_first=True,
-            #         padding_side="left",
-            #     )
-            #     .long()
-            #     .to(device)
-            # )
 
             scores_mb = [s[1:] for s in scores[mb : mb + mb_size]]
             scores_mb = (
@@ -422,10 +422,6 @@ class ReinforceTrainerWRS:
                 .to(device)
             )
 
-            # # Create attention mask to ignore padding tokens
-            # attention_mask = (
-            #     (contexts_mb != self.tokenizer.pad_token_id).long().to(device)
-            # )  # (B, S)
 
             # Forward pass
             logits = self.model(input_ids=contexts_mb, attention_mask=attention_mask)[
@@ -448,13 +444,22 @@ class ReinforceTrainerWRS:
                 -1
             )  # (B, S)
 
-            rewarded_action_log_probs = torch.special.xlogy(
-                input=scores_mb * action_mask_mb, other=action_log_probs
-            )  # (B, S)
+            self.tally.add_contextualized_token_metrics(
+                contexts=contexts,
+                path=["next_token_probs"],
+                metrics=torch.exp(action_log_probs),
+                action_mask=action_mask,
+            )
+
+            rewarded_action_log_probs = scores_mb * action_mask_mb * action_log_probs
+            # (B, S)
 
             # Add value term to loss
-            mb_value = -rewarded_action_log_probs.sum() / mb_size
-            self.tally.add_metric(path=["mb_value_loss_terms"], metric=mb_value.item())
+            nb_act_tokens = torch.sum(action_mask_mb)
+            mb_value = -rewarded_action_log_probs.sum()
+            self.tally.add_metric(
+                path=["loss_mb_total", "value_mb_total"],
+                metric=mb_value.item())
             loss += mb_value
 
             # Add entropy regularization term to loss
@@ -465,10 +470,12 @@ class ReinforceTrainerWRS:
                     logits=logits,
                     action_mask=action_mask_mb,
                 )
+                ent = self.config.entropy_coeff * mb_entropy
                 self.tally.add_metric(
-                    path=["mb_entropy_loss_terms"], metric=mb_entropy.item()
+                    path=path=["loss_mb_total", "entropy_mb_total"],
+                    metric=ent.item()
                 )
-                loss += self.config.entropy_coeff * mb_entropy
+                loss += ent
 
             # Add KL-divergence regularization term to loss
             if self.config.kl_coeff != 0.0:
@@ -482,8 +489,10 @@ class ReinforceTrainerWRS:
                 self.tally.add_metric(path=["mb_kl_loss_terms"], metric=mb_kl.item())
                 loss += self.config.kl_coeff * mb_kl
 
+            # Normalize over number tokens generated
+            loss /= total_nb_action_tokens
+
             # Accumulate gradient
-            loss /= gradient_accumulation_steps
             self.accelerator.backward(loss)
 
             loss = 0.0
@@ -508,6 +517,19 @@ class ReinforceTrainerWRS:
                 self.model.parameters(), self.config.gradient_clipping
             )
             self.tally.add_metric(path=["gradient_norm"], metric=grad_norm.item())
+
+        # Log gradient norms
+        grad_l_norms = []
+        for name, p in self.model.named_parameters():
+            if p.grad is None: continue
+            grad_norm = p.grad.data.norm(2).item()
+            grad_l_norms.append(grad_norm)
+        self.tally.add_metric(
+            path=["gradient_norms", "layer_norms"],
+            metric=np.array(grad_l_norms)
+            )
+
+
 
         # Take step
         self.optimizer.step()

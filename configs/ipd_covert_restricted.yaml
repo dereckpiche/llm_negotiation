@@ -5,12 +5,12 @@ hydra:
     chdir: false
 
 experiment:
-  name: "ipd_covert_restricted"
+  name: "ipd_covert_${now:%Y-%m-%d___%H-%M-%S}"
   # name: "${now:%Y-%m-%d___%H-%M-%S}_IPD"
   method: generate_and_train
   description: "no description"
   nb_epochs: 2000
-  nb_matches_per_iteration: 64
+  nb_matches_per_iteration: 5
   reinit_matches_each_it: true
   checkpoint_every_n_iterations: 25
   start_epoch: 0
@@ -38,10 +38,10 @@ common_agent_kwargs: &common_agent_kwargs
     3. The goal is to maximize your total points over all rounds.
     4. You will see the previous play of the other player after the completion of a round.
 
-    In order to play A, you must write "A" and nothing else.
-    In order to play B, you must write "B" and nothing else.
+    In order to play A, you must write "<A>" and nothing else.
+    In order to play B, you must write "<B>" and nothing else.
 
-    During the entire game, you must only write "A" or "B". If you write anything else, your response will be considered as an error.
+    During the entire game, you must only write "<A>" or "<B>". If you write anything else, your response will be considered as an error.
 
     The game starts now:
 
@@ -52,8 +52,8 @@ matches:
   env_class: "IPDEnv"
   agent_class: "IPDAgent"
 
-  max_length: 30
-  continuation_prob: 0.85
+  max_length: 3
+  continuation_prob: 1.0
   same_length_batch: True
 
   # If set to 0, existing setup will run where utilities are randomly sampled at the beginning of each round.
@@ -71,8 +71,6 @@ matches:
 
   env_kwargs:
     agents: ['Alice', 'Bob']
-    cooperate_actions: ["A"]
-    defect_actions: ["B"]
     reward: 3
     punishment: 1
     temptation: 5
@@ -96,22 +94,22 @@ temperature: 0.7
 models:
   qwen:
     name: 'qwen'
-    class: local_llm_v2
+    class: local_llm_v2 # local_llm_v2
     init_args:
-      restrict_tokens: ["A", "B"]
-      max_model_length: 10000
+      max_model_length: 1.3e4
       device: "cuda"
+      restrict_tokens: ["C", "D"]
       model_name: "Qwen/Qwen2.5-7B-Instruct"
       bits_and_bytes_args: null
       generation_args:
-        max_new_tokens: 120
+        max_new_tokens: 1
         do_sample: True
         temperature: ${temperature}
         top_k: 0
         top_p: 1.0
         repetition_penalty: 1
       vllm_params:
-        max_model_len : 13e3
+        max_model_len : 1.3e4
         gpu_memory_utilization: 0.45
         enable_lora: True
         enable_prefix_caching: True
@@ -161,30 +159,29 @@ training:
       training_data_func_args:
         exclude_errors: False
         debug_output: True
-        score_method: rloo_scores
-        score_method_kwargs:
-          discount_factor: 1.0
 
     Bob:
       training_data_func: ipd_generate_training_data_from_raw
       training_data_func_args:
         exclude_errors: False
         debug_output: True
-        score_method: rloo_scores
-        score_method_kwargs:
-          discount_factor: 1.0
 
   qwen:
     adapters:
       sp_adapter:
-        train_func: train_reinforce_main
-        train_func_args:
-          gradient_checkpointing: true
+        trainer_config:
+          entropy_coeff: 0.1
+          kl_coeff: 0.0
+          gradient_clipping: null
+          restrict_tokens: ["C", "D"]
+          mini_batch_size: 1
+          use_gradient_checkpointing: true
+          top_k_for_logging: 1
           temperature: ${temperature}
-          restrict_tokens: ["A", "B"]
-          entropy_coef: 0.0
-          kl_loss_coef: 0.0
-          debug_enabled: True
-          debug_log_path: "${oc.env:SCRATCH}/${experiment.name}/trainer_debugger"
-        train_data_args:
-          average_score_over_message: False
+          discount_factor: 1.0
+          use_sum_rewards: false
+          use_advantage_alignment: false
+          use_variance_regularization_in_ad_align: null
+          use_time_regularization_in_ad_align: null
+          ad_align_beta: null
+          device: "cuda:0"

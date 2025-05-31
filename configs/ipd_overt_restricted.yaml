@@ -5,7 +5,7 @@ hydra:
     chdir: false
 
 experiment:
-  name: "ipd_overt_restricted"
+  name: "ipd_overt_restricted_${now:%Y-%m-%d___%H-%M-%S}"
   # name: "${now:%Y-%m-%d___%H-%M-%S}_IPD"
   method: generate_and_train
   description: "no description"
