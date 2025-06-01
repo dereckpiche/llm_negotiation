@@ -45,7 +45,9 @@ class ReinforceTrainerWRS:
         self.lr_scheduler = lr_scheduler
         self.config = config
         self.accelerator = Accelerator()
-        self.model, self.optimizer = self.accelerator.prepare(model, optimizer)
+        self.model, self.optimizer = self.accelerator.prepare(
+            model, 
+            optimizer)
         self.tally = RtTally(tokenizer=tokenizer)
 
     def advantages_to_aa_scores(
@@ -113,7 +115,8 @@ class ReinforceTrainerWRS:
             alignment_terms = alignment_terms / t_values
 
         self.tally.add_metric(
-            path=["normalized_advantage_alignment_terms"], metric=alignment_terms
+            path=["normalized_advantage_alignment_terms"], 
+            metric=alignment_terms
         )
 
         adv_align_terms = a1 + beta * alignment_terms
@@ -207,7 +210,9 @@ class ReinforceTrainerWRS:
                 use_system_prompt=True,
             )
             context = self.tokenizer.encode(
-                formatted_conversation, return_tensors="pt", add_special_tokens=False
+                formatted_conversation, 
+                return_tensors="pt", 
+                add_special_tokens=False
             ).squeeze()
 
             scores = torch.zeros(context.shape)
@@ -236,7 +241,8 @@ class ReinforceTrainerWRS:
                 )
                 # TODO: write this cleanly
 
-                nb_tokens_in_response = len(self.tokenizer.encode(response))
+                nb_tokens_in_response = len(
+                    self.tokenizer.encode(response))
                 a = nb_tokens_before_response
                 b = nb_tokens_in_response
                 scores[a : a + b + 1] = score
@@ -250,6 +256,7 @@ class ReinforceTrainerWRS:
 
     def get_expected_entropy(
         self,
+        rollout_ids: list[str],
         contexts: torch.Tensor,
         shifted_contexts: torch.Tensor,
         logits: torch.Tensor,
@@ -266,18 +273,21 @@ class ReinforceTrainerWRS:
         except:
             print("Missing batch dimension.")
 
-        # TODO: check if numerically stable
-        token_entropy_terms = -F.softmax(logits, dim=-1) * F.log_softmax(logits, dim=-1)
+        # TODO: check infs here (special.xlogy)
+        token_entropy_terms = -F.softmax(logits, dim=-1) \
+             * F.log_softmax(logits, dim=-1)
         # (B, S, T)
 
         # Log entropy terms for each token generated
         generated_tokens_entr = torch.gather(
-            input=token_entropy_terms, dim=-1, index=shifted_contexts[:, :, None].long()
+            input=token_entropy_terms, 
+            index=shifted_contexts[:, :, None].long(),
+            dim=-1, 
         )
-        # import pdb; pdb.set_trace()
         self.tally.add_contextualized_token_metrics(
+            rollout_ids=rollout_ids,
+            metric_id="token_entropy_terms",
             contexts=contexts,
-            path=["token_entropy_terms"],
             metrics=generated_tokens_entr.squeeze(),
             action_mask=action_mask,
         )
@@ -306,7 +316,8 @@ class ReinforceTrainerWRS:
         with torch.no_grad():
             with self.model.disable_adapter():
                 ref_model_logits = self.model(
-                    input_ids=input_ids, attention_mask=attention_mask
+                    input_ids=input_ids, 
+                    attention_mask=attention_mask
                 )[0]
         self.model.train()
         ref_model_logits = ref_model_logits / self.config.temperature
@@ -328,15 +339,22 @@ class ReinforceTrainerWRS:
 
         return kl_div
 
-    def mask_non_restricted_token_logits(self, logits: torch.Tensor):
+    def mask_non_restricted_token_logits(
+        self, 
+        logits: torch.Tensor):
         """
         TODO: docstring
         """
+        # TODO: verify
         allowed_token_ids = []
         for token in self.config.restrict_tokens:
-            token_ids = self.tokenizer(token, add_special_tokens=False)["input_ids"]
+            token_ids = self.tokenizer(
+                token, 
+                add_special_tokens=False)["input_ids"]
             allowed_token_ids.append(token_ids[0])
-        allowed_token_ids = torch.tensor(allowed_token_ids, device=logits.device)
+        allowed_token_ids = torch.tensor(
+            allowed_token_ids, 
+            device=logits.device)
         # Mask log_probs and probs to only allowed tokens
         mask = torch.zeros_like(logits).bool()  # (B, S, V)
         mask[..., allowed_token_ids] = True
@@ -349,6 +367,7 @@ class ReinforceTrainerWRS:
 
     def apply_reinforce_step(
         self,
+        rollout_ids: list[str],
         contexts: list[torch.Tensor],
         scores: list[torch.Tensor],
         action_masks: list[torch.Tensor],
@@ -373,23 +392,26 @@ class ReinforceTrainerWRS:
         # Count total number of tokens trained on
         total_nb_action_tokens = 0
         for am in action_masks:
-            nb_tkns = am.shape[0]
+            nb_tokens = am.shape[0]
             self.tally.add_metric(
                 path=["nb_tokens", "action_tokens"],
                 metric=nb_tokens)
-            total_nb_action_tokens += nb_tkns
+            total_nb_action_tokens += nb_tokens
 
 
         for mb in range(0, len(contexts), mb_size):
-            # Convert sequences to padded tensor minibatches
 
+            rollout_ids_mb = rollout_ids[mb:mb+mb_size]
+
+            # Convert sequences to padded tensor minibatches
             contexts_mb = [c[:-1] for c in contexts[mb : mb + mb_size]]
             tok_out = self.tokenizer.pad(
-                {"input_ids": contexts_mb}, padding="longest", return_tensors="pt"
+                {"input_ids": contexts_mb}, 
+                padding="longest", 
+                return_tensors="pt"
             )
             contexts_mb = tok_out.input_ids.to(device)
             attention_mask = tok_out.attention_mask.to(device)
-
             shifted_contexts_mb = [c[1:] for c in contexts[mb : mb + mb_size]]
             tok_out = self.tokenizer.pad(
                 {"input_ids": shifted_contexts_mb},
@@ -397,7 +419,6 @@ class ReinforceTrainerWRS:
                 return_tensors="pt",
             )
             shifted_contexts_mb = tok_out.input_ids.to(device)
-
             scores_mb = [s[1:] for s in scores[mb : mb + mb_size]]
             scores_mb = (
                 pad_sequence(
@@ -409,7 +430,6 @@ class ReinforceTrainerWRS:
                 .float()
                 .to(device)
             )
-
             action_mask_mb = [am[1:] for am in action_masks[mb : mb + mb_size]]
             action_mask_mb = (
                 pad_sequence(
@@ -424,7 +444,9 @@ class ReinforceTrainerWRS:
 
 
             # Forward pass
-            logits = self.model(input_ids=contexts_mb, attention_mask=attention_mask)[
+            logits = self.model(
+                input_ids=contexts_mb, 
+                attention_mask=attention_mask)[
                 0
             ]  # (B, S, V)
 
@@ -445,13 +467,17 @@ class ReinforceTrainerWRS:
             )  # (B, S)
 
             self.tally.add_contextualized_token_metrics(
-                contexts=contexts,
-                path=["next_token_probs"],
+                rollout_ids=rollout_ids_mb,
+                metric_id="next_token_probs",
+                contexts=contexts_mb,
                 metrics=torch.exp(action_log_probs),
-                action_mask=action_mask,
+                action_mask=action_mask_mb,
             )
 
-            rewarded_action_log_probs = scores_mb * action_mask_mb * action_log_probs
+            rewarded_action_log_probs = (
+                action_mask_mb 
+                * scores_mb 
+                * action_log_probs)
             # (B, S)
 
             # Add value term to loss
@@ -465,6 +491,7 @@ class ReinforceTrainerWRS:
             # Add entropy regularization term to loss
             if self.config.entropy_coeff != 0.0:
                 mb_entropy = self.get_expected_entropy(
+                    rollout_ids=rollout_ids_mb,
                     contexts=contexts_mb,
                     shifted_contexts=shifted_contexts_mb,
                     logits=logits,
@@ -472,7 +499,7 @@ class ReinforceTrainerWRS:
                 )
                 ent = self.config.entropy_coeff * mb_entropy
                 self.tally.add_metric(
-                    path=path=["loss_mb_total", "entropy_mb_total"],
+                    path=["loss_mb_total", "entropy_mb_total"],
                     metric=ent.item()
                 )
                 loss += ent
@@ -486,7 +513,9 @@ class ReinforceTrainerWRS:
                     action_log_probs=action_log_probs,
                     index=shifted_contexts_mb,
                 )
-                self.tally.add_metric(path=["mb_kl_loss_terms"], metric=mb_kl.item())
+                self.tally.add_metric(
+                    path=["mb_kl_loss_terms"], 
+                    metric=mb_kl.item())
                 loss += self.config.kl_coeff * mb_kl
 
             # Normalize over number tokens generated
@@ -514,9 +543,13 @@ class ReinforceTrainerWRS:
         # Clip gradients and take step
         if self.config.gradient_clipping is not None:
             grad_norm = self.accelerator.clip_grad_norm_(
-                self.model.parameters(), self.config.gradient_clipping
+                self.model.parameters(), 
+                self.config.gradient_clipping
             )
-            self.tally.add_metric(path=["gradient_norm"], metric=grad_norm.item())
+            # TODO: log at right place
+            self.tally.add_metric(
+                path=["gradient_norm"], 
+                metric=grad_norm.item())
 
         # Log gradient norms
         grad_l_norms = []
@@ -547,21 +580,20 @@ class ReinforceTrainerWRS:
         """
         TODO: docstring
         """
-        contexts, scores, action_masks = self.get_training_data(paths=paths)
+        (contexts, 
+        scores, 
+        action_masks) = self.get_training_data(paths=paths)
 
         self.apply_reinforce_step(
-            contexts=contexts, scores=scores, action_masks=action_masks
+            rollout_ids=paths,
+            contexts=contexts, 
+            scores=scores, 
+            action_masks=action_masks
         )
 
     def export_training_metrics(self):
         """
         TODO: docstring
         """
-        from datetime import datetime
-
-        now = datetime.now()
-        os.makedirs(name=self.config.logging_path, exist_ok=True)
-        savepath = os.path.join(
-            self.config.logging_path, f"training_metrics_{now}.json"
-        )
-        self.tally.save(path=savepath)
+        
+        self.tally.save(path=self.config.logging_path)

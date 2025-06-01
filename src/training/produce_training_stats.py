@@ -13,28 +13,32 @@ def produce_tabular_render(filepath: str, metricpath: list[str], outpath: str = 
     """
     TODO: docstring
     """
-    print(os.path.split(filepath)[:-2])
-    if outpath is None:
-        outpath = (
-            os.path.split(filepath)[0]
-            + "/"
-            + " ".join(metricpath)
-            + "_tabular_render.csv"
-        )
-    print(outpath)
     with open(filepath, "r") as f:
         data = json.load(f)
-    metrics = get_at_path(dictio=data, path=metricpath)
-    d = {k: [] for k in metrics[0].keys()}
-    for m in metrics:
-        for k, v in m.items():
-            d[k].append(v)
-    d = pd.DataFrame(d)
-    d.to_csv(outpath)
+    rollout_paths = data.keys()
+    for rollout_path in rollout_paths:
+        if outpath is None:
+            m_path = rollout_path.replace("/", "|")
+            m_path = m_path.replace(".json", "")
+            m_path = (
+                os.path.split(filepath)[0]
+                + "/contextualized_tabular_renders/"
+                + m_path
+                + "_tabular_render.csv"
+            )
+        # import pdb; pdb.set_trace()
+        os.makedirs(os.path.split(m_path)[0], exist_ok=True)
+        metrics = data[rollout_path]
+        d = {k: [] for k in metrics[0].keys()}
+        for m in metrics:
+            for k, v in m.items():
+                d[k].append(v)
+        d = pd.DataFrame(d)
+        d.to_csv(m_path)
 
 
 if __name__ == "__main__":
     produce_tabular_render(
-        filepath="/home/mila/d/dereck.piche/scratch/llm_negotiation/ipd_overt_2025-05-31___13-18-02/seed_87/iteration_000/training_metrics/sp_adapter/training_metrics_2025-05-31 13:21:32.390411.json",
+        filepath="/home/mila/d/dereck.piche/llm_negotiation/tests/outputs_for_tests/tally_test_output/contextualized_training_metrics_2025-05-31 21:32:12.508003.json",
         metricpath=["token_entropy_terms"],
     )

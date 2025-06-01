@@ -7,7 +7,7 @@ import torch.optim as optim
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from training.new_reinforce_trainer import ReinforceTrainerWRS
+from training.reinforce_trainer import ReinforceTrainerWRS
 from training.reinforce_trainer_config import RtConfig
 
 now = datetime.now()
@@ -18,7 +18,7 @@ rt_config = RtConfig(
     gradient_clipping=1.0,
     top_k_for_logging=3,
     restrict_tokens=None,
-    mini_batch_size=2,
+    mini_batch_size=1,
     use_gradient_checkpointing=False,
     logging_path=logging_path,
     temperature=1.0,
@@ -131,11 +131,14 @@ def test_train_on_folder():
         lr_scheduler=lr_scheduler,
         config=rt_config,
     )
+    in_folder = "tests/inputs_for_tests/training_data_convs"
+    files = os.listdir(in_folder)
+    paths = [in_folder + "/" + file  for file in files]
 
-    trainer.apply_reinforce_step_on_data_folder(
-        "tests/inputs_for_tests/training_data_convs"
+    trainer.apply_reinforce_step_on_paths(
+        paths
     )
-    trainer.tally.save(path="tests/outputs_for_tests/tally_test_output.json")
+    trainer.tally.save(path="tests/outputs_for_tests/tally_test_output/")
 
     print("Done")
 

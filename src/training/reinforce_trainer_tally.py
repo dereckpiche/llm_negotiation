@@ -9,10 +9,14 @@ from transformers import AutoTokenizer
 
 
 class RtTally:
-    def __init__(self, tokenizer: AutoTokenizer, max_context_length: int = 10):
+    def __init__(
+        self, 
+        tokenizer: AutoTokenizer, 
+        max_context_length: int = 10):
         self.tokenizer = tokenizer
         self.max_context_length = max_context_length
-        self.tally = {}
+        self.base_tally = {}
+        self.contextualized_tally = {}
 
     # def set_top_k(self, logits: torch.Tensor):
     #     """
@@ -47,29 +51,41 @@ class RtTally:
             dictio = dictio.setdefault(sp, {})
         dictio[path[-1]] = value
 
-    def add_metric(self, path: str, metric: Union[float, int, str, np.ndarray, dict]):
+    def add_metric(
+        self, 
+        path: str, 
+        metric: Union[float, int, str, np.ndarray, dict]):
         """
         TODO: docstring
         """
         assert isinstance(
             metric, Union[float, int, str, np.ndarray, dict]
         ), "Metric of incorrect type"
-        current_metric = self.get_at_path(dictio=self.tally, path=path)
+
+        current_metric = self.get_at_path(dictio=self.base_tally, path=path)
+
         if isinstance(metric, Union[np.ndarray, torch.Tensor]):
             metric = list(metric)
+
         elif current_metric == None:
-            self.set_at_path(dictio=self.tally, path=path, value=metric)
+            self.set_at_path(dictio=self.base_tally, path=path, value=metric)
+
         elif isinstance(current_metric, list) and not isinstance(metric, list):
             current_metric.append(metric)
-            self.set_at_path(dictio=self.tally, path=path, value=current_metric)
+            self.set_at_path(
+                dictio=self.base_tally, 
+                path=path, 
+                value=current_metric)
         else:
             self.set_at_path(
-                dictio=self.tally, path=path, value=[current_metric, metric]
+                dictio=self.base_tally, 
+                path=path, 
+                value=[current_metric, metric]
             )
 
     def add_contextualized_token_metrics(
         self,
-        data_id: str,
+        rollout_ids: list[str],
         metric_id: str,
         contexts: torch.Tensor,
         metrics: torch.Tensor,
@@ -89,13 +105,12 @@ class RtTally:
 
         B, S = metrics.shape
 
-        present == (self.get_at_path(path=path) is not None)
-
-        if not present:
-            self.set_at_path(dictio=self.tally, path=path, value=[])
-
         counter = 0
         for i in range(B):
+            # import pdb; pdb.set_trace()
+            rollout_id = rollout_ids[i]
+            self.contextualized_tally.setdefault(rollout_id, [])
+            rollout_data = self.contextualized_tally.get(rollout_id)
             for j in range(S):
                 if action_mask[i, j].item() != 0:
                     ctx = contexts[i, j - min(j, self.max_context_length) : j].squeeze()
@@ -104,26 +119,39 @@ class RtTally:
                     # TODO: catch context overflows
                     context = context_string[:-1]
                     next_token = context_string[-1]
-
-                    if not present:
-                        # Initialize the dict
-                        metric = {
+                    if len(rollout_data) <= counter:
+                        dictio = {
                             "context": context,
                             "next_token": next_token,
                             metric_id: value,
                         }
-                        self.add_metric(path=path, metric=metric)
-
+                        rollout_data.append(dictio)
                     else:
-                        # Dictionary already present, add metric for that context
-                        ar = self.get_at_path(dictio=self.tally, path=path, value=[])
-                        l = len(ar)
-                        dictio = ar[counter]
+                        dictio = rollout_data[counter]
+                        # import pdb; pdb.set_trace()
                         assert dictio["context"] == context
                         dictio[metric_id] = value
                     counter += 1
 
     def save(self, path: str):
         # os.makedirs(name=path, exist_ok=True)
-        with open(path, "w") as fp:
-            json.dump(self.tally, fp)
+        os.makedirs(
+            name=path, 
+            exist_ok=True)
+
+        from datetime import datetime
+        now = datetime.now()
+
+        savepath = os.path.join(
+            path, 
+            f"basic_training_metrics_{now}.json"
+        )
+        with open(savepath, "w") as fp:
+            json.dump(self.base_tally, fp)
+
+        savepath = os.path.join(
+            path, 
+            f"contextualized_training_metrics_{now}.json"
+        )
+        with open(savepath, "w") as fp:
+            json.dump(self.contextualized_tally, fp)
