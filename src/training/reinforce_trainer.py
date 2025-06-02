@@ -127,9 +127,11 @@ class ReinforceTrainerWRS:
         """
         TODO: docstring
         """
+        # TODO fix
         dr = np.zeros(rewards.shape)
         T = rewards.shape[0]
-        for i in range(T - 2, -1):
+        dr[-1] = rewards[-1]
+        for i in range(T - 2, -1, -1):
             dr[i] = rewards[i] + self.config.discount_factor * dr[i + 1]
         return dr
 

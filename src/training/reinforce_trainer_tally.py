@@ -18,17 +18,6 @@ class RtTally:
         self.base_tally = {}
         self.contextualized_tally = {}
 
-    # def set_top_k(self, logits: torch.Tensor):
-    #     """
-    #     TODO: docstring
-    #     """
-    #     self.top_k_tids = torch.argmax(logits, dim=-1).squeeze()
-    #     B, S = self.top_k_ids.shape
-    #     top_k_tids = [tensor.tolist(self.top_k_tids[i].squeeze()) for i in range(B)]
-    #     self.top_k_tokens = self.tokenizer.batch_decode(top_k_tids)
-    #     import pdb
-
-    #     pdb.set_trace()
 
     def tids_to_str(self, tids: list[int]):
         """
@@ -64,25 +53,14 @@ class RtTally:
 
         current_metric = self.get_at_path(dictio=self.base_tally, path=path)
 
-        if isinstance(metric, Union[np.ndarray, torch.Tensor]):
-            metric = list(metric)
+        if isinstance(metric, np.ndarray): 
+            metric = metric.tolist()
 
-        elif current_metric == None:
-            self.set_at_path(dictio=self.base_tally, path=path, value=metric)
-
-        elif isinstance(current_metric, list) and not isinstance(metric, list):
-            current_metric.append(metric)
-            self.set_at_path(
-                dictio=self.base_tally, 
-                path=path, 
-                value=current_metric)
+        if current_metric == None:
+            self.set_at_path(dictio=self.base_tally, path=path, value=[metric])
         else:
-            self.set_at_path(
-                dictio=self.base_tally, 
-                path=path, 
-                value=[current_metric, metric]
-            )
-
+            current_metric.append(metric)
+            
     def add_contextualized_token_metrics(
         self,
         rollout_ids: list[str],
@@ -144,14 +122,14 @@ class RtTally:
 
         savepath = os.path.join(
             path, 
-            f"basic_training_metrics_{now}.json"
+            f"basic_training_metrics_{now:%Y-%m-%d___%H-%M-%S}.json"
         )
         with open(savepath, "w") as fp:
             json.dump(self.base_tally, fp)
 
         savepath = os.path.join(
             path, 
-            f"contextualized_training_metrics_{now}.json"
+            f"contextualized_training_metrics_{now:%Y-%m-%d___%H-%M-%S}.json"
         )
         with open(savepath, "w") as fp:
             json.dump(self.contextualized_tally, fp)
