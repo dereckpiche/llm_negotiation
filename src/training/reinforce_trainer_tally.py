@@ -125,11 +125,11 @@ class RtTally:
             f"basic_training_metrics_{now:%Y-%m-%d___%H-%M-%S}.json"
         )
         with open(savepath, "w") as fp:
-            json.dump(self.base_tally, fp)
+            json.dump(self.base_tally, fp, indent=4)
 
         savepath = os.path.join(
             path, 
             f"contextualized_training_metrics_{now:%Y-%m-%d___%H-%M-%S}.json"
         )
         with open(savepath, "w") as fp:
-            json.dump(self.contextualized_tally, fp)
+            json.dump(self.contextualized_tally, fp, indent=4)

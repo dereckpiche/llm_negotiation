@@ -145,7 +145,7 @@ class ReinforceTrainerWRS:
         """
         # TODO fix
         dr = np.zeros(rewards.shape)
-        T = rewards.shape[0]
+        T = rewards.shape[0]    
         dr[-1] = rewards[-1]
         for i in range(T - 2, -1, -1):
             dr[i] = rewards[i] + self.config.discount_factor * dr[i + 1]
@@ -308,7 +308,7 @@ class ReinforceTrainerWRS:
         )
         self.tally.add_contextualized_token_metrics(
             rollout_ids=rollout_ids,
-            metric_id="token_entropy_terms",
+            metric_id="entropy",
             contexts=contexts,
             metrics=generated_tokens_entr.squeeze(),
             action_mask=action_mask,
@@ -436,6 +436,10 @@ class ReinforceTrainerWRS:
                 path=["nb_tokens", "action_tokens"],
                 metric=nb_tokens)
             total_nb_action_tokens += nb_tokens
+        
+        self.tally.add_metric(
+            path=["nb_tokens", "batch_action_tokens"],
+            metric=total_nb_action_tokens)
 
 
         for mb in range(0, len(contexts), mb_size):
@@ -516,7 +520,7 @@ class ReinforceTrainerWRS:
 
             self.tally.add_contextualized_token_metrics(
                 rollout_ids=rollout_ids_mb,
-                metric_id="next_token_probs",
+                metric_id="next_token_prob",
                 contexts=contexts_mb,
                 metrics=torch.exp(action_log_probs),
                 action_mask=action_mask_mb,
@@ -530,7 +534,7 @@ class ReinforceTrainerWRS:
 
             self.tally.add_contextualized_token_metrics(
                 rollout_ids=rollout_ids_mb,
-                metric_id="token_reinforce_term",
+                metric_id="next_token_slogpi",
                 contexts=contexts_mb,
                 metrics=rewarded_action_log_probs,
                 action_mask=action_mask_mb,
