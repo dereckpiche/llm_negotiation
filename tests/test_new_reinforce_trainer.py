@@ -24,9 +24,9 @@ rt_config = RtConfig(
     temperature=1.0,
     device="cuda:0",
     discount_factor=0.9,
-    use_sum_rewards=True,
+    use_sum_rewards=False,
     use_advantage_alignment=True,
-    use_variance_regularization_in_ad_align=True,
+    use_variance_regularization_in_ad_align=False,
     use_time_regularization_in_ad_align=True,
     ad_align_beta=1.0,
 )
