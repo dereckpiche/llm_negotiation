@@ -40,3 +40,9 @@ To reproduce the results, run the following command:
 ```bash
 python src/run.py --config-path your-path-to-configs-folder --config-name your-config-name
 ```
+
+## Stats
+
+```bash
+PYTHONPATH=src python 'src/training/produce_training_stats.py' tab_render --inpath=path/to/json
+```

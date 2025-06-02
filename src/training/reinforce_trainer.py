@@ -26,6 +26,9 @@ class ReinforceTrainerWRS:
 
     # TODO: add GAE
     # TODO: add value function
+    # TODO: maybe accumulate gradient on separate terms of the loss
+    # so that we can check the gradient magnitude of the different relative terms (in percentages)
+
 
     def __init__(
         self,
@@ -49,6 +52,19 @@ class ReinforceTrainerWRS:
             model, 
             optimizer)
         self.tally = RtTally(tokenizer=tokenizer)
+
+
+        # self.tally.add_metric(
+        #     path=["tokenizer_eot_id"],
+        #     metric=self.tokenizer.eos_token_id)
+        # TODO
+        # log number of trainable parameters
+        # log data type of model
+        # log adapter type, rank, etc.
+        # log optimizer learning rate
+        # log model data type 
+        # log adapter data type
+
 
     def advantages_to_aa_scores(
         self,
@@ -202,55 +218,59 @@ class ReinforceTrainerWRS:
         all_per_response_scores = self.get_response_scores_from_data(paths=paths)
 
         for filepath in paths:
+
             # Load conversation from json file
             with open(filepath) as f:
                 conversation = json.load(f)
+
+            # Apply chat template, get token ids
             formatted_conversation = self.tokenizer.apply_chat_template(
                 conversation,
                 add_generation_prompt=False,
                 tokenize=False,
                 use_system_prompt=True,
             )
-            context = self.tokenizer.encode(
-                formatted_conversation, 
+            tokens = self.tokenizer.encode(
+                formatted_conversation,  
                 return_tensors="pt", 
-                add_special_tokens=False
-            ).squeeze()
+                add_special_tokens=True
+            ).squeeze().long()
 
-            scores = torch.zeros(context.shape)
-            action_mask = torch.zeros(context.shape)
+            bos_tid = self.tokenizer.bos_token_id
+            eos_tid = self.tokenizer.eos_token_id
+
+            all_bos_token_positions = (tokens == bos_tid).nonzero(as_tuple=True)[0].tolist()
+            all_eos_token_positions = (tokens == eos_tid).nonzero(as_tuple=True)[0].tolist()
+
+            assert len(conversation) == len(
+                all_bos_token_positions
+            ), "Number of messages and BOS do not match."
+            assert len(conversation) == len(
+                all_eos_token_positions
+            ), "Number of messages and EOS do not match."
+
 
             per_response_scores = all_per_response_scores[filepath]
-
+            current_position = 0
             response_score_pos = 0
+
+            scores = torch.zeros(tokens.shape)
+            action_mask = torch.zeros(tokens.shape)
+
             for i, message in enumerate(conversation):
-                # TODO: verify that EOS token is properly included
-                role = message.get("role", None)
-                if role != "assistant":
-                    continue
-                response = message.get("content", None)
-                score = per_response_scores[response_score_pos]
-                response_score_pos += 1
-                nb_tokens_before_response = (
-                    self.tokenizer.apply_chat_template(
-                        conversation[:i],
-                        add_generation_prompt=True,
-                        tokenize=True,
-                        return_tensors="pt",
-                    )
-                    .squeeze()
-                    .shape[0]
-                )
-                # TODO: write this cleanly
+                if (
+                    message.get("role", None) == "assistant"
+                ):
+                    b = all_bos_token_positions[i]
+                    e = all_eos_token_positions[i]
+                    score = per_response_scores[response_score_pos]
+                    scores[b:e+1] = score
+                    action_mask[b:e+1] = 1.0
+                    response_score_pos += 1
 
-                nb_tokens_in_response = len(
-                    self.tokenizer.encode(response))
-                a = nb_tokens_before_response
-                b = nb_tokens_in_response
-                scores[a : a + b + 1] = score
-                action_mask[a : a + b + 1] = 1.0
+            assert tokens.shape == scores.shape == action_mask.shape
 
-            all_contexts.append(context)
+            all_contexts.append(tokens)
             all_scores.append(scores)
             all_action_masks.append(action_mask)
 
@@ -367,6 +387,19 @@ class ReinforceTrainerWRS:
         )
         return logits
 
+    def get_gradient_magnitude(self, loss_term: torch.Tensor):
+        with torch.no_grad():
+            grads = torch.autograd.grad(
+                loss_term,
+                [p for p in self.model.parameters() if p.requires_grad],
+                retain_graph=True, 
+                allow_unused=True               
+            )
+            grads = [g for g in grads if g is not None]
+            if not grads:                      
+                return torch.tensor(0.0, device=loss_term.device)
+            return torch.norm(torch.stack([g.norm(2) for g in grads])).item()
+
     def apply_reinforce_step(
         self,
         rollout_ids: list[str],
@@ -376,6 +409,10 @@ class ReinforceTrainerWRS:
     ):
         """
         TODO: docstring
+
+        REINFORCE gradient estimators are a sum of these terms:
+            s(a, s) ∇ log π(a|s)
+        In this code, "s" is called "score". 
 
         See https://huggingface.co/docs/accelerate/usage_guides/
         gradient_accumulation#converting-it-to-accelerate
@@ -432,6 +469,8 @@ class ReinforceTrainerWRS:
                 .float()
                 .to(device)
             )
+            
+
             action_mask_mb = [am[1:] for am in action_masks[mb : mb + mb_size]]
             action_mask_mb = (
                 pad_sequence(
@@ -444,6 +483,13 @@ class ReinforceTrainerWRS:
                 .to(device)
             )
 
+            self.tally.add_contextualized_token_metrics(
+                rollout_ids=rollout_ids_mb,
+                metric_id="next_token_score",
+                contexts=contexts_mb,
+                metrics=scores_mb,
+                action_mask=action_mask_mb,
+            )
 
             # Forward pass
             logits = self.model(
@@ -482,12 +528,27 @@ class ReinforceTrainerWRS:
                 * action_log_probs)
             # (B, S)
 
+            self.tally.add_contextualized_token_metrics(
+                rollout_ids=rollout_ids_mb,
+                metric_id="token_reinforce_term",
+                contexts=contexts_mb,
+                metrics=rewarded_action_log_probs,
+                action_mask=action_mask_mb,
+            )
+
             # Add value term to loss
             nb_act_tokens = torch.sum(action_mask_mb)
             mb_value = -rewarded_action_log_probs.sum()
             self.tally.add_metric(
                 path=["loss_mb_total", "value_mb_total"],
                 metric=mb_value.item())
+            # TODO: add option not to log this: it takes extra compute
+            self.tally.add_metric(
+                path=["gradient_term_magnitudes", "value"],
+                metric=self.get_gradient_magnitude(
+                    loss_term=mb_value
+                )
+            )
             loss += mb_value
 
             # Add entropy regularization term to loss
@@ -499,12 +560,19 @@ class ReinforceTrainerWRS:
                     logits=logits,
                     action_mask=action_mask_mb,
                 )
-                ent = self.config.entropy_coeff * mb_entropy
+                mb_entropy *= self.config.entropy_coeff 
                 self.tally.add_metric(
                     path=["loss_mb_total", "entropy_mb_total"],
-                    metric=ent.item()
+                    metric=mb_entropy.item()
                 )
-                loss += ent
+                # TODO: add option not to do this: takes extra compute
+                self.tally.add_metric(
+                    path=["gradient_term_magnitudes", "entropy"],
+                    metric=self.get_gradient_magnitude(
+                        loss_term=mb_entropy
+                    )
+                )
+                loss += mb_entropy
 
             # Add KL-divergence regularization term to loss
             if self.config.kl_coeff != 0.0:
@@ -515,10 +583,18 @@ class ReinforceTrainerWRS:
                     action_log_probs=action_log_probs,
                     index=shifted_contexts_mb,
                 )
+                mb_kl *= self.config.kl_coeff
                 self.tally.add_metric(
                     path=["mb_kl_loss_terms"], 
                     metric=mb_kl.item())
-                loss += self.config.kl_coeff * mb_kl
+                # TODO: add option not to do this: takes extra compute
+                self.tally.add_metric(
+                    path=["gradient_term_magnitudes", "kl"],
+                    metric=self.get_gradient_magnitude(
+                        loss_term=mb_kl
+                    )
+                )
+                loss += mb_kl
 
             # Normalize over number tokens generated
             loss /= total_nb_action_tokens
@@ -553,18 +629,7 @@ class ReinforceTrainerWRS:
                 path=["gradient_norm"], 
                 metric=grad_norm.item())
 
-        # Log gradient norms
-        grad_l_norms = []
-        for name, p in self.model.named_parameters():
-            if p.grad is None: continue
-            grad_norm = p.grad.data.norm(2).item()
-            grad_l_norms.append(grad_norm)
-        self.tally.add_metric(
-            path=["gradient_norms", "layer_norms"],
-            metric=np.array(grad_l_norms)
-            )
-
-
+        # TODO: log grad norm even if no grad clip
 
         # Take step
         self.optimizer.step()
