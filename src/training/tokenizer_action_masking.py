@@ -23,7 +23,7 @@ def get_sentencepieced_example(tokenizer: AutoTokenizer):
     return sps
 
 
-def get_assistant_mask_and_score(
+def get_assistant_actions_mask_and_score(
     tokenizer: AutoTokenizer,
     assistant_msg_scores: torch.Tensor, 
     token_ids:torch.Tensor):
@@ -44,25 +44,30 @@ def get_assistant_mask_and_score(
 
     if "Qwen2.5-0.5B-Instruct" in tokenizer_name:
         """
-        get_sentencepieced_example(qwen_tokenizer) returns
-        [(151644, '<|im_start|>'), (8948, 'system'), (198, 'Ċ'), (2610, 'You'), (525, 'Ġare'), (1207, 'ĠQ'), (16948, 'wen'), (11, ','), (3465, 'Ġcreated'), (553, 'Ġby'), (54364, 'ĠAlibaba'), (14817, 'ĠCloud'), (13, '.'), (1446, 'ĠYou'), (525, 'Ġare'), (264, 'Ġa'), (10950, 'Ġhelpful'), (17847, 'Ġassistant'), (13, '.'), (151645, '<|im_end|>'), (198, 'Ċ'), (151644, '<|im_start|>'), (872, 'user'), (198, 'Ċ'), (1112, '...'), (151645, '<|im_end|>'), (198, 'Ċ'), (151644, '<|im_start|>'), (77091, 'assistant'), (198, 'Ċ'), (1112, '...'), (151645, '<|im_end|>'), (198, 'Ċ'), (151644, '<|im_start|>'), (872, 'user'), (198, 'Ċ'), (1112, '...'), (151645, '<|im_end|>'), (198, 'Ċ'), (151644, '<|im_start|>'), (77091, 'assistant'), (198, 'Ċ'), (1112, '...'), (151645, '<|im_end|>'), (198, 'Ċ')]
+        For this tokenizer, eos_token_id is 151645 and get_sentencepieced_example(qwen_tokenizer) returns
+
+            [(151644, '<|im_start|>'), (8948, 'system'), (198, 'Ċ'), (2610, 'You'), (525, 'Ġare'), (1207, 'ĠQ'), (16948, 'wen'), (11, ','), (3465, 'Ġcreated'), (553, 'Ġby'), (54364, 'ĠAlibaba'), (14817, 'ĠCloud'), (13, '.'), (1446, 'ĠYou'), (525, 'Ġare'), (264, 'Ġa'), (10950, 'Ġhelpful'), (17847, 'Ġassistant'), (13, '.'), (151645, '<|im_end|>'), (198, 'Ċ'), (151644, '<|im_start|>'), (872, 'user'), (198, 'Ċ'), (1112, '...'), (151645, '<|im_end|>'), (198, 'Ċ'), (151644, '<|im_start|>'), (77091, 'assistant'), (198, 'Ċ'), (1112, '...'), (151645, '<|im_end|>'), (198, 'Ċ'), (151644, '<|im_start|>'), (872, 'user'), (198, 'Ċ'), (1112, '...'), (151645, '<|im_end|>'), (198, 'Ċ'), (151644, '<|im_start|>'), (77091, 'assistant'), (198, 'Ċ'), (1112, '...'), (151645, '<|im_end|>'), (198, 'Ċ')]
+
         """
         am_count = -1 # assistant message count
         assistant_turn = False
-        for i in range(nb_tokens):
-            if token_ids[i] == 151644 and token_ids[i+1] == 77091:
+        pointer = 0
+        while pointer < nb_tokens:
+            if token_ids[pointer] == 151644 and token_ids[pointer+1] == 77091:
+                pointer += 3
                 assistant_turn = True
                 am_count += 1
-            if assistant_turn = True:
-                scores[i] = assistant_msg_scores[am_count]
-                action_mask[i] = 1.0
-            if token_ids[i] == 151645:
+            if assistant_turn == True:
+                scores[pointer] = assistant_msg_scores[am_count]
+                action_mask[pointer] = 1.0
+            if token_ids[pointer] == 151645:
                 assistant_turn = False
-            
+            pointer += 1
+
+        assert am_count == assistant_msg_scores.shape[0]-1, "Did not use all of the scores."
         
     else:
-        pass
-        # THROW ERROR: TOKENIZER NOT SUPPORTED
+       raise TypeError("Tokenizer not supported. Must be implemented here.")
 
-    return scores_ts, action_mask
+    return scores, action_mask
     

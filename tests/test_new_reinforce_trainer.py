@@ -33,7 +33,6 @@ rt_config = RtConfig(
     ad_align_beta=1.0,
 )
 
-
 def test_simple_step():
     # Use a tiny model for testing
     tokenizer = AutoTokenizer.from_pretrained(model_name)

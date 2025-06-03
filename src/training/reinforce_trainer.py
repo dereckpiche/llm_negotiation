@@ -12,6 +12,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 from training.reinforce_trainer_config import RtConfig
 from training.reinforce_trainer_tally import RtTally
+from training.tokenizer_action_masking import get_assistant_actions_mask_and_score
 from utils.common_imports import *
 
 train_logger = logging.getLogger("train_logger")
@@ -240,58 +241,17 @@ class ReinforceTrainerWRS:
                 return_tensors="pt", 
                 add_special_tokens=True
             ).squeeze(0).long()
-            
-            bos_tid = self.tokenizer.bos_token_id
-            eos_tid = self.tokenizer.eos_token_id
-
-            all_eos_token_positions = ( 
-                (tokens == eos_tid).nonzero(as_tuple=True)[0]
-            )
-
-            if bos_tid is None:
-                # Infer positions 
-                all_bos_token_positions = (
-                    [0] + (all_eos_token_positions[:-1]+1).tolist()
-                )
-            else:
-                all_bos_token_positions = ( 
-                    (tokens == bos_tid).nonzero(as_tuple=True)[0].tolist()
-                )
-
-            all_eos_token_positions = all_eos_token_positions.tolist()
-
-            if len(conversation) == len(all_bos_token_positions)-1:
-                # This means a system prompt was added. 
-                # Add dummy 
-                dummy_sp = {"role": "system", "content": None}
-                conversation = [dummy_sp] + conversation
-
-            assert len(conversation) == len(
-                all_bos_token_positions
-            ), "Number of messages and BOS do not match."
-            assert len(conversation) == len(
-                all_eos_token_positions
-            ), "Number of messages and EOS do not match."
-
 
             per_response_scores = all_per_response_scores[filepath]
-            current_position = 0
-            response_score_pos = 0
-
-            scores = torch.zeros(tokens.shape)
-            action_mask = torch.zeros(tokens.shape)
-
-            for i, message in enumerate(conversation):
-                if (
-                    message.get("role", None) == "assistant"
-                ):
-                    b = all_bos_token_positions[i]
-                    e = all_eos_token_positions[i]
-                    score = per_response_scores[response_score_pos]
-                    # + 1 to mark EOS token as action
-                    scores[b:e+1] = score
-                    action_mask[b:e+1] = 1.0
-                    response_score_pos += 1
+            scores, action_mask = get_assistant_actions_mask_and_score(
+                tokenizer=self.tokenizer,
+                assistant_msg_scores=torch.Tensor(per_response_scores).squeeze(),
+                token_ids = tokens
+            )
+            # decoded = self.tokenizer.convert_ids_to_tokens(tokens.tolist())
+            # df = {"Tokens": decoded, "Score": scores, "Action Mask": action_mask}
+            # df = pd.DataFrame(df)
+            # print(df.to_string())
 
             assert tokens.shape == scores.shape == action_mask.shape
 
@@ -314,7 +274,6 @@ class ReinforceTrainerWRS:
         """
         # TODO: check if this is right,
         # Not simple with actions being strings
-        # import pdb; pdb.set_trace()
         try:
             B, S, T = logits.shape
         except:
@@ -335,7 +294,7 @@ class ReinforceTrainerWRS:
         self.tally.add_contextualized_token_metrics(
             rollout_ids=rollout_ids,
             metric_id="entropy",
-            contexts=contexts,
+            contexts=shifted_contexts,
             metrics=generated_tokens_entr.squeeze(),
             action_mask=action_mask,
         )
@@ -480,13 +439,15 @@ class ReinforceTrainerWRS:
             )
             contexts_mb = tok_out.input_ids.to(device)
             attention_mask = tok_out.attention_mask.to(device)
+
             shifted_contexts_mb = [c[1:] for c in contexts[mb : mb + mb_size]]
-            tok_out = self.tokenizer.pad(
+            shifted_tok_out = self.tokenizer.pad(
                 {"input_ids": shifted_contexts_mb},
                 padding="longest",
                 return_tensors="pt",
             )
-            shifted_contexts_mb = tok_out.input_ids.to(device)
+            shifted_contexts_mb = shifted_tok_out.input_ids.to(device)
+
             scores_mb = [s[1:] for s in scores[mb : mb + mb_size]]
             scores_mb = (
                 pad_sequence(
@@ -512,10 +473,11 @@ class ReinforceTrainerWRS:
                 .to(device)
             )
 
+
             self.tally.add_contextualized_token_metrics(
                 rollout_ids=rollout_ids_mb,
                 metric_id="next_token_score",
-                contexts=contexts_mb,
+                contexts=shifted_contexts_mb,
                 metrics=scores_mb,
                 action_mask=action_mask_mb,
             )
@@ -546,7 +508,7 @@ class ReinforceTrainerWRS:
             self.tally.add_contextualized_token_metrics(
                 rollout_ids=rollout_ids_mb,
                 metric_id="next_token_prob",
-                contexts=contexts_mb,
+                contexts=shifted_contexts_mb,
                 metrics=torch.exp(action_log_probs),
                 action_mask=action_mask_mb,
             )
@@ -560,7 +522,7 @@ class ReinforceTrainerWRS:
             self.tally.add_contextualized_token_metrics(
                 rollout_ids=rollout_ids_mb,
                 metric_id="next_token_slogpi",
-                contexts=contexts_mb,
+                contexts=shifted_contexts_mb,
                 metrics=rewarded_action_log_probs,
                 action_mask=action_mask_mb,
             )

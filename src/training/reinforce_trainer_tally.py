@@ -91,12 +91,14 @@ class RtTally:
             rollout_data = self.contextualized_tally.get(rollout_id)
             for j in range(S):
                 if action_mask[i, j].item() != 0:
-                    ctx = contexts[i, j - min(j, self.max_context_length) : j].squeeze()
+
+                    ctx = contexts[i, j+1 - min(j, self.max_context_length) : j+1].squeeze()
                     context_string = self.tids_to_str(ctx.tolist())
                     value = metrics[i, j].item()
                     # TODO: catch context overflows
                     context = context_string[:-1]
                     next_token = context_string[-1]
+
                     if len(rollout_data) <= counter:
                         dictio = {
                             "context": context,
@@ -106,7 +108,6 @@ class RtTally:
                         rollout_data.append(dictio)
                     else:
                         dictio = rollout_data[counter]
-                        # import pdb; pdb.set_trace()
                         assert dictio["context"] == context
                         dictio[metric_id] = value
                     counter += 1
