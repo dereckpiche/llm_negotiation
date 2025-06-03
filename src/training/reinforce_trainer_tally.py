@@ -2,7 +2,7 @@ import copy
 import json
 import os
 from typing import Union
-
+import pandas as pd
 import numpy as np
 import torch
 from transformers import AutoTokenizer
@@ -134,3 +134,24 @@ class RtTally:
         )
         with open(savepath, "w") as fp:
             json.dump(self.contextualized_tally, fp, indent=4)
+
+        data = self.contextualized_tally
+        rollout_paths = data.keys()
+        for rollout_path in rollout_paths:
+            m_path = rollout_path.replace("/", "|")
+            m_path = m_path.replace(".json", "")
+            m_path = (
+                os.path.split(savepath)[0]
+                + "/contextualized_tabular_renders/"
+                + m_path
+                + "_tabular_render.csv"
+            )
+            # import pdb; pdb.set_trace()
+            os.makedirs(os.path.split(m_path)[0], exist_ok=True)
+            metrics = data[rollout_path]
+            d = {k: [] for k in metrics[0].keys()}
+            for m in metrics:
+                for k, v in m.items():
+                    d[k].append(v)
+            d = pd.DataFrame(d)
+            d.to_csv(m_path)
