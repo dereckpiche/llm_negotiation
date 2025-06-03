@@ -10,6 +10,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from training.reinforce_trainer import ReinforceTrainerWRS
 from training.reinforce_trainer_config import RtConfig
 
+model_name = "Qwen/Qwen2.5-0.5B-Instruct" # "Qwen/Qwen2.5-0.5B-Instruct", "HuggingFaceTB/SmolLM-135M-Instruct", "arnir0/Tiny-LLM"
+
 now = datetime.now()
 logging_path = os.path.join(os.getcwd(), "tests/outputs_for_tests/{now}")
 rt_config = RtConfig(
@@ -34,7 +36,6 @@ rt_config = RtConfig(
 
 def test_simple_step():
     # Use a tiny model for testing
-    model_name = "HuggingFaceTB/SmolLM-135M-Instruct"  # or arnir0/Tiny-LLM
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(model_name)
     lora_config = LoraConfig(
@@ -108,7 +109,6 @@ def test_get_training_data():
 
 
 def test_train_on_folder():
-    model_name = "HuggingFaceTB/SmolLM-135M-Instruct"  # or arnir0/Tiny-LLM
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(model_name)
     lora_config = LoraConfig(

@@ -25,8 +25,13 @@ class ReinforceTrainerWRS:
     """
 
     # TODO: add GAE
+    # TODO: token end_ids for different model classes
+    # TODO: Add option for different discounted normalization scheme
+    # TODO: check AdAlign code for normalization
     # TODO: add value function
-    # TODO: maybe accumulate gradient on separate terms of the loss
+    # TODO: log top k probs
+    # TODO: 
+
     # so that we can check the gradient magnitude of the different relative terms (in percentages)
 
 
@@ -234,13 +239,32 @@ class ReinforceTrainerWRS:
                 formatted_conversation,  
                 return_tensors="pt", 
                 add_special_tokens=True
-            ).squeeze().long()
-
+            ).squeeze(0).long()
+            
             bos_tid = self.tokenizer.bos_token_id
             eos_tid = self.tokenizer.eos_token_id
 
-            all_bos_token_positions = (tokens == bos_tid).nonzero(as_tuple=True)[0].tolist()
-            all_eos_token_positions = (tokens == eos_tid).nonzero(as_tuple=True)[0].tolist()
+            all_eos_token_positions = ( 
+                (tokens == eos_tid).nonzero(as_tuple=True)[0]
+            )
+
+            if bos_tid is None:
+                # Infer positions 
+                all_bos_token_positions = (
+                    [0] + (all_eos_token_positions[:-1]+1).tolist()
+                )
+            else:
+                all_bos_token_positions = ( 
+                    (tokens == bos_tid).nonzero(as_tuple=True)[0].tolist()
+                )
+
+            all_eos_token_positions = all_eos_token_positions.tolist()
+
+            if len(conversation) == len(all_bos_token_positions)-1:
+                # This means a system prompt was added. 
+                # Add dummy 
+                dummy_sp = {"role": "system", "content": None}
+                conversation = [dummy_sp] + conversation
 
             assert len(conversation) == len(
                 all_bos_token_positions
@@ -264,6 +288,7 @@ class ReinforceTrainerWRS:
                     b = all_bos_token_positions[i]
                     e = all_eos_token_positions[i]
                     score = per_response_scores[response_score_pos]
+                    # + 1 to mark EOS token as action
                     scores[b:e+1] = score
                     action_mask[b:e+1] = 1.0
                     response_score_pos += 1
@@ -294,6 +319,7 @@ class ReinforceTrainerWRS:
             B, S, T = logits.shape
         except:
             print("Missing batch dimension.")
+
 
         # TODO: check infs here (special.xlogy)
         token_entropy_terms = -F.softmax(logits, dim=-1) \
@@ -367,7 +393,7 @@ class ReinforceTrainerWRS:
         """
         TODO: docstring
         """
-        # TODO: verify
+        # TODO: verify. Not sure what we do here is differentiable
         allowed_token_ids = []
         for token in self.config.restrict_tokens:
             token_ids = self.tokenizer(
@@ -383,7 +409,7 @@ class ReinforceTrainerWRS:
         logits = torch.where(
             mask,
             logits,
-            torch.tensor(float("-inf"), device=logits.device),
+            torch.tensor(-1e9, device=logits.device),
         )
         return logits
 
@@ -443,7 +469,6 @@ class ReinforceTrainerWRS:
 
 
         for mb in range(0, len(contexts), mb_size):
-
             rollout_ids_mb = rollout_ids[mb:mb+mb_size]
 
             # Convert sequences to padded tensor minibatches
