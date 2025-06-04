@@ -44,7 +44,7 @@ def get_assistant_actions_mask_and_score(
         assistant_msg_scores = assistant_msg_scores.unsqueeze(0)
 
 
-    if tokenizer_name in ["Qwen/Qwen2.5-7B-Instruct", "Qwen2.5-0.5B-Instruct"]:
+    if tokenizer_name in ["Qwen/Qwen2.5-7B-Instruct", "Qwen/Qwen2.5-0.5B-Instruct"]:
         """
         For this tokenizer, eos_token_id is 151645 and get_sentencepieced_example(qwen_tokenizer) returns
 

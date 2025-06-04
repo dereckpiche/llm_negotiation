@@ -25,6 +25,8 @@ class ReinforceTrainerWRS:
     Generalizes to single-agent case if used carefully.
     """
 
+    # TODO: use in place operations to minimize GPU usage // allocation
+    # TODO: include torch.compile if use perform multiple gradient steps on same data
     # TODO: add GAE
     # TODO: token end_ids for different model classes
     # TODO: Add option for different discounted normalization scheme
@@ -253,6 +255,37 @@ class ReinforceTrainerWRS:
 
         return all_contexts, all_scores, all_action_masks
 
+    def mask_non_restricted_token_logits(
+        self, 
+        logits: torch.Tensor):
+        """
+        TODO: docstring
+        """
+        # TODO: verify. Not sure what we do here is differentiable
+        # also, we recompute for nothing
+
+        if self.config.restrict_tokens is not None:
+            allowed_token_ids = []
+            for token in self.config.restrict_tokens:
+                token_ids = self.tokenizer(
+                    token, 
+                    add_special_tokens=False)["input_ids"]
+                allowed_token_ids.append(token_ids[0])
+            allowed_token_ids.append(self.tokenizer.eos_token_id) # This token should always be active   
+            allowed_token_ids = torch.tensor(
+                allowed_token_ids, 
+                device=logits.device)
+            # Mask log_probs and probs to only allowed tokens
+            mask = torch.zeros_like(logits).bool()  # (B, S, V)
+            mask[..., allowed_token_ids] = True
+            logits = torch.where(
+                mask,
+                logits,
+                torch.tensor("-inf", device=logits.device),
+            )
+
+        return logits
+
     def get_expected_entropy(
         self,
         rollout_ids: list[str],
@@ -277,17 +310,21 @@ class ReinforceTrainerWRS:
              * F.log_softmax(logits, dim=-1)
         # (B, S, T)
 
+        # We only take the entropy of actions
+        # import pdb; pdb.set_trace()
+        token_entropy_terms *= action_mask[:, :, None]
+
         # Log entropy terms for each token generated
-        generated_tokens_entr = torch.gather(
-            input=token_entropy_terms, 
-            index=shifted_contexts[:, :, None].long(),
-            dim=-1, 
-        )
+        # generated_tokens_entr = torch.gather(
+        #     input=token_entropy_terms, 
+        #     index=shifted_contexts[:, :, None].long(),
+        #     dim=-1, 
+        # )
         self.tally.add_contextualized_token_metrics(
             rollout_ids=rollout_ids,
             metric_id="entropy",
             contexts=shifted_contexts,
-            metrics=generated_tokens_entr.squeeze(),
+            metrics=token_entropy_terms.sum(dim=-1),
             action_mask=action_mask,
         )
         expected_entropy = token_entropy_terms.sum()
@@ -295,77 +332,64 @@ class ReinforceTrainerWRS:
 
     def get_kl_divergence(
         self,
-        input_ids,
-        attention_mask,
-        action_log_probs,
-        index,
+        rollout_ids: list[str],
+        contexts: torch.Tensor,
+        shifted_contexts: torch.Tensor,
+        attention_mask: torch.Tensor,
+        action_log_probs: torch.Tensor,
+        action_mask: torch.Tensor
     ):
         """
-        TODO
+        TODO: docstring
         # Ref 1: http://joschu.net/blog/kl-approx.html
-        # Ref 2: https://github.dev/huggingface/trl/
-        # blob/main/trl/trainer/grpo_trainer.py#L945
+        # Ref 2: https://github.dev/huggingface/trl/blob/main/trl/trainer/grpo_trainer.py#L1332
         """
-
-        self.model.eval()
-
-        # TODO: (Dereck) Complete this code
-        # KL is not using same temp for base model
 
         # Disable policy adapter to run inference on base model
         with torch.no_grad():
             with self.model.disable_adapter():
                 ref_model_logits = self.model(
-                    input_ids=input_ids, 
+                    input_ids=contexts, 
                     attention_mask=attention_mask
                 )[0]
-        self.model.train()
+
         ref_model_logits = ref_model_logits / self.config.temperature
+
+        # (B, S, V)
+        ref_model_logits = self.mask_non_restricted_token_logits(
+            logits=ref_model_logits
+        )
         # (B, S, V)
         ref_model_log_probs = F.log_softmax(ref_model_logits, dim=-1)
         # (B, S, V)
         ref_model_action_log_probs = ref_model_log_probs.gather(
-            dim=-1, index=index.unsqueeze(-1)
+            dim=-1, index=shifted_contexts.unsqueeze(-1)
         ).squeeze(
             -1
         )  # (B,S)
-
         # Approximating KL Divergence (see refs in docstring)
         kl_div = (
             torch.exp(ref_model_action_log_probs - action_log_probs)
             - (ref_model_action_log_probs - action_log_probs)
             - 1
-        ).sum()
+        )
+
+        self.tally.add_contextualized_token_metrics(
+            rollout_ids=rollout_ids,
+            metric_id="kl",
+            contexts=shifted_contexts,
+            metrics=kl_div,
+            action_mask=action_mask,
+        )
+
+        # We only care about KLD of action tokens
+        kl_div *= action_mask
+
+        kl_div = kl_div.sum()
 
         return kl_div
 
-    def mask_non_restricted_token_logits(
-        self, 
-        logits: torch.Tensor):
-        """
-        TODO: docstring
-        """
-        # TODO: verify. Not sure what we do here is differentiable
-        # also, we recompute for nothing
-        allowed_token_ids = []
-        for token in self.config.restrict_tokens:
-            token_ids = self.tokenizer(
-                token, 
-                add_special_tokens=False)["input_ids"]
-            allowed_token_ids.append(token_ids[0])
-        allowed_token_ids.append(self.tokenizer.eos_token_id) # This token should always be active   
-        allowed_token_ids = torch.tensor(
-            allowed_token_ids, 
-            device=logits.device)
-        # Mask log_probs and probs to only allowed tokens
-        mask = torch.zeros_like(logits).bool()  # (B, S, V)
-        mask[..., allowed_token_ids] = True
-        logits = torch.where(
-            mask,
-            logits,
-            torch.tensor(-1e9, device=logits.device),
-        )
-        return logits
+
 
     def get_gradient_magnitude(self, loss_term: torch.Tensor):
         """
@@ -575,10 +599,12 @@ class ReinforceTrainerWRS:
             if self.config.kl_coeff != 0.0:
                 # TODO: verify
                 mb_kl = self.get_kl_divergence(
-                    input_ids=contexts_mb,
+                    rollout_ids=rollout_ids_mb,
+                    contexts=contexts_mb,
+                    shifted_contexts=shifted_contexts_mb,
                     attention_mask=attention_mask,
                     action_log_probs=action_log_probs,
-                    index=shifted_contexts_mb,
+                    action_mask=action_mask_mb
                 )
                 mb_kl *= self.config.kl_coeff
                 self.tally.add_metric(
