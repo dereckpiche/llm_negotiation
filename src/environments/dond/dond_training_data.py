@@ -39,12 +39,17 @@ def dond_generate_training_data_from_raw(
     (
         normalized_round_points_agent,
         normalized_round_points_coagent,
-    ) = dond_get_normalized_round_points(raw_data_folder)
+    ) = dond_get_normalized_round_points(
+        round_points_agent=round_points_agent,
+        round_points_coagent=round_points_coagent,
+        substract_group_wise_loo_mean_rewards=substract_group_wise_loo_mean_rewards,
+        substract_rloo_mean_rewards=substract_rloo_mean_rewards
+        )
 
     os.makedirs(training_data_folder, exist_ok=True)
     if debug_output:
         debug_output_folder = os.path.join(
-            os.path.dirname(training_data_folder), "training_data_debug"
+            os.path.dirname(training_data_folder), "dond_point_arrays_for_db"
         )
         os.makedirs(debug_output_folder, exist_ok=True)
         # Export round_points_agent, round_points_coagent, and scores as CSV in debug folder
@@ -185,7 +190,7 @@ def dond_get_normalized_round_points(
     round_points_coagent: np.ndarray,
     substract_group_wise_loo_mean_rewards: bool,
     substract_rloo_mean_rewards: bool,
-):
+    ):
     # Initialize nested dictionaries to store SCORES for each match within each minibatch group
     # Format: {minibatch_id: {match_id: [scores]}}
 
@@ -193,6 +198,7 @@ def dond_get_normalized_round_points(
     normalized_rp_coagent = defaultdict(lambda: defaultdict(list))
 
     def sub_loo_mr(array: np.ndarray):
+        n = array.shape[0]
         return array - (np.sum(array, axis=0, keepdims=True) - array) / (n - 1)
 
     if substract_loo_mean_rewards:

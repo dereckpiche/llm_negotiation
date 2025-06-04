@@ -40,9 +40,11 @@ def get_assistant_actions_mask_and_score(
     nb_tokens = token_ids.shape[0]
     scores = torch.zeros(token_ids.shape)
     action_mask = torch.zeros(token_ids.shape)
+    if assistant_msg_scores.dim() == 0:
+        assistant_msg_scores = assistant_msg_scores.unsqueeze(0)
 
 
-    if "Qwen2.5-0.5B-Instruct" in tokenizer_name:
+    if tokenizer_name in ["Qwen/Qwen2.5-7B-Instruct", "Qwen2.5-0.5B-Instruct"]:
         """
         For this tokenizer, eos_token_id is 151645 and get_sentencepieced_example(qwen_tokenizer) returns
 

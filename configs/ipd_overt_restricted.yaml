@@ -10,7 +10,7 @@ experiment:
   method: generate_and_train
   description: "no description"
   nb_epochs: 2000
-  nb_matches_per_iteration: 5
+  nb_matches_per_iteration: 64
   reinit_matches_each_it: true
   checkpoint_every_n_iterations: 25
   start_epoch: 0
@@ -52,8 +52,8 @@ matches:
   env_class: "IPDEnv"
   agent_class: "IPDAgent"
 
-  max_length: 3
-  continuation_prob: 1.0
+  max_length: 30
+  continuation_prob: 0.85
   same_length_batch: True
 
   # If set to 0, existing setup will run where utilities are randomly sampled at the beginning of each round.
@@ -91,7 +91,7 @@ matches:
         agent_id: "Bob"
         policy_id: "qwen/sp_adapter"
 
-temperature: 0.7
+temperature: 2.0
 
 models:
   qwen:
@@ -137,7 +137,7 @@ models:
           type: "lora"
           optimizer_method: "Adam"
           optimizer_kwargs:
-            lr: 1e-6
+            lr: 3e-6
             weight_decay: 0.0
           lora_kwargs:
             task_type: "CAUSAL_LM"
@@ -160,13 +160,13 @@ training:
       training_data_func: ipd_generate_training_data_from_raw
       training_data_func_args:
         exclude_errors: False
-        debug_output: True
+        normalize_round_points: True
 
     Bob:
       training_data_func: ipd_generate_training_data_from_raw
       training_data_func_args:
         exclude_errors: False
-        debug_output: True
+        normalize_round_points: True
 
   qwen:
     adapters:

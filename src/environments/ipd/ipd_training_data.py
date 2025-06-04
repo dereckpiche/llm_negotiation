@@ -7,10 +7,10 @@ from utils.common_imports import *
 
 
 def ipd_generate_training_data_from_raw(
-    raw_data_folder,
-    training_data_folder,
-    exclude_errors=False,
-    debug_output=True,
+    raw_data_folder:str,
+    training_data_folder:str,
+    exclude_errors:bool,
+    normalize_round_points:bool
 ):
     """
     Generates training data from raw match data by calculating scores.
@@ -34,18 +34,34 @@ def ipd_generate_training_data_from_raw(
         raw_data_folder
     )
 
+
     os.makedirs(training_data_folder, exist_ok=True)
-    if debug_output:
-        debug_output_folder = os.path.join(
-            os.path.dirname(training_data_folder), "training_data_debug"
-        )
-        os.makedirs(debug_output_folder, exist_ok=True)
-        # Export round_points_agent, round_points_coagent, and scores as CSV in debug folder
+    debug_output_folder = os.path.join(
+        os.path.dirname(training_data_folder), "ipd_point_arrays_for_db"
+    )
+    os.makedirs(debug_output_folder, exist_ok=True)
+    # Export round_points_agent, round_points_coagent, and scores as CSV in debug folder
+    pd.DataFrame(round_points_agent).to_csv(
+        os.path.join(debug_output_folder, "round_points_agent.csv"), index=False
+    )
+    pd.DataFrame(round_points_coagent).to_csv(
+        os.path.join(debug_output_folder, "round_points_coagent.csv"), index=False
+    )
+    if normalize_round_points == True:
+
+        # Subtracts round-wise mean point baseline 
+        def sub_loo_mr(array: np.ndarray):
+            n = array.shape[0]
+            return array - (np.sum(array, axis=0, keepdims=True) - array) / (n - 1)
+
+        round_points_agent = sub_loo_mr(round_points_agent)
+        round_points_coagent = sub_loo_mr(round_points_coagent)
+
         pd.DataFrame(round_points_agent).to_csv(
-            os.path.join(debug_output_folder, "round_points_agent.csv"), index=False
+            os.path.join(debug_output_folder, "normalized_round_points_agent.csv"), index=False
         )
         pd.DataFrame(round_points_coagent).to_csv(
-            os.path.join(debug_output_folder, "round_points_coagent.csv"), index=False
+            os.path.join(debug_output_folder, "normalized_round_points_coagent.csv"), index=False
         )
 
     # Create training data, giving each action their score

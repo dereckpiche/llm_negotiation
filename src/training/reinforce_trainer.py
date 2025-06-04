@@ -85,14 +85,6 @@ class ReinforceTrainerWRS:
                 The first advantage array.
             a2 (np.ndarray):
                 The second advantage array.
-            gamma (float, optional):
-                The discount factor. Defaults to 0.9.
-            beta (float, optional):
-                The shaping factor. Defaults to 1.0.
-            regulate_var (bool, optional):
-                Whether to regulate variance. Defaults to False.
-            time_decay (bool, optional):
-            Whether to apply 1/t regularization. Defaults to False.
 
         Returns:
             adv_align_terms (np.ndarray): The advantage alignment terms.
@@ -128,7 +120,7 @@ class ReinforceTrainerWRS:
 
         # Normalize alignment terms (across same time step)
         if self.config.use_variance_regularization_in_ad_align:
-            reg_coef = np.std(a1[:, -1]) / (np.std(alignment_terms[:, -1]) + 1e-10)
+            reg_coef = np.std(a1[:, -1]) / (np.std(alignment_terms[:, -1]) + 1e-9)
             alignment_terms = reg_coef * alignment_terms
 
         # 1/1+t Regularization
@@ -318,6 +310,7 @@ class ReinforceTrainerWRS:
         self.model.eval()
 
         # TODO: (Dereck) Complete this code
+        # KL is not using same temp for base model
 
         # Disable policy adapter to run inference on base model
         with torch.no_grad():
@@ -353,12 +346,14 @@ class ReinforceTrainerWRS:
         TODO: docstring
         """
         # TODO: verify. Not sure what we do here is differentiable
+        # also, we recompute for nothing
         allowed_token_ids = []
         for token in self.config.restrict_tokens:
             token_ids = self.tokenizer(
                 token, 
                 add_special_tokens=False)["input_ids"]
             allowed_token_ids.append(token_ids[0])
+        allowed_token_ids.append(self.tokenizer.eos_token_id) # This token should always be active   
         allowed_token_ids = torch.tensor(
             allowed_token_ids, 
             device=logits.device)
@@ -373,6 +368,9 @@ class ReinforceTrainerWRS:
         return logits
 
     def get_gradient_magnitude(self, loss_term: torch.Tensor):
+        """
+        TODO: docstring
+        """
         with torch.no_grad():
             grads = torch.autograd.grad(
                 loss_term,
@@ -482,12 +480,12 @@ class ReinforceTrainerWRS:
                 action_mask=action_mask_mb,
             )
 
-            # Forward pass
+            # Forward pass + cast to FP-32 for higher prec.
             logits = self.model(
                 input_ids=contexts_mb, 
                 attention_mask=attention_mask)[
                 0
-            ]  # (B, S, V)
+            ].float()  # (B, S, V)
 
             # Mask non-restricted tokens
             if self.config.restrict_tokens is not None:
@@ -504,6 +502,14 @@ class ReinforceTrainerWRS:
             ).squeeze(
                 -1
             )  # (B, S)
+
+            self.tally.add_contextualized_token_metrics(
+                rollout_ids=rollout_ids_mb,
+                metric_id="next_token_log_prob",
+                contexts=shifted_contexts_mb,
+                metrics=action_log_probs,
+                action_mask=action_mask_mb,
+            )
 
             self.tally.add_contextualized_token_metrics(
                 rollout_ids=rollout_ids_mb,

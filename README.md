@@ -43,6 +43,8 @@ python src/run.py --config-path your-path-to-configs-folder --config-name your-c
 
 ## Stats
 
+We recommended using [CSV](https://marketplace.cursorapi.com/items?itemName=ReprEng.csv) and [JSON](https://marketplace.cursorapi.com/items?itemName=ZainChen.json) VsCode extensions to visualize the data.
+
 ```bash
 PYTHONPATH=src python 'src/training/produce_training_stats.py' tab_render --inpath=path/to/json
 ```
