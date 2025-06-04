@@ -527,6 +527,8 @@ class ReinforceTrainerWRS:
                 -1
             )  # (B, S)
 
+            
+
             self.tally.add_contextualized_token_metrics(
                 rollout_ids=rollout_ids_mb,
                 metric_id="next_token_log_prob",
@@ -542,6 +544,33 @@ class ReinforceTrainerWRS:
                 metrics=torch.exp(action_log_probs),
                 action_mask=action_mask_mb,
             )
+
+            # Log top K ids and probs
+            if self.config.top_k_for_logging != 0:
+
+                top_k_indices = torch.topk(logits, 
+                k=self.config.top_k_for_logging, dim=-1).indices
+
+                # import pdb; pdb.set_trace()
+                self.tally.add_contextualized_token_metrics(
+                    rollout_ids=rollout_ids_mb,
+                    metric_id=f"top_{self.config.top_k_for_logging}_tids",
+                    contexts=shifted_contexts_mb,
+                    metrics=top_k_indices,
+                    action_mask=action_mask_mb,
+                    to_tids=True
+                )
+
+                self.tally.add_contextualized_token_metrics(
+                    rollout_ids=rollout_ids_mb,
+                    metric_id=f"top_{self.config.top_k_for_logging}_probs",
+                    contexts=shifted_contexts_mb,
+                    metrics=torch.exp(log_probs).gather(
+                        dim=-1, 
+                        index=top_k_indices),
+                    action_mask=action_mask_mb,
+                )
+            
 
             rewarded_action_log_probs = (
                 action_mask_mb 

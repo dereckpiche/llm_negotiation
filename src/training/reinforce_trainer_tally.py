@@ -12,7 +12,7 @@ class RtTally:
     def __init__(
         self, 
         tokenizer: AutoTokenizer, 
-        max_context_length: int = 10):
+        max_context_length: int = 30):
         self.tokenizer = tokenizer
         self.max_context_length = max_context_length
         self.base_tally = {}
@@ -68,24 +68,27 @@ class RtTally:
         contexts: torch.Tensor,
         metrics: torch.Tensor,
         action_mask: torch.Tensor,
+        to_tids: bool= False
     ):
         """
         TODO: docstring
         """
 
-        if len(contexts.shape) == 1:
-            contexts = contexts.unsqueeze(0)
-        if len(metrics.shape) == 1:
-            metrics = metrics.unsqueeze(0)
+        # if len(contexts.shape) == 1:
+        #     contexts = contexts.unsqueeze(0)
+        # if len(metrics.shape) == 1:
+        #     metrics = metrics.unsqueeze(0)
 
-        assert len(contexts.shape) == 2, "Contexts tensor does not have the right shape"
-        assert len(metrics.shape) == 2, "Metrics tensor does not have the right shape"
+        # assert len(contexts.shape) == 2, "Contexts tensor does not have the right shape"
+        # assert len(metrics.shape) == 2, "Metrics tensor does not have the right shape"
 
-        B, S = metrics.shape
+        if len(metrics.shape) == 2:
+            B, S = metrics.shape
+        else:
+            B, S, _ = metrics.shape
 
         counter = 0
         for i in range(B):
-            # import pdb; pdb.set_trace()
             rollout_id = rollout_ids[i]
             self.contextualized_tally.setdefault(rollout_id, [])
             rollout_data = self.contextualized_tally.get(rollout_id)
@@ -94,7 +97,11 @@ class RtTally:
 
                     ctx = contexts[i, j+1 - min(j, self.max_context_length) : j+1].squeeze()
                     context_string = self.tids_to_str(ctx.tolist())
-                    value = metrics[i, j].item()
+                    value = metrics[i, j]
+                    if isinstance(value, Union[np.ndarray, torch.Tensor]): 
+                        value = value.tolist()
+                    if to_tids:
+                        value = self.tids_to_str(value)
                     # TODO: catch context overflows
                     context = context_string[:-1]
                     next_token = context_string[-1]
