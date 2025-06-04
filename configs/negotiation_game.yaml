@@ -5,7 +5,7 @@ hydra:
     chdir: false
 
 experiment:
-  name: "negotiation_game"
+  name: "negotiation_game_${now:%Y-%m-%d___%H-%M-%S}"
   # name: "${now:%Y-%m-%d___%H-%M-%S}_no_name" (having timestamp is good for debugging, but it is difficult to restart with preemption)
   method: generate_and_train
   description: "Agents trained on negotiation game with regular RL."
@@ -101,8 +101,8 @@ matches:
   env_class: "DondEnv"
   agent_class: "DondAgent"
 
-  max_length: 30
-  continuation_prob: 0.85
+  max_length: 2
+  continuation_prob: 1.0
   same_length_batch: True
 
   # If set to 0, existing setup will run where utilities are randomly sampled at the beginning of each round.
@@ -217,25 +217,34 @@ training:
       training_data_func_args:
         exclude_errors: False
         debug_output: True
+        substract_group_wise_loo_mean_rewards: True
+        substract_loo_mean_rewards: False
 
     Bob:
       training_data_func: dond_generate_training_data_from_raw
       training_data_func_args:
         exclude_errors: False
         debug_output: True
-
+        substract_group_wise_loo_mean_rewards: True
+        substract_loo_mean_rewards: False
 
 
   qwen:
     adapters:
       sp_adapter:
-        train_func: train_reinforce_main
-        train_func_args:
-          gradient_checkpointing: true
+        trainer_config:
+          entropy_coeff: 0.0
+          kl_coeff: 0.0
+          gradient_clipping: null
+          restrict_tokens: None
+          mini_batch_size: 1
+          use_gradient_checkpointing: true
+          top_k_for_logging: 1
           temperature: ${temperature}
-          entropy_coef: 0.0
-          kl_loss_coef: 0.0
-          debug_enabled: True
-          debug_log_path: "${hydra:run.dir}/trainer_debugger"
-        train_data_args:
-          average_score_over_message: False
+          discount_factor: 1.0
+          use_sum_rewards: false
+          use_advantage_alignment: false
+          use_variance_regularization_in_ad_align: null
+          use_time_regularization_in_ad_align: null
+          ad_align_beta: null
+          device: "cuda:0"

@@ -17,7 +17,7 @@ def dond_generate_training_data_from_raw(
     exclude_errors: bool,
     debug_output: bool,
     substract_group_wise_loo_mean_rewards: bool,
-    substract_rloo_mean_rewards: bool,
+    substract_loo_mean_rewards: bool,
 ):
     """
     Generates training data from raw match data by calculating scores.
@@ -36,6 +36,7 @@ def dond_generate_training_data_from_raw(
         raw_data_folder
     )
 
+
     (
         normalized_round_points_agent,
         normalized_round_points_coagent,
@@ -43,8 +44,10 @@ def dond_generate_training_data_from_raw(
         round_points_agent=round_points_agent,
         round_points_coagent=round_points_coagent,
         substract_group_wise_loo_mean_rewards=substract_group_wise_loo_mean_rewards,
-        substract_rloo_mean_rewards=substract_rloo_mean_rewards
+        substract_loo_mean_rewards=substract_loo_mean_rewards
         )
+
+    
 
     os.makedirs(training_data_folder, exist_ok=True)
     if debug_output:
@@ -189,7 +192,7 @@ def dond_get_normalized_round_points(
     round_points_agent: np.ndarray,
     round_points_coagent: np.ndarray,
     substract_group_wise_loo_mean_rewards: bool,
-    substract_rloo_mean_rewards: bool,
+    substract_loo_mean_rewards: bool,
     ):
     # Initialize nested dictionaries to store SCORES for each match within each minibatch group
     # Format: {minibatch_id: {match_id: [scores]}}
@@ -223,11 +226,11 @@ def dond_get_normalized_round_points(
             agent_points = sub_loo_mr(agent_points)
             coagent_points = sub_loo_mr(coagent_points)
 
-        # Store the scores for each match_id in a minibatch / group
-        for match_id, agent_point, coagent_point in zip(
-            match_ids, agent_points, coagent_points
-        ):
-            normalized_rp_agent[group_id][match_id] = agent_points
-            normalized_rp_coagent[group_id][match_id] = coagent_points
+            # Store the scores for each match_id in a minibatch / group
+            for match_id, agent_point, coagent_point in zip(
+                match_ids, agent_points, coagent_points
+            ):
+                normalized_rp_agent[group_id][match_id] = agent_point
+                normalized_rp_coagent[group_id][match_id] = coagent_point
 
     return normalized_rp_agent, normalized_rp_coagent

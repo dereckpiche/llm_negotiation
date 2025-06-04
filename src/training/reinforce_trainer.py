@@ -33,7 +33,7 @@ class ReinforceTrainerWRS:
     # TODO: check AdAlign code for normalization
     # TODO: add value function
     # TODO: log top k probs
-    # TODO: 
+    # TODO: add lr scheduler support
 
     # so that we can check the gradient magnitude of the different relative terms (in percentages)
 
