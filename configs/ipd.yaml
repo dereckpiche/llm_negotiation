@@ -158,13 +158,13 @@ training:
       training_data_func: ipd_generate_training_data_from_raw
       training_data_func_args:
         exclude_errors: False
-        debug_output: True
+        normalize_round_points: True
 
     Bob:
       training_data_func: ipd_generate_training_data_from_raw
       training_data_func_args:
         exclude_errors: False
-        debug_output: True
+        normalize_round_points: True
 
   qwen:
     adapters:

@@ -101,8 +101,8 @@ matches:
   env_class: "DondEnv"
   agent_class: "DondAgent"
 
-  max_length: 10
-  continuation_prob: 1.0
+  max_length: 30
+  continuation_prob: 0.85
   same_length_batch: True
 
   # If set to 0, existing setup will run where utilities are randomly sampled at the beginning of each round.

@@ -2,7 +2,7 @@ defaults:
   - ipd.yaml
 
 experiment:
-  name: "ipd_covert"
+  name: "ipd_covert_new_trainer"
 
 
 common_agent_kwargs: &common_agent_kwargs
@@ -35,8 +35,8 @@ common_agent_kwargs: &common_agent_kwargs
 matches:
 
   env_kwargs:
-    cooperate_actions: ["C"]
-    defect_actions: ["D"]
+    cooperate_actions: ["A"]
+    defect_actions: ["B"]
 
 
   agents:
