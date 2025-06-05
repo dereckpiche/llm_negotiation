@@ -8,20 +8,9 @@ experiment:
 
 training:
 
-  agents:
-    Alice:
-      training_data_func: generate_training_data_from_raw
-      training_data_func_args:
-        exclude_errors: False
-        debug_output: True
-        score_method: sum_rloo_scores
-        score_method_kwargs:
-          discount_factor: 1.0
-    Bob:
-      training_data_func: generate_training_data_from_raw
-      training_data_func_args:
-        exclude_errors: False
-        debug_output: True
-        score_method: sum_rloo_scores
-        score_method_kwargs:
-          discount_factor: 1.0
+  qwen:
+    adapters:
+      sp_adapter:
+        trainer_config:
+          use_sum_rewards: True
+        

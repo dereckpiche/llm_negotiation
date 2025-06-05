@@ -5,7 +5,7 @@ hydra:
     chdir: false
 
 experiment:
-  name: "negotiation_game_new_trainer_test"
+  name: "negotiation_game_new_trainer_test_${now:%Y-%m-%d___%H-%M-%S}"
   # name: "${now:%Y-%m-%d___%H-%M-%S}_no_name" (having timestamp is good for debugging, but it is difficult to restart with preemption)
   method: generate_and_train
   description: "Agents trained on negotiation game with regular RL."
@@ -38,7 +38,7 @@ common_agent_kwargs: &common_agent_kwargs
         other_takes_key: "Alice"
 
   intro_prompt: |
-      Welcome, you are participating in a negotiation game. You are playing as the agent named {agent_name}. The other agent with whom you are playing is named {coagent_name}. In this game, two agents bargain over how to divide items over multiple rounds. The number of rounds is incredibly high. Each agent only knows their own item values. Each item has different values for each agent. Each agent submits their own proposal for how to divide the items.
+    Welcome, you are participating in a negotiation game. You are playing as the agent named {agent_name}. The other agent with whom you are playing is named {coagent_name}. In this game, two agents bargain over how to divide items over multiple rounds. The number of rounds is incredibly high. Each agent only knows their own item values. Each item has different values for each agent. Each agent submits their own proposal for how to divide the items.
 
   dond_version_specificities: |
     Each round is played as follows:
@@ -101,8 +101,8 @@ matches:
   env_class: "DondEnv"
   agent_class: "DondAgent"
 
-  max_length: 30
-  continuation_prob: 0.85
+  max_length: 10
+  continuation_prob: 1.0
   same_length_batch: True
 
   # If set to 0, existing setup will run where utilities are randomly sampled at the beginning of each round.
@@ -236,10 +236,10 @@ training:
           entropy_coeff: 0.0
           kl_coeff: 0.0
           gradient_clipping: null
-          restrict_tokens: None
+          restrict_tokens: null
           mini_batch_size: 1
           use_gradient_checkpointing: true
-          top_k_for_logging: 1
+          top_k_for_logging: 10
           temperature: ${temperature}
           discount_factor: 1.0
           use_sum_rewards: false

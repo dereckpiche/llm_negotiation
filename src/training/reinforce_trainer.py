@@ -14,8 +14,10 @@ from training.reinforce_trainer_config import RtConfig
 from training.reinforce_trainer_tally import RtTally
 from training.tokenizer_action_masking import get_assistant_actions_mask_and_score
 from utils.common_imports import *
+from utils.time_and_memory_utils import *
+from utils.print_logger import *
 
-train_logger = logging.getLogger("train_logger")
+
 
 
 class ReinforceTrainerWRS:
@@ -61,6 +63,8 @@ class ReinforceTrainerWRS:
             optimizer)
         self.tally = RtTally(tokenizer=tokenizer)
 
+        self.logger = PrintLogger(
+            logging.getLogger("reinforcer_trainer_logger"))
 
         # self.tally.add_metric(
         #     path=["tokenizer_eot_id"],
@@ -136,6 +140,8 @@ class ReinforceTrainerWRS:
         )
 
         adv_align_terms = a1 + beta * alignment_terms
+
+        self.logger.info(f"\n \n After AdAlign \n  {ram_usage()} \n {vram_usage()}")
 
         return adv_align_terms.squeeze()
 
@@ -264,6 +270,9 @@ class ReinforceTrainerWRS:
         # TODO: verify. Not sure what we do here is differentiable
         # also, we recompute for nothing
 
+        self.logger.info(f"\n Before Masking Tokens \n  {ram_usage()} \n {vram_usage()}")
+
+
         if self.config.restrict_tokens is not None:
             allowed_token_ids = []
             for token in self.config.restrict_tokens:
@@ -281,8 +290,11 @@ class ReinforceTrainerWRS:
             logits = torch.where(
                 mask,
                 logits,
-                torch.tensor("-inf", device=logits.device),
+                torch.tensor(-float('inf'), device=logits.device),
             )
+
+        self.logger.info(f"\n After Masking Tokens \n  {ram_usage()} \n {vram_usage()}")
+
 
         return logits
 
@@ -297,15 +309,12 @@ class ReinforceTrainerWRS:
         """
         Computes entropy were actions are LLM-generated strings of tokens.
         """
-        # TODO: check if this is right,
-        # Not simple with actions being strings
         try:
             B, S, T = logits.shape
         except:
             print("Missing batch dimension.")
 
 
-        # TODO: check infs here (special.xlogy)
         token_entropy_terms = -F.softmax(logits, dim=-1) \
              * F.log_softmax(logits, dim=-1)
         # (B, S, T)
@@ -328,6 +337,9 @@ class ReinforceTrainerWRS:
             action_mask=action_mask,
         )
         expected_entropy = token_entropy_terms.sum()
+
+        del token_entropy_terms
+
         return expected_entropy
 
     def get_kl_divergence(
@@ -387,6 +399,8 @@ class ReinforceTrainerWRS:
 
         kl_div = kl_div.sum()
 
+
+
         return kl_div
 
 
@@ -424,6 +438,9 @@ class ReinforceTrainerWRS:
         See https://huggingface.co/docs/accelerate/usage_guides/
         gradient_accumulation#converting-it-to-accelerate
         """
+
+        self.logger.info(f"\n Before Reinforce Step \n  {ram_usage()} \n {vram_usage()}")
+
         self.model.train()
         loss = 0.0
         mb_size = self.config.mini_batch_size
@@ -527,7 +544,6 @@ class ReinforceTrainerWRS:
                 -1
             )  # (B, S)
 
-            
 
             self.tally.add_contextualized_token_metrics(
                 rollout_ids=rollout_ids_mb,
@@ -545,8 +561,12 @@ class ReinforceTrainerWRS:
                 action_mask=action_mask_mb,
             )
 
+
             # Log top K ids and probs
             if self.config.top_k_for_logging != 0:
+
+                self.logger.info(f"\n Before Logging Top K \n  {ram_usage()} \n {vram_usage()}")
+
 
                 top_k_indices = torch.topk(logits, 
                 k=self.config.top_k_for_logging, dim=-1).indices
@@ -570,6 +590,9 @@ class ReinforceTrainerWRS:
                         index=top_k_indices),
                     action_mask=action_mask_mb,
                 )
+
+                self.logger.info(f"\n After Logging Top K \n  {ram_usage()} \n {vram_usage()}")
+
             
 
             rewarded_action_log_probs = (
@@ -592,6 +615,7 @@ class ReinforceTrainerWRS:
             self.tally.add_metric(
                 path=["loss_mb_total", "value_mb_total"],
                 metric=mb_value.item())
+
             # TODO: add option not to log this: it takes extra compute
             self.tally.add_metric(
                 path=["gradient_term_magnitudes", "value"],
@@ -603,6 +627,9 @@ class ReinforceTrainerWRS:
 
             # Add entropy regularization term to loss
             if self.config.entropy_coeff != 0.0:
+
+                self.logger.info(f"\n Before Computing Entropy \n  {ram_usage()} \n {vram_usage()}")
+
                 mb_entropy = self.get_expected_entropy(
                     rollout_ids=rollout_ids_mb,
                     contexts=contexts_mb,
@@ -624,8 +651,13 @@ class ReinforceTrainerWRS:
                 )
                 loss += mb_entropy
 
+                self.logger.info(f"\n After Computing Entropy \n  {ram_usage()} \n {vram_usage()}")
+
             # Add KL-divergence regularization term to loss
             if self.config.kl_coeff != 0.0:
+
+                self.logger.info(f"\n Before Computing KLD \n  {ram_usage()} \n {vram_usage()}")
+
                 # TODO: verify
                 mb_kl = self.get_kl_divergence(
                     rollout_ids=rollout_ids_mb,
@@ -647,6 +679,9 @@ class ReinforceTrainerWRS:
                     )
                 )
                 loss += mb_kl
+
+                self.logger.info(f"\n After Computing KLD \n  {ram_usage()} \n {vram_usage()}")
+
 
             # Normalize over number tokens generated
             loss /= total_nb_action_tokens
@@ -694,6 +729,9 @@ class ReinforceTrainerWRS:
 
         gc.collect()
         torch.cuda.empty_cache()
+
+        self.logger.info(f"\n After Reinforce Step \n  {ram_usage()} \n {vram_usage()}")
+
 
     def apply_reinforce_step_on_paths(self, paths: list[str]):
         """
