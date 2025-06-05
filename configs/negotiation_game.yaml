@@ -235,11 +235,10 @@ training:
         trainer_config:
           entropy_coeff: 0.0
           kl_coeff: 0.0
-          gradient_clipping: null
+          gradient_clipping: 1.0
           restrict_tokens: null
           mini_batch_size: 1
           use_gradient_checkpointing: true
-          top_k_for_logging: 10
           temperature: ${temperature}
           discount_factor: 1.0
           use_sum_rewards: false
@@ -248,3 +247,16 @@ training:
           use_time_regularization_in_ad_align: null
           ad_align_beta: null
           device: "cuda:0"
+          log_ctz_length: 30
+          log_ctz_next_token: True
+          log_ctz_next_token_score: True
+          log_ctz_next_token_log_prob: True
+          log_ctz_next_token_prob: True
+          log_ctz_top_k: 5
+          log_ctz_top_k_tids: True
+          log_ctz_top_k_probs: True
+          log_ctz_top_slogpi: True
+          log_ctz_entropy: True
+          log_ctz_kl: True
+
+

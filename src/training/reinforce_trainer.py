@@ -66,6 +66,11 @@ class ReinforceTrainerWRS:
         self.logger = PrintLogger(
             logging.getLogger("reinforcer_trainer_logger"))
 
+        if self.config.use_gradient_checkpointing == True:
+            self.logger.info("Enabling gradient checkpointing.")
+            self.model.gradient_checkpointing_enable(dict(use_reentrant=False))
+
+
         # self.tally.add_metric(
         #     path=["tokenizer_eot_id"],
         #     metric=self.tokenizer.eos_token_id)
@@ -270,9 +275,6 @@ class ReinforceTrainerWRS:
         # TODO: verify. Not sure what we do here is differentiable
         # also, we recompute for nothing
 
-        self.logger.info(f"\n Before Masking Tokens \n  {ram_usage()} \n {vram_usage()}")
-
-
         if self.config.restrict_tokens is not None:
             allowed_token_ids = []
             for token in self.config.restrict_tokens:
@@ -292,9 +294,6 @@ class ReinforceTrainerWRS:
                 logits,
                 torch.tensor(-float('inf'), device=logits.device),
             )
-
-        self.logger.info(f"\n After Masking Tokens \n  {ram_usage()} \n {vram_usage()}")
-
 
         return logits
 
@@ -320,22 +319,16 @@ class ReinforceTrainerWRS:
         # (B, S, T)
 
         # We only take the entropy of actions
-        # import pdb; pdb.set_trace()
         token_entropy_terms *= action_mask[:, :, None]
 
-        # Log entropy terms for each token generated
-        # generated_tokens_entr = torch.gather(
-        #     input=token_entropy_terms, 
-        #     index=shifted_contexts[:, :, None].long(),
-        #     dim=-1, 
-        # )
-        self.tally.add_contextualized_token_metrics(
-            rollout_ids=rollout_ids,
-            metric_id="entropy",
-            contexts=shifted_contexts,
-            metrics=token_entropy_terms.sum(dim=-1),
-            action_mask=action_mask,
-        )
+        if self.config.log_ctz_entropy:
+            self.tally.add_contextualized_token_metrics(
+                rollout_ids=rollout_ids,
+                metric_id="entropy",
+                contexts=shifted_contexts,
+                metrics=token_entropy_terms.sum(dim=-1),
+                action_mask=action_mask,
+            )
         expected_entropy = token_entropy_terms.sum()
 
         del token_entropy_terms
@@ -386,20 +379,19 @@ class ReinforceTrainerWRS:
             - 1
         )
 
-        self.tally.add_contextualized_token_metrics(
-            rollout_ids=rollout_ids,
-            metric_id="kl",
-            contexts=shifted_contexts,
-            metrics=kl_div,
-            action_mask=action_mask,
-        )
+        if self.config.log_ctz_kl:
+            self.tally.add_contextualized_token_metrics(
+                rollout_ids=rollout_ids,
+                metric_id="kl",
+                contexts=shifted_contexts,
+                metrics=kl_div,
+                action_mask=action_mask,
+            )
 
         # We only care about KLD of action tokens
         kl_div *= action_mask
 
         kl_div = kl_div.sum()
-
-
 
         return kl_div
 
@@ -470,22 +462,16 @@ class ReinforceTrainerWRS:
             rollout_ids_mb = rollout_ids[mb:mb+mb_size]
 
             # Convert sequences to padded tensor minibatches
-            contexts_mb = [c[:-1] for c in contexts[mb : mb + mb_size]]
+            tokens_mb = contexts[mb : mb + mb_size]
             tok_out = self.tokenizer.pad(
-                {"input_ids": contexts_mb}, 
+                {"input_ids": tokens_mb}, 
                 padding="longest", 
                 return_tensors="pt"
             )
-            contexts_mb = tok_out.input_ids.to(device)
-            attention_mask = tok_out.attention_mask.to(device)
-
-            shifted_contexts_mb = [c[1:] for c in contexts[mb : mb + mb_size]]
-            shifted_tok_out = self.tokenizer.pad(
-                {"input_ids": shifted_contexts_mb},
-                padding="longest",
-                return_tensors="pt",
-            )
-            shifted_contexts_mb = shifted_tok_out.input_ids.to(device)
+            tokens_mb = tok_out.input_ids.to(device)
+            attention_mask = tok_out.attention_mask.to(device)[:, :-1]
+            contexts_mb = tokens_mb[:, :-1]
+            shifted_contexts_mb= tokens_mb[:, 1:]
 
             scores_mb = [s[1:] for s in scores[mb : mb + mb_size]]
             scores_mb = (
@@ -512,21 +498,21 @@ class ReinforceTrainerWRS:
                 .to(device)
             )
 
-
-            self.tally.add_contextualized_token_metrics(
-                rollout_ids=rollout_ids_mb,
-                metric_id="next_token_score",
-                contexts=shifted_contexts_mb,
-                metrics=scores_mb,
-                action_mask=action_mask_mb,
-            )
+            if self.config.log_ctz_next_token_score:
+                self.tally.add_contextualized_token_metrics(
+                    rollout_ids=rollout_ids_mb,
+                    metric_id="next_token_score",
+                    contexts=shifted_contexts_mb,
+                    metrics=scores_mb,
+                    action_mask=action_mask_mb,
+                )
 
             # Forward pass + cast to FP-32 for higher prec.
             logits = self.model(
                 input_ids=contexts_mb, 
                 attention_mask=attention_mask)[
                 0
-            ].float()  # (B, S, V)
+            ]  # (B, S, V)
 
             # Mask non-restricted tokens
             if self.config.restrict_tokens is not None:
@@ -544,52 +530,52 @@ class ReinforceTrainerWRS:
                 -1
             )  # (B, S)
 
+            if self.config.log_ctz_next_token_log_prob:
+                self.tally.add_contextualized_token_metrics(
+                    rollout_ids=rollout_ids_mb,
+                    metric_id="next_token_log_prob",
+                    contexts=shifted_contexts_mb,
+                    metrics=action_log_probs,
+                    action_mask=action_mask_mb,
+                )
+            
+            if self.config.log_ctz_next_token_prob:
+                self.tally.add_contextualized_token_metrics(
+                    rollout_ids=rollout_ids_mb,
+                    metric_id="next_token_prob",
+                    contexts=shifted_contexts_mb,
+                    metrics=torch.exp(action_log_probs),
+                    action_mask=action_mask_mb,
+                )
 
-            self.tally.add_contextualized_token_metrics(
-                rollout_ids=rollout_ids_mb,
-                metric_id="next_token_log_prob",
-                contexts=shifted_contexts_mb,
-                metrics=action_log_probs,
-                action_mask=action_mask_mb,
-            )
-
-            self.tally.add_contextualized_token_metrics(
-                rollout_ids=rollout_ids_mb,
-                metric_id="next_token_prob",
-                contexts=shifted_contexts_mb,
-                metrics=torch.exp(action_log_probs),
-                action_mask=action_mask_mb,
-            )
-
-
-            # Log top K ids and probs
-            if self.config.top_k_for_logging != 0:
+            if self.config.log_ctz_top_k != 0:
+                # Log top K ids and probs
 
                 self.logger.info(f"\n Before Logging Top K \n  {ram_usage()} \n {vram_usage()}")
 
-
                 top_k_indices = torch.topk(logits, 
-                k=self.config.top_k_for_logging, dim=-1).indices
+                k=self.config.log_ctz_top_k, dim=-1).indices
 
                 # import pdb; pdb.set_trace()
-                self.tally.add_contextualized_token_metrics(
-                    rollout_ids=rollout_ids_mb,
-                    metric_id=f"top_{self.config.top_k_for_logging}_tids",
-                    contexts=shifted_contexts_mb,
-                    metrics=top_k_indices,
-                    action_mask=action_mask_mb,
-                    to_tids=True
-                )
-
-                self.tally.add_contextualized_token_metrics(
-                    rollout_ids=rollout_ids_mb,
-                    metric_id=f"top_{self.config.top_k_for_logging}_probs",
-                    contexts=shifted_contexts_mb,
-                    metrics=torch.exp(log_probs).gather(
-                        dim=-1, 
-                        index=top_k_indices),
-                    action_mask=action_mask_mb,
-                )
+                if self.config.log_ctz_top_k_tids:
+                    self.tally.add_contextualized_token_metrics(
+                        rollout_ids=rollout_ids_mb,
+                        metric_id=f"top_{self.config.log_ctz_top_k}_tids",
+                        contexts=shifted_contexts_mb,
+                        metrics=top_k_indices,
+                        action_mask=action_mask_mb,
+                        to_tids=True
+                    )
+                if self.config.log_ctz_top_k_probs:
+                    self.tally.add_contextualized_token_metrics(
+                        rollout_ids=rollout_ids_mb,
+                        metric_id=f"top_{self.config.log_ctz_top_k}_probs",
+                        contexts=shifted_contexts_mb,
+                        metrics=torch.exp(log_probs).gather(
+                            dim=-1, 
+                            index=top_k_indices),
+                        action_mask=action_mask_mb,
+                    )
 
                 self.logger.info(f"\n After Logging Top K \n  {ram_usage()} \n {vram_usage()}")
 
@@ -600,14 +586,14 @@ class ReinforceTrainerWRS:
                 * scores_mb 
                 * action_log_probs)
             # (B, S)
-
-            self.tally.add_contextualized_token_metrics(
-                rollout_ids=rollout_ids_mb,
-                metric_id="next_token_slogpi",
-                contexts=shifted_contexts_mb,
-                metrics=rewarded_action_log_probs,
-                action_mask=action_mask_mb,
-            )
+            if self.config.log_ctz_top_slogpi:
+                self.tally.add_contextualized_token_metrics(
+                    rollout_ids=rollout_ids_mb,
+                    metric_id="next_token_slogpi",
+                    contexts=shifted_contexts_mb,
+                    metrics=rewarded_action_log_probs,
+                    action_mask=action_mask_mb,
+                )
 
             # Add value term to loss
             nb_act_tokens = torch.sum(action_mask_mb)
@@ -616,13 +602,13 @@ class ReinforceTrainerWRS:
                 path=["loss_mb_total", "value_mb_total"],
                 metric=mb_value.item())
 
-            # TODO: add option not to log this: it takes extra compute
-            self.tally.add_metric(
-                path=["gradient_term_magnitudes", "value"],
-                metric=self.get_gradient_magnitude(
-                    loss_term=mb_value
+            if self.config.log_value_gradient_terms:
+                self.tally.add_metric(
+                    path=["gradient_term_magnitudes", "value"],
+                    metric=self.get_gradient_magnitude(
+                        loss_term=mb_value
+                    )
                 )
-            )
             loss += mb_value
 
             # Add entropy regularization term to loss
@@ -642,13 +628,14 @@ class ReinforceTrainerWRS:
                     path=["loss_mb_total", "entropy_mb_total"],
                     metric=mb_entropy.item()
                 )
-                # TODO: add option not to do this: takes extra compute
-                self.tally.add_metric(
-                    path=["gradient_term_magnitudes", "entropy"],
-                    metric=self.get_gradient_magnitude(
-                        loss_term=mb_entropy
+                
+                if self.config.log_entropy_gradient_terms:
+                    self.tally.add_metric(
+                        path=["gradient_term_magnitudes", "entropy"],
+                        metric=self.get_gradient_magnitude(
+                            loss_term=mb_entropy
+                        )
                     )
-                )
                 loss += mb_entropy
 
                 self.logger.info(f"\n After Computing Entropy \n  {ram_usage()} \n {vram_usage()}")
@@ -668,16 +655,19 @@ class ReinforceTrainerWRS:
                     action_mask=action_mask_mb
                 )
                 mb_kl *= self.config.kl_coeff
+
                 self.tally.add_metric(
                     path=["mb_kl_loss_terms"], 
                     metric=mb_kl.item())
-                # TODO: add option not to do this: takes extra compute
-                self.tally.add_metric(
-                    path=["gradient_term_magnitudes", "kl"],
-                    metric=self.get_gradient_magnitude(
-                        loss_term=mb_kl
+
+                if self.config.log_kl_gradient_terms:
+                    self.tally.add_metric(
+                        path=["gradient_term_magnitudes", "kl"],
+                        metric=self.get_gradient_magnitude(
+                            loss_term=mb_kl
+                        )
                     )
-                )
+
                 loss += mb_kl
 
                 self.logger.info(f"\n After Computing KLD \n  {ram_usage()} \n {vram_usage()}")

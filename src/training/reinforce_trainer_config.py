@@ -10,7 +10,6 @@ class RtConfig:
         restrict_tokens: Union[list[str], None],
         mini_batch_size: int,
         use_gradient_checkpointing: bool,
-        top_k_for_logging: int,
         logging_path: str,
         temperature: float,
         discount_factor: float,
@@ -20,6 +19,24 @@ class RtConfig:
         use_time_regularization_in_ad_align: bool,
         ad_align_beta: float,
         device="cuda:0",
+
+
+        log_entropy_gradient_terms: bool = False,
+        log_kl_gradient_terms: bool = False,
+        log_value_gradient_terms: bool = False,
+
+        log_ctz_length: int = 30,
+        log_ctz_top_k: int = 10,
+        log_ctz_next_token: bool = False,
+        log_ctz_next_token_score: bool = False,
+        log_ctz_next_token_log_prob: bool = False,
+        log_ctz_next_token_prob: bool = False,
+        log_ctz_top_k_tids: bool = False,
+        log_ctz_top_k_probs: bool = False,
+        log_ctz_top_slogpi: bool = False,
+        log_ctz_entropy: bool = False,
+        log_ctz_kl: bool = False,
+
     ):
         """
         Args:
@@ -58,7 +75,6 @@ class RtConfig:
         self.restrict_tokens = restrict_tokens
         self.mini_batch_size = mini_batch_size
         self.use_gradient_checkpointing = use_gradient_checkpointing
-        self.top_k_for_logging = top_k_for_logging
         self.logging_path = logging_path
         self.temperature = temperature
         self.device = device
@@ -70,3 +86,20 @@ class RtConfig:
         )
         self.use_time_regularization_in_ad_align = use_time_regularization_in_ad_align
         self.ad_align_beta = ad_align_beta
+
+        
+        self.log_entropy_gradient_terms = log_entropy_gradient_terms
+        self.log_kl_gradient_terms = log_kl_gradient_terms
+        self.log_value_gradient_terms = log_value_gradient_terms
+        
+        self.log_ctz_length = log_ctz_length
+        self.log_ctz_top_k = log_ctz_top_k 
+        self.log_ctz_next_token=log_ctz_next_token
+        self.log_ctz_next_token_score=log_ctz_next_token_score
+        self.log_ctz_next_token_log_prob=log_ctz_next_token_log_prob
+        self.log_ctz_next_token_prob=log_ctz_next_token_prob
+        self.log_ctz_top_k_tids=log_ctz_top_k_tids
+        self.log_ctz_top_k_probs=log_ctz_top_k_probs
+        self.log_ctz_top_slogpi=log_ctz_top_slogpi
+        self.log_ctz_entropy=log_ctz_entropy
+        self.log_ctz_kl=log_ctz_kl
