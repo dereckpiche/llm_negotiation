@@ -247,6 +247,12 @@ def get_coins_allocation_efficiency(data, format_options=None):
     def check_items_allocation_to_higher_value_agent(
         agent_values, coagent_values, agent_points, coagent_points
     ):
+        # if agent_values["coins"] > coagent_values["coins"]:
+        #     agent_values["coins"] = 10
+        #     coagent_values["coins"] = 1
+        # elif coagent_values["coins"] > agent_values["coins"]:
+        #     agent_values["coins"] = 1
+        #     coagent_values["coins"] = 10
         items_to_agent = agent_points / agent_values["coins"]
         items_to_coagent = coagent_points / coagent_values["coins"]
         sum_items = items_to_agent + items_to_coagent + 1e-6

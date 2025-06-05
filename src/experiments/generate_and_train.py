@@ -294,7 +294,7 @@ def create_matches(cfg, env_rng, iteration):
     group_size = cfg["matches"]["nb_matches_with_same_roundwise_utilities"]
 
     for i in range(nb_matches):
-        if group_size == 0 or i % group_size == 0:
+        if group_size is not None and (i % group_size == 0):
             env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
 
         matches.append(

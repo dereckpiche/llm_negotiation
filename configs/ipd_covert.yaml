@@ -58,7 +58,7 @@ matches:
 
   # If set to 0, existing setup will run where utilities are randomly sampled at the beginning of each round.
   # If set to 1, all utilities will be calculated beforehand but rloo rewards will also be only calculated per game.
-  nb_matches_with_same_roundwise_utilities: 0
+  nb_matches_with_same_roundwise_utilities: null
 
   log_func: log_ipd_match
 
@@ -180,7 +180,7 @@ training:
         train_func_args:
           gradient_checkpointing: true
           temperature: ${temperature}
-          entropy_coef: 0.01
+          entropy_coef: 0.0
           kl_loss_coef: 0.0
           debug_enabled: True
           debug_log_path: "${oc.env:SCRATCH}/llm_negotiation/${experiment.name}/trainer_debugger"
