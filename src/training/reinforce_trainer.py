@@ -123,32 +123,105 @@ class ReinforceTrainerWRS:
         discounted_a1 = a1 * (gamma * np.ones(shape=(1, T))) ** (-np.arange(0, T, 1))
         discounted_sums_a1 = discounted_a1 @ (np.triu(np.ones((T, T))) - np.identity(T))
         t_discounts = (gamma * np.ones(shape=(1, T))) ** (np.arange(0, T, 1))
-        alignment_terms = gamma * t_discounts * discounted_sums_a1 * a2
+        adalign_weights = beta * gamma * t_discounts * discounted_sums_a1 
 
         self.tally.add_metric(
-            path=["advantage_alignment_terms"], metric=alignment_terms
+            path=["raw_advantage_alignment_weights"],
+            metric=adalign_weights
+        )
+
+       
+        # Use sign
+        if self.config.use_sign_in_ad_align:
+            assert beta == 1.0, "beta should be 1.0 when using sign"
+            positive_signs = adalign_weights > 0
+            negative_signs = adalign_weights < 0
+            adalign_weights[positive_signs] = 1
+            adalign_weights[negative_signs] = -1
+            self.tally.add_metric(
+                path=["adalign_weights_ratio_positive_signs"], 
+                metric=positive_signs.sum() / adalign_weights.size
+            )
+            self.tally.add_metric(
+                path=["adalign_weights_ratio_negative_signs"], 
+                metric=negative_signs.sum() / adalign_weights.size
+            )
+            # (rest are 0)
+
+            self.tally.add_metric(
+                path=["ad_align_weights_after_using_sign"], 
+                metric=adalign_weights
+            )
+
+        # Use clipping 
+        if self.config.ad_align_clipping not in [0.0, None]:
+            
+            upper_mask = adalign_weights > 1
+            lower_mask = adalign_weights < -1
+
+            adalign_weights = np.clip(
+                adalign_weights, 
+                -self.config.ad_align_clipping, 
+                self.config.ad_align_clipping
+            )
+            clipping_ratio = (np.sum(upper_mask) + np.sum(lower_mask)) / upper_mask.size
+
+            self.tally.add_metric(
+                path=["ad_align_clipping_ratio"], 
+                metric=clipping_ratio
+            )
+
+            self.tally.add_metric(
+                path=["ad_align_weights_after_clipping"], 
+                metric=adalign_weights
+            )
+
+        
+        # 1/1+t Regularization
+        if self.config.use_time_regularization_in_ad_align:
+            t_values = np.arange(1, T + 1)
+            adalign_weights = adalign_weights / t_values
+            self.tally.add_metric(
+                path=["adalign_weights_after_1_over_t_reg"], 
+                metric=adalign_weights
+            )
+
+        # Use coop on t=0
+        if self.config.ad_align_force_coop_first_step:
+            adalign_weights[:, 0] = 1
+            self.tally.add_metric(
+                path=["adalign_weights_after_force_coop_first_step"], 
+                metric=adalign_weights
+            )
+
+        opp_shaping_terms = adalign_weights * a2
+
+        self.tally.add_metric(
+            path=["ad_align_opp_shaping_terms"], 
+            metric=opp_shaping_terms
         )
 
         # Normalize alignment terms (across same time step)
         if self.config.use_variance_regularization_in_ad_align:
-            reg_coef = np.std(a1[:, -1]) / (np.std(alignment_terms[:, -1]) + 1e-9)
-            alignment_terms = reg_coef * alignment_terms
+            # TODO: verify
+            reg_coef = np.std(a1[:, -1]) / (np.std(opp_shaping_terms[:, -1]) + 1e-9)
+            opp_shaping_terms *= reg_coef
+            self.tally.add_metric(
+                path=["opp_shaping_terms_after_var_reg"], 
+                metric=opp_shaping_terms
+            )
 
-        # 1/1+t Regularization
-        if self.config.use_time_regularization_in_ad_align:
-            t_values = np.arange(1, T + 1)
-            alignment_terms = alignment_terms / t_values
+        ad_align_scores = a1 + opp_shaping_terms
 
         self.tally.add_metric(
-            path=["normalized_advantage_alignment_terms"], 
-            metric=alignment_terms
+            path=["final_advantage_alignment_scores"], 
+            metric=ad_align_scores
         )
-
-        adv_align_terms = a1 + beta * alignment_terms
 
         self.logger.info(f"\n \n After AdAlign \n  {ram_usage()} \n {vram_usage()}")
 
-        return adv_align_terms.squeeze()
+
+        return ad_align_scores.squeeze()
 
     def discount_returns(self, rewards: np.ndarray):
         """

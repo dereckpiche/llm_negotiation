@@ -46,6 +46,7 @@ class DondEnv:
         """
 
         # A game can be uniquely identified by the combination of match_id and group_id
+        # ASK: are game_id and match_id the same thing?
         self.match_id = game_id
         self.game_id = game_id
         # Minibatch / group id for which roundwise utilities are same
@@ -84,9 +85,15 @@ class DondEnv:
         )
         self.role_assignator_func_kwargs = role_assignator_func_kwargs or {}
         self.role_assignator_func_kwargs["rng"] = self.game_rng
-        self.role_assignator_func_kwargs["first_agent"] = (
-            agents[0] if self.group_id % 2 == 0 else agents[1]
-        )  # TODO: make this flexible -- this is a hack, will cause problems later
+        random_number = self.game_rng.random()
+        if random_number > 0.5:
+            first_agent = agents[0]
+        else:
+            first_agent = agents[1]
+        self.role_assignator_func_kwargs["first_agent"] = first_agent
+        # self.role_assignator_func_kwargs["first_agent"] = (
+        #     agents[0] if self.group_id % 2 == 0 else agents[1]
+        # )  # TODO: make this flexible -- this is a hack, will cause problems later
         self.other_values_visibility = other_values_visibility
 
         # Store the points_attribution_method
@@ -625,18 +632,9 @@ def alternating_role_assignator(state, **kwargs):
     rng = kwargs["rng"]
     first_agent = kwargs["first_agent"]
 
-    if first_agent == None:
-        random_number = rng.random()
-        if random_number > 0.5:
-            first_agent = agents[0]
-            second_agent = agents[1]
-        else:
-            first_agent = agents[1]
-            second_agent = agents[0]
-    else:
-        for agent in agents:
-            if agent != first_agent:
-                second_agent = agent
+    for agent in agents:
+        if agent != first_agent:
+            second_agent = agent
 
     if round_number % 2 == 0:
         # Even rounds: agent_0 is "starting_negotiator"
@@ -724,7 +722,7 @@ def regular_set_points(state, **kwargs):
         return {role: utilities[role] for role in roles}, valid_agreement
 
 
-def negotiation_payoff(state, use_max_divisor=True):
+def negotiation_payoff(state, use_max_divisor=True, value_dict=None):
     """
     Implements the payoff formula r_a = ∑ (p_a * q_a * v_a) / max(q, p_a + p_o) from https://arxiv.org/pdf/2406.14662
 
@@ -774,7 +772,15 @@ def negotiation_payoff(state, use_max_divisor=True):
 
         for item in items:
             p_a = role_props[role].get(item, 0)
-            v_a = role_values[role].get(item, 0)
+            if value_dict is not None:
+                v_a = role_values[role].get(item, 0)
+                v_b = role_values[opponent_role].get(item, 0)
+                if v_a < v_b:
+                    v_a = 1
+                else:
+                    v_a = value_dict[item]
+            else:
+                v_a = role_values[role].get(item, 0)
             q_a = quantities.get(item, 0)
 
             p_o = role_props[opponent_role].get(item, 0)

@@ -2,7 +2,7 @@ defaults:
   - ipd.yaml
 
 experiment:
-  name: "ipd_overt_restricted"
+  name: "ipd_overt"
 
 
 common_agent_kwargs: &common_agent_kwargs

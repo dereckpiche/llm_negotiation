@@ -1,0 +1,12 @@
+# To quickly check if code still runs
+
+defaults:
+  - negotiation_game.yaml
+
+experiment:
+  name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
+
+models:
+  qwen:
+    init_args:
+      model_name: "Qwen/Qwen2.5-0.5B-Instruct"

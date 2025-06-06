@@ -1,3 +1,214 @@
+"""
+This file contains the various methods that create the scores from the rewards.
+By "scores", we mean the coefficients which me multiply to to log gradients in the REINFORCE/PPO algorithms.
+
+REINFORCE gradient estimator is a sum of these terms:
+
+s(a, s) ∇ log π(a|s)
+
+where s(a, s) is score of the action-state pair.
+
+"""
+
+
+import numpy as np
+
+############################################################
+# Score methods
+############################################################
+
+
+def r2g_scores(rewards_agent_1, rewards_agent_2, discount_factor):
+    """
+    Discounted rewards-to-go scores.
+    Most basic RL scores. High variance.
+        TODO documentation
+    """
+
+    return (
+        get_discounted_rewards_to_go(rewards_agent_1, discount_factor=discount_factor),
+        None,
+    )
+
+
+def rloo_scores(
+    rewards_agent_1, rewards_agent_2, discount_factor, normalizing_factor=1.0
+):
+    """
+    TODO: documentation
+    """
+    rewards_agent_1 = rewards_agent_1 / normalizing_factor
+    return (
+        rewards_to_rloo_advantages(rewards_agent_1, discount_factor=discount_factor),
+        None,
+    )
+
+
+def sum_rloo_scores(
+    rewards_agent_1, rewards_agent_2, discount_factor, normalizing_factor=1.0
+):
+    """
+    Sum of discounted rewards-to-go scores.
+    """
+    rewards_agent_1 = rewards_agent_1 / normalizing_factor
+    rewards_agent_2 = rewards_agent_2 / normalizing_factor
+    r1 = rewards_to_rloo_advantages(rewards_agent_1, discount_factor=discount_factor)
+    r2 = rewards_to_rloo_advantages(rewards_agent_2, discount_factor=discount_factor)
+
+    return r1 + r2, None
+
+
+def rloo_advantage_alignment_scores(
+    rewards_agent_1,
+    rewards_agent_2,
+    discount_factor=1.0,
+    beta=1.0,
+    regulate_var=False,
+    time_decay=False,
+    normalizing_factor=1.0,
+    use_sign=False,
+    clipping=False,
+    do_rloo_later=False,
+    first_coop=False,
+):
+    """
+    TODO: documentation
+    """
+    n = rewards_agent_1.shape[0]
+    rewards_agent_1 = rewards_agent_1 / normalizing_factor
+    rewards_agent_2 = rewards_agent_2 / normalizing_factor
+
+    a1 = rewards_to_rloo_advantages(rewards_agent_1, discount_factor=discount_factor)
+    a2 = rewards_to_rloo_advantages(rewards_agent_2, discount_factor=discount_factor)
+    advantage_alignment_scores = advantages_to_aa_scores(
+        a1,
+        a2,
+        beta=beta,
+        gamma=discount_factor,
+        regulate_var=regulate_var,
+        time_decay=time_decay,
+        clipping=clipping,
+        use_sign=use_sign,
+        first_coop=first_coop,
+    )
+    if do_rloo_later:
+        rloo_advantages_alignment_scores = advantage_alignment_scores - (
+            np.sum(advantage_alignment_scores, axis=0, keepdims=True)
+            - advantage_alignment_scores
+        ) / (n - 1)
+        return rloo_advantages_alignment_scores, a1
+    else:
+        return advantage_alignment_scores, a1
+
+
+############################################################
+# Score Utils
+############################################################
+
+
+def get_discounted_rewards_to_go(rewards, discount_factor):
+    """
+    Trajectories assumed to be same length.
+    """
+    T = rewards.shape[1]
+    scores = np.zeros(shape=rewards.shape)
+    rewards = np.where(rewards == None, 0, rewards)
+    scores[:, -1] = rewards[:, -1]
+    for i in range(T - 2, -1, -1):
+        scores[:, i] = rewards[:, i] + discount_factor * scores[:, i + 1]
+    return scores
+
+
+def rewards_to_rloo_advantages(rewards, discount_factor):
+    """
+    Args:
+        rounds_points (np.array): Rows are different matches. Columns are rounds. Components are
+        rewards.
+    """
+    n = rewards.shape[0]
+
+    scores = get_discounted_rewards_to_go(rewards, discount_factor)
+    if n <= 1:
+        return scores
+    rloo_advantages = scores - (np.sum(scores, axis=0, keepdims=True) - scores) / (
+        n - 1
+    )
+    return rloo_advantages
+
+
+def advantages_to_aa_scores(
+    a1,
+    a2,
+    beta=1.0,
+    gamma=0.9,
+    regulate_var=False,
+    time_decay=False,
+    clipping=False,
+    use_sign=False,
+    first_coop=False,
+):
+    """
+    Calculate the advantage alignment scores with vectorization.
+    Args:
+        a1 (np.ndarray): The first advantage array.
+        a2 (np.ndarray): The second advantage array.
+        gamma (float, optional): The discount factor. Defaults to 0.9.
+        beta (float, optional): The shaping factor. Defaults to 1.0.
+        regulate_var (bool, optional): Whether to regulate variance. Defaults to False.
+        time_decay (bool, optional): Whether to apply 1/t regularization. Defaults to False.
+    Returns:
+        adv_align_terms (np.ndarray): The advantage alignment terms.
+    The advantage alignment score is calculated as:
+    .. math::
+        A^*(s_t, a_t, b_t) = A^1(s_t, a_t, b_t) + \\beta \\gamma \\cdot
+        \\left( \\sum_{k < t} \\gamma^{t-k} A^1(s_k, a_k, b_k) \\right)
+        A^2(s_t, a_t, b_t)
+    Refer to https://arxiv.org/abs/2406.14662
+    """
+
+    # Regular alignment terms
+    T = a1.shape[1]
+    discounted_a1 = a1 * (gamma * np.ones(shape=(1, T))) ** (-np.arange(0, T, 1))
+    discounted_sums_a1 = discounted_a1 @ (np.triu(np.ones((T, T))) - np.identity(T))
+    if first_coop:
+        discounted_sums_a1[:, 0] = 1  # First time step cooperation
+    t_discounts = (gamma * np.ones(shape=(1, T))) ** (np.arange(0, T, 1))
+    if use_sign:
+        assert beta == 1.0, "beta should be 1.0 when using sign"
+        sign_values = np.sign(gamma * t_discounts * discounted_sums_a1)
+        positive_signs = sign_values > 0
+        negative_signs = sign_values < 0
+        print(
+            f"ratio of positive and negative signs: {np.sum(positive_signs) / positive_signs.size}, {np.sum(negative_signs) / negative_signs.size}"
+        )
+        alignment_terms = sign_values * a2
+    else:
+        original_terms = gamma * t_discounts * discounted_sums_a1 * beta
+        if clipping:
+            upper_mask = original_terms > 1
+            lower_mask = original_terms < -1
+            clipped_values = np.clip(
+                gamma * t_discounts * discounted_sums_a1 * beta, -1, 1
+            )
+            clipping_ratio = (np.sum(upper_mask) + np.sum(lower_mask)) / upper_mask.size
+            print(f"ratio of clipping {clipping_ratio}")
+            alignment_terms = clipped_values * a2
+        else:
+            alignment_terms = original_terms * a2
+
+    # Normalize alignment terms (across same time step)
+    if regulate_var:
+        reg_coef = np.std(a1[:, -1]) / (np.std(alignment_terms[:, -1]) + 1e-10)
+        alignment_terms = reg_coef * alignment_terms
+
+    # 1/t Regularization
+    if time_decay:
+        t_values = np.arange(1, T + 1)
+        alignment_terms = alignment_terms / t_values
+
+    adv_align_terms = a1 + alignment_terms
+
+    return adv_align_terms
 
 
 # TODO: write a proper test for this !

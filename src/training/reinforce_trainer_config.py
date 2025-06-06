@@ -12,19 +12,27 @@ class RtConfig:
         use_gradient_checkpointing: bool,
         logging_path: str,
         temperature: float,
+        device: str,
+
+        # Regular Rewards
         discount_factor: float,
         use_sum_rewards: bool,
+
+        # Ad Align
         use_advantage_alignment: bool,
-        use_variance_regularization_in_ad_align: bool,
+        ad_align_force_coop_first_step: bool,
+        use_sign_in_ad_align: bool,
+        ad_align_clipping: float,
         use_time_regularization_in_ad_align: bool,
+        use_variance_regularization_in_ad_align: bool,
         ad_align_beta: float,
-        device="cuda:0",
 
-
+        # Regular logging
         log_entropy_gradient_terms: bool = False,
         log_kl_gradient_terms: bool = False,
         log_value_gradient_terms: bool = False,
 
+        # Contextualized logging
         log_ctz_length: int = 30,
         log_ctz_top_k: int = 10,
         log_ctz_next_token: bool = False,
@@ -80,6 +88,9 @@ class RtConfig:
         self.device = device
         self.discount_factor = discount_factor
         self.use_sum_rewards = use_sum_rewards
+
+
+        self.ad_align_force_coop_first_step = ad_align_force_coop_first_step
         self.use_advantage_alignment = use_advantage_alignment
         self.use_variance_regularization_in_ad_align = (
             use_variance_regularization_in_ad_align
@@ -87,7 +98,10 @@ class RtConfig:
         self.use_time_regularization_in_ad_align = use_time_regularization_in_ad_align
         self.ad_align_beta = ad_align_beta
 
-        
+        self.use_sign_in_ad_align = use_sign_in_ad_align 
+        self.ad_align_clipping = ad_align_clipping
+
+
         self.log_entropy_gradient_terms = log_entropy_gradient_terms
         self.log_kl_gradient_terms = log_kl_gradient_terms
         self.log_value_gradient_terms = log_value_gradient_terms

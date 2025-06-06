@@ -1,0 +1,15 @@
+defaults:
+  - ipd_covert_restricted.yaml
+
+experiment:
+  name: "ipd_covert_sum_of_rewards_lr1e5"
+  description: "Agents trained on negotiation game with advantage alignment."
+  seed: 1045
+  nb_epochs: 500
+
+training:
+  qwen:
+    adapters:
+      sp_adapter:
+        trainer_config:
+          use_sum_rewards: True

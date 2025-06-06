@@ -473,6 +473,7 @@ class DondAgent:
             finalize_sample += "  }}"
 
             last_round_coagent_values = {}
+            last_round_agent_values = {}
             # -------------------------------------------
             # New logic: Compute last round breakdown details for new_round_prompt_with_values.
             #
@@ -505,6 +506,7 @@ class DondAgent:
                 ]  # mapping: role -> values dict
                 # Extract coagent values outside the agreement check
                 last_round_coagent_values = last_round_values.get(other_role, {})
+                last_round_agent_values = last_round_values.get(my_role, {})
 
                 if not last_agreement:
                     last_round_points_computed = (
@@ -584,17 +586,20 @@ class DondAgent:
 
             # Get finalization of other player last round
             last_round_coagent_finalization = None
+            last_round_agent_finalization = None
             if (
                 state.get("round_finalizations")
                 and len(state["round_finalizations"]) > 0
             ):
                 last_round_finalizations = state["round_finalizations"][-1]
                 other_role = state["round_agent_roles"][-1].get(coagent_name)
+                my_role = state["round_agent_roles"][-1].get(self.agent_name)
                 if other_role and other_role in last_round_finalizations:
                     last_round_coagent_finalization = last_round_finalizations[
                         other_role
                     ]
-
+                if my_role and my_role in last_round_finalizations:
+                    last_round_agent_finalization = last_round_finalizations[my_role]
             return (
                 prompt.replace(
                     "{rounds_per_game}", str(state.get("rounds_per_game", ""))
@@ -609,9 +614,14 @@ class DondAgent:
                     coagent_last_round_points_computed,
                 )
                 .replace("{last_round_coagent_values}", str(last_round_coagent_values))
+                .replace("{last_round_agent_values}", str(last_round_agent_values))
                 .replace(
                     "{last_round_coagent_finalization}",
                     str(last_round_coagent_finalization),
+                )
+                .replace(
+                    "{last_round_agent_finalization}",
+                    str(last_round_agent_finalization),
                 )
                 .replace("{current_round}", str(state.get("current_round", "")))
                 .replace("{nb_rounds}", str(state["round_number"] + 1))

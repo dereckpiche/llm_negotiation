@@ -5,8 +5,7 @@ hydra:
     chdir: false
 
 experiment:
-  name: "negotiation_game_new_trainer_test_${now:%Y-%m-%d___%H-%M-%S}"
-  # name: "${now:%Y-%m-%d___%H-%M-%S}_no_name" (having timestamp is good for debugging, but it is difficult to restart with preemption)
+  name: "negotiation_game"
   method: generate_and_train
   description: "Agents trained on negotiation game with regular RL."
   nb_epochs: 500
@@ -81,7 +80,7 @@ common_agent_kwargs: &common_agent_kwargs
     For this round, the items available are {quantities} and your values for each item category are {values}.
 
   new_round_prompt: |
-    The previous round has ended. In the previous round, {coagent_name} proposed {last_round_coagent_finalization} for themselves and had values {last_round_coagent_values}.
+    The previous round has ended. In the previous round, you proposed {last_round_agent_finalization} for yourself and had values {last_round_agent_values}. {coagent_name} proposed {last_round_coagent_finalization} for themselves and had values {last_round_coagent_values}.
 
     A new round has started. For this round, the items available are {quantities} and your values for each item category are {values}.
   agent_with_first_move_prompt: |
@@ -105,8 +104,6 @@ matches:
   continuation_prob: 0.85
   same_length_batch: True
 
-  # If set to 0, existing setup will run where utilities are randomly sampled at the beginning of each round.
-  # If set to 1, all utilities will be calculated beforehand but rloo rewards will also be only calculated per game.
   nb_matches_with_same_roundwise_utilities: 8
 
   log_func: dond_log_match
@@ -148,7 +145,7 @@ matches:
         agent_name: "Bob"
         policy_id: "qwen/sp_adapter"
 
-temperature: 0.7
+temperature: 1.0
 
 
 models:
@@ -169,7 +166,7 @@ models:
         repetition_penalty: 1
       vllm_params:
         max_model_len : 13e3
-        gpu_memory_utilization: 0.45
+        gpu_memory_utilization: 0.6
         enable_lora: True
         enable_prefix_caching: True
         enable_sleep_mode : True
@@ -236,27 +233,39 @@ training:
           entropy_coeff: 0.0
           kl_coeff: 0.0
           gradient_clipping: 1.0
-          restrict_tokens: null
+          restrict_tokens: None
           mini_batch_size: 1
-          use_gradient_checkpointing: true
+          use_gradient_checkpointing: True
           temperature: ${temperature}
-          discount_factor: 1.0
-          use_sum_rewards: false
-          use_advantage_alignment: false
-          use_variance_regularization_in_ad_align: null
-          use_time_regularization_in_ad_align: null
-          ad_align_beta: null
           device: "cuda:0"
-          log_ctz_length: false
-          log_ctz_next_token: false
-          log_ctz_next_token_score: false
-          log_ctz_next_token_log_prob: false
-          log_ctz_next_token_prob: false
-          log_ctz_top_k: false
-          log_ctz_top_k_tids: false
-          log_ctz_top_k_probs: false
-          log_ctz_top_slogpi: false
-          log_ctz_entropy: false
-          log_ctz_kl: false
 
+          # Reward Shaping
+          discount_factor: 1.0
+          use_sum_rewards: False
 
+          # Ad Align
+          use_advantage_alignment: False
+          ad_align_force_coop_first_step: null
+          use_sign_in_ad_align: null
+          ad_align_clipping: null
+          use_time_regularization_in_ad_align: null
+          use_variance_regularization_in_ad_align: null
+          ad_align_beta: null
+
+          # Regular logging
+          log_entropy_gradient_terms: False
+          log_kl_gradient_terms: False
+          log_value_gradient_terms: False
+
+          # Contextualized logging
+          log_ctz_length: 30
+          log_ctz_top_k: 5
+          log_ctz_next_token: False
+          log_ctz_next_token_score: False
+          log_ctz_next_token_log_prob: False
+          log_ctz_next_token_prob: False
+          log_ctz_top_k_tids: False
+          log_ctz_top_k_probs: False
+          log_ctz_top_slogpi: False
+          log_ctz_entropy: False
+          log_ctz_kl: False

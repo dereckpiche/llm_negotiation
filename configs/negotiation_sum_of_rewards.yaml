@@ -3,11 +3,9 @@ defaults:
 
 experiment:
   name: "negotiation_game_sum_of_rewards"
-  # name: "${now:%Y-%m-%d___%H-%M-%S}_sum_of_rewards"
   description: "Negotiation game with agents trained on sum of rewards."
 
 training:
-
   qwen:
     adapters:
       sp_adapter:

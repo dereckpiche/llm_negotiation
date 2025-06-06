@@ -1,0 +1,23 @@
+defaults:
+  - ipd_covert.yaml
+
+experiment:
+  name: "ipd_covert_adv_align_rloolater_temp1.0_fixedrounds30_gamma0.9_updatedreward_clipped"
+  description: "Agents trained on negotiation game with advantage alignment."
+  seed: 1045
+  nb_epochs: 500
+
+training:
+  qwen:
+    adapters:
+      sp_adapter:
+        trainer_config:
+          discount_factor: 0.9
+          use_advantage_alignment: True
+          ad_align_beta: 1.0
+          ad_align_force_coop_first_step: False
+          use_sign_in_ad_align: False
+          ad_align_clipping: None
+          use_time_regularization_in_ad_align: False
+          use_variance_regularization_in_ad_align: False
+      

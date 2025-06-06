@@ -10,4 +10,5 @@ tensorboard
 diplomacy
 optimum
 auto-gptq
+backoff
 flash-attn
