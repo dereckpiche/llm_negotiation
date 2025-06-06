@@ -81,7 +81,7 @@ common_agent_kwargs: &common_agent_kwargs
     For this round, the items available are {quantities} and your values for each item category are {values}.
 
   new_round_prompt: |
-    The previous round has ended. In the previous round, {coagent_name} proposed {last_round_coagent_finalization} for themselves and had values {last_round_coagent_values}.
+    The previous round has ended. In the previous round, you proposed {last_round_agent_finalization} for yourself and had values {last_round_agent_values}. {coagent_name} proposed {last_round_coagent_finalization} for themselves and had values {last_round_coagent_values}.
 
     A new round has started. For this round, the items available are {quantities} and your values for each item category are {values}.
   agent_with_first_move_prompt: |
@@ -148,7 +148,7 @@ matches:
         agent_name: "Bob"
         policy_id: "qwen/sp_adapter"
 
-temperature: 0.7
+temperature: 1.0
 
 
 models:
@@ -169,7 +169,7 @@ models:
         repetition_penalty: 1
       vllm_params:
         max_model_len : 13e3
-        gpu_memory_utilization: 0.45
+        gpu_memory_utilization: 0.6
         enable_lora: True
         enable_prefix_caching: True
         enable_sleep_mode : True

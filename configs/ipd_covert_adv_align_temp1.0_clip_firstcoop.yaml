@@ -1,12 +1,12 @@
 defaults:
-  - negotiation_game.yaml
+  - ipd_covert.yaml
 
 experiment:
-  name: "negotiation_game_adv_align"
+  name: "ipd_covert_adv_align_temp1.0_clip_rerun1k_firstcoop"
   # name: "${now:%Y-%m-%d___%H-%M-%S}negotiation_game_adv_align"
   description: "Agents trained on negotiation game with advantage alignment."
   seed: 1045
-  nb_epochs: 500
+  nb_epochs: 1000
 
 training:
   agents:
@@ -14,17 +14,23 @@ training:
       training_data_func_args:
         score_method: rloo_advantage_alignment_scores
         score_method_kwargs:
-          discount_factor: 1.0
+          discount_factor: 0.9
           beta: 1.0
           time_decay: False
           regulate_var: False
-          normalizing_factor: 200.0
+          clipping: True
+          use_sign: False
+          first_coop: True
+          do_rloo_later: False
     Bob:
       training_data_func_args:
         score_method: rloo_advantage_alignment_scores
         score_method_kwargs:
-          discount_factor: 1.0
+          discount_factor: 0.9
           beta: 1.0
           time_decay: False
           regulate_var: False
-          normalizing_factor: 200.0
+          clipping: True
+          use_sign: False
+          first_coop: True
+          do_rloo_later: False
