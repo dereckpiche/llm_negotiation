@@ -156,7 +156,7 @@ models:
     name: 'qwen'
     class: local_llm_v2
     init_args:
-      max_model_length: 10000
+      max_model_length: 1e4
       device: "cuda"
       model_name: "Qwen/Qwen2.5-7B-Instruct"
       bits_and_bytes_args: null
@@ -247,16 +247,16 @@ training:
           use_time_regularization_in_ad_align: null
           ad_align_beta: null
           device: "cuda:0"
-          log_ctz_length: 30
-          log_ctz_next_token: True
-          log_ctz_next_token_score: True
-          log_ctz_next_token_log_prob: True
-          log_ctz_next_token_prob: True
-          log_ctz_top_k: 5
-          log_ctz_top_k_tids: True
-          log_ctz_top_k_probs: True
-          log_ctz_top_slogpi: True
-          log_ctz_entropy: True
-          log_ctz_kl: True
+          log_ctz_length: false
+          log_ctz_next_token: false
+          log_ctz_next_token_score: false
+          log_ctz_next_token_log_prob: false
+          log_ctz_next_token_prob: false
+          log_ctz_top_k: false
+          log_ctz_top_k_tids: false
+          log_ctz_top_k_probs: false
+          log_ctz_top_slogpi: false
+          log_ctz_entropy: false
+          log_ctz_kl: false
 
 

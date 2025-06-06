@@ -49,7 +49,7 @@ class ReinforceTrainerWRS:
         config: RtConfig,
     ):
         # TODO: add lr scheduler to accelerator
-        self.model = model
+        model.train()
         self.tokenizer = tokenizer
         self.tokenizer.padding_side = "left"  # needed for flash attention
         if self.tokenizer.pad_token_id is None:
@@ -674,7 +674,7 @@ class ReinforceTrainerWRS:
 
 
             # Normalize over number tokens generated
-            loss /= total_nb_action_tokens
+            # loss /= total_nb_action_tokens
 
             # Accumulate gradient
             self.accelerator.backward(loss)

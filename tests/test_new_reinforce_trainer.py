@@ -119,7 +119,7 @@ def test_train_on_folder():
     )
     model = get_peft_model(model, lora_config)
 
-    optimizer = optim.AdamW(model.parameters(), lr=1e-4)
+    optimizer = optim.AdamW(model.parameters(), lr=1e4)
     lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.9)
 
     trainer = ReinforceTrainerWRS(

@@ -162,6 +162,7 @@ def generate_and_train(cfg, base_seed):
                         )
                         trainer.apply_reinforce_step_on_paths(paths=training_file_paths)
                         trainer.export_training_metrics()
+                        model.export_current_adapter_and_optimizer()
                         del trainer
 
         training_end_time = time.time()

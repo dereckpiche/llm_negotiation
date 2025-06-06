@@ -2,7 +2,7 @@ defaults:
   - ipd.yaml
 
 experiment:
-  name: "ipd_covert_new_trainer"
+  name: "ipd_covert_new_trainer_final_test"
 
 
 common_agent_kwargs: &common_agent_kwargs
