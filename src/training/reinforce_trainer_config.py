@@ -1,4 +1,5 @@
 from typing import Union
+from peft import LoraConfig
 
 
 class RtConfig:
@@ -13,6 +14,10 @@ class RtConfig:
         logging_path: str,
         temperature: float,
         device: str,
+
+        # Value function
+        use_gae: bool,
+        gae_lambda: float,
 
         # Regular Rewards
         discount_factor: float,
@@ -90,6 +95,10 @@ class RtConfig:
         self.device = device
         self.discount_factor = discount_factor
         self.use_sum_rewards = use_sum_rewards
+
+        if isinstance(valf_lora_config, dict): 
+            self.valf_lora_config = LoraConfig(valf_lora_config)
+        else: self.valf_lora_config= valf_lora_config
 
 
         self.ad_align_force_coop_first_step = ad_align_force_coop_first_step

@@ -46,6 +46,8 @@ class ReinforceTrainerWRS:
         tokenizer: AutoTokenizer,
         optimizer: torch.optim.Optimizer,
         lr_scheduler: torch.optim.lr_scheduler,
+        critic: Union[nn.Module, None],
+        critic_optimizer: torch.optim.Optimizer,
         config: RtConfig,
     ):
         # TODO: add lr scheduler to accelerator
@@ -81,6 +83,9 @@ class ReinforceTrainerWRS:
         # log optimizer learning rate
         # log model data type 
         # log adapter data type
+
+
+   
 
 
     def advantages_to_aa_scores(
@@ -507,6 +512,56 @@ class ReinforceTrainerWRS:
                 return torch.tensor(0.0, device=loss_term.device)
             return torch.norm(torch.stack([g.norm(2) for g in grads])).item()
 
+
+    def get_critic_loss(
+        tokens: np.array,
+        rewards: np.array, 
+        action_mask: np.array,
+    ):
+        """
+        TODO: doctstring
+        """
+
+        # TODO: get discounted returns
+        discounted_returns = None # TODO
+
+        # TODO: use action_mask
+        disc_returns_hat = self.critic(contexts)
+        critic_loss = F.mse_loss(
+            input=disc_returns,
+            target=disc_returns_hat
+        )
+        self.tally.add_metric(
+            path=["critic", "critic_loss_before_gs"],
+            metric=nb_rollouts)
+        critic_loss.backward()
+        
+        self.critic_optimizer.step()
+        self.critic_optimizer.zero_grad()
+
+  
+     def get_gen_adv_estimates(
+        self,
+        contexts: torch.Tensor,
+        rewards: torch.Tensor
+        ):
+        """
+        GAE estimates
+        See https://arxiv.org/pdf/1506.02438
+        """
+        value_estimates = self.critic(contexts)
+        l = value_estimates.shape[0]
+        # temporal differences
+        import pdb; pdb.set_trace()
+        tds = rewards[:-1] \
+            + self.config.discount_factor * value_estimates[1:] \
+            - value_estimates[:-1]
+
+        gaes = torch.sum(
+            (self.config.discount_factor * self.config.gamma) ** torch.arange(0, l-1) * tds
+        )
+        return gaes
+
     def apply_reinforce_step(
         self,
         rollout_ids: list[str],
@@ -550,6 +605,8 @@ class ReinforceTrainerWRS:
         self.tally.add_metric(
             path=["nb_tokens", "batch_action_tokens"],
             metric=total_nb_action_tokens)
+
+
 
 
         for mb in range(0, len(contexts), mb_size):
