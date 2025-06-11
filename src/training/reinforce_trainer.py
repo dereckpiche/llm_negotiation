@@ -118,6 +118,27 @@ class ReinforceTrainerWRS:
         gamma = self.config.discount_factor
         beta = self.config.ad_align_beta
 
+        # Normalize advantages
+        if self.config.ad_align_normalize_advantages:
+            self.tally.add_metric(
+                path=["a1_before_normalizing"],
+                metric=a1
+            )
+            a1 = (a1 - np.mean(a1)) / (np.std(a1) + 1e-6)
+            self.tally.add_metric(
+                path=["a1_after_normalizing"],
+                metric=a1
+            )
+            self.tally.add_metric(
+                path=["a2_before_normalizing"],
+                metric=a2
+            )
+            a2 = (a2 - np.mean(a2)) / (np.std(a2) + 1e-6)
+            self.tally.add_metric(
+                path=["a2_after_normalizing"],
+                metric=a2
+            )
+
         # Regular alignment terms
         T = a1.shape[1]
         discounted_a1 = a1 * (gamma * np.ones(shape=(1, T))) ** (-np.arange(0, T, 1))

@@ -27,6 +27,7 @@ rt_config = RtConfig(
     discount_factor=0.9,
     use_sum_rewards=False,
     ad_align_force_coop_first_step=True,
+    ad_align_normalize_advantages=True,
     use_advantage_alignment=True,
     use_variance_regularization_in_ad_align=True,
     use_time_regularization_in_ad_align=True,

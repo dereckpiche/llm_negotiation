@@ -1,7 +1,7 @@
 # To quickly check if code still runs
 
 defaults:
-  - negotiation_game.yaml
+  - negotiation_game_ad_align_normalized.yaml
 
 experiment:
   name: "debug_${now:%Y-%m-%d___%H-%M-%S}"

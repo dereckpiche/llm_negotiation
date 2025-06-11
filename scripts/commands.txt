@@ -1,0 +1,3 @@
+"python $SCRIPT_PATH --config-path=$CONFIG_PATH --config-name=ipd_covert_restricted experiment.name=ipd_covert_new_trainer_final"
+"python $SCRIPT_PATH --config-path=$CONFIG_PATH --config-name=negotiation_game experiment.name=new_trainer_ng/test experiment.base_seed=945"
+"python $SCRIPT_PATH --config-path=$CONFIG_PATH --config-name=negotiation_sum_of_rewards experiment.name=new_trainer_ng/test_sum experiment.base_seed=945"

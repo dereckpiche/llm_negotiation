@@ -20,12 +20,14 @@ class RtConfig:
 
         # Ad Align
         use_advantage_alignment: bool,
+        ad_align_normalize_advantages: bool,
         ad_align_force_coop_first_step: bool,
         use_sign_in_ad_align: bool,
         ad_align_clipping: float,
         use_time_regularization_in_ad_align: bool,
         use_variance_regularization_in_ad_align: bool,
         ad_align_beta: float,
+
 
         # Regular logging
         log_entropy_gradient_terms: bool = False,
@@ -91,6 +93,7 @@ class RtConfig:
 
 
         self.ad_align_force_coop_first_step = ad_align_force_coop_first_step
+        self.ad_align_normalize_advantages = ad_align_normalize_advantages
         self.use_advantage_alignment = use_advantage_alignment
         self.use_variance_regularization_in_ad_align = (
             use_variance_regularization_in_ad_align

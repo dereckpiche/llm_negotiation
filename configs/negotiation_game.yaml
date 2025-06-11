@@ -233,7 +233,7 @@ training:
           entropy_coeff: 0.0
           kl_coeff: 0.0
           gradient_clipping: 1.0
-          restrict_tokens: None
+          restrict_tokens: null
           mini_batch_size: 1
           use_gradient_checkpointing: True
           temperature: ${temperature}
@@ -245,12 +245,13 @@ training:
 
           # Ad Align
           use_advantage_alignment: False
-          ad_align_force_coop_first_step: null
-          use_sign_in_ad_align: null
+          ad_align_normalize_advantages: False
+          ad_align_force_coop_first_step: False
+          use_sign_in_ad_align: False
           ad_align_clipping: null
-          use_time_regularization_in_ad_align: null
-          use_variance_regularization_in_ad_align: null
-          ad_align_beta: null
+          use_time_regularization_in_ad_align: False
+          use_variance_regularization_in_ad_align: False
+          ad_align_beta: 1.0
 
           # Regular logging
           log_entropy_gradient_terms: False
