@@ -3,34 +3,20 @@ defaults:
 
 experiment:
   name: "ipd_covert_adv_align_temp1.0_clip_rerun1k_firstcoop"
-  # name: "${now:%Y-%m-%d___%H-%M-%S}negotiation_game_adv_align"
   description: "Agents trained on negotiation game with advantage alignment."
   seed: 1045
   nb_epochs: 1000
 
 training:
-  agents:
-    Alice:
-      training_data_func_args:
-        score_method: rloo_advantage_alignment_scores
-        score_method_kwargs:
+  qwen:
+    adapters:
+      sp_adapter:
+        trainer_config:
           discount_factor: 0.9
-          beta: 1.0
-          time_decay: False
-          regulate_var: False
-          clipping: True
-          use_sign: False
-          first_coop: True
-          do_rloo_later: False
-    Bob:
-      training_data_func_args:
-        score_method: rloo_advantage_alignment_scores
-        score_method_kwargs:
-          discount_factor: 0.9
-          beta: 1.0
-          time_decay: False
-          regulate_var: False
-          clipping: True
-          use_sign: False
-          first_coop: True
-          do_rloo_later: False
+          use_advantage_alignment: True
+          ad_align_force_coop_first_step: True
+          use_sign_in_ad_align: False
+          ad_align_clipping: 1.0
+          use_time_regularization_in_ad_align: False
+          use_variance_regularization_in_ad_align: False
+          ad_align_beta: 1.0

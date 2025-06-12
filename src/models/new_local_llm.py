@@ -633,10 +633,6 @@ class LocalLLMV2:
                 # Clone sampling_params and set allowed_token_ids
                 sampling_params = sampling_params.clone()
                 sampling_params.allowed_token_ids = allowed_token_ids
-                sampling_params.max_tokens = (
-                    1  # Ensure only one output is generated when restricting tokens
-                )
-                sampling_params.min_tokens = 1
 
         if self.eval_with == "vllm":
             # Disable deterministic seed for more diversity

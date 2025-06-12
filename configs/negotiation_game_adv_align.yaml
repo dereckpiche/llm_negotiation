@@ -2,29 +2,16 @@ defaults:
   - negotiation_game.yaml
 
 experiment:
-  name: "negotiation_game_adv_align"
+  name: "negotiation_game_adv_align_${now:%Y-%m-%d___%H-%M-%S}"
   # name: "${now:%Y-%m-%d___%H-%M-%S}negotiation_game_adv_align"
   description: "Agents trained on negotiation game with advantage alignment."
-  seed: 1045
-  nb_epochs: 500
 
 training:
-  agents:
-    Alice:
-      training_data_func_args:
-        score_method: rloo_advantage_alignment_scores
-        score_method_kwargs:
-          discount_factor: 1.0
-          beta: 1.0
-          time_decay: False
-          regulate_var: False
-          normalizing_factor: 200.0
-    Bob:
-      training_data_func_args:
-        score_method: rloo_advantage_alignment_scores
-        score_method_kwargs:
-          discount_factor: 1.0
-          beta: 1.0
-          time_decay: False
-          regulate_var: False
-          normalizing_factor: 200.0
+
+  qwen:
+    adapters:
+      sp_adapter:
+        trainer_config:
+          use_advantage_alignment: True
+          ad_align_beta: 5.0
+

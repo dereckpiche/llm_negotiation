@@ -211,6 +211,7 @@ def advantages_to_aa_scores(
     return adv_align_terms
 
 
+# TODO: write a proper test for this !
 if __name__ == "__main__":
     # Test advantage alignment vectorized method
     beta = 0.7

@@ -3,27 +3,29 @@ This file contains the methods used to convert raw data into training data
 for the Negotiation game. (Also called Deal or No Deal).
 """
 
-from environments.scores import *
 from utils.common_imports import *
 
 
 def ipd_generate_training_data_from_raw(
-    raw_data_folder,
-    training_data_folder,
-    exclude_errors=False,
-    debug_output=True,
-    score_method=None,
-    score_method_kwargs=None,
+    raw_data_folder:str,
+    training_data_folder:str,
+    exclude_errors:bool,
+    normalize_round_points:bool
 ):
     """
     Generates training data from raw match data by calculating scores.
 
     Args:
-        raw_data_folder (str): Path to the folder containing raw match data.
-        training_data_folder (str): Path to save the processed training data.
-        discount_factor (float): The discount factor to apply to future scores.
-        exclude_errors (bool): If True, exclude messages with "is_error" set to True.
-        score_normalize_func (callable, optional): Function that takes a list of raw scores and returns a new list
+        raw_data_folder (str):
+            Path to the folder containing raw match data.
+        training_data_folder (str):
+            Path to save the processed training data.
+        discount_factor (float):
+            The discount factor to apply to future scores.
+        exclude_errors (bool):
+            If True, exclude messages with "is_error" set to True.
+        score_normalize_func (callable, optional):
+            Function that takes a list of raw scores and returns a new list
             of shaped scores.
     """
 
@@ -32,25 +34,34 @@ def ipd_generate_training_data_from_raw(
         raw_data_folder
     )
 
-    scores, _ = globals()[score_method](
-        round_points_agent, round_points_coagent, **score_method_kwargs
-    )
 
     os.makedirs(training_data_folder, exist_ok=True)
-    if debug_output:
-        debug_output_folder = os.path.join(
-            os.path.dirname(training_data_folder), "training_data_debug"
-        )
-        os.makedirs(debug_output_folder, exist_ok=True)
-        # Export round_points_agent, round_points_coagent, and scores as CSV in debug folder
+    debug_output_folder = os.path.join(
+        os.path.dirname(training_data_folder), "ipd_point_arrays_for_db"
+    )
+    os.makedirs(debug_output_folder, exist_ok=True)
+    # Export round_points_agent, round_points_coagent, and scores as CSV in debug folder
+    pd.DataFrame(round_points_agent).to_csv(
+        os.path.join(debug_output_folder, "round_points_agent.csv"), index=False
+    )
+    pd.DataFrame(round_points_coagent).to_csv(
+        os.path.join(debug_output_folder, "round_points_coagent.csv"), index=False
+    )
+    if normalize_round_points == True:
+
+        # Subtracts round-wise mean point baseline 
+        def sub_loo_mr(array: np.ndarray):
+            n = array.shape[0]
+            return array - (np.sum(array, axis=0, keepdims=True) - array) / (n - 1)
+
+        round_points_agent = sub_loo_mr(round_points_agent)
+        round_points_coagent = sub_loo_mr(round_points_coagent)
+
         pd.DataFrame(round_points_agent).to_csv(
-            os.path.join(debug_output_folder, "round_points_agent.csv"), index=False
+            os.path.join(debug_output_folder, "normalized_round_points_agent.csv"), index=False
         )
         pd.DataFrame(round_points_coagent).to_csv(
-            os.path.join(debug_output_folder, "round_points_coagent.csv"), index=False
-        )
-        pd.DataFrame(scores).to_csv(
-            os.path.join(debug_output_folder, "scores.csv"), index=False
+            os.path.join(debug_output_folder, "normalized_round_points_coagent.csv"), index=False
         )
 
     # Create training data, giving each action their score
@@ -77,7 +88,8 @@ def ipd_generate_training_data_from_raw(
         for message in chat_history:
             if message.get("role") == "assistant":
                 round_nb = message.get("round_nb")
-                message["score"] = float(scores[i, round_nb])
+                message["reward"] = float(round_points_agent[i, round_nb])
+                message["co_reward"] = float(round_points_coagent[i, round_nb])
 
         # Only keep conversation messages, not system info
         chat_history = [

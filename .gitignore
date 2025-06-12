@@ -5,6 +5,7 @@ test_venv/
 home
 *.svg
 output/
+tests/outputs_for_tests
 *.pdf
 outputs/
 results

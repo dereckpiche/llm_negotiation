@@ -1,24 +1,15 @@
 defaults:
-  - ipd_covert.yaml
+  - ipd_covert_restricted.yaml
 
 experiment:
   name: "ipd_covert_sum_of_rewards_lr1e5"
-  # name: "${now:%Y-%m-%d___%H-%M-%S}negotiation_game_adv_align"
   description: "Agents trained on negotiation game with advantage alignment."
   seed: 1045
   nb_epochs: 500
 
 training:
-  agents:
-    Alice:
-      training_data_func_args:
-        score_method: sum_rloo_scores
-        score_method_kwargs:
-          discount_factor: 1.0
-          normalizing_factor: 5.0
-    Bob:
-      training_data_func_args:
-        score_method: sum_rloo_scores
-        score_method_kwargs:
-          discount_factor: 1.0
-          normalizing_factor: 5.0
+  qwen:
+    adapters:
+      sp_adapter:
+        trainer_config:
+          use_sum_rewards: True

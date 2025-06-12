@@ -1,0 +1,22 @@
+defaults:
+  - negotiation_game.yaml
+
+experiment:
+  name: "negotiation_game_dereck_test"
+
+matches:
+  max_length: 30
+  continuation_prob: 0.85
+  same_length_batch: True
+
+training:
+  qwen:
+    adapters:
+      sp_adapter:
+        trainer_config:
+          discount_factor: 1.0
+          use_advantage_alignment: True
+          ad_align_normalize_advantages: True
+          ad_align_beta: 1.0
+
+          

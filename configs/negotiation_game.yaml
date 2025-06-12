@@ -6,7 +6,6 @@ hydra:
 
 experiment:
   name: "negotiation_game"
-  # name: "${now:%Y-%m-%d___%H-%M-%S}_no_name" (having timestamp is good for debugging, but it is difficult to restart with preemption)
   method: generate_and_train
   description: "Agents trained on negotiation game with regular RL."
   nb_epochs: 500
@@ -38,7 +37,7 @@ common_agent_kwargs: &common_agent_kwargs
         other_takes_key: "Alice"
 
   intro_prompt: |
-      Welcome, you are participating in a negotiation game. You are playing as the agent named {agent_name}. The other agent with whom you are playing is named {coagent_name}. In this game, two agents bargain over how to divide items over multiple rounds. The number of rounds is incredibly high. Each agent only knows their own item values. Each item has different values for each agent. Each agent submits their own proposal for how to divide the items.
+    Welcome, you are participating in a negotiation game. You are playing as the agent named {agent_name}. The other agent with whom you are playing is named {coagent_name}. In this game, two agents bargain over how to divide items over multiple rounds. The number of rounds is incredibly high. Each agent only knows their own item values. Each item has different values for each agent. Each agent submits their own proposal for how to divide the items.
 
   dond_version_specificities: |
     Each round is played as follows:
@@ -105,8 +104,6 @@ matches:
   continuation_prob: 0.85
   same_length_batch: True
 
-  # If set to 0, existing setup will run where utilities are randomly sampled at the beginning of each round.
-  # If set to 1, all utilities will be calculated beforehand but rloo rewards will also be only calculated per game.
   nb_matches_with_same_roundwise_utilities: 8
 
   log_func: dond_log_match
@@ -156,7 +153,7 @@ models:
     name: 'qwen'
     class: local_llm_v2
     init_args:
-      max_model_length: 10000
+      max_model_length: 1e4
       device: "cuda"
       model_name: "Qwen/Qwen2.5-7B-Instruct"
       bits_and_bytes_args: null
@@ -212,35 +209,64 @@ models:
 training:
 
   agents:
-
     Alice:
       training_data_func: dond_generate_training_data_from_raw
       training_data_func_args:
         exclude_errors: False
         debug_output: True
-        score_method: rloo_scores
-        score_method_kwargs:
-          discount_factor: 1.0
+        substract_group_wise_loo_mean_rewards: True
+        substract_loo_mean_rewards: False
 
     Bob:
       training_data_func: dond_generate_training_data_from_raw
       training_data_func_args:
         exclude_errors: False
         debug_output: True
-        score_method: rloo_scores
-        score_method_kwargs:
-          discount_factor: 1.0
+        substract_group_wise_loo_mean_rewards: True
+        substract_loo_mean_rewards: False
+
 
   qwen:
     adapters:
       sp_adapter:
-        train_func: train_reinforce_main
-        train_func_args:
-          gradient_checkpointing: true
+        trainer_config:
+          entropy_coeff: 0.0
+          kl_coeff: 0.0
+          gradient_clipping: 1.0
+          restrict_tokens: null
+          mini_batch_size: 1
+          use_gradient_checkpointing: True
           temperature: ${temperature}
-          entropy_coef: 0.0
-          kl_loss_coef: 0.0
-          debug_enabled: True
-          debug_log_path: "${hydra:run.dir}/trainer_debugger"
-        train_data_args:
-          average_score_over_message: False
+          device: "cuda:0"
+
+          # Reward Shaping
+          discount_factor: 1.0
+          use_sum_rewards: False
+
+          # Ad Align
+          use_advantage_alignment: False
+          ad_align_normalize_advantages: False
+          ad_align_force_coop_first_step: False
+          use_sign_in_ad_align: False
+          ad_align_clipping: null
+          use_time_regularization_in_ad_align: False
+          use_variance_regularization_in_ad_align: False
+          ad_align_beta: 1.0
+
+          # Regular logging
+          log_entropy_gradient_terms: False
+          log_kl_gradient_terms: False
+          log_value_gradient_terms: False
+
+          # Contextualized logging
+          log_ctz_length: 30
+          log_ctz_top_k: 5
+          log_ctz_next_token: False
+          log_ctz_next_token_score: False
+          log_ctz_next_token_log_prob: False
+          log_ctz_next_token_prob: False
+          log_ctz_top_k_tids: False
+          log_ctz_top_k_probs: False
+          log_ctz_top_slogpi: False
+          log_ctz_entropy: False
+          log_ctz_kl: False
