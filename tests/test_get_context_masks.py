@@ -7,7 +7,7 @@ import torch.optim as optim
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from training.tokenizer_action_masking import *
+from training.get_context_masks import *
 
 model_name = "Qwen/Qwen2.5-0.5B-Instruct"
 
@@ -27,13 +27,18 @@ def test_get_assistant_actions_mask_and_score():
     )
     print(tokenizer.eos_token_id)
 
-    scores, action_mask = get_assistant_actions_mask_and_score(
+    (
+        action_mask, 
+        action_timestamps,
+        state_end_flags
+    ) = get_context_masks(
         tokenizer=tokenizer,
-        assistant_msg_scores=per_message_score, 
         token_ids=token_ids)
 
+    # import pdb; pdb.set_trace()
+
     decoded = tokenizer.convert_ids_to_tokens(token_ids.tolist()[0])
-    df = {"Tokens": decoded, "Score": scores, "Action Mask": action_mask}
+    df = {"Tokens": decoded, "Action Mask": action_mask, "Action Timestamps": action_timestamps, "Action End Flags": state_end_flags}
     df = pd.DataFrame(df)
     print(df)
    

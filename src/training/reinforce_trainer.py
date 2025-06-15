@@ -12,10 +12,11 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 from training.reinforce_trainer_config import RtConfig
 from training.reinforce_trainer_tally import RtTally
-from training.tokenizer_action_masking import get_assistant_actions_mask_and_score
+from training.get_context_masks import *
 from utils.common_imports import *
 from utils.time_and_memory_utils import *
 from utils.print_logger import *
+from typing import Union
 
 
 
@@ -39,15 +40,15 @@ class ReinforceTrainerWRS:
 
     # so that we can check the gradient magnitude of the different relative terms (in percentages)
 
-
     def __init__(
         self,
         model: AutoModelForCausalLM,
         tokenizer: AutoTokenizer,
         optimizer: torch.optim.Optimizer,
-        lr_scheduler: torch.optim.lr_scheduler,
-        critic: Union[nn.Module, None],
-        critic_optimizer: torch.optim.Optimizer,
+        lr_scheduler: torch.optim.lr_scheduler.LRScheduler,
+        critic: Union[AutoModelForCausalLM, None],
+        critic_optimizer: Union[torch.optim.Optimizer, None],
+        critic_lr_scheduler: Union[torch.optim.lr_scheduler.LRScheduler, None],
         config: RtConfig,
     ):
         # TODO: add lr scheduler to accelerator
@@ -63,6 +64,11 @@ class ReinforceTrainerWRS:
         self.model, self.optimizer = self.accelerator.prepare(
             model, 
             optimizer)
+        
+        self.critic = critic
+        self.critic_optimizer = critic_optimizer
+        self.critic_lr_scheduler = critic_lr_scheduler
+
         self.tally = RtTally(tokenizer=tokenizer)
 
         self.logger = PrintLogger(
@@ -88,13 +94,475 @@ class ReinforceTrainerWRS:
    
 
 
-    def advantages_to_aa_scores(
+ 
+
+    def mask_non_restricted_token_logits(
+        self, 
+        logits: torch.Tensor):
+        """
+        
+        """
+        # TODO: verify. Not sure what we do here is differentiable
+        # also, we recompute for nothing
+
+        if self.config.restrict_tokens is not None:
+            allowed_token_ids = []
+            for token in self.config.restrict_tokens:
+                token_ids = self.tokenizer(
+                    token, 
+                    add_special_tokens=False)["input_ids"]
+                allowed_token_ids.append(token_ids[0])
+            allowed_token_ids.append(self.tokenizer.eos_token_id) # This token should always be active   
+            allowed_token_ids = torch.tensor(
+                allowed_token_ids, 
+                device=logits.device)
+            # Mask log_probs and probs to only allowed tokens
+            mask = torch.zeros_like(logits).bool()  # (B, S, V)
+            mask[..., allowed_token_ids] = True
+            logits = torch.where(
+                mask,
+                logits,
+                torch.tensor(-float('inf'), device=logits.device),
+            )
+
+        return logits
+
+    def get_expected_entropy(
+        self,
+        rollout_ids: list[str],
+        contexts: torch.Tensor,
+        shifted_contexts: torch.Tensor,
+        logits: torch.Tensor,
+        action_mask: torch.Tensor,
+    ):
+        """
+        Computes entropy were actions are LLM-generated strings of tokens.
+        """
+        try:
+            B, S, T = logits.shape
+        except:
+            print("Missing batch dimension.")
+
+
+        token_entropy_terms = -F.softmax(logits, dim=-1) \
+             * F.log_softmax(logits, dim=-1)
+        # (B, S, T)
+
+        # We only take the entropy of actions
+        token_entropy_terms *= action_mask[:, :, None]
+
+        if self.config.log_ctz_entropy:
+            self.tally.add_contextualized_token_metrics(
+                rollout_ids=rollout_ids,
+                metric_id="entropy",
+                contexts=shifted_contexts,
+                metrics=token_entropy_terms.sum(dim=-1),
+                action_mask=action_mask,
+            )
+        expected_entropy = token_entropy_terms.sum()
+
+        del token_entropy_terms
+
+        return expected_entropy
+
+    def get_kl_divergence(
+        self,
+        rollout_ids: list[str],
+        contexts: torch.Tensor,
+        shifted_contexts: torch.Tensor,
+        attention_mask: torch.Tensor,
+        action_log_probs: torch.Tensor,
+        action_mask: torch.Tensor
+    ):
+        """
+        
+        # Ref 1: http://joschu.net/blog/kl-approx.html
+        # Ref 2: https://github.dev/huggingface/trl/blob/main/trl/trainer/grpo_trainer.py#L1332
+        """
+
+        # Disable policy adapter to run inference on base model
+        with torch.no_grad():
+            with self.model.disable_adapter():
+                ref_model_logits = self.model(
+                    input_ids=contexts, 
+                    attention_mask=attention_mask
+                )[0]
+
+        ref_model_logits = ref_model_logits / self.config.temperature
+
+        # (B, S, V)
+        ref_model_logits = self.mask_non_restricted_token_logits(
+            logits=ref_model_logits
+        )
+        # (B, S, V)
+        ref_model_log_probs = F.log_softmax(ref_model_logits, dim=-1)
+        # (B, S, V)
+        ref_model_action_log_probs = ref_model_log_probs.gather(
+            dim=-1, index=shifted_contexts.unsqueeze(-1)
+        ).squeeze(
+            -1
+        )  # (B,S)
+        # Approximating KL Divergence (see refs in docstring)
+        kl_div = (
+            torch.exp(ref_model_action_log_probs - action_log_probs)
+            - (ref_model_action_log_probs - action_log_probs)
+            - 1
+        )
+
+        if self.config.log_ctz_kl:
+            self.tally.add_contextualized_token_metrics(
+                rollout_ids=rollout_ids,
+                metric_id="kl",
+                contexts=shifted_contexts,
+                metrics=kl_div,
+                action_mask=action_mask,
+            )
+
+        # We only care about KLD of action tokens
+        kl_div *= action_mask
+
+        kl_div = kl_div.sum()
+
+        return kl_div
+
+
+
+    def get_gradient_magnitude(self, loss_term: torch.Tensor):
+        """
+        
+        """
+        with torch.no_grad():
+            grads = torch.autograd.grad(
+                loss_term,
+                [p for p in self.model.parameters() if p.requires_grad],
+                retain_graph=True, 
+                allow_unused=True               
+            )
+            grads = [g for g in grads if g is not None]
+            if not grads:                      
+                return torch.tensor(0.0, device=loss_term.device)
+            return torch.norm(torch.stack([g.norm(2) for g in grads])).item()
+
+
+
+    def apply_reinforce_step(
+        self,
+        rollout_ids: list[str],
+        contexts: list[torch.Tensor],
+        credits: list[torch.Tensor],
+        action_masks: list[torch.Tensor]
+    ):
+        """
+        
+
+        REINFORCE gradient estimators are a sum of these terms:
+            s(a, s) ∇ log π(a|s)
+        In this code, "s" is called "score". 
+
+        See https://huggingface.co/docs/accelerate/usage_guides/
+        gradient_accumulation#converting-it-to-accelerate
+        """
+
+        self.logger.info(f"\n Before Reinforce Step \n  {ram_usage()} \n {vram_usage()}")
+
+        self.model.train()
+        loss = 0.0
+        mb_size = self.config.mini_batch_size
+        device = self.accelerator.device
+        self.tokenizer.padding_side = "left"
+
+        nb_rollouts = len(contexts)
+        self.tally.add_metric(
+            path=["nb_rollouts"],
+            metric=nb_rollouts)
+
+        # Count total number of tokens trained on
+        total_nb_action_tokens = 0
+        for am in action_masks:
+            nb_tokens = am.shape[0]
+            self.tally.add_metric(
+                path=["nb_tokens", "action_tokens"],
+                metric=nb_tokens)
+            total_nb_action_tokens += nb_tokens
+        
+        self.tally.add_metric(
+            path=["nb_tokens", "batch_action_tokens"],
+            metric=total_nb_action_tokens)
+
+
+
+
+        for mb in range(0, len(contexts), mb_size):
+            rollout_ids_mb = rollout_ids[mb:mb+mb_size]
+
+            # Convert sequences to padded tensor minibatches
+            tokens_mb = contexts[mb : mb + mb_size]
+            tok_out = self.tokenizer.pad(
+                {"input_ids": tokens_mb}, 
+                padding="longest", 
+                return_tensors="pt"
+            )
+            tokens_mb = tok_out.input_ids.to(device)
+            attention_mask = tok_out.attention_mask.to(device)[:, :-1]
+            contexts_mb = tokens_mb[:, :-1]
+            shifted_contexts_mb= tokens_mb[:, 1:]
+
+            credits_mb = [s[1:] for s in credits[mb : mb + mb_size]]
+            credits_mb = (
+                pad_sequence(
+                    sequences=credits_mb,
+                    padding_value=0.0,
+                    batch_first=True,
+                    padding_side="left",
+                )
+                .float()
+                .to(device)
+            )
+            
+
+            action_mask_mb = [am[1:] for am in action_masks[mb : mb + mb_size]]
+            action_mask_mb = (
+                pad_sequence(
+                    sequences=action_mask_mb,
+                    padding_value=0.0,
+                    batch_first=True,
+                    padding_side="left",
+                )
+                .float()
+                .to(device)
+            )
+
+            if self.config.log_ctz_next_token_score:
+                self.tally.add_contextualized_token_metrics(
+                    rollout_ids=rollout_ids_mb,
+                    metric_id="next_token_score",
+                    contexts=shifted_contexts_mb,
+                    metrics=credits_mb,
+                    action_mask=action_mask_mb,
+                )
+
+            # Forward pass + cast to FP-32 for higher prec.
+            logits = self.model(
+                input_ids=contexts_mb, 
+                attention_mask=attention_mask)[
+                0
+            ]  # (B, S, V)
+
+            # Mask non-restricted tokens
+            if self.config.restrict_tokens is not None:
+                logits = self.mask_non_restricted_token_logits(logits)
+
+            logits /= self.config.temperature  # (B, S, V)
+
+            # Compute new log probabilities
+            log_probs = F.log_softmax(logits, dim=-1)  # (B, S, V)
+
+            # Get log probabilities of actions taken during rollouts
+            action_log_probs = log_probs.gather(
+                dim=-1, index=shifted_contexts_mb.unsqueeze(-1)
+            ).squeeze(
+                -1
+            )  # (B, S)
+
+            if self.config.log_ctz_next_token_log_prob:
+                self.tally.add_contextualized_token_metrics(
+                    rollout_ids=rollout_ids_mb,
+                    metric_id="next_token_log_prob",
+                    contexts=shifted_contexts_mb,
+                    metrics=action_log_probs,
+                    action_mask=action_mask_mb,
+                )
+            
+            if self.config.log_ctz_next_token_prob:
+                self.tally.add_contextualized_token_metrics(
+                    rollout_ids=rollout_ids_mb,
+                    metric_id="next_token_prob",
+                    contexts=shifted_contexts_mb,
+                    metrics=torch.exp(action_log_probs),
+                    action_mask=action_mask_mb,
+                )
+
+            if self.config.log_ctz_top_k != 0:
+                # Log top K ids and probs
+
+                self.logger.info(f"\n Before Logging Top K \n  {ram_usage()} \n {vram_usage()}")
+
+                top_k_indices = torch.topk(logits, 
+                k=self.config.log_ctz_top_k, dim=-1).indices
+
+                if self.config.log_ctz_top_k_tids:
+                    self.tally.add_contextualized_token_metrics(
+                        rollout_ids=rollout_ids_mb,
+                        metric_id=f"top_{self.config.log_ctz_top_k}_tids",
+                        contexts=shifted_contexts_mb,
+                        metrics=top_k_indices,
+                        action_mask=action_mask_mb,
+                        to_tids=True
+                    )
+                if self.config.log_ctz_top_k_probs:
+                    self.tally.add_contextualized_token_metrics(
+                        rollout_ids=rollout_ids_mb,
+                        metric_id=f"top_{self.config.log_ctz_top_k}_probs",
+                        contexts=shifted_contexts_mb,
+                        metrics=torch.exp(log_probs).gather(
+                            dim=-1, 
+                            index=top_k_indices),
+                        action_mask=action_mask_mb,
+                    )
+
+                self.logger.info(f"\n After Logging Top K \n  {ram_usage()} \n {vram_usage()}")
+
+            
+
+            rewarded_action_log_probs = (
+                action_mask_mb 
+                * credits_mb 
+                * action_log_probs)
+            # (B, S)
+            if self.config.log_ctz_top_slogpi:
+                self.tally.add_contextualized_token_metrics(
+                    rollout_ids=rollout_ids_mb,
+                    metric_id="next_token_slogpi",
+                    contexts=shifted_contexts_mb,
+                    metrics=rewarded_action_log_probs,
+                    action_mask=action_mask_mb,
+                )
+
+            # Add value term to loss
+            nb_act_tokens = torch.sum(action_mask_mb)
+            mb_value = -rewarded_action_log_probs.sum()
+            self.tally.add_metric(
+                path=["loss_mb_total", "value_mb_total"],
+                metric=mb_value.item())
+
+            if self.config.log_value_gradient_terms:
+                self.tally.add_metric(
+                    path=["gradient_term_magnitudes", "value"],
+                    metric=self.get_gradient_magnitude(
+                        loss_term=mb_value
+                    )
+                )
+            loss += mb_value
+
+            # Add entropy regularization term to loss
+            if self.config.entropy_coeff != 0.0:
+
+                self.logger.info(f"\n Before Computing Entropy \n  {ram_usage()} \n {vram_usage()}")
+
+                mb_entropy = self.get_expected_entropy(
+                    rollout_ids=rollout_ids_mb,
+                    contexts=contexts_mb,
+                    shifted_contexts=shifted_contexts_mb,
+                    logits=logits,
+                    action_mask=action_mask_mb,
+                )
+                mb_entropy *= self.config.entropy_coeff 
+                self.tally.add_metric(
+                    path=["loss_mb_total", "entropy_mb_total"],
+                    metric=mb_entropy.item()
+                )
+                
+                if self.config.log_entropy_gradient_terms:
+                    self.tally.add_metric(
+                        path=["gradient_term_magnitudes", "entropy"],
+                        metric=self.get_gradient_magnitude(
+                            loss_term=mb_entropy
+                        )
+                    )
+                loss += mb_entropy
+
+                self.logger.info(f"\n After Computing Entropy \n  {ram_usage()} \n {vram_usage()}")
+
+            # Add KL-divergence regularization term to loss
+            if self.config.kl_coeff != 0.0:
+
+                self.logger.info(f"\n Before Computing KLD \n  {ram_usage()} \n {vram_usage()}")
+
+                # TODO: verify
+                mb_kl = self.get_kl_divergence(
+                    rollout_ids=rollout_ids_mb,
+                    contexts=contexts_mb,
+                    shifted_contexts=shifted_contexts_mb,
+                    attention_mask=attention_mask,
+                    action_log_probs=action_log_probs,
+                    action_mask=action_mask_mb
+                )
+                mb_kl *= self.config.kl_coeff
+
+                self.tally.add_metric(
+                    path=["mb_kl_loss_terms"], 
+                    metric=mb_kl.item())
+
+                if self.config.log_kl_gradient_terms:
+                    self.tally.add_metric(
+                        path=["gradient_term_magnitudes", "kl"],
+                        metric=self.get_gradient_magnitude(
+                            loss_term=mb_kl
+                        )
+                    )
+
+                loss += mb_kl
+
+                self.logger.info(f"\n After Computing KLD \n  {ram_usage()} \n {vram_usage()}")
+
+
+            # Normalize over number tokens generated
+            # loss /= total_nb_action_tokens
+
+            # Accumulate gradient
+            self.accelerator.backward(loss)
+
+            loss = 0.0
+
+            # ensure gpu memory is freed
+            del log_probs
+            del contexts_mb
+            del shifted_contexts_mb
+            del credits_mb
+            del action_mask_mb
+            del attention_mask
+            del logits
+            del action_log_probs
+            del rewarded_action_log_probs
+            torch.cuda.empty_cache()
+
+        # self.accelerator.sync_gradients
+
+        # Clip gradients and take step
+        if self.config.gradient_clipping is not None:
+            grad_norm = self.accelerator.clip_grad_norm_(
+                self.model.parameters(), 
+                self.config.gradient_clipping
+            )
+            # TODO: log at right place
+            self.tally.add_metric(
+                path=["gradient_norm"], 
+                metric=grad_norm.item())
+
+        # TODO: log grad norm even if no grad clip
+
+        # Take step
+        self.optimizer.step()
+        self.optimizer.zero_grad()
+
+        # Clear
+        # TODO: verify
+        self.accelerator.clear(self.model, self.optimizer)
+        import gc
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        self.logger.info(f"\n After Reinforce Step \n  {ram_usage()} \n {vram_usage()}")
+
+
+    def advantages_to_aa_credits(
         self,
         a1: np.ndarray,
         a2: np.ndarray,
     ):
         """
-        Calculate the advantage alignment scores with vectorization.
+        Calculate the advantage alignment credits with vectorization.
 
         Args:
             a1 (np.ndarray):
@@ -237,21 +705,21 @@ class ReinforceTrainerWRS:
                 metric=opp_shaping_terms
             )
 
-        ad_align_scores = a1 + opp_shaping_terms
+        ad_align_credits = a1 + opp_shaping_terms
 
         self.tally.add_metric(
-            path=["final_advantage_alignment_scores"], 
-            metric=ad_align_scores
+            path=["final_advantage_alignment_credits"], 
+            metric=ad_align_credits
         )
 
         self.logger.info(f"\n \n After AdAlign \n  {ram_usage()} \n {vram_usage()}")
 
 
-        return ad_align_scores.squeeze()
+        return ad_align_credits.squeeze()
 
-    def discount_returns(self, rewards: np.ndarray):
+    def get_discounted_returns(self, rewards: np.ndarray):
         """
-        TODO: docstring
+        
         """
         # TODO fix
         dr = np.zeros(rewards.shape)
@@ -261,81 +729,161 @@ class ReinforceTrainerWRS:
             dr[i] = rewards[i] + self.config.discount_factor * dr[i + 1]
         return dr
 
-    def get_response_scores_from_data(self, paths: list[str]):
+    def get_gen_adv_estimates(
+        self,
+        rewards: np.ndarray,
+        value_estimates: np.ndarray
+        ):
         """
-        This is where the reward shaping occurs.
-
-        Process all of the rewards in the data at once.
-        Obtains the score attributed to each of the agent's responses.
-        #TODO: docstring
+        GAE estimates
+        See https://arxiv.org/pdf/1506.02438
         Args:
-
-        Returns:
-            all_response_scores : list[torch.Tensor]
+            rewards:
+                Shape: l
+            value_estimates: 
+                Shape: l+1 (if using fake value bootstrap) or l
         """
-        all_response_scores = {}
+        l = rewards.size
+        if l == value_estimates.size:
+            bootstrap = False
+        else:
+            bootstrap = True
+            assert (
+                self.config.create_fake_bootstrap_value, 
+                "No fake bootstrap value enabled and size mismatch."
+            )
+        current_vals = value_estimates[:-1] if bootstrap else value_estimates
+        future_discounted_vals = value_estimates[1:] if bootstrap else np.append(value_estimates[1:], 0)
+        gaes = rewards + future_discounted_vals - current_vals 
+        gaes = (
+            (self.config.discount_factor * self.config.gae_lambda) 
+            ** np.arange(0, l) 
+            * gaes
+        )
+        gaes = np.flip(np.cumsum(np.flip(gaes)))
+        return gaes
 
-        for filepath in paths:
-            rewards = []
-            co_rewards = []
-            # Extract the rewards from conversation history
-            # Each response corresponds to one component
-            # of the score vector
-            with open(filepath) as f:
-                conversation = json.load(f)
-                for message in conversation:
-                    r = message.get("reward", None)
-                    co_r = message.get("co_reward", None)
-                    if r != None:
-                        rewards.append(r)
-                        co_rewards.append(co_r)
-
-            s = np.array(rewards)
-            co_s = np.array(co_rewards)
-
-            self.tally.add_metric(path=["rewards"], metric=s)
-
-            self.tally.add_metric(path=["co_rewards"], metric=co_s)
-
-            if self.config.use_sum_rewards:
-                s = s + co_s
-                co_s = s
-
-            s = self.discount_returns(rewards=s)
-            co_s = self.discount_returns(rewards=co_s)
-
-            self.tally.add_metric(path=["discounted_returns"], metric=s)
-
-            self.tally.add_metric(path=["co_discounted_returns"], metric=co_s)
-
-            if self.config.use_advantage_alignment:
-                s = self.advantages_to_aa_scores(a1=s, a2=co_s)
-
-            all_response_scores[filepath] = torch.Tensor(s)
-
-        return all_response_scores
-
-    def get_training_data(self, paths: list[str]):
+    def get_critic_values(
+        self,
+        contexts: list[torch.Tensor],
+        state_end_flags: list[torch.Tensor],
+        ) -> list[torch.Tensor]: 
         """
-        TODO: docstring
+        Here we don't parallelize across the batch. 
+        This can be improved later.
+        """
+        all_vals_hat = []
+        for ctx, end_flags in zip(contexts, state_end_flags):
+            ctx = ctx.to(self.config.device)
+            vals_hat = self.critic(ctx.unsqueeze(0)).squeeze()
+            # critic puts attention up to end of action
+            if self.config.create_fake_bootstrap_value == True:
+                end_flags[-1] = True
+            vals_hat = vals_hat[end_flags == True]
+            all_vals_hat.append(vals_hat)
+        return all_vals_hat
+
+    def rewards_to_step_credits(
+        self,
+        batch_rewards: list[np.ndarray],
+        batch_contexts: list[torch.Tensor],
+        batch_state_end_flags: list[np.ndarray],
+    ):
+        """
+        Time taken
+
+        We hardcode parallel batch processing to only one example.
+        Our GPU allows nothing more, the code is more readable, harder to write bugs.
+        """
+
+        B = len(batch_rewards)
+
+        # Get MC discounted returns
+        discounted_returns = []
+        for i in range(B):
+            rewards = batch_rewards[i]
+            discounted_returns.append(self.get_discounted_returns(rewards))
+            self.tally.add_metric(path=["discounted_returns"], metric=rewards)
+
+        # Use GAE 
+        if self.config.use_gae: 
+            batch_credits = []
+            batch_val_estimates = self.get_critic_values(
+                contexts=batch_contexts,
+                state_end_flags=batch_state_end_flags,
+            )
+            
+            # Train critic
+            critic_loss = 0.0
+            for i in range(B):
+                val = batch_val_estimates[i]
+                target = torch.Tensor(
+                    discounted_returns[i]).to(self.config.device)
+                if self.config.create_fake_bootstrap_value:
+                    # skip training on fake value 
+                    val = val[:-1]
+                critic_loss += F.mse_loss(
+                    input=val,
+                    target=target
+                )
+            critic_loss.backward()
+            self.critic_optimizer.step()
+            self.critic_optimizer.zero_grad()
+
+            # Get GAEs
+            for i in range(B):
+                credits = self.get_gen_adv_estimates(
+                    rewards = batch_rewards[i],
+                    value_estimates = batch_val_estimates[i].to("cpu").detach().numpy()
+                )
+                batch_credits.append(credits)
+
+        # Simply use Monte Carlo
+        else:
+            batch_credits = discounted_returns
+        
+        return batch_credits
+
+
+    def set_training_data(self, paths: list[str]):
+        """
+        
         Converts external folder of json conversation
         files into lists of training torch tensors.
         """
-        all_contexts = []
-        all_scores = []
-        all_action_masks = []
 
-        all_per_response_scores = self.get_response_scores_from_data(paths=paths)
+        all_game_ids = []
+        all_contexts = []
+        all_rewards = []
+        all_action_masks = []
+        all_action_timestamps = []
+        all_state_end_flags = []
+
 
         for filepath in paths:
 
             # Load conversation from json file
             with open(filepath) as f:
-                conversation = json.load(f)
+                train_file = json.load(f)[0]
+
+            game_id = train_file["game_id"]
+            chat = train_file["chat"]
+
+            all_game_ids.append(game_id)
+
+            # Get per step rewards array
+            rewards = []
+            for message in chat:
+                r = message.get("reward", None)
+                if r != None:
+                    rewards.append(r)
+            rewards = np.array(rewards)
+            self.tally.add_metric(path=["rewards"], metric=rewards)
+            all_rewards.append(rewards)
 
             # Apply chat template, get token ids
             formatted_conversation = self.tokenizer.apply_chat_template(
-                conversation,
+                chat,
                 add_generation_prompt=False,
                 tokenize=False,
                 use_system_prompt=True,
@@ -346,552 +894,128 @@ class ReinforceTrainerWRS:
                 add_special_tokens=True
             ).squeeze(0).long()
 
-            per_response_scores = all_per_response_scores[filepath]
-            scores, action_mask = get_assistant_actions_mask_and_score(
+            (
+                action_mask, 
+                action_timestamps,
+                state_end_flags
+            ) = get_context_masks(
                 tokenizer=self.tokenizer,
-                assistant_msg_scores=torch.Tensor(per_response_scores).squeeze(),
                 token_ids = tokens
             )
-            # decoded = self.tokenizer.convert_ids_to_tokens(tokens.tolist())
-            # df = {"Tokens": decoded, "Score": scores, "Action Mask": action_mask}
-            # df = pd.DataFrame(df)
-            # print(df.to_string())
-
-            assert tokens.shape == scores.shape == action_mask.shape
 
             all_contexts.append(tokens)
-            all_scores.append(scores)
             all_action_masks.append(action_mask)
+            all_action_timestamps.append(action_timestamps)
+            all_state_end_flags.append(state_end_flags)
 
-        return all_contexts, all_scores, all_action_masks
+        assert len(set(all_game_ids)) == len(all_game_ids), "Error: Duplicate game ids"
 
-    def mask_non_restricted_token_logits(
-        self, 
-        logits: torch.Tensor):
-        """
-        TODO: docstring
-        """
-        # TODO: verify. Not sure what we do here is differentiable
-        # also, we recompute for nothing
+        self.game_ids = all_game_ids 
+        self.step_rewards = all_rewards
+        self.contexts = all_contexts
+        self.action_masks = all_action_masks
+        self.action_timestamps = all_action_timestamps
+        self.state_end_flags = all_state_end_flags
 
-        if self.config.restrict_tokens is not None:
-            allowed_token_ids = []
-            for token in self.config.restrict_tokens:
-                token_ids = self.tokenizer(
-                    token, 
-                    add_special_tokens=False)["input_ids"]
-                allowed_token_ids.append(token_ids[0])
-            allowed_token_ids.append(self.tokenizer.eos_token_id) # This token should always be active   
-            allowed_token_ids = torch.tensor(
-                allowed_token_ids, 
-                device=logits.device)
-            # Mask log_probs and probs to only allowed tokens
-            mask = torch.zeros_like(logits).bool()  # (B, S, V)
-            mask[..., allowed_token_ids] = True
-            logits = torch.where(
-                mask,
-                logits,
-                torch.tensor(-float('inf'), device=logits.device),
-            )
-
-        return logits
-
-    def get_expected_entropy(
-        self,
-        rollout_ids: list[str],
-        contexts: torch.Tensor,
-        shifted_contexts: torch.Tensor,
-        logits: torch.Tensor,
-        action_mask: torch.Tensor,
-    ):
-        """
-        Computes entropy were actions are LLM-generated strings of tokens.
-        """
-        try:
-            B, S, T = logits.shape
-        except:
-            print("Missing batch dimension.")
-
-
-        token_entropy_terms = -F.softmax(logits, dim=-1) \
-             * F.log_softmax(logits, dim=-1)
-        # (B, S, T)
-
-        # We only take the entropy of actions
-        token_entropy_terms *= action_mask[:, :, None]
-
-        if self.config.log_ctz_entropy:
-            self.tally.add_contextualized_token_metrics(
-                rollout_ids=rollout_ids,
-                metric_id="entropy",
-                contexts=shifted_contexts,
-                metrics=token_entropy_terms.sum(dim=-1),
-                action_mask=action_mask,
-            )
-        expected_entropy = token_entropy_terms.sum()
-
-        del token_entropy_terms
-
-        return expected_entropy
-
-    def get_kl_divergence(
-        self,
-        rollout_ids: list[str],
-        contexts: torch.Tensor,
-        shifted_contexts: torch.Tensor,
-        attention_mask: torch.Tensor,
-        action_log_probs: torch.Tensor,
-        action_mask: torch.Tensor
-    ):
-        """
-        TODO: docstring
-        # Ref 1: http://joschu.net/blog/kl-approx.html
-        # Ref 2: https://github.dev/huggingface/trl/blob/main/trl/trainer/grpo_trainer.py#L1332
-        """
-
-        # Disable policy adapter to run inference on base model
-        with torch.no_grad():
-            with self.model.disable_adapter():
-                ref_model_logits = self.model(
-                    input_ids=contexts, 
-                    attention_mask=attention_mask
-                )[0]
-
-        ref_model_logits = ref_model_logits / self.config.temperature
-
-        # (B, S, V)
-        ref_model_logits = self.mask_non_restricted_token_logits(
-            logits=ref_model_logits
-        )
-        # (B, S, V)
-        ref_model_log_probs = F.log_softmax(ref_model_logits, dim=-1)
-        # (B, S, V)
-        ref_model_action_log_probs = ref_model_log_probs.gather(
-            dim=-1, index=shifted_contexts.unsqueeze(-1)
-        ).squeeze(
-            -1
-        )  # (B,S)
-        # Approximating KL Divergence (see refs in docstring)
-        kl_div = (
-            torch.exp(ref_model_action_log_probs - action_log_probs)
-            - (ref_model_action_log_probs - action_log_probs)
-            - 1
+        self.step_credits = self.rewards_to_step_credits(
+            batch_rewards = self.step_rewards,
+            batch_contexts = self.contexts,
+            batch_state_end_flags = self.state_end_flags,
         )
 
-        if self.config.log_ctz_kl:
-            self.tally.add_contextualized_token_metrics(
-                rollout_ids=rollout_ids,
-                metric_id="kl",
-                contexts=shifted_contexts,
-                metrics=kl_div,
-                action_mask=action_mask,
-            )
-
-        # We only care about KLD of action tokens
-        kl_div *= action_mask
-
-        kl_div = kl_div.sum()
-
-        return kl_div
+        if self.config.wait_for_opponent_shaping:
+            self.token_credits = None
+            self.opponent_reward_shaping_complete = False
 
 
-
-    def get_gradient_magnitude(self, loss_term: torch.Tensor):
-        """
-        TODO: docstring
-        """
-        with torch.no_grad():
-            grads = torch.autograd.grad(
-                loss_term,
-                [p for p in self.model.parameters() if p.requires_grad],
-                retain_graph=True, 
-                allow_unused=True               
-            )
-            grads = [g for g in grads if g is not None]
-            if not grads:                      
-                return torch.tensor(0.0, device=loss_term.device)
-            return torch.norm(torch.stack([g.norm(2) for g in grads])).item()
-
-
-    def get_critic_loss(
-        tokens: np.array,
-        rewards: np.array, 
-        action_mask: np.array,
-    ):
-        """
-        TODO: doctstring
+    def send_shaping_info_to_opponents(self) -> dict:
         """
 
-        # TODO: get discounted returns
-        discounted_returns = None # TODO
+        """
+        # TODO, get game ids
 
-        # TODO: use action_mask
-        disc_returns_hat = self.critic(contexts)
-        critic_loss = F.mse_loss(
-            input=disc_returns,
-            target=disc_returns_hat
-        )
-        self.tally.add_metric(
-            path=["critic", "critic_loss_before_gs"],
-            metric=nb_rollouts)
-        critic_loss.backward()
+        info = {
+            'game_ids': self.game_ids,
+            'step_rewards': self.step_rewards,
+            'step_credits': self.step_credits
+        }
+
+        return info
+
+
+    def use_opponents_shaping_info(self, opponents_info: dict) -> None:
+        """
         
-        self.critic_optimizer.step()
-        self.critic_optimizer.zero_grad()
-
-  
-     def get_gen_adv_estimates(
-        self,
-        contexts: torch.Tensor,
-        rewards: torch.Tensor
-        ):
         """
-        GAE estimates
-        See https://arxiv.org/pdf/1506.02438
-        """
-        value_estimates = self.critic(contexts)
-        l = value_estimates.shape[0]
-        # temporal differences
-        import pdb; pdb.set_trace()
-        tds = rewards[:-1] \
-            + self.config.discount_factor * value_estimates[1:] \
-            - value_estimates[:-1]
-
-        gaes = torch.sum(
-            (self.config.discount_factor * self.config.gamma) ** torch.arange(0, l-1) * tds
-        )
-        return gaes
-
-    def apply_reinforce_step(
-        self,
-        rollout_ids: list[str],
-        contexts: list[torch.Tensor],
-        scores: list[torch.Tensor],
-        action_masks: list[torch.Tensor],
-    ):
-        """
-        TODO: docstring
-
-        REINFORCE gradient estimators are a sum of these terms:
-            s(a, s) ∇ log π(a|s)
-        In this code, "s" is called "score". 
-
-        See https://huggingface.co/docs/accelerate/usage_guides/
-        gradient_accumulation#converting-it-to-accelerate
-        """
-
-        self.logger.info(f"\n Before Reinforce Step \n  {ram_usage()} \n {vram_usage()}")
-
-        self.model.train()
-        loss = 0.0
-        mb_size = self.config.mini_batch_size
-        device = self.accelerator.device
-        self.tokenizer.padding_side = "left"
-
-        nb_rollouts = len(contexts)
-        self.tally.add_metric(
-            path=["nb_rollouts"],
-            metric=nb_rollouts)
-
-        # Count total number of tokens trained on
-        total_nb_action_tokens = 0
-        for am in action_masks:
-            nb_tokens = am.shape[0]
-            self.tally.add_metric(
-                path=["nb_tokens", "action_tokens"],
-                metric=nb_tokens)
-            total_nb_action_tokens += nb_tokens
+        op_game_ids =  opponents_info.get("game_ids", None)
+        op_step_credits = opponents_info.get("step_credits", None)
+        B = len(self.step_credits)
         
-        self.tally.add_metric(
-            path=["nb_tokens", "batch_action_tokens"],
-            metric=total_nb_action_tokens)
+        # Ensure opponent trainer data is in the same 
+        # order (with respect to game ids) as here
+        if op_game_ids != self.game_ids:
+            rev_map = {v: i for i, v in enumerate(op_game_ids)}
+            indices = [rev_map[g_id] for g_id in self.game_ids]
+            op_step_credits = [op_step_credits[ind] for ind in indices]
 
+        if self.config.use_sum_credits:
+            for i in range(len(self.step_credits)):
+                self.step_credits[i] += op_step_credits[i]
 
+        if self.config.use_advantage_alignment:
+            for i in range(B):
+                self.step_credits[i] = self.advantages_to_aa_credits(
+                    a1 = self.step_credits[i][None, :],
+                    a2 = op_step_credits[i][None, :]
+                )
 
+        self.opponent_reward_shaping_complete = True
 
-        for mb in range(0, len(contexts), mb_size):
-            rollout_ids_mb = rollout_ids[mb:mb+mb_size]
+    def set_token_credits(self) -> None:
+        """
+        
+        """
+        B = self.rewards.shape[0]
+        all_token_credits = []
 
-            # Convert sequences to padded tensor minibatches
-            tokens_mb = contexts[mb : mb + mb_size]
-            tok_out = self.tokenizer.pad(
-                {"input_ids": tokens_mb}, 
-                padding="longest", 
-                return_tensors="pt"
+        for i in range(B):
+            token_credits = np.zeros(
+                self.action_timestamps[i].shape
             )
-            tokens_mb = tok_out.input_ids.to(device)
-            attention_mask = tok_out.attention_mask.to(device)[:, :-1]
-            contexts_mb = tokens_mb[:, :-1]
-            shifted_contexts_mb= tokens_mb[:, 1:]
-
-            scores_mb = [s[1:] for s in scores[mb : mb + mb_size]]
-            scores_mb = (
-                pad_sequence(
-                    sequences=scores_mb,
-                    padding_value=0.0,
-                    batch_first=True,
-                    padding_side="left",
+            assert (
+                np.max(self.action_timestamps[i]) == self.step_credits[i].size+1, 
+                "Number of steps does not match number of step credits."
                 )
-                .float()
-                .to(device)
-            )
-            
-
-            action_mask_mb = [am[1:] for am in action_masks[mb : mb + mb_size]]
-            action_mask_mb = (
-                pad_sequence(
-                    sequences=action_mask_mb,
-                    padding_value=0.0,
-                    batch_first=True,
-                    padding_side="left",
-                )
-                .float()
-                .to(device)
-            )
-
-            if self.config.log_ctz_next_token_score:
-                self.tally.add_contextualized_token_metrics(
-                    rollout_ids=rollout_ids_mb,
-                    metric_id="next_token_score",
-                    contexts=shifted_contexts_mb,
-                    metrics=scores_mb,
-                    action_mask=action_mask_mb,
-                )
-
-            # Forward pass + cast to FP-32 for higher prec.
-            logits = self.model(
-                input_ids=contexts_mb, 
-                attention_mask=attention_mask)[
-                0
-            ]  # (B, S, V)
-
-            # Mask non-restricted tokens
-            if self.config.restrict_tokens is not None:
-                logits = self.mask_non_restricted_token_logits(logits)
-
-            logits /= self.config.temperature  # (B, S, V)
-
-            # Compute new log probabilities
-            log_probs = F.log_softmax(logits, dim=-1)  # (B, S, V)
-
-            # Get log probabilities of actions taken during rollouts
-            action_log_probs = log_probs.gather(
-                dim=-1, index=shifted_contexts_mb.unsqueeze(-1)
-            ).squeeze(
-                -1
-            )  # (B, S)
-
-            if self.config.log_ctz_next_token_log_prob:
-                self.tally.add_contextualized_token_metrics(
-                    rollout_ids=rollout_ids_mb,
-                    metric_id="next_token_log_prob",
-                    contexts=shifted_contexts_mb,
-                    metrics=action_log_probs,
-                    action_mask=action_mask_mb,
-                )
-            
-            if self.config.log_ctz_next_token_prob:
-                self.tally.add_contextualized_token_metrics(
-                    rollout_ids=rollout_ids_mb,
-                    metric_id="next_token_prob",
-                    contexts=shifted_contexts_mb,
-                    metrics=torch.exp(action_log_probs),
-                    action_mask=action_mask_mb,
-                )
-
-            if self.config.log_ctz_top_k != 0:
-                # Log top K ids and probs
-
-                self.logger.info(f"\n Before Logging Top K \n  {ram_usage()} \n {vram_usage()}")
-
-                top_k_indices = torch.topk(logits, 
-                k=self.config.log_ctz_top_k, dim=-1).indices
-
-                # import pdb; pdb.set_trace()
-                if self.config.log_ctz_top_k_tids:
-                    self.tally.add_contextualized_token_metrics(
-                        rollout_ids=rollout_ids_mb,
-                        metric_id=f"top_{self.config.log_ctz_top_k}_tids",
-                        contexts=shifted_contexts_mb,
-                        metrics=top_k_indices,
-                        action_mask=action_mask_mb,
-                        to_tids=True
-                    )
-                if self.config.log_ctz_top_k_probs:
-                    self.tally.add_contextualized_token_metrics(
-                        rollout_ids=rollout_ids_mb,
-                        metric_id=f"top_{self.config.log_ctz_top_k}_probs",
-                        contexts=shifted_contexts_mb,
-                        metrics=torch.exp(log_probs).gather(
-                            dim=-1, 
-                            index=top_k_indices),
-                        action_mask=action_mask_mb,
-                    )
-
-                self.logger.info(f"\n After Logging Top K \n  {ram_usage()} \n {vram_usage()}")
-
-            
-
-            rewarded_action_log_probs = (
-                action_mask_mb 
-                * scores_mb 
-                * action_log_probs)
-            # (B, S)
-            if self.config.log_ctz_top_slogpi:
-                self.tally.add_contextualized_token_metrics(
-                    rollout_ids=rollout_ids_mb,
-                    metric_id="next_token_slogpi",
-                    contexts=shifted_contexts_mb,
-                    metrics=rewarded_action_log_probs,
-                    action_mask=action_mask_mb,
-                )
-
-            # Add value term to loss
-            nb_act_tokens = torch.sum(action_mask_mb)
-            mb_value = -rewarded_action_log_probs.sum()
-            self.tally.add_metric(
-                path=["loss_mb_total", "value_mb_total"],
-                metric=mb_value.item())
-
-            if self.config.log_value_gradient_terms:
-                self.tally.add_metric(
-                    path=["gradient_term_magnitudes", "value"],
-                    metric=self.get_gradient_magnitude(
-                        loss_term=mb_value
-                    )
-                )
-            loss += mb_value
-
-            # Add entropy regularization term to loss
-            if self.config.entropy_coeff != 0.0:
-
-                self.logger.info(f"\n Before Computing Entropy \n  {ram_usage()} \n {vram_usage()}")
-
-                mb_entropy = self.get_expected_entropy(
-                    rollout_ids=rollout_ids_mb,
-                    contexts=contexts_mb,
-                    shifted_contexts=shifted_contexts_mb,
-                    logits=logits,
-                    action_mask=action_mask_mb,
-                )
-                mb_entropy *= self.config.entropy_coeff 
-                self.tally.add_metric(
-                    path=["loss_mb_total", "entropy_mb_total"],
-                    metric=mb_entropy.item()
-                )
-                
-                if self.config.log_entropy_gradient_terms:
-                    self.tally.add_metric(
-                        path=["gradient_term_magnitudes", "entropy"],
-                        metric=self.get_gradient_magnitude(
-                            loss_term=mb_entropy
-                        )
-                    )
-                loss += mb_entropy
-
-                self.logger.info(f"\n After Computing Entropy \n  {ram_usage()} \n {vram_usage()}")
-
-            # Add KL-divergence regularization term to loss
-            if self.config.kl_coeff != 0.0:
-
-                self.logger.info(f"\n Before Computing KLD \n  {ram_usage()} \n {vram_usage()}")
-
-                # TODO: verify
-                mb_kl = self.get_kl_divergence(
-                    rollout_ids=rollout_ids_mb,
-                    contexts=contexts_mb,
-                    shifted_contexts=shifted_contexts_mb,
-                    attention_mask=attention_mask,
-                    action_log_probs=action_log_probs,
-                    action_mask=action_mask_mb
-                )
-                mb_kl *= self.config.kl_coeff
-
-                self.tally.add_metric(
-                    path=["mb_kl_loss_terms"], 
-                    metric=mb_kl.item())
-
-                if self.config.log_kl_gradient_terms:
-                    self.tally.add_metric(
-                        path=["gradient_term_magnitudes", "kl"],
-                        metric=self.get_gradient_magnitude(
-                            loss_term=mb_kl
-                        )
-                    )
-
-                loss += mb_kl
-
-                self.logger.info(f"\n After Computing KLD \n  {ram_usage()} \n {vram_usage()}")
+            for j, c in enumerate(self.step_credits[i]):
+                token_credits[self.action_timestamps[i] == j] = c
+            all_token_credits.append(token_credits)
+        self.token_credist = all_token_credits
 
 
-            # Normalize over number tokens generated
-            # loss /= total_nb_action_tokens
+    def train(self) -> None:
 
-            # Accumulate gradient
-            self.accelerator.backward(loss)
+        if self.wait_for_opponent_shaping and not self.opponent_reward_shaping_complete:
+            raise TypeError("Missing Opp. Shaping Phase.")
 
-            loss = 0.0
-
-            # ensure gpu memory is freed
-            del log_probs
-            del contexts_mb
-            del shifted_contexts_mb
-            del scores_mb
-            del action_mask_mb
-            del attention_mask
-            del logits
-            del action_log_probs
-            del rewarded_action_log_probs
-            torch.cuda.empty_cache()
-
-        # self.accelerator.sync_gradients
-
-        # Clip gradients and take step
-        if self.config.gradient_clipping is not None:
-            grad_norm = self.accelerator.clip_grad_norm_(
-                self.model.parameters(), 
-                self.config.gradient_clipping
-            )
-            # TODO: log at right place
-            self.tally.add_metric(
-                path=["gradient_norm"], 
-                metric=grad_norm.item())
-
-        # TODO: log grad norm even if no grad clip
-
-        # Take step
-        self.optimizer.step()
-        self.optimizer.zero_grad()
-
-        # Clear
-        # TODO: verify
-        self.accelerator.clear(self.model, self.optimizer)
-        import gc
-
-        gc.collect()
-        torch.cuda.empty_cache()
-
-        self.logger.info(f"\n After Reinforce Step \n  {ram_usage()} \n {vram_usage()}")
+        self.apply_reinforce_step(
+            rollout_ids=self.paths,
+            contexts=self.contexts, 
+            credits=self.token_credits, 
+            action_masks=self.action_masks
+        )
 
 
     def apply_reinforce_step_on_paths(self, paths: list[str]):
         """
-        TODO: docstring
+        
         """
-        (contexts, 
-        scores, 
-        action_masks) = self.get_training_data(paths=paths)
+        return 
+         
 
-        self.apply_reinforce_step(
-            rollout_ids=paths,
-            contexts=contexts, 
-            scores=scores, 
-            action_masks=action_masks
-        )
 
     def export_training_metrics(self):
         """
-        TODO: docstring
+        
         """
         
         self.tally.save(path=self.config.logging_path)

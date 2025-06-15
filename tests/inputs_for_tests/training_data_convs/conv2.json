@@ -1,35 +1,50 @@
 [
     {
-        "role": "user",
-        "content": "Welcome to a game!",
-        "round_number": 0
-    },
-    {
-        "role": "assistant",
-        "content": "I shall do that.",
-        "round_number": 0,
-        "reward": 5,
-        "co_reward": 2
-    },
-    {
-        "role": "user",
-        "content": "This happened. Oh. That happened.",
-        "round_number": 1
-    },
-    {
-        "role": "assistant",
-        "content": "Now I will play I. And then P.",
-        "reward": 9,
-        "co_reward": 1
-    },
-    {
-        "role": "user",
-        "content": "This has occured. You must now do y."
-    },
-    {
-        "role": "assistant",
-        "content": "Now I will play at.",
-        "reward": 66,
-        "co_reward": -3
+    "game_id" : 345,
+    "chat" : [
+        {
+            "role": "user",
+            "content": "Welcome to a game!",
+            "round_number": 0
+        },
+        {
+            "role": "assistant",
+            "content": "I shall do that.",
+            "round_number": 0,
+            "reward": 5,
+            "co_reward": 2
+        },
+        {
+            "role": "user",
+            "content": "This happened. That happened.",
+            "round_number": 1
+        },
+        {
+            "role": "assistant",
+            "content": "Now I will play x.",
+            "reward": -1,
+            "co_reward": 10
+        },
+        {
+            "role": "user",
+            "content": "This has occured. You must now do y."
+        },
+        {
+            "role": "assistant",
+            "content": "Now I will play U.",
+            "reward": 4,
+            "co_reward": -9
+        },
+        {
+            "role": "user",
+            "content": "This has occured again. You must now do P."
+        },
+        {
+            "role": "assistant",
+            "content": "Now I will play Z.",
+            "reward": -1,
+            "co_reward": 4
+        }
+    ]
     }
 ]

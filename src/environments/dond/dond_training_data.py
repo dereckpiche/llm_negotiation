@@ -106,6 +106,7 @@ def dond_generate_training_data_from_raw(
                     match_id
                 ][round_number]
 
+
         # Only keep conversation messages, not system info
         chat_history = [
             message for message in chat_history if message.get("role") != "system"
@@ -115,7 +116,15 @@ def dond_generate_training_data_from_raw(
         training_file = os.path.join(
             training_data_folder, match_file.replace("match_", "training_data_")
         )
+
+        # Create meta info
+        meta_info = {
+            "game_id": match_id,
+        }
+
         with open(training_file, "w") as f:
+            # TODO (dereck) verify
+            json.dump(meta_info, f, indent=4)
             json.dump(chat_history, f, indent=4)
 
     return

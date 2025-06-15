@@ -12,4 +12,4 @@ training:
     adapters:
       sp_adapter:
         trainer_config:
-          use_sum_rewards: True
+          use_sum_credits: True

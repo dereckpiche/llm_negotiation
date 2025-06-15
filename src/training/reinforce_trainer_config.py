@@ -15,15 +15,17 @@ class RtConfig:
         temperature: float,
         device: str,
 
+
         # Value function
         use_gae: bool,
         gae_lambda: float,
+        create_fake_bootstrap_value: bool,
 
         # Regular Rewards
         discount_factor: float,
-        use_sum_rewards: bool,
 
-        # Ad Align
+        # Opponent Shaping 
+        use_sum_credits: bool,
         use_advantage_alignment: bool,
         ad_align_normalize_advantages: bool,
         ad_align_force_coop_first_step: bool,
@@ -71,7 +73,7 @@ class RtConfig:
                 the k tokens with highest probability mass and token-level entropy, kl, etc.
             discount_factor:
                 TODO
-            use_sum_rewards:
+            use_sum_credits:
                 TODO
             use_advantage_alignment:
                 TODO
@@ -94,11 +96,8 @@ class RtConfig:
         self.temperature = temperature
         self.device = device
         self.discount_factor = discount_factor
-        self.use_sum_rewards = use_sum_rewards
-
-        if isinstance(valf_lora_config, dict): 
-            self.valf_lora_config = LoraConfig(valf_lora_config)
-        else: self.valf_lora_config= valf_lora_config
+        self.use_sum_credits = use_sum_credits
+        self.create_fake_bootstrap_value = create_fake_bootstrap_value
 
 
         self.ad_align_force_coop_first_step = ad_align_force_coop_first_step
@@ -110,6 +109,12 @@ class RtConfig:
         self.use_time_regularization_in_ad_align = use_time_regularization_in_ad_align
         self.ad_align_beta = ad_align_beta
 
+        if use_advantage_alignment or use_sum_credits:
+            self.wait_for_opponent_shaping = True
+        else:
+            self.wait_for_opponent_shaping = False
+        self.use_gae = use_gae
+        self.gae_lambda = gae_lambda
         self.use_sign_in_ad_align = use_sign_in_ad_align 
         self.ad_align_clipping = ad_align_clipping
 
@@ -129,3 +134,4 @@ class RtConfig:
         self.log_ctz_top_slogpi=log_ctz_top_slogpi
         self.log_ctz_entropy=log_ctz_entropy
         self.log_ctz_kl=log_ctz_kl
+

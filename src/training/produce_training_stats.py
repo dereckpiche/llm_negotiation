@@ -70,7 +70,7 @@ def get_metric_iteration_list(data: list[dict], metric_path: list[str]):
 
 
 def to_1d_numeric(x):
-    """Return a 1‑D float array (or None if not numeric)."""
+    """Return a 1-D float array (or None if not numeric)."""
     if x is None:
         return None
     # Scalars
@@ -121,8 +121,6 @@ def get_iterations_data(iterations_path: str):
 
 
 if __name__ == "__main__":
-
-
 
     import argparse
 

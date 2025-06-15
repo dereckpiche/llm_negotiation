@@ -241,7 +241,7 @@ training:
 
           # Reward Shaping
           discount_factor: 1.0
-          use_sum_rewards: False
+          use_sum_credits: False
 
           # Ad Align
           use_advantage_alignment: False
