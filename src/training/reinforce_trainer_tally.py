@@ -63,7 +63,7 @@ class RtTally:
             
     def add_contextualized_token_metrics(
         self,
-        rollout_ids: list[str],
+        game_ids: list[str],
         metric_id: str,
         contexts: torch.Tensor,
         metrics: torch.Tensor,
@@ -89,7 +89,7 @@ class RtTally:
 
         counter = 0
         for i in range(B):
-            rollout_id = rollout_ids[i]
+            rollout_id =  game_ids[i]
             self.contextualized_tally.setdefault(rollout_id, [])
             rollout_data = self.contextualized_tally.get(rollout_id)
             for j in range(S):
@@ -143,19 +143,17 @@ class RtTally:
             json.dump(self.contextualized_tally, fp, indent=4)
 
         data = self.contextualized_tally
-        rollout_paths = data.keys()
-        for rollout_path in rollout_paths:
-            m_path = rollout_path.replace("/", "|")
-            m_path = m_path.replace(".json", "")
+        game_ids = data.keys()
+        for g_id in game_ids:
             m_path = (
                 os.path.split(savepath)[0]
                 + "/contextualized_tabular_renders/"
-                + m_path
+                + str(g_id)
                 + "_tabular_render.csv"
             )
             # import pdb; pdb.set_trace()
             os.makedirs(os.path.split(m_path)[0], exist_ok=True)
-            metrics = data[rollout_path]
+            metrics = data[g_id]
             d = {k: [] for k in metrics[0].keys()}
             for m in metrics:
                 for k, v in m.items():

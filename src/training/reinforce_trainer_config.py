@@ -45,7 +45,7 @@ class RtConfig:
         log_ctz_length: int = 30,
         log_ctz_top_k: int = 10,
         log_ctz_next_token: bool = False,
-        log_ctz_next_token_score: bool = False,
+        log_ctz_next_token_credit: bool = False,
         log_ctz_next_token_log_prob: bool = False,
         log_ctz_next_token_prob: bool = False,
         log_ctz_top_k_tids: bool = False,
@@ -126,7 +126,7 @@ class RtConfig:
         self.log_ctz_length = log_ctz_length
         self.log_ctz_top_k = log_ctz_top_k 
         self.log_ctz_next_token=log_ctz_next_token
-        self.log_ctz_next_token_score=log_ctz_next_token_score
+        self.log_ctz_next_token_credit=log_ctz_next_token_credit
         self.log_ctz_next_token_log_prob=log_ctz_next_token_log_prob
         self.log_ctz_next_token_prob=log_ctz_next_token_prob
         self.log_ctz_top_k_tids=log_ctz_top_k_tids

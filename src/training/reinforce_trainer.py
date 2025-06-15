@@ -256,8 +256,8 @@ class ReinforceTrainerWRS:
         
 
         REINFORCE gradient estimators are a sum of these terms:
-            s(a, s) ∇ log π(a|s)
-        In this code, "s" is called "score". 
+            c(a, s) ∇ log π(a|s)
+        In this code, "" is called "credit". 
 
         See https://huggingface.co/docs/accelerate/usage_guides/
         gradient_accumulation#converting-it-to-accelerate
@@ -332,10 +332,10 @@ class ReinforceTrainerWRS:
                 .to(device)
             )
 
-            if self.config.log_ctz_next_token_score:
+            if self.config.log_ctz_next_token_credit:
                 self.tally.add_contextualized_token_metrics(
                     game_ids=game_ids_mb,
-                    metric_id="next_token_score",
+                    metric_id="next_token_credit",
                     contexts=shifted_contexts_mb,
                     metrics=credits_mb,
                     action_mask=action_mask_mb,
@@ -573,7 +573,7 @@ class ReinforceTrainerWRS:
         Returns:
             adv_align_terms (np.ndarray): The advantage alignment terms.
 
-        The advantage alignment score is calculated as:
+        The advantage alignment credit is calculated as:
         .. math::
             A^*(s_t, a_t, b_t) = A^1(s_t, a_t, b_t) + \\beta \\gamma \\cdot
             \\left( \\sum_{k < t} \\gamma^{t-k} A^1(s_k, a_k, b_k) \\right)
@@ -721,7 +721,7 @@ class ReinforceTrainerWRS:
         """
         
         """
-        # TODO fix
+        # TODO: verify
         dr = np.zeros(rewards.shape)
         T = rewards.shape[0]    
         dr[-1] = rewards[-1]
@@ -743,6 +743,8 @@ class ReinforceTrainerWRS:
             value_estimates: 
                 Shape: l+1 (if using fake value bootstrap) or l
         """
+        # TODO: verify
+        
         l = rewards.size
         if l == value_estimates.size:
             bootstrap = False
@@ -754,13 +756,11 @@ class ReinforceTrainerWRS:
             )
         current_vals = value_estimates[:-1] if bootstrap else value_estimates
         future_discounted_vals = value_estimates[1:] if bootstrap else np.append(value_estimates[1:], 0)
-        gaes = rewards + future_discounted_vals - current_vals 
-        gaes = (
-            (self.config.discount_factor * self.config.gae_lambda) 
-            ** np.arange(0, l) 
-            * gaes
-        )
-        gaes = np.flip(np.cumsum(np.flip(gaes)))
+        gaes = rewards + future_discounted_vals - current_vals
+
+        for t in range(l-2,0,-1):
+            gaes[t] += (self.config.discount_factor \
+                         * self.config.gae_lambda) * gaes[t+1]
         return gaes
 
     def get_critic_values(
