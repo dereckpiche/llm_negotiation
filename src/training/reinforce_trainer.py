@@ -129,7 +129,7 @@ class ReinforceTrainerWRS:
 
     def get_expected_entropy(
         self,
-        rollout_ids: list[str],
+        game_ids: list[str],
         contexts: torch.Tensor,
         shifted_contexts: torch.Tensor,
         logits: torch.Tensor,
@@ -153,7 +153,7 @@ class ReinforceTrainerWRS:
 
         if self.config.log_ctz_entropy:
             self.tally.add_contextualized_token_metrics(
-                rollout_ids=rollout_ids,
+                game_ids=game_ids,
                 metric_id="entropy",
                 contexts=shifted_contexts,
                 metrics=token_entropy_terms.sum(dim=-1),
@@ -167,7 +167,7 @@ class ReinforceTrainerWRS:
 
     def get_kl_divergence(
         self,
-        rollout_ids: list[str],
+        game_ids: list[str],
         contexts: torch.Tensor,
         shifted_contexts: torch.Tensor,
         attention_mask: torch.Tensor,
@@ -211,7 +211,7 @@ class ReinforceTrainerWRS:
 
         if self.config.log_ctz_kl:
             self.tally.add_contextualized_token_metrics(
-                rollout_ids=rollout_ids,
+                game_ids=game_ids,
                 metric_id="kl",
                 contexts=shifted_contexts,
                 metrics=kl_div,
@@ -247,7 +247,7 @@ class ReinforceTrainerWRS:
 
     def apply_reinforce_step(
         self,
-        rollout_ids: list[str],
+        game_ids: list[str],
         contexts: list[torch.Tensor],
         credits: list[torch.Tensor],
         action_masks: list[torch.Tensor]
@@ -293,7 +293,7 @@ class ReinforceTrainerWRS:
 
 
         for mb in range(0, len(contexts), mb_size):
-            rollout_ids_mb = rollout_ids[mb:mb+mb_size]
+            game_ids_mb = game_ids[mb:mb+mb_size]
 
             # Convert sequences to padded tensor minibatches
             tokens_mb = contexts[mb : mb + mb_size]
@@ -334,7 +334,7 @@ class ReinforceTrainerWRS:
 
             if self.config.log_ctz_next_token_score:
                 self.tally.add_contextualized_token_metrics(
-                    rollout_ids=rollout_ids_mb,
+                    game_ids=game_ids_mb,
                     metric_id="next_token_score",
                     contexts=shifted_contexts_mb,
                     metrics=credits_mb,
@@ -366,7 +366,7 @@ class ReinforceTrainerWRS:
 
             if self.config.log_ctz_next_token_log_prob:
                 self.tally.add_contextualized_token_metrics(
-                    rollout_ids=rollout_ids_mb,
+                    game_ids=game_ids_mb,
                     metric_id="next_token_log_prob",
                     contexts=shifted_contexts_mb,
                     metrics=action_log_probs,
@@ -375,7 +375,7 @@ class ReinforceTrainerWRS:
             
             if self.config.log_ctz_next_token_prob:
                 self.tally.add_contextualized_token_metrics(
-                    rollout_ids=rollout_ids_mb,
+                    game_ids=game_ids_mb,
                     metric_id="next_token_prob",
                     contexts=shifted_contexts_mb,
                     metrics=torch.exp(action_log_probs),
@@ -392,7 +392,7 @@ class ReinforceTrainerWRS:
 
                 if self.config.log_ctz_top_k_tids:
                     self.tally.add_contextualized_token_metrics(
-                        rollout_ids=rollout_ids_mb,
+                        game_ids=game_ids_mb,
                         metric_id=f"top_{self.config.log_ctz_top_k}_tids",
                         contexts=shifted_contexts_mb,
                         metrics=top_k_indices,
@@ -401,7 +401,7 @@ class ReinforceTrainerWRS:
                     )
                 if self.config.log_ctz_top_k_probs:
                     self.tally.add_contextualized_token_metrics(
-                        rollout_ids=rollout_ids_mb,
+                        game_ids=game_ids_mb,
                         metric_id=f"top_{self.config.log_ctz_top_k}_probs",
                         contexts=shifted_contexts_mb,
                         metrics=torch.exp(log_probs).gather(
@@ -421,7 +421,7 @@ class ReinforceTrainerWRS:
             # (B, S)
             if self.config.log_ctz_top_slogpi:
                 self.tally.add_contextualized_token_metrics(
-                    rollout_ids=rollout_ids_mb,
+                    game_ids=game_ids_mb,
                     metric_id="next_token_slogpi",
                     contexts=shifted_contexts_mb,
                     metrics=rewarded_action_log_probs,
@@ -450,7 +450,7 @@ class ReinforceTrainerWRS:
                 self.logger.info(f"\n Before Computing Entropy \n  {ram_usage()} \n {vram_usage()}")
 
                 mb_entropy = self.get_expected_entropy(
-                    rollout_ids=rollout_ids_mb,
+                    game_ids=game_ids_mb,
                     contexts=contexts_mb,
                     shifted_contexts=shifted_contexts_mb,
                     logits=logits,
@@ -480,7 +480,7 @@ class ReinforceTrainerWRS:
 
                 # TODO: verify
                 mb_kl = self.get_kl_divergence(
-                    rollout_ids=rollout_ids_mb,
+                    game_ids=game_ids_mb,
                     contexts=contexts_mb,
                     shifted_contexts=shifted_contexts_mb,
                     attention_mask=attention_mask,
@@ -820,7 +820,7 @@ class ReinforceTrainerWRS:
                 target = torch.Tensor(
                     discounted_returns[i]).to(self.config.device)
                 if self.config.create_fake_bootstrap_value:
-                    # skip training on fake value 
+                    # skip training on fake bookstrap value 
                     val = val[:-1]
                 critic_loss += F.mse_loss(
                     input=val,
@@ -924,7 +924,7 @@ class ReinforceTrainerWRS:
         )
 
         if self.config.wait_for_opponent_shaping:
-            self.token_credits = None
+            self.set_token_credits()
             self.opponent_reward_shaping_complete = False
 
 
@@ -968,37 +968,35 @@ class ReinforceTrainerWRS:
                     a1 = self.step_credits[i][None, :],
                     a2 = op_step_credits[i][None, :]
                 )
-
         self.opponent_reward_shaping_complete = True
+        self.set_token_credits()
 
     def set_token_credits(self) -> None:
         """
         
         """
-        B = self.rewards.shape[0]
+        B = len(self.step_credits)
         all_token_credits = []
-
         for i in range(B):
             token_credits = np.zeros(
                 self.action_timestamps[i].shape
             )
-            assert (
-                np.max(self.action_timestamps[i]) == self.step_credits[i].size+1, 
-                "Number of steps does not match number of step credits."
-                )
+            assert np.max(self.action_timestamps[i]) == self.step_credits[i].size-1, \
+                "Number of steps does not match number of actions."
             for j, c in enumerate(self.step_credits[i]):
                 token_credits[self.action_timestamps[i] == j] = c
-            all_token_credits.append(token_credits)
-        self.token_credist = all_token_credits
+            all_token_credits.append(torch.Tensor(token_credits))
+        self.token_credits = all_token_credits
 
 
     def train(self) -> None:
 
-        if self.wait_for_opponent_shaping and not self.opponent_reward_shaping_complete:
+        if (self.config.wait_for_opponent_shaping 
+            and not self.opponent_reward_shaping_complete):
             raise TypeError("Missing Opp. Shaping Phase.")
 
         self.apply_reinforce_step(
-            rollout_ids=self.paths,
+            game_ids=self.game_ids,
             contexts=self.contexts, 
             credits=self.token_credits, 
             action_masks=self.action_masks

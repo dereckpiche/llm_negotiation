@@ -1,4 +1,5 @@
 from transformers import AutoTokenizer
+import numpy as np
 import torch
 
 
@@ -42,9 +43,9 @@ def get_context_masks(
     tokenizer_name = tokenizer.name_or_path
     token_ids = token_ids.squeeze()
     nb_tokens = token_ids.shape[0]
-    action_mask = torch.zeros(token_ids.shape)
-    action_timestamps = torch.full(size=token_ids.shape, fill_value=-1.0)
-    state_end_flags = torch.full(size=token_ids.shape, fill_value=False)
+    action_mask = torch.zeros(size=token_ids.shape)
+    action_timestamps = np.full(shape=token_ids.shape, fill_value=-1.0)
+    state_end_flags = np.full(shape=token_ids.shape, fill_value=False)
 
 
     if tokenizer_name in ["Qwen/Qwen2.5-7B-Instruct", "Qwen/Qwen2.5-0.5B-Instruct"]:
