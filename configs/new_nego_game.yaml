@@ -9,7 +9,7 @@ experiment:
   method: generate_and_train
   description: "Agents trained on negotiation game with regular RL."
   nb_epochs: 500
-  nb_matches_per_iteration: 64
+  nb_matches_per_iteration: 4
   checkpoint_every_n_iterations: 25
   reinit_matches_each_it: true
   start_epoch: 0
@@ -97,8 +97,8 @@ matches:
   env_class: "DondEnv"
   agent_class: "DondAgent"
 
-  max_length: 30
-  continuation_prob: 0.85
+  max_length: 3
+  continuation_prob: 1.0
   same_length_batch: True
 
   nb_matches_with_same_roundwise_utilities: 8
@@ -153,7 +153,6 @@ models:
       max_model_length: 1e4
       device: "cuda"
       model_name: "Qwen/Qwen2.5-0.5B-Instruct"
-      bits_and_bytes_args: null
       generation_args:
         max_new_tokens: 120
         do_sample: True
@@ -169,25 +168,23 @@ models:
         enable_sleep_mode : True
         max_lora_rank: 64
         dtype: "bfloat16"
-      hf_model_init_kwargs:
+      shared_hf_llm_init_kwargs:
         torch_dtype: "bfloat16"
         device_map: "auto"
         attn_implementation: "flash_attention_2"
       adapter_configs:
         self_play_agent:
-          lora_kwargs:
-            task_type: "CAUSAL_LM"
-            r: 64
-            lora_alpha: 128
-            lora_dropout: 0.0
-            target_modules: "all-linear"
+          task_type: "CAUSAL_LM"
+          r: 64
+          lora_alpha: 128
+          lora_dropout: 0.0
+          target_modules: "all-linear"
         self_play_critic:
-          lora_kwargs:
-            task_type: "CAUSAL_LM"
-            r: 64
-            lora_alpha: 128
-            lora_dropout: 0.0
-            target_modules: "all-linear"
+          task_type: "CAUSAL_LM"
+          r: 64
+          lora_alpha: 128
+          lora_dropout: 0.0
+          target_modules: "all-linear"
         
 
 critics:
@@ -232,11 +229,14 @@ trainers:
       temperature: ${temperature}
       device: "cuda:0"
 
-      # Reward Shaping
       discount_factor: 1.0
-      use_sum_credits: False
 
-      # Ad Align
+      use_gae: True
+      gae_lambda: 0.9
+      create_fake_bootstrap_value: True
+
+      # Reward Shaping
+      use_sum_credits: False
       use_advantage_alignment: False
       ad_align_normalize_advantages: False
       ad_align_force_coop_first_step: False

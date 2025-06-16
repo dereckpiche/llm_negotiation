@@ -51,7 +51,8 @@ class ReinforceTrainerWRS:
         critic_lr_scheduler: Union[torch.optim.lr_scheduler.LRScheduler, None],
         config: RtConfig,
     ):
-        # TODO: add lr scheduler to accelerator
+        # TODO: add lr schedulers
+        
         model.train()
         self.tokenizer = tokenizer
         self.tokenizer.padding_side = "left"  # needed for flash attention
@@ -79,11 +80,8 @@ class ReinforceTrainerWRS:
             self.model.gradient_checkpointing_enable(dict(use_reentrant=False))
 
 
-        # self.tally.add_metric(
-        #     path=["tokenizer_eot_id"],
-        #     metric=self.tokenizer.eos_token_id)
+
         # TODO
-        # log number of trainable parameters
         # log data type of model
         # log adapter type, rank, etc.
         # log optimizer learning rate
@@ -923,11 +921,7 @@ class ReinforceTrainerWRS:
             batch_state_end_flags = self.state_end_flags,
         )
 
-        if self.config.wait_for_opponent_shaping:
-            self.set_token_credits()
-            self.opponent_reward_shaping_complete = False
-
-
+        
     def send_shaping_info_to_opponents(self) -> dict:
         """
 
@@ -969,7 +963,6 @@ class ReinforceTrainerWRS:
                     a2 = op_step_credits[i][None, :]
                 )
         self.opponent_reward_shaping_complete = True
-        self.set_token_credits()
 
     def set_token_credits(self) -> None:
         """
@@ -991,9 +984,7 @@ class ReinforceTrainerWRS:
 
     def train(self) -> None:
 
-        if (self.config.wait_for_opponent_shaping 
-            and not self.opponent_reward_shaping_complete):
-            raise TypeError("Missing Opp. Shaping Phase.")
+        self.set_token_credits()
 
         self.apply_reinforce_step(
             game_ids=self.game_ids,
@@ -1002,13 +993,6 @@ class ReinforceTrainerWRS:
             action_masks=self.action_masks
         )
 
-
-    def apply_reinforce_step_on_paths(self, paths: list[str]):
-        """
-        
-        """
-        return 
-         
 
 
     def export_training_metrics(self):

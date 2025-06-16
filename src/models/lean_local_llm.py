@@ -9,13 +9,7 @@ import uuid
 from copy import deepcopy
 
 import torch
-from peft import (
-    LoraConfig,
-    PeftConfig,
-    PeftModel,
-    get_peft_model,
-    prepare_model_for_kbit_training,
-)
+from models.adapter_wrapper import AdapterWrapper
 from torch.optim import SGD, Adam, AdamW, RMSprop
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from trl import AutoModelForCausalLMWithValueHead
@@ -40,9 +34,8 @@ class LeanLocalLLM:
         name: str = "llama",
         model_name: str = "meta-llama/Llama-3.1-8B-Instruct",
         device: str = "cuda",
-        hf_model_init_kwargs: dict = {},
+        shared_hf_llm_init_kwargs: dict = {},
         max_model_length: int = 8000,
-        bits_and_bytes_args: dict = None,
         generation_args={
             "max_new_tokens": 300,
             "do_sample": True,
@@ -51,7 +44,6 @@ class LeanLocalLLM:
             "top_p": 1.0,
             "repetition_penalty": 1.0,
         },
-        base_seed: int = 42,
         vllm_params: dict = {},
         adapter_configs: list[dict] =[{}],
         restrict_tokens=None,
@@ -66,43 +58,26 @@ class LeanLocalLLM:
         self.name = name
         self.device = torch.device(device) if device else torch.device("cuda")
         self.model_name = model_name
-        self.hf_model_init_kwargs = hf_model_init_kwargs
+        self.shared_hf_llm_init_kwargs = shared_hf_llm_init_kwargs
         self.max_model_length = max_model_length
         self.restrict_tokens = restrict_tokens
+        self.adapter_configs = adapter_configs
+        self.adapter_ids = list(adapter_configs.keys())
+
+        # TODO: load from external if exists! 
 
         # Path management / imports
-        self.adapter_paths = {}
-        for adapter_name in self.adapter_names:
-            adapter_config = self.adapter_configs[adapter_name]
-            adapter_path = os.path.join(self.output_directory, adapter_name, "model")
-            self.adapter_paths[adapter_name] = adapter_path
-
+        self.save_path = str(os.path.join(
+            output_directory, 
+            model_name, 
+            "adapters"
+            )
+        )
         # ID management for tracking adapter versions
         self.adapter_train_ids = {
-            adapter_name: self.short_id_generator()
-            for adapter_name in self.adapter_names
+            adapter_id: self.short_id_generator()
+            for adapter_id in self.adapter_ids
         }
-
-        # 
-        self.adapter_eval_ids = deepcopy(self.adapter_train_ids)
-        self.vllm_loaded_adapter_versions = deepcopy(self.adapter_train_ids)
-
-        # Feature detection
-        self.at_least_one_full_adapter = any(
-            config["type"] == "full" for config in self.adapter_configs.values()
-        )
-
-        # Check if we have LoRA adapters but export_trained_parameters is False
-        has_lora_adapters = any(
-            config["type"] == "lora" for config in self.adapter_configs.values()
-        )
-
-        if has_lora_adapters and not export_trained_parameters:
-            model_logger.warning(
-                "LoRA adapters detected but export_trained_parameters is set to False. "
-                "Setting export_trained_parameters to True to ensure LoRA weights are saved."
-            )
-            export_trained_parameters = True
 
         # Initialize tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
@@ -124,57 +99,49 @@ class LeanLocalLLM:
         # ---------------------------------------------------------
         # Init HF model, peft adapters
         # ---------------------------------------------------------
-        self.hf_model = AutoModelForCausalLM.from_pretrained(
-                    pretrained_model_name_or_path=self.model_name,
-                    quantization_config=self.hf_quantization_config,
-                    **self.hf_model_init_kwargs,
+        self.shared_hf_llm = AutoModelForCausalLM.from_pretrained(
+                    pretrained_model_name_or_path=model_name,
+                    **self.shared_hf_llm_init_kwargs,
                 )
         self.hf_adapters = {}
         self.optimizers = {}
-        for ad_name in self.adapter_names:
-            lora_config = LoraConfig(
-                **self.lora_kwargs[adapter_name])
-            hf_adapter = get_peft_model(
-                    model=self.hf_model,
-                    peft_config=lora_config,
-                    adapter_name=adapter_name,
-                )
-            self.hf_adapters[ad_name] = hf_adapter
+        for adapter_id in self.adapter_ids:
+            hf_adapter = AdapterWrapper(
+                shared_llm=self.shared_hf_llm,
+                adapter_id=adapter_id,
+                lora_config=adapter_configs[adapter_id]
+            )
+            self.hf_adapters[adapter_id] = hf_adapter
         
-
         # Init vLLM model
-        self.vllm_model = vllm.LLM(
-                    self.model_name,
-                    **vllm_params,
-                )
+        # self.vllm_model = vllm.LLM(
+        #             self.model_name,
+        #             **vllm_params,
+        #         )
 
-
-        self.hf_model = None
-        self.adapter_wrappers = {}
-        self.vllm_model = None
         
     def toggle_training_mode(self):
-        for adn in self.adapter_names:
+        for adn in self.adapter_ids:
             self.adapter_train_ids[adn] = self.short_id_generator()
         self.vllm_model.sleep()
 
     def toggle_eval_mode(self):
-        self.vllm_model.wake()
+        self.vllm_model.wake_up()
 
     def get_adapter_pointers(self) -> dict:
         pointers = {
-            an : self.self.hf_adapters[an] for an in self.adapter_names
+            an : self.hf_adapters[an] for an in self.adapter_ids
         }
         return pointers
 
-    def prepare_adapter_eval(self, adapter_name: str):
+    def prepare_adapter_eval(self, adapter_id: str):
         """
         
         """
-        adapter_path = self.adapter_paths[adapter_name]
+        adapter_path = os.path.join(self.save_path, adapter_id)
         self.current_lora_request = LoRARequest(
-            adapter_name, 
-            self.adapter_train_ids[adapter_name], 
+            adapter_id, 
+            self.adapter_train_ids[adapter_id], 
             adapter_path
         )
         return 
@@ -192,36 +159,32 @@ class LeanLocalLLM:
         )
 
         sampling_params = self.vllm_sampling_params
-        # If self.restrict_tokens is provided, convert to token ids and set allowed_token_ids
+
+        # Restrict tokens of model # TODO, put in init??
         if self.restrict_tokens is not None:
             allowed_token_ids = []
             for token in self.restrict_tokens:
-                # Tokenize and take the first token id (assume single-token for each string)
-                token_ids = self.tokenizer(token, add_special_tokens=False)["input_ids"]
-                if len(token_ids) != 1:
-                    model_logger.warning(
-                        f"Token '{token}' does not map to a single token. Skipping."
-                    )
-                    continue
+                token_ids = self.tokenizer(
+                    token, 
+                    add_special_tokens=False)["input_ids"]
                 allowed_token_ids.append(token_ids[0])
-            if not allowed_token_ids:
-                model_logger.error(
-                    "No valid allowed_token_ids found for self.restrict_tokens. Generation will not be restricted."
-                )
-            else:
-                # Clone sampling_params and set allowed_token_ids
-                sampling_params = sampling_params.clone()
-                sampling_params.allowed_token_ids = allowed_token_ids
+            sampling_params = sampling_params.clone()
+            sampling_params.allowed_token_ids = allowed_token_ids
 
         # Disable deterministic seed for more diversity
         sampling_params.seed = None
 
         if self.current_lora_request is not None:
             model_logger.info(
-                f"Generating using VLLM with LoRA. "
+                f"Generating using vLLM with LoRA. "
                 f"Current LoRA request ID is {self.current_lora_request.adapter_id}. "
                 f"Current LoRA adapter path is {self.current_lora_request.path}."
             )
+        else:
+            model_logger.info(
+                f"Generating using vLLM without LoRA. "
+            )
+
 
         # Generate responses
         decoded = self.vllm_model.generate(
@@ -231,46 +194,28 @@ class LeanLocalLLM:
         )
         responses = [d.outputs[0].text for d in decoded]
         return responses
-
-    def export_current_adapter_and_optimizer(self) -> None:
+    
+    def export_adapters(self) -> None:
         """
-        Exports the current adapter to the configured output directory.
-        Also exports the optimizer state to
-        the output directory if self.export_optimizer is True.
+        Any peft wrapper, by default, saves all adapters, not just self.
         """
-        adapter_path = self.adapter_paths[self.current_adapter_name]
-        os.makedirs(adapter_path, exist_ok=True)
-        self.export_adapter(self.current_adapter_name, adapter_path)
-        if self.export_optimizer:
-            optimizer_state_path = self.optimizer_paths[self.current_adapter_name]
-            optimizer_dir = os.path.dirname(optimizer_state_path)
-            os.makedirs(optimizer_dir, exist_ok=True)
-            torch.save(self.optimizer.state_dict(), optimizer_state_path)
-            model_logger.info(f"Optimizer state saved to {optimizer_state_path}")
+        adapter_id = self.adapter_ids[0]
+        self.hf_adapters[adapter_id].save_pretrained(self.save_path)
 
     def checkpoint_all_adapters(self, checkpoint_indicator: str) -> None:
         """
         Checkpoints all adapters to the configured output directory.
         """
-        for adapter_name in self.adapter_names:
-            output_dir = os.path.join(self.output_directory, "checkpoints")
-            os.makedirs(output_dir, exist_ok=True)
-            date_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            export_path = os.path.join(
-                output_dir, f"{adapter_name}-{checkpoint_indicator}-{date_str}"
-            )
-            self.export_adapter(adapter_name, export_path)
+        adapter_id = self.adapter_ids[0]
+        output_dir = os.path.join(self.output_directory, "checkpoints")
+        os.makedirs(output_dir, exist_ok=True)
+        date_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        export_path = os.path.join(
+            output_dir, f"{adapter_id}-{checkpoint_indicator}-{date_str}"
+        )
+        adapter_id = self.adapter_ids[0]
+        self.hf_adapters[adapter_id].save_pretrained(export_path)
 
-    def export_adapter(
-                self, 
-                adapter_name: str, 
-                export_path: str) -> None:
-        
-        """
-
-        """
-
-        
 
     def log_gpu_usage(self, message: str) -> None:
         """

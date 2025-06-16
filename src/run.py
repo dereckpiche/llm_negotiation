@@ -7,8 +7,7 @@ import hydra
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import OmegaConf
 
-from experiments.arithmetic_test import arithmetic_test
-from src.generate_and_train import generate_and_train
+from generate_and_train import *
 
 
 @hydra.main()
@@ -50,7 +49,7 @@ def main(cfg):
         logger.propagate = False  # Prevent duplicate logs
 
     # Run the experiment specified in the configuration
-    globals()[cfg.experiment.method](
+    generate_and_train(
         OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict"),
         base_seed=cfg.experiment.base_seed,
     )
