@@ -860,9 +860,8 @@ class ReinforceTrainerWRS:
 
         for filepath in paths:
 
-            # Load conversation from json file
             with open(filepath) as f:
-                train_file = json.load(f)[0]
+                train_file = json.load(f)
 
             game_id = train_file["game_id"]
             chat = train_file["chat"]
@@ -906,7 +905,6 @@ class ReinforceTrainerWRS:
             all_action_timestamps.append(action_timestamps)
             all_state_end_flags.append(state_end_flags)
 
-        assert len(set(all_game_ids)) == len(all_game_ids), "Error: Duplicate game ids"
 
         self.game_ids = all_game_ids 
         self.step_rewards = all_rewards

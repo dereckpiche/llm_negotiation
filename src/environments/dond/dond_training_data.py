@@ -46,7 +46,7 @@ def dond_generate_training_data_from_raw(
         substract_group_wise_loo_mean_rewards=substract_group_wise_loo_mean_rewards,
         substract_loo_mean_rewards=substract_loo_mean_rewards
         )
-
+    
     
 
     os.makedirs(training_data_folder, exist_ok=True)
@@ -118,14 +118,13 @@ def dond_generate_training_data_from_raw(
         )
 
         # Create meta info
-        meta_info = {
+        jfile = {
             "game_id": match_id,
+            "chat": chat_history
         }
 
         with open(training_file, "w") as f:
-            # TODO (dereck) verify
-            json.dump(meta_info, f, indent=4)
-            json.dump(chat_history, f, indent=4)
+            json.dump(jfile, f, indent=4)
 
     return
 
@@ -235,11 +234,11 @@ def dond_get_normalized_round_points(
             agent_points = sub_loo_mr(agent_points)
             coagent_points = sub_loo_mr(coagent_points)
 
-            # Store the scores for each match_id in a minibatch / group
-            for match_id, agent_point, coagent_point in zip(
-                match_ids, agent_points, coagent_points
-            ):
-                normalized_rp_agent[group_id][match_id] = agent_point
-                normalized_rp_coagent[group_id][match_id] = coagent_point
+        # Store the scores for each match_id in a minibatch / group
+        for match_id, agent_point, coagent_point in zip(
+            match_ids, agent_points, coagent_points
+        ):
+            normalized_rp_agent[group_id][match_id] = agent_point
+            normalized_rp_coagent[group_id][match_id] = coagent_point
 
     return normalized_rp_agent, normalized_rp_coagent

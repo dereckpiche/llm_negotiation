@@ -16,7 +16,9 @@ class ScalarCritic(nn.Module):
         super().__init__()
         self.backbone = backbone                    
         hidden_size = self.backbone.shared_llm.config.hidden_size
-        self.value_head = nn.Linear(hidden_size, 1)
+        self.value_head = nn.Linear(hidden_size, 1).to(
+            dtype=shared_llm.dtype, 
+            device=shared_ll.device)
 
     def forward(self,
                 input_ids,

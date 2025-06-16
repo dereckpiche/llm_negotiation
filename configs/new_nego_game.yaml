@@ -97,11 +97,11 @@ matches:
   env_class: "DondEnv"
   agent_class: "DondAgent"
 
-  max_length: 3
-  continuation_prob: 1.0
+  max_length: 30
+  continuation_prob: 0.85
   same_length_batch: True
 
-  nb_matches_with_same_roundwise_utilities: 8
+  nb_matches_with_same_roundwise_utilities: 1
 
   log_func: dond_log_match
 
@@ -152,7 +152,7 @@ models:
     init_args:
       max_model_length: 1e4
       device: "cuda"
-      model_name: "Qwen/Qwen2.5-0.5B-Instruct"
+      model_name: "Qwen/Qwen2.5-7B-Instruct"
       generation_args:
         max_new_tokens: 120
         do_sample: True
@@ -255,7 +255,7 @@ training:
       training_data_func_args:
         exclude_errors: False
         debug_output: True
-        substract_group_wise_loo_mean_rewards: True
+        substract_group_wise_loo_mean_rewards: False
         substract_loo_mean_rewards: False
 
     Bob:
@@ -263,7 +263,7 @@ training:
       training_data_func_args:
         exclude_errors: False
         debug_output: True
-        substract_group_wise_loo_mean_rewards: True
+        substract_group_wise_loo_mean_rewards: False
         substract_loo_mean_rewards: False
 
         

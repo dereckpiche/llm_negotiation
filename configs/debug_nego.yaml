@@ -5,6 +5,12 @@ defaults:
 
 experiment:
   name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
+  nb_matches_per_iteration: 4
+
+matches:
+  max_length: 3
+  continuation_prob: 1.0
+  same_length_batch: True
 
 models:
   qwen:

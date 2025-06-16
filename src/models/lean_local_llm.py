@@ -7,7 +7,6 @@ import shutil
 import time
 import uuid
 from copy import deepcopy
-
 import torch
 from models.adapter_wrapper import AdapterWrapper
 from torch.optim import SGD, Adam, AdamW, RMSprop
@@ -110,22 +109,24 @@ class LeanLocalLLM:
                 shared_llm=self.shared_hf_llm,
                 adapter_id=adapter_id,
                 lora_config=adapter_configs[adapter_id]
-            )
+            ).to(device)
             self.hf_adapters[adapter_id] = hf_adapter
         
-        # Init vLLM model
-        # self.vllm_model = vllm.LLM(
-        #             self.model_name,
-        #             **vllm_params,
-        #         )
+        # ---------------------------------------------------------
+        # Init vLLM stuff for fast inference
+        # ---------------------------------------------------------
+        from transformers.utils import cached_file
+        local_llm_path = os.path.split(cached_file(model_name, "config.json"))[0]
+        self.vllm_model = vllm.LLM(model=local_llm_path, **vllm_params)
+        self.current_lora_request = None
 
         
-    def toggle_training_mode(self):
+    def toggle_training_mode(self) -> None:
         for adn in self.adapter_ids:
             self.adapter_train_ids[adn] = self.short_id_generator()
         self.vllm_model.sleep()
 
-    def toggle_eval_mode(self):
+    def toggle_eval_mode(self) -> None:
         self.vllm_model.wake_up()
 
     def get_adapter_pointers(self) -> dict:
@@ -134,7 +135,7 @@ class LeanLocalLLM:
         }
         return pointers
 
-    def prepare_adapter_eval(self, adapter_id: str):
+    def prepare_adapter_eval(self, adapter_id: str) -> None:
         """
         
         """
@@ -144,7 +145,6 @@ class LeanLocalLLM:
             self.adapter_train_ids[adapter_id], 
             adapter_path
         )
-        return 
 
 
     def prompt(self, contexts) -> list:
@@ -185,10 +185,8 @@ class LeanLocalLLM:
                 f"Generating using vLLM without LoRA. "
             )
 
-
-        # Generate responses
         decoded = self.vllm_model.generate(
-            texts,
+            prompts=texts,
             sampling_params=sampling_params,
             lora_request=self.current_lora_request,
         )

@@ -193,8 +193,6 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
                 )
         trainers[trainer_id] = trainer
 
-    import pdb; pdb.set_trace()
-
 
 
     for iteration in range(cfg["experiment"]["start_epoch"], cfg["experiment"]["nb_epochs"]):
@@ -203,7 +201,6 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
         # Create Training Rollouts 
         # -----------------------------------------------------------------
 
-        # TODO: prepare base models for evaluation
         for shared_llm in shared_llms.values():
             shared_llm.toggle_eval_mode()
 
