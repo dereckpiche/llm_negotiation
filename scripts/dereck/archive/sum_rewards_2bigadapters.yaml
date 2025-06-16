@@ -20,7 +20,7 @@ temperature: 0.7
 
 models:
   llama:
-    class: local_llm_v2
+    class: LocalLLM
     init_args:
       vllm_params:
         max_lora_rank: 512

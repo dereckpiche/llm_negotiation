@@ -168,7 +168,7 @@ temperature: 0.7
 models:
   llama:
     name: 'llama'
-    class: local_llm_v2
+    class: LocalLLM
     init_args:
       max_model_length: 10000
       device: "cuda"

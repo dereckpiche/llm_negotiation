@@ -17,21 +17,75 @@ from environments.env_imports import *
 from generation.run_games import run_batched_matches
 from models.dummy_local_llm import DummyLocalLLM
 from models.local_llm import LocalLLM
-from models.new_local_llm import LocalLLMV2
+from src.models.local_llm import LocalLLMV2
 from models.server_llm import ServerLLM
 from training.reinforce_trainer import *
 from training.reinforce_trainer_config import *
 from training.reinforce_trainer_tally import *
 from utils.common_imports import *
 from utils.update_start_epoch import update_start_epoch
-
+from utils.get_stochastic_game_lengths import get_stochastic_game_lengths
+from utils.dict_get_path import get_at
 compute_logger = logging.getLogger("compute_logger")
 
 
+
+def create_markov_games(cfg: dict, env_rng, iteration: int):
+    """
+    (...)
+    """
+    markov_games = []
+    nb_games = cfg["experiment"]["nb_matches_per_iteration"]
+    game_lengths = get_stochastic_game_lengths(
+        max_length=cfg["matches"]["max_length"],
+        nb_games=nb_games,
+        continuation_prob=cfg["matches"]["continuation_prob"],
+        same_length_batch=cfg["matches"]["same_length_batch"],
+    )
+    group_size = cfg["matches"]["nb_matches_with_same_roundwise_utilities"]
+    for i in range(nb_games):
+        if group_size is not None and (i % group_size == 0):
+            env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
+            # Create Markov Game
+            agents = {}
+            agent_class_name = cfg["matches"]["agent_class"]
+            AgentClass = globals()[agent_class_name]
+            for agent_name in cfg["matches"]["agents"].keys():
+                agents[agent_name] = AgentClass(
+                    **cfg["matches"]["agents"][agent_name]["kwargs"]
+                )
+            env_class_name = cfg["matches"]["env_class"]
+            EnvClass = globals()[env_class_name]
+            env_kwargs = dict(cfg["matches"]["env_kwargs"])
+            rng = copy.deepcopy(env_rng)
+            game_id = i
+            game_length = game_lengths[i]
+            group_id = i // group_size if group_size else -1
+            env = EnvClass(
+                rng=rng,
+                game_id=game_id,
+                group_id=group_id,
+                rounds_per_game=game_length,
+                **env_kwargs,
+            )
+            markov_game = {
+                "env": env,
+                "agents": agents,
+                "log_func": globals()[cfg["matches"]["log_func"]],
+            }
+            markov_games.append(markov_game)
+    return markov_games, env_rng
+    
+
 def generate_and_train(cfg, base_seed):
     """
-    Executes a negotiation cycle for the Deal or No Deal (DoND) game.
+    (...)
     """
+
+    # -----------------------------------------------------------------
+    # Initialize Random States (+ check if resume run) 
+    # -----------------------------------------------------------------
+
     total_start_time = time.time()
     # Get Hydra's runtime output directory which includes date and config info.
     hydra_cfg = hydra.core.hydra_config.HydraConfig.get()
@@ -60,12 +114,78 @@ def generate_and_train(cfg, base_seed):
         torch.set_rng_state(random_state_dict["torch"])
         torch.cuda.set_rng_state_all(random_state_dict["torch_cuda"])
 
-    # Initialize models
-    models = init_models(cfg, base_seed=base_seed, output_directory=output_directory)
+    # -----------------------------------------------------------------
+    # Initialize models, critics, optimizers, trainers
+    # -----------------------------------------------------------------
+
+    # Models & adapters
+    models = {}
+    for model_id, model_config in cfg["models"].items():
+        model_class = globals()[model_config["class"]]
+        models[model_id] = model_class(
+            **model_config["init_args"],
+            base_seed=base_seed * cfg["experiment"]["nb_epochs"],
+            output_directory=output_directory,
+        )
+    hf_adapter_pointers = {}
+    for model_id, model in models:
+        hf_adapter_pointers[model_id] = model.get_adapter_pointers()
+
+    # Critics
+    critics = {}
+    from models.critic_wrapper import ScalarCritic
+    for critic_id, critic_config in cfg["configs"].items():
+        pointer = critic_config[pointer]
+        base = get_at(hf_adapter_pointers, pointer)
+        critics[critic_id] = ScalarCritic(base)
+
+    # Optimizers
+    optimizers = {}
+    for optimizer_id, optimizer_config in cfg["optimizers"].items():
+        pointer = critic_config[pointer]
+        base = get_at(hf_adapter_pointers, pointer)
+        optimizer_class = globals()[optimizer_config["optimizer_class"]]
+        init_args = optimizer_config["init_args"]
+        optimizers[optimizer_id] = optimizer_class(base, **init_args)
+
+    # Trainers
+    trainers = {}
+    for trainer_id, trainer_config in cfg["trainers"].items():
+        pointers = critic_config[pointers]
+        model = get_at(hf_adapter_pointers, pointers["model"])
+        optimizer = get_at(hf_adapter_pointers, pointers["model"])
+        if pointers.get("critic", True): critic = get_at(hf_adapter_pointers, pointers["critic"])
+        else: critic = None
+        if pointers.get("critic_optimizer", True): critic_optimizer = get_at(hf_adapter_pointers, pointers["critic_optimizer"])
+        else: critic_optimizer = None
+        trainer = ReinforceTrainerWRS(
+                    model=model,
+                    optimizer=optimizer,
+                    tokenizer=model.tokenizer,
+                    lr_scheduler=None,
+                    critic=critic,
+                    critic_optimizer=critic_optimizer,
+                    config=RtConfig(
+                        **trainer_config["init_args"],
+                        logging_path=train_output_path,
+                    ),
+                )
+        trainers[trainer_id] = trainer
+
+
 
     for iteration in range(
         cfg["experiment"]["start_epoch"], cfg["experiment"]["nb_epochs"]
     ):
+
+        # -----------------------------------------------------------------
+        # Create Training Rollouts 
+        # -----------------------------------------------------------------
+
+        # TODO: prepare base models for evaluation
+        for model in models.vals():
+            model.toggle_eval_mode()
+
         # Create a new RNG instance by splitting the current one (simulates RNG splitting)
         env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
 
@@ -95,17 +215,12 @@ def generate_and_train(cfg, base_seed):
 
         generation_end_time = time.time()
 
-        logging_start_time = time.time()
-
         # Process raw data into training data using the specified functions for each agent
         for agent_name in agent_names:
             # Create training data directory
             training_data_path = os.path.join(it_folder, agent_name, "training")
             os.makedirs(training_data_path, exist_ok=True)
-
-            # Get the raw data path
             raw_data_path = os.path.join(it_folder, agent_name, "raw_data")
-
             # Process the raw data using the specified training data function
             if agent_name in cfg["training"]["agents"]:
                 agent_cfg = cfg["training"]["agents"][agent_name]
@@ -117,58 +232,71 @@ def generate_and_train(cfg, base_seed):
                     **training_data_func_args,
                 )
 
-        logging_end_time = time.time()
-
-        # Train models
+        # -----------------------------------------------------------------
+        # Train
+        # -----------------------------------------------------------------
         training_start_time = time.time()
-        train_output_dict = {}
-        for model_name, model in models.items():
-            if hasattr(model, "adapter_paths"):
-                for adapter_name in model.adapter_paths.keys():
-                    policy_id = f"{model_name}/{adapter_name}"
-                    model.prepare_adapter_train(adapter_name)
 
-                    training_file_paths = []
-                    for agent in agents.values():
-                        if agent.policy_id == policy_id:
-                            agent_export_path = os.path.join(
-                                it_folder, agent.agent_name, "training"
-                            )
-                            # TODO: export on all json paths
-                            filepaths = [
-                                os.path.join(agent_export_path, path)
-                                for path in os.listdir(agent_export_path)
-                            ]
-                            training_file_paths += filepaths
 
-                    if training_file_paths:
-                        adapter_args = cfg["training"][model_name]["adapters"][
-                            adapter_name
-                        ]
+        # Get training paths for each trainer
+        trainer_training_paths = {}
+        for trainer_id, trainer in trainers.items():
+            hf_adapter_id = cfg["trainers"][trainer_id]["pointers"]["model"]
+            policy_id = f"{hf_adapter_id[0]}/{hf_adapter_id[1]}"
+            training_file_paths = []
+            for agent in agents.values():
+                if agent.policy_id == policy_id:
+                    agent_export_path = os.path.join(
+                        it_folder, agent.agent_name, "training"
+                    )
+                    filepaths = [
+                        os.path.join(agent_export_path, path)
+                        for path in os.listdir(agent_export_path)
+                    ]
+                    training_file_paths += filepaths
+            trainer_training_paths[trainer_id] = training_file_paths
 
-                        train_output_path = os.path.join(
-                            it_folder, "training_metrics", adapter_name
-                        )
 
-                        trainer = ReinforceTrainerWRS(
-                            model=model.hf_model,
-                            optimizer=model.optimizer,
-                            tokenizer=model.tokenizer,
-                            lr_scheduler=None,
-                            config=RtConfig(
-                                **adapter_args["trainer_config"],
-                                logging_path=train_output_path,
-                            ),
-                        )
-                        trainer.apply_reinforce_step_on_paths(paths=training_file_paths)
-                        trainer.export_training_metrics()
-                        model.export_current_adapter_and_optimizer()
-                        del trainer
+        # Prepare base models for training 
+        for model in models.vals():
+            model.toggle_training_mode()
+
+
+        # Set training data for each trainers
+        for trainer_id, trainer in trainers.items():
+            
+
+
+        # Allow opponent shaping info to be shared
+
+
+        
+                if training_file_paths:
+                    adapter_args = cfg["training"][model_name]["adapters"][
+                        adapter_name
+                    ]
+
+                    train_output_path = os.path.join(
+                        it_folder, "training_metrics", adapter_name
+                    )
+
+                    trainer = ReinforceTrainerWRS(
+                        model=model.hf_model,
+                        optimizer=model.optimizer,
+                        tokenizer=model.tokenizer,
+                        lr_scheduler=None,
+                        config=RtConfig(
+                            **adapter_args["trainer_config"],
+                            logging_path=train_output_path,
+                        ),
+                    )
+                    trainer.apply_reinforce_step_on_paths(paths=training_file_paths)
+                    trainer.export_training_metrics()
+                    model.export_current_adapter_and_optimizer()
+                    del trainer
 
         training_end_time = time.time()
 
-        initial_logging_time = logging_end_time - logging_start_time
-        logging_start_time = time.time()
 
         # Checkpoint all adapters
         checkpoint_frequency = cfg["experiment"]["checkpoint_every_n_iterations"]
@@ -183,7 +311,6 @@ def generate_and_train(cfg, base_seed):
                         checkpoint_indicator=f"iter_{iteration}"
                     )
 
-        logging_end_time = time.time()
 
         iteration_end_time = time.time()
 
@@ -237,33 +364,6 @@ def generate_and_train(cfg, base_seed):
     compute_logger.info(
         f"Total time taken for the entire run: {format_time(total_duration)}"
     )
-
-
-def init_models(cfg, base_seed, output_directory):
-    # TODO: just do a globals[] call
-    models = {}
-    for model_name in cfg["models"].keys():
-        if cfg["models"][model_name]["class"] == "local_llm":
-            models[model_name] = LocalLLM(
-                **cfg["models"][model_name]["init_args"],
-                base_seed=base_seed * cfg["experiment"]["nb_epochs"],
-                output_directory=output_directory,
-            )
-        elif cfg["models"][model_name]["class"] == "local_llm_v2":
-            models[model_name] = LocalLLMV2(
-                **cfg["models"][model_name]["init_args"],
-                base_seed=base_seed * cfg["experiment"]["nb_epochs"],
-                output_directory=output_directory,
-            )
-        elif cfg["models"][model_name]["class"] == "dummy_local_llm":
-            models[model_name] = DummyLocalLLM(**cfg["models"][model_name]["init_args"])
-        elif cfg["models"][model_name]["class"] == "server_llm":
-            models[model_name] = ServerLLM(**cfg["models"][model_name]["init_args"])
-        else:
-            raise ValueError(
-                f"Model class {cfg['models'][model_name]['class']} not found."
-            )
-    return models
 
 
 def create_matches(cfg, env_rng, iteration):
@@ -356,28 +456,4 @@ def format_time(seconds):
         return f"{int(seconds)}s"
 
 
-def get_stochastic_game_lengths(
-    max_length, nb_games, continuation_prob, same_length_batch=False
-):
-    """
-    Generates stochastic game lengths based on a geometric distribution.
 
-    Args:
-        max_length (int): The maximum length a game can have.
-        nb_games (int): The number of games to generate lengths for.
-        continuation_prob (float): The probability of the game continuing after each round.
-        same_length_batch (bool): If True, all games will have the same length.
-
-    Returns:
-        Array: An array of game lengths.
-    """
-    if continuation_prob == 1:
-        return [max_length] * nb_games
-    if same_length_batch:
-        length = np.random.geometric(1 - continuation_prob, 1)
-        game_lengths = np.repeat(length, nb_games)
-    else:
-        game_lengths = np.random.geometric(1 - continuation_prob, nb_games)
-
-    game_lengths = np.where(game_lengths > max_length, max_length, game_lengths)
-    return game_lengths.tolist()

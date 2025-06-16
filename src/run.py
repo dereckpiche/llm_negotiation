@@ -8,7 +8,7 @@ from hydra.core.hydra_config import HydraConfig
 from omegaconf import OmegaConf
 
 from experiments.arithmetic_test import arithmetic_test
-from experiments.generate_and_train import generate_and_train
+from src.generate_and_train import generate_and_train
 
 
 @hydra.main()

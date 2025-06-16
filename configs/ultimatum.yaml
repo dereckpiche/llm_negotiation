@@ -165,7 +165,7 @@ temperature: 1
 models:
   qwen:
     name: 'qwen'
-    class: local_llm_v2
+    class: LocalLLM
     init_args:
       max_model_length: 10000
       device: "cuda"

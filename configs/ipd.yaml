@@ -91,9 +91,9 @@ temperature: 1.0
 
 
 models:
+
   qwen:
-    name: 'qwen'
-    class: local_llm_v2 # local_llm_v2
+    class: LocalLLM # LocalLLM
     init_args:
       max_model_length: 1.3e4
       device: "cuda"
@@ -209,4 +209,6 @@ training:
           log_ctz_top_slogpi: False
           log_ctz_entropy: False
           log_ctz_kl: False
+
+  
       

@@ -202,7 +202,7 @@ common_models_init_args: &common_models_init_args
 
 models:
   llama:
-    class: local_llm_v2
+    class: LocalLLM
     init_args:
       <<: *common_models_init_args
       name: 'llama'
