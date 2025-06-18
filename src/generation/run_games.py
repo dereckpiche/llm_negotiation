@@ -176,8 +176,7 @@ def process_policy_inputs(models, policy_inputs, seed_offset=0):
         model_name, adapter_name = policy_id.split("/")
         model = models[model_name]
 
-        if hasattr(model, "adapter_paths"):
-            model.prepare_adapter_eval(adapter_name, seed_offset)
+        model.prepare_adapter_eval(adapter_id=adapter_name)
 
         # Flatten inputs for batch processing
         flat_inputs = []

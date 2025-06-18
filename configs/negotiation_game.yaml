@@ -16,9 +16,6 @@ experiment:
   resume_experiment: true
   base_seed: 344
 
-####################################################################################################
-#                                           GENERATION
-####################################################################################################
 
 
 common_agent_kwargs: &common_agent_kwargs
@@ -104,7 +101,7 @@ matches:
   continuation_prob: 0.85
   same_length_batch: True
 
-  nb_matches_with_same_roundwise_utilities: 8
+  nb_matches_with_same_roundwise_utilities: 1
 
   log_func: dond_log_match
 
@@ -138,25 +135,24 @@ matches:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "Alice"
-        policy_id: "qwen/sp_adapter"
+        policy_id: "qwen/self_play_agent"
     Bob:
       kwargs:
         <<: *common_agent_kwargs
         agent_name: "Bob"
-        policy_id: "qwen/sp_adapter"
+        policy_id: "qwen/self_play_agent"
 
 temperature: 1.0
 
 
 models:
+
   qwen:
-    name: 'qwen'
-    class: LocalLLM
+    class: LeanLocalLLM
     init_args:
       max_model_length: 1e4
       device: "cuda"
       model_name: "Qwen/Qwen2.5-7B-Instruct"
-      bits_and_bytes_args: null
       generation_args:
         max_new_tokens: 120
         do_sample: True
@@ -172,38 +168,92 @@ models:
         enable_sleep_mode : True
         max_lora_rank: 64
         dtype: "bfloat16"
-      hf_model_init_kwargs:
+      shared_hf_llm_init_kwargs:
         torch_dtype: "bfloat16"
         device_map: "auto"
         attn_implementation: "flash_attention_2"
-      eval_with: "vllm"
-      train_with: "hf"
-      optimizer_on_gpu_during_training: True
-      fully_switch_vllm_weights_after_training: False
-      keep_vllm_during_training: True
-      keep_vllm_during_eval: True
-      sleep_vllm_during_training: True
-      wake_vllm_during_eval: True
-      export_trained_parameters: True
-      export_optimizer: True
       adapter_configs:
-        sp_adapter:
-          type: "lora"
-          optimizer_method: "Adam"
-          optimizer_kwargs:
-            lr: 1e-5
-            weight_decay: 0.0
-          lora_kwargs:
-            task_type: "CAUSAL_LM"
-            r: 64
-            lora_alpha: 128
-            lora_dropout: 0.0
-            target_modules: "all-linear"
+        self_play_agent:
+          task_type: "CAUSAL_LM"
+          r: 64
+          lora_alpha: 128
+          lora_dropout: 0.0
+          target_modules: "all-linear"
+        self_play_critic:
+          task_type: "CAUSAL_LM"
+          r: 64
+          lora_alpha: 128
+          lora_dropout: 0.0
+          target_modules: "all-linear"
+        
+
+critics:
+  self_play_agent_critic:
+    pointer: ["qwen", "self_play_critic"]
+  
+
+optimizers:
+
+  self_play_agent_optimizer:
+    pointer: ["qwen", "self_play_agent"]
+    optimizer_class: torch.optim.Adam
+    init_args:
+      lr: 1e-5
+      weight_decay: 0.0
+
+  self_play_agent_critic_optimizer:
+    pointer: self_play_agent_critic
+    optimizer_class: torch.optim.Adam
+    init_args:
+      lr: 1e-5
+      weight_decay: 0.0
 
 
-####################################################################################################
-# TRAINING
-####################################################################################################
+trainers: 
+
+  qwen_trainer:
+
+    pointers:
+      model: ["qwen", "self_play_agent"]
+      optimizer: "self_play_agent_optimizer" 
+      critic: "self_play_agent_critic" 
+      critic_optimizer: "self_play_agent_critic_optimizer" 
+
+    init_args:
+      entropy_coeff: 0.0
+      kl_coeff: 0.0
+      gradient_clipping: 1.0
+      restrict_tokens: null
+      mini_batch_size: 1
+      use_gradient_checkpointing: True
+      temperature: ${temperature}
+      device: "cuda:0"
+
+      discount_factor: 1.0
+
+      use_gae: True
+      gae_lambda: 0.92
+      create_fake_bootstrap_value: True
+
+      # Reward Shaping
+      use_sum_credits: False
+      use_advantage_alignment: False
+      ad_align_normalize_advantages: False
+      ad_align_force_coop_first_step: False
+      use_sign_in_ad_align: False
+      ad_align_clipping: null
+      use_time_regularization_in_ad_align: False
+      use_variance_regularization_in_ad_align: False
+      ad_align_beta: 1.0
+
+      log_ctz_next_token: True
+      log_ctz_next_token_credit: True
+      log_ctz_next_token_log_prob: True
+      log_ctz_next_token_prob: True
+      log_ctz_top_slogpi: True
+      log_ctz_entropy: True
+      log_ctz_kl: True
+
 
 
 training:
@@ -214,7 +264,7 @@ training:
       training_data_func_args:
         exclude_errors: False
         debug_output: True
-        substract_group_wise_loo_mean_rewards: True
+        substract_group_wise_loo_mean_rewards: False
         substract_loo_mean_rewards: False
 
     Bob:
@@ -222,51 +272,7 @@ training:
       training_data_func_args:
         exclude_errors: False
         debug_output: True
-        substract_group_wise_loo_mean_rewards: True
+        substract_group_wise_loo_mean_rewards: False
         substract_loo_mean_rewards: False
 
-
-  qwen:
-    adapters:
-      sp_adapter:
-        trainer_config:
-          entropy_coeff: 0.0
-          kl_coeff: 0.0
-          gradient_clipping: 1.0
-          restrict_tokens: null
-          mini_batch_size: 1
-          use_gradient_checkpointing: True
-          temperature: ${temperature}
-          device: "cuda:0"
-
-          # Reward Shaping
-          discount_factor: 1.0
-          use_sum_credits: False
-
-          # Ad Align
-          use_advantage_alignment: False
-          ad_align_normalize_advantages: False
-          ad_align_force_coop_first_step: False
-          use_sign_in_ad_align: False
-          ad_align_clipping: null
-          use_time_regularization_in_ad_align: False
-          use_variance_regularization_in_ad_align: False
-          ad_align_beta: 1.0
-
-          # Regular logging
-          log_entropy_gradient_terms: False
-          log_kl_gradient_terms: False
-          log_value_gradient_terms: False
-
-          # Contextualized logging
-          log_ctz_length: 30
-          log_ctz_top_k: 5
-          log_ctz_next_token: False
-          log_ctz_next_token_score: False
-          log_ctz_next_token_log_prob: False
-          log_ctz_next_token_prob: False
-          log_ctz_top_k_tids: False
-          log_ctz_top_k_probs: False
-          log_ctz_top_slogpi: False
-          log_ctz_entropy: False
-          log_ctz_kl: False
+        

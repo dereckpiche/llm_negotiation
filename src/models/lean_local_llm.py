@@ -108,7 +108,8 @@ class LeanLocalLLM:
             hf_adapter = AdapterWrapper(
                 shared_llm=self.shared_hf_llm,
                 adapter_id=adapter_id,
-                lora_config=adapter_configs[adapter_id]
+                lora_config=adapter_configs[adapter_id],
+                path=os.path.join(self.save_path, adapter_id)
             ).to(device)
             self.hf_adapters[adapter_id] = hf_adapter
         
@@ -140,11 +141,14 @@ class LeanLocalLLM:
         
         """
         adapter_path = os.path.join(self.save_path, adapter_id)
-        self.current_lora_request = LoRARequest(
-            adapter_id, 
-            self.adapter_train_ids[adapter_id], 
-            adapter_path
-        )
+        if os.path.exists(adapter_path):
+            self.current_lora_request = LoRARequest(
+                adapter_id, 
+                self.adapter_train_ids[adapter_id], 
+                adapter_path
+            )
+        else: 
+            self.current_lora_request = None
 
 
     def prompt(self, contexts) -> list:

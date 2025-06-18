@@ -86,6 +86,7 @@ def dond_generate_training_data_from_raw(
     for i, match_file in enumerate(match_files):
         chat_history = json.load(open(os.path.join(raw_data_folder, match_file), "r"))
         game_info = get_system_msg(chat_history).get("game_info")
+        agent_id = get_system_msg(chat_history).get("agent_name")
         match_id = game_info["match_id"]
         group_id = game_info["group_id"]
 
@@ -117,8 +118,10 @@ def dond_generate_training_data_from_raw(
             training_data_folder, match_file.replace("match_", "training_data_")
         )
 
+
         # Create meta info
         jfile = {
+            "agent_id": agent_id,
             "game_id": match_id,
             "chat": chat_history
         }

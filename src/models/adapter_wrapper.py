@@ -1,6 +1,7 @@
 
 import torch.nn as nn
-from typing import Iterable, Tuple
+import os
+from typing import Iterable, Tuple, Union
 import torch
 from peft import (
     LoraConfig,
@@ -22,7 +23,8 @@ class AdapterWrapper(nn.Module):
         self,
         shared_llm: nn.Module,
         adapter_id: str,
-        lora_config: dict
+        lora_config: dict,
+        path: Union[str, None]
         ):
         super().__init__()
         self.shared_llm = shared_llm
@@ -35,6 +37,13 @@ class AdapterWrapper(nn.Module):
             peft_config=lora_config,
             adapter_name=adapter_id,
         )
+        self.shared_llm.train()
+        # Load external adapter weights if already exists
+        if os.path.exists(path):
+            self.shared_llm.load_adapter(
+                is_trainable=True,
+                model_id=path, 
+                adapter_name=adapter_id)
 
     def parameters(self, recurse: bool = True):
         """

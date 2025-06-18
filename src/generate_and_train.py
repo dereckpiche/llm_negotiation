@@ -33,7 +33,10 @@ compute_logger = logging.getLogger("compute_logger")
 
 
 
-def create_markov_games(cfg: Dict[str, Any], env_rng: np.random.Generator, iteration: int) -> tuple[List[Dict[str, Any]], np.random.Generator]:
+def create_markov_games(
+    cfg: Dict[str, Any], 
+    env_rng: np.random.Generator, 
+    iteration: int) -> tuple[List[Dict[str, Any]], np.random.Generator]:
     """
     Creates a list of Markov games for training.
     
@@ -190,6 +193,7 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
                         **trainer_config["init_args"],
                         logging_path=None,
                     ),
+                    save_path=os.path.join(output_directory, trainer_id)
                 )
         trainers[trainer_id] = trainer
 
@@ -276,15 +280,15 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
             trainer.set_training_data(
                 paths = trainer_training_paths[trainer_id]
             )
-            info = trainer.send_shaping_info_to_opponents()
+            info = trainer.send_trainer_info()
             shaping_info_sets.append(info)
 
         # Training Phase 2: use opp shaping infos, apply reinforce
         trainer_items = list(trainers.items())
         for i, (trainer_id, trainer) in enumerate(trainer_items):
             info = shaping_info_sets[len(shaping_info_sets)-1-i] 
-            trainer.use_opponents_shaping_info(
-                opponents_info=info
+            trainer.use_co_trainer_info(
+                co_trainer_info=info
             )
             train_log_out_path = os.path.join(
                     it_folder, 
@@ -298,7 +302,9 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
         # Export all HF adapters weights (needed for vLLM inference)
         for shared_llm in shared_llms.values(): shared_llm.export_adapters()
 
-        # TODO: export trainers! (trainers export critics and otimizers)
+        # Export optimizer states
+        for trainer in trainers.values():
+            trainer.export_optimizer_states()
 
 
         training_end_time = time.time()

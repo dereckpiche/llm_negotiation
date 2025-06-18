@@ -1,10 +1,10 @@
 # To quickly check if code still runs
 
 defaults:
-  - new_nego_game.yaml
+  - negotiation_game.yaml
 
 experiment:
-  name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
+  name: debug_2025-06-18___17-01-14 # "debug_${now:%Y-%m-%d___%H-%M-%S}"
   nb_matches_per_iteration: 4
 
 matches:

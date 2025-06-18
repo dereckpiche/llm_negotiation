@@ -106,7 +106,7 @@ def test_train_on_folder():
     )
 
     trainer.set_training_data(paths=paths)
-    shaping_info = trainer.send_shaping_info_to_opponents()
+    shaping_info = trainer.send_trainer_info()
     trainer.use_opponents_shaping_info(shaping_info)
     trainer.train()
     trainer.tally.save(path="tests/outputs_for_tests/tally_test_output/")
