@@ -179,7 +179,6 @@ def plot_EMA_leafstats(tree: Dict, folder: str, path: str = "", alpha: float = 0
             value /= (1 - alpha) ** np.arange(nb_elements - 1, -1, -1)  # renormalize
             out_path = f"EMA_alpha_{alpha}_{path}_{key}"
             out_path = os.path.join(folder, f"{out_path.replace('/', '_')}.png")
-            # import pdb; pdb.set_trace()
             plt.figure()
             plt.plot(value)
             plt.title(new_path)

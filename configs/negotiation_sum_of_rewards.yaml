@@ -5,10 +5,8 @@ experiment:
   name: "negotiation_game_sum_of_rewards"
   description: "Negotiation game with agents trained on sum of rewards."
 
-training:
-  qwen:
-    adapters:
-      sp_adapter:
-        trainer_config:
-          use_sum_credits: True
+trainers: 
+  qwen_trainer:
+      use_sum_credits: True
+
         

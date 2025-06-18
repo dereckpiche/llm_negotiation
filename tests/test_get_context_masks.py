@@ -35,7 +35,6 @@ def test_get_assistant_actions_mask_and_score():
         tokenizer=tokenizer,
         token_ids=token_ids)
 
-    # import pdb; pdb.set_trace()
 
     decoded = tokenizer.convert_ids_to_tokens(token_ids.tolist()[0])
     df = {"Tokens": decoded, "Action Mask": action_mask, "Action Timestamps": action_timestamps, "Action End Flags": state_end_flags}

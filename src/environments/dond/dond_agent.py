@@ -455,7 +455,6 @@ class DondAgent:
                 other_takes_key = attribution_map.get(self.agent_name, {}).get(
                     "other_takes_key", "other_takes"
                 )
-            # import pdb; pdb.set_trace()
 
             finalize_sample = "{"
             finalize_sample += f'  "{i_take_key}": {{'

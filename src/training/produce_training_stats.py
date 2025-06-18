@@ -34,7 +34,6 @@ def produce_tabular_render(inpath: str, outpath: str = None):
                 + m_path
                 + "_tabular_render.csv"
             )
-        # import pdb; pdb.set_trace()
         os.makedirs(os.path.split(m_path)[0], exist_ok=True)
         metrics = data[rollout_path]
         d = {k: [] for k in metrics[0].keys()}

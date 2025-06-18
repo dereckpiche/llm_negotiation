@@ -92,6 +92,9 @@ class ReinforceTrainerWRS:
         if self.config.use_gradient_checkpointing == True:
             self.logger.info("Enabling gradient checkpointing.")
             self.model.gradient_checkpointing_enable(dict(use_reentrant=False))
+            self.critic.gradient_checkpointing_enable(dict(use_reentrant=False))
+
+
 
         self.save_path = save_path
 

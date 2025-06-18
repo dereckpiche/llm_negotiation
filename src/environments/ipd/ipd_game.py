@@ -124,7 +124,6 @@ class IPDEnv:
         round_rewards = {}
         p0_action = actions["Alice"]
         p1_action = actions["Bob"]
-        # import pdb; pdb.set_trace()
 
         self.state.raw_actions.append(copy.deepcopy(actions))
         actions = copy.deepcopy(actions)
