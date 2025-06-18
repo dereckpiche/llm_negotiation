@@ -54,4 +54,12 @@ class AdapterWrapper(nn.Module):
 
     def gradient_checkpointing_enable(self, *args, **kwargs):
         self.shared_llm.gradient_checkpointing_enable(*args, **kwargs)
+
+    @property
+    def dtype(self):
+        return self.shared_llm.dtype
+
+    @property
+    def device(self):
+        return self.shared_llm.device
     

@@ -822,7 +822,7 @@ class ReinforceTrainerWRS:
                     val = val[:-1]
                 critic_loss += F.mse_loss(
                     input=val,
-                    target=target
+                    target=target.to(val.dtype)
                 )
             critic_loss.backward()
             self.critic_optimizer.step()
@@ -832,7 +832,7 @@ class ReinforceTrainerWRS:
             for i in range(B):
                 credits = self.get_gen_adv_estimates(
                     rewards = batch_rewards[i],
-                    value_estimates = batch_val_estimates[i].to("cpu").detach().numpy()
+                    value_estimates = batch_val_estimates[i].to(torch.float32).to("cpu").detach().numpy()
                 )
                 batch_credits.append(credits)
 

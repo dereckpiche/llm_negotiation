@@ -282,8 +282,8 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
         # Training Phase 2: use opp shaping infos, apply reinforce
         trainer_items = list(trainers.items())
         for i, (trainer_id, trainer) in enumerate(trainer_items):
-            info = shaping_info_sets[1-i] 
-            trainer.use_shaping_info_to_opponents(
+            info = shaping_info_sets[len(shaping_info_sets)-1-i] 
+            trainer.use_opponents_shaping_info(
                 opponents_info=info
             )
             train_log_out_path = os.path.join(
@@ -299,7 +299,6 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
         for shared_llm in shared_llms.values(): shared_llm.export_adapters()
 
         # TODO: export trainers! (trainers export critics and otimizers)
-        for shared_llm in shared_llms.values(): shared_llm.export_adapters()
 
 
         training_end_time = time.time()

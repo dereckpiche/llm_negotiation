@@ -17,8 +17,8 @@ class ScalarCritic(nn.Module):
         self.backbone = backbone                    
         hidden_size = self.backbone.shared_llm.config.hidden_size
         self.value_head = nn.Linear(hidden_size, 1).to(
-            dtype=shared_llm.dtype, 
-            device=shared_ll.device)
+            dtype=backbone.dtype, 
+            device=backbone.device)
 
     def forward(self,
                 input_ids,
@@ -45,3 +45,11 @@ class ScalarCritic(nn.Module):
 
     def gradient_checkpointing_enable(self, *args, **kwargs):
         self.backbone.gradient_checkpointing_enable(*args, **kwargs)
+
+    @property
+    def dtype(self):
+        return self.backbone.dtype
+
+    @property
+    def device(self):
+        return self.backbone.device
