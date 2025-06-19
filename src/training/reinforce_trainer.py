@@ -841,32 +841,7 @@ class ReinforceTrainerWRS:
                          * self.config.gae_lambda) * gaes[t+1]
         return gaes
 
-    def get_critic_values(
-        self,
-        contexts: list[torch.Tensor],
-        state_end_flags: list[torch.Tensor],
-        ) -> list[torch.Tensor]: 
-        """
-        Computes value estimates from the critic model for each context in the batch.
-        Handles bootstrapping if enabled in config.
-
-        Args:
-            contexts (list[torch.Tensor]): List of context tensors.
-            state_end_flags (list[torch.Tensor]): List of boolean tensors indicating end of state/action.
-
-        Returns:
-            list[torch.Tensor]: List of value estimate tensors for each context.
-        """
-        all_vals_hat = []
-        for ctx, end_flags in zip(contexts, state_end_flags):
-            ctx = ctx.to(self.config.device)
-            vals_hat = self.critic(ctx.unsqueeze(0)).squeeze()
-            # critic puts attention up to end of action
-            if self.config.create_fake_bootstrap_value == True:
-                end_flags[-1] = True
-            vals_hat = vals_hat[end_flags == True]
-            all_vals_hat.append(vals_hat)
-        return all_vals_hat
+        
 
     def rewards_to_step_credits(
         self,
@@ -899,41 +874,40 @@ class ReinforceTrainerWRS:
 
         # Use GAE 
         if self.config.use_gae: 
-            batch_credits = []
-            batch_val_estimates = self.get_critic_values(
-                contexts=batch_contexts,
-                state_end_flags=batch_state_end_flags,
-            )
-            
-            # Train critic
+            # use & train critic
             critic_loss = 0.0
+            batch_val_estimates = []
             for i in range(B):
-                val = batch_val_estimates[i]
-                # TODO: compute live here (not all at once)
-                target = torch.Tensor(
-                    discounted_returns[i]).to(self.config.device)
-                if self.config.create_fake_bootstrap_value:
-                    # skip training on fake bookstrap value 
-                    val = val[:-1]
+                target = torch.Tensor(discounted_returns[i]).to(self.config.device)
+                ctx = batch_contexts[i].to(self.config.device)
+                end_flags = batch_state_end_flags[i]
+                # critic puts attention up to end of action
+                if self.config.create_fake_bootstrap_value == True: end_flags[-1] = True
+                vals_estimate = self.critic(ctx.unsqueeze(0)).squeeze()[end_flags == True]
                 critic_loss += F.mse_loss(
-                    input=val,
-                    target=target.to(val.dtype)
+                    input=vals_estimate,
+                    target=target.to(vals_estimate.dtype)
                 )
                 self.accelerator.backward(critic_loss)
+                self.tally.add_metric(
+                    path=["critic loss"], 
+                    metric=critic_loss.item()
+                )
                 critic_loss = 0.0
-            self.tally.add_metric(
-                path=["critic loss"], 
-                metric=critic_loss.item()
-            )
-            # critic_loss.backward()
+                batch_val_estimates.append(
+                    vals_estimate.detach().to(torch.float32).to("cpu").numpy()
+                )
+
+            
             self.critic_optimizer.step()
             self.critic_optimizer.zero_grad()
 
             # Get GAEs
+            batch_credits = []
             for i in range(B):
                 credits = self.get_gen_adv_estimates(
                     rewards = batch_rewards[i],
-                    value_estimates = batch_val_estimates[i].to(torch.float32).to("cpu").detach().numpy()
+                    value_estimates = batch_val_estimates[i]
                 )
                 batch_credits.append(credits)
 

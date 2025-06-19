@@ -29,8 +29,8 @@ Usage:
 import argparse
 import re
 
-from utils.common_imports import *
-from utils.leafstats import *
+from src.utils.common_imports import *
+from src.utils.leafstats import *
 
 ############################################################
 # Modular Statistics functions

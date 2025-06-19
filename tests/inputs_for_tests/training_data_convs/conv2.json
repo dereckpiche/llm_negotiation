@@ -1,5 +1,5 @@
-[
-    {
+{
+    "agent_id": "alice",
     "game_id" : 345,
     "chat" : [
         {
@@ -46,5 +46,4 @@
             "co_reward": 4
         }
     ]
-    }
-]
+}

@@ -2,8 +2,8 @@ import json
 import os
 from typing import Any, Dict, List, Optional
 
-from environments.two_chats_to_html import two_chats_to_html
-from utils.class_to_dict import class_to_dict
+from src.environments.two_chats_to_html import two_chats_to_html
+from src.utils.class_to_dict import class_to_dict
 
 
 def log_ipd_match(

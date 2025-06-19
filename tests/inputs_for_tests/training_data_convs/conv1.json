@@ -1,6 +1,6 @@
-[
-    {
-    "game_id" : 123,
+{
+    "agent_id": "bob",
+    "game_id" : 345,
     "chat" : [
         {
             "role": "user",
@@ -46,5 +46,4 @@
             "co_reward": 4
         }
     ]
-    }
-]
+}

@@ -47,6 +47,7 @@ class LeanLocalLLM:
         adapter_configs: list[dict] =[{}],
         restrict_tokens=None,
         output_directory=None,
+        abort_vllm=False
     ) -> None:
         """
         Initializes the LocalLLM.
@@ -118,17 +119,22 @@ class LeanLocalLLM:
         # ---------------------------------------------------------
         from transformers.utils import cached_file
         local_llm_path = os.path.split(cached_file(model_name, "config.json"))[0]
-        self.vllm_model = vllm.LLM(model=local_llm_path, **vllm_params)
+        if not abort_vllm:
+            self.vllm_model = vllm.LLM(model=local_llm_path, **vllm_params)
+        else:
+            self.vllm_model = None
         self.current_lora_request = None
 
         
     def toggle_training_mode(self) -> None:
         for adn in self.adapter_ids:
             self.adapter_train_ids[adn] = self.short_id_generator()
-        self.vllm_model.sleep()
+        if self.vllm_model is not None: self.vllm_model.sleep()
 
     def toggle_eval_mode(self) -> None:
-        self.vllm_model.wake_up()
+        if self.vllm_model is not None: self.vllm_model.wake_up()
+
+        
 
     def get_adapter_pointers(self) -> dict:
         pointers = {
