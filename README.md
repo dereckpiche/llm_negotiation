@@ -15,6 +15,7 @@ Finally, we find that even API-accessible LLMs are exploitable by trained selfis
 ## Installation
 
 ```bash
+cd path/to/repo
 pip install -e .
 ```
 

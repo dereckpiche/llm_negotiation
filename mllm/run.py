@@ -18,7 +18,7 @@ def main(cfg):
     # Output source code in runtime directory for certain reproducibility
     os.makedirs(hydra_run_dir, exist_ok=True)
     shutil.copytree(
-        "src",
+        "mllm",
         os.path.join(hydra_run_dir, "src_code_for_reproducibility"),
         dirs_exist_ok=True,
     )

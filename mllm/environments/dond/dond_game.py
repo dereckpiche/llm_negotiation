@@ -1,7 +1,7 @@
 import random
 from collections import deque
 
-from src.utils.common_imports import *
+from mllm.utils.common_imports import *
 
 
 class DondEnv:

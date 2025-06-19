@@ -8,7 +8,7 @@ import time
 import uuid
 from copy import deepcopy
 import torch
-from models.adapter_wrapper import AdapterWrapper
+from mllm.models.adapter_wrapper import AdapterWrapper
 from torch.optim import SGD, Adam, AdamW, RMSprop
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from trl import AutoModelForCausalLMWithValueHead
@@ -16,7 +16,7 @@ import vllm
 from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
 
-from utils.common_imports import *
+from mllm.utils.common_imports import *
 
 compute_logger = logging.getLogger("compute_logger")
 memory_logger = logging.getLogger("memory_logger")

@@ -1,4 +1,4 @@
-from models.lean_local_llm import LeanLocalLLM
+from mllm.models.lean_local_llm import LeanLocalLLM
 
 llm = LeanLocalLLM(
     max_model_length=1e4,

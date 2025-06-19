@@ -57,7 +57,7 @@ class RtTally:
         token_str = self.tokenizer.convert_ids_to_tokens(tids)
         return token_str
 
-    def get_at_path(self, dictio: dict, path: str):
+    def get_from_nested_dict(self, dictio: dict, path: str):
         """
         Retrieves the value at a nested path in a dictionary.
 
@@ -101,7 +101,7 @@ class RtTally:
             metric, Union[float, int, str, np.ndarray, dict]
         ), "Metric of incorrect type"
 
-        current_metric = self.get_at_path(dictio=self.base_tally, path=path)
+        current_metric = self.get_from_nested_dict(dictio=self.base_tally, path=path)
 
         if isinstance(metric, np.ndarray): 
             metric = metric.tolist()

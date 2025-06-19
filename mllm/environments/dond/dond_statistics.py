@@ -32,8 +32,8 @@ Usage:
 
 import re
 
-from utils.common_imports import *
-from utils.leafstats import *
+from mllm.utils.common_imports import *
+from mllm.utils.leafstats import *
 
 ############################################################
 # Helper functions

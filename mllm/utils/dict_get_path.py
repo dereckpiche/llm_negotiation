@@ -1,6 +1,5 @@
 
-
-def get_at(a:dict, path):
+def get_from_nested_dict(a:dict, path) -> any:
     # path is string or list of string
     if isinstance(path, str):
         return a[path]

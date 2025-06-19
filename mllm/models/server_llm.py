@@ -4,7 +4,7 @@ from typing import List
 import backoff
 from openai import OpenAI, RateLimitError
 
-from utils.common_imports import *
+from mllm.utils.common_imports import *
 
 
 class ServerLLM:

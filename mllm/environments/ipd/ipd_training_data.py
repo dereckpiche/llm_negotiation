@@ -3,7 +3,7 @@ This file contains the methods used to convert raw data into training data
 for the Negotiation game. (Also called Deal or No Deal).
 """
 
-from utils.common_imports import *
+from mllm.utils.common_imports import *
 
 
 def ipd_generate_training_data_from_raw(

@@ -1,5 +1,5 @@
-from environments.env_imports import *
-from utils.common_imports import *
+from mllm.environments.env_imports import *
+from mllm.utils.common_imports import *
 
 
 def run_batched_matches(

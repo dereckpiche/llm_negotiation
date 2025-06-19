@@ -1,16 +1,16 @@
 import os
 from datetime import datetime
-from models.lean_local_llm import LeanLocalLLM
+from mllm.models.lean_local_llm import LeanLocalLLM
 
 import pandas as pd
 import torch
 import torch.optim as optim
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from models.critic_wrapper import ScalarCritic
+from mllm.models.critic_wrapper import ScalarCritic
 
-from training.reinforce_trainer import ReinforceTrainerWRS
-from training.reinforce_trainer_config import RtConfig
+from mllm.training.reinforce_trainer import ReinforceTrainerWRS
+from mllm.training.reinforce_trainer_config import RtConfig
 
 
 now = datetime.now()

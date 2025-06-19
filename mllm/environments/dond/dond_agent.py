@@ -3,7 +3,7 @@ import re
 
 import regex as re
 
-from utils.common_imports import *
+from mllm.utils.common_imports import *
 
 
 class DondAgent:

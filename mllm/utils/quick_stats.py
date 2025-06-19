@@ -4,7 +4,6 @@ import os
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
-from log_statistics import *
 
 
 def plot_cumulative_points(json_path):

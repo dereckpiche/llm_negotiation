@@ -1,10 +1,10 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from utils.leafstats import *
+from mllm.utils.leafstats import *
 
 
-def get_at_path(dictio: dict, path: list[str]):
+def get_from_nested_dict(dictio: dict, path: list[str]):
     for sp in path[:-1]:
         dictio = dictio[sp]
     return dictio.get(path[-1])
@@ -65,7 +65,7 @@ def get_metric_iteration_list(data: list[dict], metric_path: list[str]):
     import copy
     sgl = []
     for d in data:
-        sgl.append(get_at_path(d, metric_path))
+        sgl.append(get_from_nested_dict(d, metric_path))
 
 
 def to_1d_numeric(x):

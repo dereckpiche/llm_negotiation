@@ -17,7 +17,6 @@ experiment:
   base_seed: 1
 
 
-
 common_agent_kwargs: &common_agent_kwargs
   max_errors: 0
   allow_reasoning: false
@@ -193,7 +192,6 @@ critics:
   
 
 optimizers:
-
   self_play_agent_optimizer:
     pointer: ["qwen", "self_play_agent"]
     optimizer_class: torch.optim.Adam
@@ -220,6 +218,7 @@ trainers:
       critic_optimizer: "self_play_agent_critic_optimizer" 
 
     init_args:
+
       entropy_coeff: 0.0
       kl_coeff: 0.0
       gradient_clipping: 1.0
@@ -229,11 +228,12 @@ trainers:
       temperature: ${temperature}
       device: "cuda:0"
 
-      discount_factor: 0.85
+      discount_factor: 0.9
 
       use_gae: False
       gae_lambda: 0.92
       create_fake_bootstrap_value: True
+      
 
       # Reward Shaping
       use_sum_credits: False

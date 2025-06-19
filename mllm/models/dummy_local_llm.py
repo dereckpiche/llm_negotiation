@@ -4,8 +4,8 @@ To debug the code without loading LLM engines.
 
 from typing import List
 
-from models.local_llm import *
-from utils.common_imports import *
+from mllm.models.local_llm import *
+from mllm.utils.common_imports import *
 
 
 class DummyLocalLLM(LocalLLM):

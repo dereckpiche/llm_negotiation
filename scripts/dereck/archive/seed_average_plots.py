@@ -13,7 +13,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
 
-from src.utils.log_statistics import common_plot_leafstats, get_mean_leafstats
+from mllm.utils.log_statistics import common_plot_leafstats, get_mean_leafstats
 
 
 def find_statistic_files(folder_path: str, pattern: str = "**/*.jsonl") -> List[str]:

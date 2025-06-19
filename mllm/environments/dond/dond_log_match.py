@@ -1,10 +1,10 @@
 import json
 import os
 
-from src.environments.dond.dond_statistics import *
-from src.environments.dond.dond_training_data import *
-from src.environments.two_chats_to_html import two_chats_to_html
-from src.utils.common_imports import *
+from mllm.environments.dond.dond_statistics import *
+from mllm.environments.dond.dond_training_data import *
+from mllm.environments.two_chats_to_html import two_chats_to_html
+from mllm.utils.common_imports import *
 
 
 def log_dond_stats_evolution(path, outpath=None):

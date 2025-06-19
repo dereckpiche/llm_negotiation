@@ -7,7 +7,7 @@ import torch.optim as optim
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from training.get_context_masks import *
+from mllm.training.get_context_masks import *
 
 model_name = "Qwen/Qwen2.5-0.5B-Instruct"
 

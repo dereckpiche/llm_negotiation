@@ -2,7 +2,7 @@ import torch, torch.nn as nn, torch.optim as optim
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import LoraConfig, get_peft_model
 
-from models.adapter_wrapper import AdapterWrapper
+from mllm.models.adapter_wrapper import AdapterWrapper
 
 
 

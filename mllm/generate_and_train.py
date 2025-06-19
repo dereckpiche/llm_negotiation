@@ -14,23 +14,22 @@ import numpy as np
 import torch
 
 # Local imports
-from environments.env_imports import *
-from generation.run_games import run_batched_matches
-from models.dummy_local_llm import DummyLocalLLM
-from models.local_llm import LocalLLM
-from models.lean_local_llm import LeanLocalLLM
-from models.server_llm import ServerLLM
-from models.critic_wrapper import ScalarCritic
-from training.reinforce_trainer import *
-from training.reinforce_trainer_config import *
-from training.reinforce_trainer_tally import *
-from utils.common_imports import *
-from utils.update_start_epoch import update_start_epoch
-from utils.get_stochastic_game_lengths import get_stochastic_game_lengths
-from utils.dict_get_path import get_at
+from mllm.environments.env_imports import *
+from mllm.generation.run_games import run_batched_matches
+from mllm.models.dummy_local_llm import DummyLocalLLM
+from mllm.models.local_llm import LocalLLM
+from mllm.models.lean_local_llm import LeanLocalLLM
+from mllm.models.server_llm import ServerLLM
+from mllm.models.critic_wrapper import ScalarCritic
+from mllm.training.reinforce_trainer import *
+from mllm.training.reinforce_trainer_config import *
+from mllm.training.reinforce_trainer_tally import *
+from mllm.utils.common_imports import *
+from mllm.utils.update_start_epoch import update_start_epoch
+from mllm.utils.get_stochastic_game_lengths import get_stochastic_game_lengths
+from mllm.utils.dict_get_path import get_from_nested_dict
 
 compute_logger = logging.getLogger("compute_logger")
-
 
 
 def create_markov_games(
@@ -139,29 +138,29 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
     # -----------------------------------------------------------------
 
     # Models & adapters
-    shared_llms = {}
+    shared_llms_dict = {}
     for shared_llm_id, model_config in cfg["models"].items():
         model_class = globals()[model_config["class"]]
-        shared_llms[shared_llm_id] = model_class(
+        shared_llms_dict[shared_llm_id] = model_class(
             **model_config["init_args"],
             output_directory=output_directory,
         )
 
     trainable_modules = {}
-    for shared_llm_id, shared_llm in shared_llms.items():
+    for shared_llm_id, shared_llm in shared_llms_dict.items():
         trainable_modules[shared_llm_id] = shared_llm.get_adapter_pointers()
 
     # Critics
     for critic_id, critic_config in cfg["critics"].items():
         pointer = critic_config["pointer"]
-        base = get_at(trainable_modules, pointer)
+        base = get_from_nested_dict(trainable_modules, pointer)
         trainable_modules[critic_id] = ScalarCritic(base)
 
     # Optimizers
     optimizers = {}
     for optimizer_id, optimizer_config in cfg["optimizers"].items():
         pointer = optimizer_config["pointer"]
-        base = get_at(trainable_modules, pointer)
+        base = get_from_nested_dict(trainable_modules, pointer)
         optimizer_class = eval(optimizer_config["optimizer_class"])
         init_args = optimizer_config["init_args"]
         optimizers[optimizer_id] = optimizer_class(base.parameters(), **init_args)
@@ -170,25 +169,25 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
     trainers = {}
     for trainer_id, trainer_config in cfg["trainers"].items():
         pointers = trainer_config["pointers"]
-        tokenizer = shared_llms[pointers["model"][0]].tokenizer
-        policy_model = get_at(trainable_modules, pointers["model"])
-        policy_optimizer = get_at(optimizers, pointers["optimizer"])
+        tokenizer = shared_llms_dict[pointers["model"][0]].tokenizer
+        policy_model = get_from_nested_dict(trainable_modules, pointers["model"])
+        policy_optimizer = get_from_nested_dict(optimizers, pointers["optimizer"])
         if pointers.get("critic", True): 
-            critic_model = get_at(
+            critic_model = get_from_nested_dict(
                 trainable_modules, pointers["critic"])
         else: critic_model = None
         if pointers.get("critic_optimizer", True): 
-            critic_optimizer = get_at(
+            critic_optimizer = get_from_nested_dict(
                 optimizers, pointers["critic_optimizer"])
         else: critic_optimizer = None
         trainer = ReinforceTrainerWRS(
                     model=policy_model,
                     optimizer=policy_optimizer,
                     tokenizer=tokenizer,
-                    lr_scheduler=None, #TODO add
+                    lr_scheduler=None, # TODO add
                     critic=critic_model,
                     critic_optimizer=critic_optimizer,
-                    critic_lr_scheduler=None, # #TODO add
+                    critic_lr_scheduler=None, # TODO add
                     config=RtConfig(
                         **trainer_config["init_args"],
                         logging_path=None,
@@ -204,8 +203,7 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
         # -----------------------------------------------------------------
         # Create Training Rollouts 
         # -----------------------------------------------------------------
-
-        for shared_llm in shared_llms.values():
+        for shared_llm in shared_llms_dict.values():
             shared_llm.toggle_eval_mode()
 
         # Create a new RNG instance by splitting the current one (simulates RNG splitting)
@@ -223,7 +221,7 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
             export_path=it_folder,
             matches=matches,
             seed_offset=iteration,
-            models=shared_llms,
+            models=shared_llms_dict,
             **cfg["matches"]["run_batched_matches_args"],
         )
 
@@ -247,8 +245,8 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
         # -----------------------------------------------------------------
         # Train
         # -----------------------------------------------------------------
-        training_start_time = time.time()
 
+        training_start_time = time.time()
 
         # Get training paths for each trainer
         trainer_training_paths = {}
@@ -270,7 +268,7 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
 
 
         # Prepare base models for training 
-        for shared_llm in shared_llms.values():
+        for shared_llm in shared_llms_dict.values():
             shared_llm.toggle_training_mode()
 
 
@@ -300,7 +298,7 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
             trainer.export_training_metrics()
 
         # Export all HF adapters weights (needed for vLLM inference)
-        for shared_llm in shared_llms.values(): shared_llm.export_adapters()
+        for shared_llm in shared_llms_dict.values(): shared_llm.export_adapters()
 
         # Export optimizer states
         for trainer in trainers.values():
@@ -317,7 +315,7 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
             and iteration % checkpoint_frequency == 0
             and iteration != 0
         ):
-            for shared_llm_id, shared_llm in shared_llms.items():
+            for shared_llm_id, shared_llm in shared_llms_dict.items():
                 if hasattr(shared_llm, "adapter_paths"):
                     shared_llm.checkpoint_all_adapters(
                         checkpoint_indicator=f"iter_{iteration}"

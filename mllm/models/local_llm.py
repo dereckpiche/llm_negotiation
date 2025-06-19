@@ -22,7 +22,7 @@ from trl import AutoModelForCausalLMWithValueHead
 from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
 
-from utils.common_imports import *
+from mllm.utils.common_imports import *
 
 compute_logger = logging.getLogger("compute_logger")
 memory_logger = logging.getLogger("memory_logger")

@@ -10,12 +10,12 @@ from accelerate import Accelerator
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
-from training.reinforce_trainer_config import RtConfig
-from training.reinforce_trainer_tally import RtTally
-from training.get_context_masks import *
-from utils.common_imports import *
-from utils.time_and_memory_utils import *
-from utils.print_logger import *
+from mllm.training.reinforce_trainer_config import RtConfig
+from mllm.training.reinforce_trainer_tally import RtTally
+from mllm.training.get_context_masks import *
+from mllm.utils.common_imports import *
+from mllm.utils.time_and_memory_utils import *
+from mllm.utils.print_logger import *
 from typing import Union
 
 
@@ -822,7 +822,6 @@ class ReinforceTrainerWRS:
             np.ndarray: Array of GAE values.
         """
         # TODO: verify
-        
         l = rewards.size
         if l == value_estimates.size:
             bootstrap = False
@@ -1046,7 +1045,6 @@ class ReinforceTrainerWRS:
         co_trainer_game_ids = intmapf(co_trainer_info.get("game_ids"))
         B = len(self.step_credits)
         
-
         op_step_credits = [] # Get credits of other agent in right order
         for i in range(B):
             idx = (co_trainer_game_ids == game_ids[i]) \

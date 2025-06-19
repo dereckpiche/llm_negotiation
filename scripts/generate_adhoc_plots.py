@@ -7,7 +7,7 @@ import sys
 
 # Add project root to sys.path
 sys.path.append(os.path.join(os.path.dirname(__file__), "../"))
-from src.utils.log_statistics import generate_agent_stats_plots
+from mllm.utils.log_statistics import generate_agent_stats_plots
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description="Generate agent statistics plots.")

@@ -4,7 +4,7 @@ import shutil
 import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../"))
-from src.utils.log_statistics import (
+from mllm.utils.log_statistics import (
     append_leafstats,
     get_mean_leafstats,
     update_agent_statistics,
