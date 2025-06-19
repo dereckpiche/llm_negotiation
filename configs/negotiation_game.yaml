@@ -162,7 +162,7 @@ models:
         repetition_penalty: 1
       vllm_params:
         max_model_len : 13e3
-        gpu_memory_utilization: 0.6
+        gpu_memory_utilization: 0.45
         enable_lora: True
         enable_prefix_caching: True
         enable_sleep_mode : True
@@ -231,7 +231,7 @@ trainers:
 
       discount_factor: 0.85
 
-      use_gae: True
+      use_gae: False
       gae_lambda: 0.92
       create_fake_bootstrap_value: True
 

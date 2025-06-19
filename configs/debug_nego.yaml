@@ -5,7 +5,7 @@ defaults:
 
 experiment:
   name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
-  nb_matches_per_iteration: 2
+  nb_matches_per_iteration: 64
 
 # matches:
 #   max_length: 3

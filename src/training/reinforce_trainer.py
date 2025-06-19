@@ -76,12 +76,13 @@ class ReinforceTrainerWRS:
         self.lr_scheduler = lr_scheduler
         self.config = config
         self.accelerator = Accelerator()
-        self.model, self.optimizer = self.accelerator.prepare(
+        self.model, self.optimizer, self.critic, self.critic_optimizer = self.accelerator.prepare(
             model, 
-            optimizer)
+            optimizer,
+            critic,
+            critic_optimizer
+        ) 
         
-        self.critic = critic
-        self.critic_optimizer = critic_optimizer
         self.critic_lr_scheduler = critic_lr_scheduler
 
         self.tally = RtTally(tokenizer=tokenizer)
@@ -908,6 +909,7 @@ class ReinforceTrainerWRS:
             critic_loss = 0.0
             for i in range(B):
                 val = batch_val_estimates[i]
+                # TODO: compute live here (not all at once)
                 target = torch.Tensor(
                     discounted_returns[i]).to(self.config.device)
                 if self.config.create_fake_bootstrap_value:
@@ -917,11 +919,13 @@ class ReinforceTrainerWRS:
                     input=val,
                     target=target.to(val.dtype)
                 )
+                self.accelerator.backward(critic_loss)
+                critic_loss = 0.0
             self.tally.add_metric(
                 path=["critic loss"], 
                 metric=critic_loss.item()
             )
-            critic_loss.backward()
+            # critic_loss.backward()
             self.critic_optimizer.step()
             self.critic_optimizer.zero_grad()
 
