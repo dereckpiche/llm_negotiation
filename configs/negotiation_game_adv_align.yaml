@@ -8,9 +8,8 @@ experiment:
 
 
 trainers: 
-
   qwen_trainer:
-
+    init_args:
       use_advantage_alignment: True
       ad_align_beta: 1.0
 

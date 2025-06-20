@@ -884,7 +884,7 @@ class ReinforceTrainerWRS:
                 if self.config.create_fake_bootstrap_value == True: end_flags[-1] = True
                 vals_estimate = self.critic(ctx.unsqueeze(0)).squeeze()[end_flags == True]
                 critic_loss += F.mse_loss(
-                    input=vals_estimate,
+                    input=vals_estimate[:-1] if self.config.create_fake_bootstrap_value else vals_estimate,
                     target=target.to(vals_estimate.dtype)
                 )
                 self.accelerator.backward(critic_loss)

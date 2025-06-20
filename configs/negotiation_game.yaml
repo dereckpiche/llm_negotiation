@@ -9,7 +9,7 @@ experiment:
   method: generate_and_train
   description: "Agents trained on negotiation game with regular RL."
   nb_epochs: 500
-  nb_matches_per_iteration: 64
+  nb_matches_per_iteration: 32
   checkpoint_every_n_iterations: 25
   reinit_matches_each_it: true
   start_epoch: 0
@@ -230,10 +230,9 @@ trainers:
 
       discount_factor: 0.9
 
-      use_gae: False
+      use_gae: True
       gae_lambda: 0.92
       create_fake_bootstrap_value: True
-      
 
       # Reward Shaping
       use_sum_credits: False

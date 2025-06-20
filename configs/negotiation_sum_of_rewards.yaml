@@ -7,6 +7,7 @@ experiment:
 
 trainers: 
   qwen_trainer:
+    init_args:
       use_sum_credits: True
 
         
