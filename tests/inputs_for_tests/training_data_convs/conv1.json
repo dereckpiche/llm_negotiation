@@ -6,52 +6,58 @@
             "role": "user",
             "content": "Welcome to a game!",
             "round_number": 0,
-            "is_state_end_for_critic": true
+            "is_state_end": true
         },
         {
             "role": "assistant",
             "content": "I shall do that.",
             "round_number": 0,
             "reward": 5,
-            "is_action": true,
-            "time_step_for_critic": 0
+            "time_step": 0
         },
         {
             "role": "user",
             "content": "This happened. That happened.",
             "round_number": 1,
-            "is_state_end_for_critic": true
+            "is_state_end": true
         },
         {
             "role": "assistant",
             "content": "Now I will play x.",
             "reward": -1,
-            "is_action": true,
-            "time_step_for_critic": 1
+            "time_step": 1
         },
         {
             "role": "user",
-            "content": "This has occured. You must now do y.",
+            "content": "A blazing fire."
+        },
+        {
+            "role": "assistant",
+            "content": "Doves are moving.",
+            "reward": -1,
+            "time_step": 1
+        },
+        {
+            "role": "user",
+            "content": "A walk in the parc.",
             "is_state_end": true
         },
         {
             "role": "assistant",
             "content": "Now I will play U.",
             "reward": 4,
-            "is_action": true,
-            "time_step_for_critic": 2
+            "time_step": 2
         },
         {
             "role": "user",
             "content": "This has occured again. You must now do P.",
-            "is_state_end_for_critic": true
+            "is_state_end": true
         },
         {
             "role": "assistant",
             "content": "Now I will play Z.",
             "reward": -1,
-            "is_action": true,
-            "time_step_for_critic": 3
+            "time_step": 3
         }
     ]
 }

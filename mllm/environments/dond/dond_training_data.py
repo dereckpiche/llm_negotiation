@@ -96,6 +96,7 @@ def dond_generate_training_data_from_raw(
             ]
 
         # Attribute scores to actions
+        round_number = float('-inf')
         for message in chat_history:
             if message.get("role") == "assistant":
                 round_number = message.get("round_nb")
@@ -103,9 +104,14 @@ def dond_generate_training_data_from_raw(
                 message["reward"] = normalized_round_points_agent[group_id][match_id][
                     round_number
                 ]
-                message["co_reward"] = normalized_round_points_coagent[group_id][
-                    match_id
-                ][round_number]
+                message["time_step"] = round_number
+                
+            elif message.get("role") == "user":
+                # new round
+                if message.get("round_nb") > round_number:
+                    message["is_state_end"] = True
+                else:
+                    message["is_state_end"] = False
 
 
         # Only keep conversation messages, not system info

@@ -16,13 +16,12 @@ class RtConfig:
         device: str,
 
 
-        # Value function
+        # Regular credit assignment
         use_gae: bool,
-        gae_lambda: float,
-        create_fake_bootstrap_value: bool,
-
-        # Regular Rewards
+        gae_lambda_for_credits: float,
+        gae_lambda_for_targets: float,
         discount_factor: float,
+        end_at_last_state_flag: bool, # False
 
         # Opponent Shaping 
         use_sum_credits: bool,
@@ -34,7 +33,6 @@ class RtConfig:
         use_time_regularization_in_ad_align: bool,
         use_variance_regularization_in_ad_align: bool,
         ad_align_beta: float,
-
 
         # Regular logging
         log_entropy_gradient_terms: bool = False,
@@ -97,7 +95,6 @@ class RtConfig:
         self.device = device
         self.discount_factor = discount_factor
         self.use_sum_credits = use_sum_credits
-        self.create_fake_bootstrap_value = create_fake_bootstrap_value
 
 
         self.ad_align_force_coop_first_step = ad_align_force_coop_first_step
@@ -114,10 +111,11 @@ class RtConfig:
         else:
             self.wait_for_opponent_shaping = False
         self.use_gae = use_gae
-        self.gae_lambda = gae_lambda
+        self.gae_lambda_for_credits = gae_lambda_for_credits
+        self.gae_lambda_for_targets = gae_lambda_for_targets
         self.use_sign_in_ad_align = use_sign_in_ad_align 
         self.ad_align_clipping = ad_align_clipping
-
+        self.end_at_last_state_flag = end_at_last_state_flag
 
         self.log_entropy_gradient_terms = log_entropy_gradient_terms
         self.log_kl_gradient_terms = log_kl_gradient_terms

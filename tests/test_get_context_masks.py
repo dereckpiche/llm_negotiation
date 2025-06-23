@@ -8,7 +8,7 @@ import torch.optim as optim
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from mllm.training.get_context_masks import get_context_masks
+from mllm.training.process_training_chat import process_training_chat
 
 model_name = "Qwen/Qwen2.5-0.5B-Instruct"
 conv_file = "tests/inputs_for_tests/training_data_convs/conv1.json"
@@ -16,27 +16,23 @@ conv_file = "tests/inputs_for_tests/training_data_convs/conv1.json"
 
 def test_get_assistant_actions_mask_and_score():
     with open(conv_file, "r") as f:
-        conv = json.load(f)["chat"]
-    per_message_score = torch.Tensor([0.123, 0.234])
+        chat = json.load(f)["chat"]
     tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-0.5B-Instruct")
-    token_ids = tokenizer.apply_chat_template(
-        conv, 
-        return_tensors="pt"
-    )
-    print(tokenizer.eos_token_id)
     (
+        token_ids,
+        rewards,
         action_mask, 
-        action_timestamps,
+        credit_mask,
         state_end_flags
-    ) = get_context_masks(
+    ) = process_training_chat(
         tokenizer=tokenizer,
-        token_ids=token_ids)
+        chat_history=chat)
 
-
-    decoded = tokenizer.convert_ids_to_tokens(token_ids.tolist()[0])
-    df = {"Tokens": decoded, "Action Mask": action_mask, "Action Timestamps": action_timestamps, "Action End Flags": state_end_flags}
+    decoded = tokenizer.convert_ids_to_tokens(token_ids.tolist())
+    df = {"Tokens": decoded, "Action Mask": action_mask, "Credit Mask": credit_mask, "State End Flags": state_end_flags}
     df = pd.DataFrame(df)
     print(df.to_string())
+    print(rewards)
    
 
 if __name__ == "__main__":

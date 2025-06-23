@@ -12,7 +12,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 from mllm.training.reinforce_trainer_config import RtConfig
 from mllm.training.reinforce_trainer_tally import RtTally
-from mllm.training.get_context_masks import *
+from mllm.training.process_training_chat import process_training_chat
 from mllm.utils.common_imports import *
 from mllm.utils.time_and_memory_utils import *
 from mllm.utils.print_logger import *
@@ -808,7 +808,9 @@ class ReinforceTrainerWRS:
     def get_gen_adv_estimates(
         self,
         rewards: np.ndarray,
-        value_estimates: np.ndarray
+        value_estimates: np.ndarray,
+        discount_factor: float,
+        lambda_coef: float
         ) -> np.ndarray:
         """
         Computes Generalized Advantage Estimates (GAE) for a sequence of rewards and value estimates.
@@ -816,28 +818,20 @@ class ReinforceTrainerWRS:
 
         Args:
             rewards (np.ndarray): Array of rewards (length l).
-            value_estimates (np.ndarray): Array of value estimates (length l or l+1).
+            value_estimates (np.ndarray): Array of value estimates (length l+1).
 
         Returns:
             np.ndarray: Array of GAE values.
         """
         # TODO: verify
+        # TODO: include lambda = 0 and lambda = 1
         l = rewards.size
-        if l == value_estimates.size:
-            bootstrap = False
-        else:
-            bootstrap = True
-            assert (
-                self.config.create_fake_bootstrap_value, 
-                "No fake bootstrap value enabled and size mismatch."
-            )
-        current_vals = value_estimates[:-1] if bootstrap else value_estimates
-        future_discounted_vals = value_estimates[1:] if bootstrap else np.append(value_estimates[1:], 0)
-        gaes = rewards + future_discounted_vals - current_vals
+        
+        gaes = rewards + value_estimates[1:] - value_estimates[:-1]
 
         for t in range(l-2,0,-1):
-            gaes[t] += (self.config.discount_factor \
-                         * self.config.gae_lambda) * gaes[t+1]
+            gaes[t] += (discount_factor \
+                         * lambda_coef) * gaes[t+1]
         return gaes
 
         
@@ -871,6 +865,7 @@ class ReinforceTrainerWRS:
             discounted_returns.append(self.get_discounted_returns(rewards))
             self.tally.add_metric(path=["discounted_returns"], metric=rewards)
 
+        batch_credits = []
         # Use GAE 
         if self.config.use_gae: 
             # use & train critic
@@ -880,36 +875,46 @@ class ReinforceTrainerWRS:
                 target = torch.Tensor(discounted_returns[i]).to(self.config.device)
                 ctx = batch_contexts[i].to(self.config.device)
                 end_flags = batch_state_end_flags[i]
-                # critic puts attention up to end of action
-                if self.config.create_fake_bootstrap_value == True: end_flags[-1] = True
+                # critic causal attention up to end flags
                 vals_estimate = self.critic(ctx.unsqueeze(0)).squeeze()[end_flags == True]
-                if self.config.create_fake_bootstrap_value: vals_estimate = vals_estimate[:-1]
+                # append 0 since trajects. are finite
+                detached_vals_estimate = vals_estimate.detach().to(torch.float32).to("cpu").numpy()
+                if detached_vals_estimate.size == batch_rewards[i].size: 
+                    detached_vals_estimate = np.append(detached_vals_estimate, 0)
+
+                # Get GAE target 
+                target = self.get_gen_adv_estimates(
+                    rewards = batch_rewards[i],
+                    value_estimates = detached_vals_estimate,
+                    discount_factor = self.config.discount_factor,
+                    lambda_coef = self.config.gae_lambda_for_targets
+                ) + detached_vals_estimate[:-1]
+
                 critic_loss += F.mse_loss(
-                    input=vals_estimate,
-                    target=target.to(vals_estimate.dtype)
+                    input=vals_estimate[:target.size],
+                    target=torch.Tensor(target).to(
+                        device=vals_estimate.device,
+                        dtype=vals_estimate.dtype)
                 )
                 self.accelerator.backward(critic_loss)
+
                 self.tally.add_metric(
                     path=["critic loss"], 
                     metric=critic_loss.item()
                 )
                 critic_loss = 0.0
-                batch_val_estimates.append(
-                    vals_estimate.detach().to(torch.float32).to("cpu").numpy()
-                )
 
+                # Get GAE Credit
+                credits = self.get_gen_adv_estimates(
+                    rewards = batch_rewards[i],
+                    value_estimates = detached_vals_estimate,
+                    discount_factor = self.config.discount_factor,
+                    lambda_coef = self.config.gae_lambda_for_credits
+                )
+                batch_credits.append(credits)
             
             self.critic_optimizer.step()
             self.critic_optimizer.zero_grad()
-
-            # Get GAEs
-            batch_credits = []
-            for i in range(B):
-                credits = self.get_gen_adv_estimates(
-                    rewards = batch_rewards[i],
-                    value_estimates = batch_val_estimates[i]
-                )
-                batch_credits.append(credits)
 
         # Simply use Monte Carlo
         else:
@@ -948,41 +953,22 @@ class ReinforceTrainerWRS:
             all_agent_ids.append(agent_id)
             all_game_ids.append(game_id)
 
-            # Get per step rewards array
-            rewards = []
-            for message in chat:
-                r = message.get("reward", None)
-                if r != None:
-                    rewards.append(r)
-            rewards = np.array(rewards)
-            self.tally.add_metric(path=["rewards"], metric=rewards)
-            all_rewards.append(rewards)
-
-            # Apply chat template, get token ids
-            formatted_conversation = self.tokenizer.apply_chat_template(
-                chat,
-                add_generation_prompt=False,
-                tokenize=False,
-                use_system_prompt=True,
-            )
-            tokens = self.tokenizer.encode(
-                formatted_conversation,  
-                return_tensors="pt", 
-                add_special_tokens=True
-            ).squeeze(0).long()
-
             (
+                token_ids,
+                rewards,
                 action_mask, 
-                action_timestamps,
+                credit_mask,
                 state_end_flags
-            ) = get_context_masks(
+            ) = process_training_chat(
                 tokenizer=self.tokenizer,
-                token_ids = tokens
+                chat_history = chat,
+                end_at_last_state_flag=self.config.end_at_last_state_flag
             )
 
-            all_contexts.append(tokens)
+            all_contexts.append(token_ids)
+            all_rewards.append(rewards)
             all_action_masks.append(action_mask)
-            all_action_timestamps.append(action_timestamps)
+            all_action_timestamps.append(credit_mask)
             all_state_end_flags.append(state_end_flags)
 
         self.paths = paths
@@ -1030,7 +1016,6 @@ class ReinforceTrainerWRS:
             co_trainer_info (dict): Dictionary containing opponent trainer info.
         """
 
-        import pdb; pdb.set_trace()
 
         # Map each id's to integers 
         intmap = {s: i for i, s in enumerate(set(
