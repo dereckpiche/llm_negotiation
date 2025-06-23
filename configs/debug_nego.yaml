@@ -1,18 +1,18 @@
 # To quickly check if code still runs
 
 defaults:
-  - negotiation_game.yaml
+  - negotiation_game_adv_align.yaml
 
 experiment:
   name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
-#   nb_matches_per_iteration: 4
+  nb_matches_per_iteration: 4
 
-# matches:
-#   max_length: 3
-#   continuation_prob: 1.0
-#   same_length_batch: True
+matches:
+  max_length: 3
+  continuation_prob: 1.0
+  same_length_batch: True
 
-# models:
-#   qwen:
-#     init_args:
-#       model_name: "Qwen/Qwen2.5-0.5B-Instruct"
+models:
+  qwen:
+    init_args:
+      model_name: "Qwen/Qwen2.5-0.5B-Instruct"

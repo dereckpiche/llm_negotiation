@@ -364,7 +364,6 @@ class ReinforceTrainerWRS:
 
 
 
-
         for mb in range(0, len(contexts), mb_size):
             paths_mb = paths[mb:mb+mb_size]
 
@@ -656,6 +655,7 @@ class ReinforceTrainerWRS:
             a1 = a1[None, :]
         if len(a2.shape) == 1:
             a2 = a2[None, :]
+        assert a1.shape == a2.shape, "Not the same shape"
         a1 = np.array(a1)
         a2 = np.array(a2)
         gamma = self.config.discount_factor
@@ -883,8 +883,9 @@ class ReinforceTrainerWRS:
                 # critic puts attention up to end of action
                 if self.config.create_fake_bootstrap_value == True: end_flags[-1] = True
                 vals_estimate = self.critic(ctx.unsqueeze(0)).squeeze()[end_flags == True]
+                if self.config.create_fake_bootstrap_value: vals_estimate = vals_estimate[:-1]
                 critic_loss += F.mse_loss(
-                    input=vals_estimate[:-1] if self.config.create_fake_bootstrap_value else vals_estimate,
+                    input=vals_estimate,
                     target=target.to(vals_estimate.dtype)
                 )
                 self.accelerator.backward(critic_loss)
@@ -1028,6 +1029,8 @@ class ReinforceTrainerWRS:
         Args:
             co_trainer_info (dict): Dictionary containing opponent trainer info.
         """
+
+        import pdb; pdb.set_trace()
 
         # Map each id's to integers 
         intmap = {s: i for i, s in enumerate(set(

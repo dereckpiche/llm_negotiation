@@ -5,45 +5,53 @@
         {
             "role": "user",
             "content": "Welcome to a game!",
-            "round_number": 0
+            "round_number": 0,
+            "is_state_end_for_critic": true
         },
         {
             "role": "assistant",
             "content": "I shall do that.",
             "round_number": 0,
             "reward": 5,
-            "co_reward": 2
+            "is_action": true,
+            "time_step_for_critic": 0
         },
         {
             "role": "user",
             "content": "This happened. That happened.",
-            "round_number": 1
+            "round_number": 1,
+            "is_state_end_for_critic": true
         },
         {
             "role": "assistant",
             "content": "Now I will play x.",
             "reward": -1,
-            "co_reward": 10
+            "is_action": true,
+            "time_step_for_critic": 1
         },
         {
             "role": "user",
-            "content": "This has occured. You must now do y."
+            "content": "This has occured. You must now do y.",
+            "is_state_end": true
         },
         {
             "role": "assistant",
             "content": "Now I will play U.",
             "reward": 4,
-            "co_reward": -9
+            "is_action": true,
+            "time_step_for_critic": 2
         },
         {
             "role": "user",
-            "content": "This has occured again. You must now do P."
+            "content": "This has occured again. You must now do P.",
+            "is_state_end_for_critic": true
         },
         {
             "role": "assistant",
             "content": "Now I will play Z.",
             "reward": -1,
-            "co_reward": 4
+            "is_action": true,
+            "time_step_for_critic": 3
         }
     ]
 }

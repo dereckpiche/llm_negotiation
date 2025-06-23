@@ -26,7 +26,7 @@ def get_sentencepieced_example(tokenizer: AutoTokenizer):
 
 def get_context_masks(
     tokenizer: AutoTokenizer,
-    token_ids:torch.Tensor):
+    token_ids: torch.Tensor):
     """
     TODO: docstring
     Args:
