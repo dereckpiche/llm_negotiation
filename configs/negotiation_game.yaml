@@ -231,7 +231,7 @@ trainers:
       discount_factor: 0.9
       use_gae: True
       gae_lambda_for_credits: 0.92
-      gae_lambda_for_targets: 0.92
+      gae_lambda_for_targets: 0.0
       end_at_last_state_flag: True
 
       # Reward Shaping

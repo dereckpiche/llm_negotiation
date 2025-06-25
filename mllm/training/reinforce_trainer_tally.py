@@ -1,4 +1,4 @@
-import copy
+from copy import deepcopy
 import json
 import os
 from typing import Union
@@ -97,6 +97,7 @@ class RtTally:
             path (list): List of keys representing the path in the base tally.
             metric (float|int|str|np.ndarray|dict): The metric value to add.
         """
+        metric = deepcopy(metric)
         assert isinstance(
             metric, Union[float, int, str, np.ndarray, dict]
         ), "Metric of incorrect type"

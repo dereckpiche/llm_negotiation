@@ -1,8 +1,24 @@
-import pandas as pd
 import matplotlib.pyplot as plt
+import os
+import json
+import numpy as np
+import copy
+import gc
+import json
+import logging
+import sys
+import os
+import random
+import re
+import subprocess
+import time
+from datetime import datetime
+from statistics import mean
 
-from mllm.utils.leafstats import *
-
+import hydra
+import matplotlib.pyplot as plt
+# import pandas as pd
+from omegaconf import OmegaConf
 
 def get_from_nested_dict(dictio: dict, path: list[str]):
     for sp in path[:-1]:
@@ -34,6 +50,7 @@ def produce_tabular_render(inpath: str, outpath: str = None):
                 + m_path
                 + "_tabular_render.csv"
             )
+        # import pdb; pdb.set_trace()
         os.makedirs(os.path.split(m_path)[0], exist_ok=True)
         metrics = data[rollout_path]
         d = {k: [] for k in metrics[0].keys()}
@@ -62,10 +79,10 @@ def print_metric_paths(data: list[dict]):
 
 
 def get_metric_iteration_list(data: list[dict], metric_path: list[str]):
-    import copy
     sgl = []
     for d in data:
         sgl.append(get_from_nested_dict(d, metric_path))
+    return sgl
 
 
 def to_1d_numeric(x):
@@ -85,9 +102,11 @@ def to_1d_numeric(x):
 
 
 def get_single_metric_vector(data, metric_path, iterations=None):
+    if isinstance(metric_path, str): metric_path = [metric_path]
+    if iterations == None: iterations = len(data)
     vecs = []
     for d in data:
-        ar = get_at_path(d, metric_path)
+        ar = get_from_nested_dict(d, metric_path)
         arr = to_1d_numeric(ar)
         if arr is not None:
             vecs.append(arr)
@@ -115,37 +134,4 @@ def get_iterations_data(iterations_path: str):
         n += 1
         iteration_path = os.path.join(iterations_path, f"iteration_{n:03d}")
     return iterations_data
-
-
-
-
-if __name__ == "__main__":
-
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Produce training statistics.")
-    parser.add_argument(
-        "--path",
-        type=str,
-        required=True,
-        help="Path to the directory containing iterations",
-    )
-    args = parser.parse_args()
-
-
-    data = get_iterations_data(args.path)
-    print(f"\n{len(data)} iteration training training metrics files loaded in 'data' variable.")
-    print(
-        """
-
-        Available methods are:
-            get_metric_paths(data: list[dict])
-            get_metric_iteration_list(data: list[dict], metric_path: list[str])
-            get_single_metric_vector(data: list[dict], metric_path: list[str], iterations: list[int])
-        """
-    )
-    import pdb; pdb.set_trace()
-
-
-    
 

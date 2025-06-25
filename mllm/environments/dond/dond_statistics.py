@@ -31,9 +31,25 @@ Usage:
 """
 
 import re
+import copy
+import gc
+import json
+import logging
+import sys
+import os
+import random
+import re
+import subprocess
+import time
+from datetime import datetime
+from statistics import mean
 
-from mllm.utils.common_imports import *
-from mllm.utils.leafstats import *
+import hydra
+import matplotlib.pyplot as plt
+import numpy as np
+# import pandas as pd
+from omegaconf import OmegaConf
+# from mllm.utils.leafstats import *
 
 ############################################################
 # Helper functions
@@ -829,6 +845,23 @@ def get_raw_data_files(path, agent_id):
                 with open(file_path, "r") as f:
                     data.append(json.load(f))
     return data
+
+def get_all_iterations_data(path, agent_id):
+    iterations_data = []
+    more_iterations = True
+    paths = os.listdir(path)
+    n = 0
+    iteration_path = os.path.join(path, f"iteration_{n:03d}")
+    while more_iterations:
+        if os.path.isdir(iteration_path):
+            data = get_raw_data_files(iteration_path, agent_id)
+            iterations_data.append(data)
+        else:
+            more_iterations = False
+        n += 1
+        iteration_path = os.path.join(path, f"iteration_{n:03d}")
+    return iterations_data
+
 
 
 def get_dond_iteration_stats(data, stat_funcs, format_options=None):

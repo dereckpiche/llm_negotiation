@@ -3,7 +3,7 @@ import os
 import random
 from collections import defaultdict
 from contextlib import contextmanager, nullcontext
-
+from copy import deepcopy
 import torch
 import torch.nn.functional as F
 from accelerate import Accelerator
@@ -826,12 +826,9 @@ class ReinforceTrainerWRS:
         # TODO: verify
         # TODO: include lambda = 0 and lambda = 1
         l = rewards.size
-        
         gaes = rewards + value_estimates[1:] - value_estimates[:-1]
-
         for t in range(l-2,0,-1):
-            gaes[t] += (discount_factor \
-                         * lambda_coef) * gaes[t+1]
+            gaes[t] += (discount_factor * lambda_coef) * gaes[t+1]
         return gaes
 
         
@@ -875,8 +872,10 @@ class ReinforceTrainerWRS:
                 target = torch.Tensor(discounted_returns[i]).to(self.config.device)
                 ctx = batch_contexts[i].to(self.config.device)
                 end_flags = batch_state_end_flags[i]
+                
                 # critic causal attention up to end flags
                 vals_estimate = self.critic(ctx.unsqueeze(0)).squeeze()[end_flags == True]
+
                 # append 0 since trajects. are finite
                 detached_vals_estimate = vals_estimate.detach().to(torch.float32).to("cpu").numpy()
                 if detached_vals_estimate.size == batch_rewards[i].size: 
@@ -890,7 +889,7 @@ class ReinforceTrainerWRS:
                     lambda_coef = self.config.gae_lambda_for_targets
                 ) + detached_vals_estimate[:-1]
 
-                critic_loss += F.mse_loss(
+                critic_loss += F.huber_loss(
                     input=vals_estimate[:target.size],
                     target=torch.Tensor(target).to(
                         device=vals_estimate.device,
@@ -997,10 +996,10 @@ class ReinforceTrainerWRS:
         # TODO, get game ids
 
         info = {
-            'agent_ids': self.agent_ids,
-            'game_ids': self.game_ids,
-            'step_rewards': self.step_rewards,
-            'step_credits': self.step_credits
+            'agent_ids': deepcopy(self.agent_ids),
+            'game_ids': deepcopy(self.game_ids),
+            'step_rewards': deepcopy(self.step_rewards),
+            'step_credits': deepcopy(self.step_credits)
         }
 
         return info
@@ -1040,9 +1039,18 @@ class ReinforceTrainerWRS:
             idx = np.where(idx)[0].item()
             op_step_credits.append(co_trainer_info.get("step_credits")[idx])
 
+
         if self.config.use_sum_credits:
             for i in range(len(self.step_credits)):
+                self.tally.add_metric(
+                    path=["credit_before_sum"],
+                    metric=step_credits[i]
+                )
                 self.step_credits[i] += op_step_credits[i]
+                self.tally.add_metric(
+                    path=["credit_after_sum"],
+                    metric=step_credits[i]
+                )
 
         if self.config.use_advantage_alignment:
             for i in range(B):
