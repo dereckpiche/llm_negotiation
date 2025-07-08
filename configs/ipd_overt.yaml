@@ -45,24 +45,32 @@ matches:
       kwargs:
         <<: *common_agent_kwargs
         agent_id: "Alice"
-        policy_id: "qwen/sp_adapter"
+        policy_id: "qwen/self_play_agent"
     Bob:
       kwargs:
         <<: *common_agent_kwargs
         agent_id: "Bob"
-        policy_id: "qwen/sp_adapter"
+        policy_id: "qwen/self_play_agent"
 
 
 models:
   qwen:
     init_args:
       restrict_tokens: ["C", "D"]
+    generation_args:
+      max_new_tokens: 1
+      do_sample: true
+      temperature: ${temperature}
+      top_k: 0
+      top_p: 1.0
+      repetition_penalty: 1.0
+      
 
 
-training:
-  qwen:
-    adapters:
-      sp_adapter:
-        trainer_config:
-          restrict_tokens: ["C", "D"]
+# training:
+#   qwen:
+#     adapters:
+#       sp_adapter:
+#         trainer_config:
+#           restrict_tokens: ["C", "D"]
 

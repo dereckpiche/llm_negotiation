@@ -211,6 +211,7 @@ class RtTally:
             # import pdb; pdb.set_trace()
             os.makedirs(os.path.split(m_path)[0], exist_ok=True)
             metrics = data[g_id]
+            if metrics ==  {}: metrics = {"None":None}
             d = {k: [] for k in metrics[0].keys()}
             for m in metrics:
                 for k, v in m.items():

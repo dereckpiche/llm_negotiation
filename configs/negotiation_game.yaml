@@ -93,8 +93,11 @@ common_agent_kwargs: &common_agent_kwargs
     (You must now send a message in the correct format.)
 
 matches:
+
   env_class: "DondEnv"
+  
   agent_class: "DondAgent"
+
 
   max_length: 10
   continuation_prob: 1.0
@@ -109,7 +112,6 @@ matches:
 
   run_batched_matches_args:
     nb_parallel_matches: -1
-
 
   env_kwargs:
     agents: ['Alice', 'Bob']
@@ -231,8 +233,8 @@ trainers:
       discount_factor: 0.9
       use_gae: True
       gae_lambda_for_credits: 0.92
-      gae_lambda_for_targets: 0.0
-      end_at_last_state_flag: True
+      gae_lambda_for_targets: 0.92
+      end_at_last_state_flag: True # if true, will not train on last round actions
 
       # Reward Shaping
       use_sum_credits: False
@@ -243,16 +245,15 @@ trainers:
       ad_align_clipping: null
       use_time_regularization_in_ad_align: False
       use_variance_regularization_in_ad_align: False
-      ad_align_beta: 1.0
+      ad_align_beta: 3.0
 
       log_ctz_next_token: True
       log_ctz_next_token_credit: True
       log_ctz_next_token_log_prob: True
       log_ctz_next_token_prob: True
-      log_ctz_top_slogpi: True
+      log_ctz_top_clogπ: True
       log_ctz_entropy: True
       log_ctz_kl: True
-
 
 
 training:

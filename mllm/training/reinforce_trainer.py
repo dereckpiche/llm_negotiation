@@ -19,8 +19,6 @@ from mllm.utils.print_logger import *
 from typing import Union
 
 
-
-
 class ReinforceTrainerWRS:
     """
     REINFORCE trainer with reward shaping.
@@ -50,7 +48,7 @@ class ReinforceTrainerWRS:
         critic_optimizer: Union[torch.optim.Optimizer, None],
         critic_lr_scheduler: Union[torch.optim.lr_scheduler.LRScheduler, None],
         config: RtConfig,
-        save_path: str
+        save_path: str,
     ):
         """
         Initialize the REINFORCE trainer with reward shaping for multi-agent or single-agent training.
@@ -66,7 +64,7 @@ class ReinforceTrainerWRS:
             config (RtConfig): Configuration object for training.
         """
         # TODO: add lr schedulers
-        
+
         model.train()
         self.tokenizer = tokenizer
         self.tokenizer.padding_side = "left"  # needed for flash attention
@@ -76,63 +74,55 @@ class ReinforceTrainerWRS:
         self.lr_scheduler = lr_scheduler
         self.config = config
         self.accelerator = Accelerator()
-        self.model, self.optimizer, self.critic, self.critic_optimizer = self.accelerator.prepare(
-            model, 
-            optimizer,
-            critic,
-            critic_optimizer
-        ) 
-        
+        self.model, self.optimizer, self.critic, self.critic_optimizer = (
+            self.accelerator.prepare(model, optimizer, critic, critic_optimizer)
+        )
+
         self.critic_lr_scheduler = critic_lr_scheduler
 
         self.tally = RtTally(tokenizer=tokenizer)
 
-        self.logger = PrintLogger(
-            logging.getLogger("reinforcer_trainer_logger"))
+        self.logger = PrintLogger(logging.getLogger("reinforcer_trainer_logger"))
 
         if self.config.use_gradient_checkpointing == True:
             self.logger.info("Enabling gradient checkpointing.")
             self.model.gradient_checkpointing_enable(dict(use_reentrant=False))
             self.critic.gradient_checkpointing_enable(dict(use_reentrant=False))
 
-
-
         self.save_path = save_path
 
         # Load states if already exist
-        self.policy_optimizer_path = os.path.join(self.save_path, "policy_optimizer_state.pt")
+        self.policy_optimizer_path = os.path.join(
+            self.save_path, "policy_optimizer_state.pt"
+        )
         if os.path.exists(self.policy_optimizer_path):
             self.logger.info(
                 f"Loading policy optimizer state from {self.policy_optimizer_path}"
             )
             self.optimizer.load_state_dict(torch.load(self.policy_optimizer_path))
 
-        self.critic_optimizer_path = os.path.join(self.save_path, "critic_optimizer_state.pt")
-        if os.path.exists(self.critic_optimizer_path) and self.critic_optimizer is not None:
+        self.critic_optimizer_path = os.path.join(
+            self.save_path, "critic_optimizer_state.pt"
+        )
+        if (
+            os.path.exists(self.critic_optimizer_path)
+            and self.critic_optimizer is not None
+        ):
             self.logger.info(
                 f"Loading critic optimizer state from {self.critic_optimizer_path}"
             )
-            self.critic_optimizer.load_state_dict(torch.load(self.critic_optimizer_path))
-
-        
+            self.critic_optimizer.load_state_dict(
+                torch.load(self.critic_optimizer_path)
+            )
 
         # TODO
         # log data type of model
         # log adapter type, rank, etc.
         # log optimizer learning rate
-        # log model data type 
+        # log model data type
         # log adapter data type
 
-
-   
-
-
- 
-
-    def mask_non_restricted_token_logits(
-        self, 
-        logits: torch.Tensor
-    ) -> torch.Tensor:
+    def mask_non_restricted_token_logits(self, logits: torch.Tensor) -> torch.Tensor:
         """
         Masks logits so that only allowed tokens (as specified in config.restrict_tokens)
         and the EOS token are active.
@@ -150,21 +140,19 @@ class ReinforceTrainerWRS:
         if self.config.restrict_tokens is not None:
             allowed_token_ids = []
             for token in self.config.restrict_tokens:
-                token_ids = self.tokenizer(
-                    token, 
-                    add_special_tokens=False)["input_ids"]
+                token_ids = self.tokenizer(token, add_special_tokens=False)["input_ids"]
                 allowed_token_ids.append(token_ids[0])
-            allowed_token_ids.append(self.tokenizer.eos_token_id) # This token should always be active   
-            allowed_token_ids = torch.tensor(
-                allowed_token_ids, 
-                device=logits.device)
+            allowed_token_ids.append(
+                self.tokenizer.eos_token_id
+            )  # This token should always be active
+            allowed_token_ids = torch.tensor(allowed_token_ids, device=logits.device)
             # Mask log_probs and probs to only allowed tokens
             mask = torch.zeros_like(logits).bool()  # (B, S, V)
             mask[..., allowed_token_ids] = True
             logits = torch.where(
                 mask,
                 logits,
-                torch.tensor(-float('inf'), device=logits.device),
+                torch.tensor(-float("inf"), device=logits.device),
             )
 
         return logits
@@ -196,9 +184,7 @@ class ReinforceTrainerWRS:
         except:
             print("Missing batch dimension.")
 
-
-        token_entropy_terms = -F.softmax(logits, dim=-1) \
-             * F.log_softmax(logits, dim=-1)
+        token_entropy_terms = -F.softmax(logits, dim=-1) * F.log_softmax(logits, dim=-1)
         # (B, S, T)
 
         # We only take the entropy of actions
@@ -206,7 +192,7 @@ class ReinforceTrainerWRS:
 
         if self.config.log_ctz_entropy:
             self.tally.add_contextualized_token_metrics(
-                game_ids=game_ids,
+                game_ids=paths,
                 metric_id="entropy",
                 contexts=shifted_contexts,
                 metrics=token_entropy_terms.sum(dim=-1),
@@ -225,10 +211,10 @@ class ReinforceTrainerWRS:
         shifted_contexts: torch.Tensor,
         attention_mask: torch.Tensor,
         action_log_probs: torch.Tensor,
-        action_mask: torch.Tensor
+        action_mask: torch.Tensor,
     ) -> torch.Tensor:
         """
-        Computes the approximate KL divergence between the current policy 
+        Computes the approximate KL divergence between the current policy
         and a reference (base) model for the action tokens.
         Optionally logs contextualized KL metrics if enabled in config.
 
@@ -250,8 +236,7 @@ class ReinforceTrainerWRS:
         with torch.no_grad():
             with self.model.disable_adapter():
                 ref_model_logits = self.model(
-                    input_ids=contexts, 
-                    attention_mask=attention_mask
+                    input_ids=contexts, attention_mask=attention_mask
                 )[0]
 
         ref_model_logits = ref_model_logits / self.config.temperature
@@ -291,8 +276,6 @@ class ReinforceTrainerWRS:
 
         return kl_div
 
-
-
     def get_gradient_magnitude(self, loss_term: torch.Tensor) -> float:
         """
         Computes the L2 norm of the gradients of the given loss term with respect to the model parameters.
@@ -307,22 +290,20 @@ class ReinforceTrainerWRS:
             grads = torch.autograd.grad(
                 loss_term,
                 [p for p in self.model.parameters() if p.requires_grad],
-                retain_graph=True, 
-                allow_unused=True               
+                retain_graph=True,
+                allow_unused=True,
             )
             grads = [g for g in grads if g is not None]
-            if not grads:                      
+            if not grads:
                 return torch.tensor(0.0, device=loss_term.device)
             return torch.norm(torch.stack([g.norm(2) for g in grads])).item()
-
-
 
     def apply_reinforce_step(
         self,
         paths: list[str],
         contexts: list[torch.Tensor],
         credits: list[torch.Tensor],
-        action_masks: list[torch.Tensor]
+        action_masks: list[torch.Tensor],
     ) -> None:
         """
         Applies a single REINFORCE policy gradient step using the provided batch of rollouts.
@@ -330,13 +311,15 @@ class ReinforceTrainerWRS:
         Optionally logs various metrics and statistics.
 
         Args:
-            paths (list[str]): List of game complete file paths for each rollout. 
+            paths (list[str]): List of game complete file paths for each rollout.
             contexts (list[torch.Tensor]): List of context tensors for each rollout.
             credits (list[torch.Tensor]): List of credit tensors (rewards/advantages) for each rollout.
             action_masks (list[torch.Tensor]): List of action mask tensors for each rollout.
         """
 
-        self.logger.info(f"\n Before Reinforce Step \n  {ram_usage()} \n {vram_usage()}")
+        self.logger.info(
+            f"\n Before Reinforce Step \n  {ram_usage()} \n {vram_usage()}"
+        )
 
         self.model.train()
         loss = 0.0
@@ -345,39 +328,31 @@ class ReinforceTrainerWRS:
         self.tokenizer.padding_side = "left"
 
         nb_rollouts = len(contexts)
-        self.tally.add_metric(
-            path=["nb_rollouts"],
-            metric=nb_rollouts)
+        self.tally.add_metric(path=["nb_rollouts"], metric=nb_rollouts)
 
         # Count total number of tokens trained on
         total_nb_action_tokens = 0
         for am in action_masks:
             nb_tokens = am.shape[0]
-            self.tally.add_metric(
-                path=["nb_tokens", "action_tokens"],
-                metric=nb_tokens)
+            self.tally.add_metric(path=["nb_tokens", "action_tokens"], metric=nb_tokens)
             total_nb_action_tokens += nb_tokens
-        
+
         self.tally.add_metric(
-            path=["nb_tokens", "batch_action_tokens"],
-            metric=total_nb_action_tokens)
-
-
+            path=["nb_tokens", "batch_action_tokens"], metric=total_nb_action_tokens
+        )
 
         for mb in range(0, len(contexts), mb_size):
-            paths_mb = paths[mb:mb+mb_size]
+            paths_mb = paths[mb : mb + mb_size]
 
             # Convert sequences to padded tensor minibatches
             tokens_mb = contexts[mb : mb + mb_size]
             tok_out = self.tokenizer.pad(
-                {"input_ids": tokens_mb}, 
-                padding="longest", 
-                return_tensors="pt"
+                {"input_ids": tokens_mb}, padding="longest", return_tensors="pt"
             )
             tokens_mb = tok_out.input_ids.to(device)
             attention_mask = tok_out.attention_mask.to(device)[:, :-1]
             contexts_mb = tokens_mb[:, :-1]
-            shifted_contexts_mb= tokens_mb[:, 1:]
+            shifted_contexts_mb = tokens_mb[:, 1:]
 
             credits_mb = [s[1:] for s in credits[mb : mb + mb_size]]
             credits_mb = (
@@ -390,7 +365,6 @@ class ReinforceTrainerWRS:
                 .float()
                 .to(device)
             )
-            
 
             action_mask_mb = [am[1:] for am in action_masks[mb : mb + mb_size]]
             action_mask_mb = (
@@ -414,9 +388,7 @@ class ReinforceTrainerWRS:
                 )
 
             # Forward pass + cast to FP-32 for higher prec.
-            logits = self.model(
-                input_ids=contexts_mb, 
-                attention_mask=attention_mask)[
+            logits = self.model(input_ids=contexts_mb, attention_mask=attention_mask)[
                 0
             ]  # (B, S, V)
 
@@ -444,7 +416,7 @@ class ReinforceTrainerWRS:
                     metrics=action_log_probs,
                     action_mask=action_mask_mb,
                 )
-            
+
             if self.config.log_ctz_next_token_prob:
                 self.tally.add_contextualized_token_metrics(
                     paths=paths_mb,
@@ -457,10 +429,13 @@ class ReinforceTrainerWRS:
             if self.config.log_ctz_top_k != 0:
                 # Log top K ids and probs
 
-                self.logger.info(f"\n Before Logging Top K \n  {ram_usage()} \n {vram_usage()}")
+                self.logger.info(
+                    f"\n Before Logging Top K \n  {ram_usage()} \n {vram_usage()}"
+                )
 
-                top_k_indices = torch.topk(logits, 
-                k=self.config.log_ctz_top_k, dim=-1).indices
+                top_k_indices = torch.topk(
+                    logits, k=self.config.log_ctz_top_k, dim=-1
+                ).indices
 
                 if self.config.log_ctz_top_k_tids:
                     self.tally.add_contextualized_token_metrics(
@@ -469,7 +444,7 @@ class ReinforceTrainerWRS:
                         contexts=shifted_contexts_mb,
                         metrics=top_k_indices,
                         action_mask=action_mask_mb,
-                        to_tids=True
+                        to_tids=True,
                     )
                 if self.config.log_ctz_top_k_probs:
                     self.tally.add_contextualized_token_metrics(
@@ -477,24 +452,21 @@ class ReinforceTrainerWRS:
                         metric_id=f"top_{self.config.log_ctz_top_k}_probs",
                         contexts=shifted_contexts_mb,
                         metrics=torch.exp(log_probs).gather(
-                            dim=-1, 
-                            index=top_k_indices),
+                            dim=-1, index=top_k_indices
+                        ),
                         action_mask=action_mask_mb,
                     )
 
-                self.logger.info(f"\n After Logging Top K \n  {ram_usage()} \n {vram_usage()}")
+                self.logger.info(
+                    f"\n After Logging Top K \n  {ram_usage()} \n {vram_usage()}"
+                )
 
-            
-
-            rewarded_action_log_probs = (
-                action_mask_mb 
-                * credits_mb 
-                * action_log_probs)
+            rewarded_action_log_probs = action_mask_mb * credits_mb * action_log_probs
             # (B, S)
-            if self.config.log_ctz_top_slogpi:
+            if self.config.log_ctz_top_clogπ:
                 self.tally.add_contextualized_token_metrics(
                     paths=paths_mb,
-                    metric_id="next_token_slogpi",
+                    metric_id="next_token_clogπ",
                     contexts=shifted_contexts_mb,
                     metrics=rewarded_action_log_probs,
                     action_mask=action_mask_mb,
@@ -504,22 +476,22 @@ class ReinforceTrainerWRS:
             nb_act_tokens = torch.sum(action_mask_mb)
             mb_value = -rewarded_action_log_probs.sum()
             self.tally.add_metric(
-                path=["loss_mb_total", "value_mb_total"],
-                metric=mb_value.item())
+                path=["loss_mb_total", "value_mb_total"], metric=mb_value.item()
+            )
 
             if self.config.log_value_gradient_terms:
                 self.tally.add_metric(
                     path=["gradient_term_magnitudes", "value"],
-                    metric=self.get_gradient_magnitude(
-                        loss_term=mb_value
-                    )
+                    metric=self.get_gradient_magnitude(loss_term=mb_value),
                 )
             loss += mb_value
 
             # Add entropy regularization term to loss
             if self.config.entropy_coeff != 0.0:
 
-                self.logger.info(f"\n Before Computing Entropy \n  {ram_usage()} \n {vram_usage()}")
+                self.logger.info(
+                    f"\n Before Computing Entropy \n  {ram_usage()} \n {vram_usage()}"
+                )
 
                 mb_entropy = self.get_expected_entropy(
                     paths=paths_mb,
@@ -528,27 +500,28 @@ class ReinforceTrainerWRS:
                     logits=logits,
                     action_mask=action_mask_mb,
                 )
-                mb_entropy *= self.config.entropy_coeff 
+                mb_entropy *= self.config.entropy_coeff
                 self.tally.add_metric(
-                    path=["loss_mb_total", "entropy_mb_total"],
-                    metric=mb_entropy.item()
+                    path=["loss_mb_total", "entropy_mb_total"], metric=mb_entropy.item()
                 )
-                
+
                 if self.config.log_entropy_gradient_terms:
                     self.tally.add_metric(
                         path=["gradient_term_magnitudes", "entropy"],
-                        metric=self.get_gradient_magnitude(
-                            loss_term=mb_entropy
-                        )
+                        metric=self.get_gradient_magnitude(loss_term=mb_entropy),
                     )
                 loss += mb_entropy
 
-                self.logger.info(f"\n After Computing Entropy \n  {ram_usage()} \n {vram_usage()}")
+                self.logger.info(
+                    f"\n After Computing Entropy \n  {ram_usage()} \n {vram_usage()}"
+                )
 
             # Add KL-divergence regularization term to loss
             if self.config.kl_coeff != 0.0:
 
-                self.logger.info(f"\n Before Computing KLD \n  {ram_usage()} \n {vram_usage()}")
+                self.logger.info(
+                    f"\n Before Computing KLD \n  {ram_usage()} \n {vram_usage()}"
+                )
 
                 # TODO: verify
                 mb_kl = self.get_kl_divergence(
@@ -557,26 +530,23 @@ class ReinforceTrainerWRS:
                     shifted_contexts=shifted_contexts_mb,
                     attention_mask=attention_mask,
                     action_log_probs=action_log_probs,
-                    action_mask=action_mask_mb
+                    action_mask=action_mask_mb,
                 )
                 mb_kl *= self.config.kl_coeff
 
-                self.tally.add_metric(
-                    path=["mb_kl_loss_terms"], 
-                    metric=mb_kl.item())
+                self.tally.add_metric(path=["mb_kl_loss_terms"], metric=mb_kl.item())
 
                 if self.config.log_kl_gradient_terms:
                     self.tally.add_metric(
                         path=["gradient_term_magnitudes", "kl"],
-                        metric=self.get_gradient_magnitude(
-                            loss_term=mb_kl
-                        )
+                        metric=self.get_gradient_magnitude(loss_term=mb_kl),
                     )
 
                 loss += mb_kl
 
-                self.logger.info(f"\n After Computing KLD \n  {ram_usage()} \n {vram_usage()}")
-
+                self.logger.info(
+                    f"\n After Computing KLD \n  {ram_usage()} \n {vram_usage()}"
+                )
 
             # Normalize over number tokens generated
             # loss /= total_nb_action_tokens
@@ -603,13 +573,10 @@ class ReinforceTrainerWRS:
         # Clip gradients and take step
         if self.config.gradient_clipping is not None:
             grad_norm = self.accelerator.clip_grad_norm_(
-                self.model.parameters(), 
-                self.config.gradient_clipping
+                self.model.parameters(), self.config.gradient_clipping
             )
             # TODO: log at right place
-            self.tally.add_metric(
-                path=["gradient_norm"], 
-                metric=grad_norm.item())
+            self.tally.add_metric(path=["gradient_norm"], metric=grad_norm.item())
 
         # TODO: log grad norm even if no grad clip
 
@@ -627,6 +594,37 @@ class ReinforceTrainerWRS:
 
         self.logger.info(f"\n After Reinforce Step \n  {ram_usage()} \n {vram_usage()}")
 
+    @staticmethod
+    def get_advantage_alignment_weights(
+        advantages: np.ndarray,
+        beta: float,
+        gamma: float,
+    ) -> np.ndarray:
+        """
+        The advantage alignment credit is calculated as
+
+        \[
+            A^*(s_t, a_t, b_t) = A^1(s_t, a_t, b_t) + \beta \cdot
+            \left( \sum_{k < t} \gamma^{t-k} A^1(s_k, a_k, b_k) \right)
+            A^2(s_t, a_t, b_t)
+        \]
+
+        Here, the weights are defined as \( \beta \cdot
+            \left( \sum_{k < t} \gamma^{t-k} A^1(s_k, a_k, b_k) \)
+        """
+        # TODO: verify
+        # Regular alignment terms
+        T = advantages.shape[1]
+        discounted_advantages = advantages * (gamma * np.ones(shape=(1, T))) ** (
+            -np.arange(0, T, 1)
+        )
+        # Identity is for \( k < t \), remove for \( k \leq t \)
+        discounted_sums_advantages = discounted_advantages @ (
+            np.triu(np.ones((T, T))) - np.identity(T)
+        )
+        t_discounts = (gamma * np.ones(shape=(1, T))) ** (np.arange(0, T, 1))
+        adalign_weights = beta * t_discounts * discounted_sums_advantages
+        return adalign_weights
 
     def advantages_to_aa_credits(
         self,
@@ -639,10 +637,11 @@ class ReinforceTrainerWRS:
         Optionally logs intermediate and final metrics.
 
         The advantage alignment credit is calculated as:
-        .. math::
+        \[
             A^*(s_t, a_t, b_t) = A^1(s_t, a_t, b_t) + \\beta \\gamma \\cdot
             \\left( \\sum_{k < t} \\gamma^{t-k} A^1(s_k, a_k, b_k) \\right)
             A^2(s_t, a_t, b_t)
+        \]
 
         Args:
             a1 (np.ndarray): The first advantage array.
@@ -656,45 +655,20 @@ class ReinforceTrainerWRS:
         if len(a2.shape) == 1:
             a2 = a2[None, :]
         assert a1.shape == a2.shape, "Not the same shape"
+        T = a1.shape[1]
         a1 = np.array(a1)
         a2 = np.array(a2)
         gamma = self.config.discount_factor
         beta = self.config.ad_align_beta
 
-        # Normalize advantages
-        if self.config.ad_align_normalize_advantages:
-            self.tally.add_metric(
-                path=["a1_before_normalizing"],
-                metric=a1
-            )
-            a1 = (a1 - np.mean(a1)) / (np.std(a1) + 1e-6)
-            self.tally.add_metric(
-                path=["a1_after_normalizing"],
-                metric=a1
-            )
-            self.tally.add_metric(
-                path=["a2_before_normalizing"],
-                metric=a2
-            )
-            a2 = (a2 - np.mean(a2)) / (np.std(a2) + 1e-6)
-            self.tally.add_metric(
-                path=["a2_after_normalizing"],
-                metric=a2
-            )
-
-        # Regular alignment terms
-        T = a1.shape[1]
-        discounted_a1 = a1 * (gamma * np.ones(shape=(1, T))) ** (-np.arange(0, T, 1))
-        discounted_sums_a1 = discounted_a1 @ (np.triu(np.ones((T, T))) - np.identity(T))
-        t_discounts = (gamma * np.ones(shape=(1, T))) ** (np.arange(0, T, 1))
-        adalign_weights = beta * gamma * t_discounts * discounted_sums_a1 
-
-        self.tally.add_metric(
-            path=["raw_advantage_alignment_weights"],
-            metric=adalign_weights
+        adalign_weights = self.get_advantage_alignment_weights(
+            advantages=a1, beta=beta, gamma=gamma
         )
 
-       
+        self.tally.add_metric(
+            path=["raw_advantage_alignment_weights"], metric=adalign_weights
+        )
+
         # Use sign
         if self.config.use_sign_in_ad_align:
             assert beta == 1.0, "beta should be 1.0 when using sign"
@@ -703,66 +677,60 @@ class ReinforceTrainerWRS:
             adalign_weights[positive_signs] = 1
             adalign_weights[negative_signs] = -1
             self.tally.add_metric(
-                path=["adalign_weights_ratio_positive_signs"], 
-                metric=positive_signs.sum() / adalign_weights.size
+                path=["adalign_weights_ratio_positive_signs"],
+                metric=positive_signs.sum() / adalign_weights.size,
             )
             self.tally.add_metric(
-                path=["adalign_weights_ratio_negative_signs"], 
-                metric=negative_signs.sum() / adalign_weights.size
+                path=["adalign_weights_ratio_negative_signs"],
+                metric=negative_signs.sum() / adalign_weights.size,
             )
             # (rest are 0)
 
             self.tally.add_metric(
-                path=["ad_align_weights_after_using_sign"], 
-                metric=adalign_weights
+                path=["ad_align_weights_after_using_sign"], metric=adalign_weights
             )
 
-        # Use clipping 
+        # Use clipping
         if self.config.ad_align_clipping not in [0.0, None]:
-            
+
             upper_mask = adalign_weights > 1
             lower_mask = adalign_weights < -1
 
             adalign_weights = np.clip(
-                adalign_weights, 
-                -self.config.ad_align_clipping, 
-                self.config.ad_align_clipping
+                adalign_weights,
+                -self.config.ad_align_clipping,
+                self.config.ad_align_clipping,
             )
             clipping_ratio = (np.sum(upper_mask) + np.sum(lower_mask)) / upper_mask.size
 
             self.tally.add_metric(
-                path=["ad_align_clipping_ratio"], 
-                metric=clipping_ratio
+                path=["ad_align_clipping_ratio"], metric=clipping_ratio
             )
 
             self.tally.add_metric(
-                path=["ad_align_weights_after_clipping"], 
-                metric=adalign_weights
+                path=["ad_align_weights_after_clipping"], metric=adalign_weights
             )
 
-        
         # 1/1+t Regularization
         if self.config.use_time_regularization_in_ad_align:
             t_values = np.arange(1, T + 1)
             adalign_weights = adalign_weights / t_values
             self.tally.add_metric(
-                path=["adalign_weights_after_1_over_t_reg"], 
-                metric=adalign_weights
+                path=["adalign_weights_after_1_over_t_reg"], metric=adalign_weights
             )
 
         # Use coop on t=0
         if self.config.ad_align_force_coop_first_step:
             adalign_weights[:, 0] = 1
             self.tally.add_metric(
-                path=["adalign_weights_after_force_coop_first_step"], 
-                metric=adalign_weights
+                path=["adalign_weights_after_force_coop_first_step"],
+                metric=adalign_weights,
             )
 
         opp_shaping_terms = adalign_weights * a2
 
         self.tally.add_metric(
-            path=["ad_align_opp_shaping_terms"], 
-            metric=opp_shaping_terms
+            path=["ad_align_opp_shaping_terms"], metric=opp_shaping_terms
         )
 
         # Normalize alignment terms (across same time step)
@@ -771,23 +739,23 @@ class ReinforceTrainerWRS:
             reg_coef = np.std(a1[:, -1]) / (np.std(opp_shaping_terms[:, -1]) + 1e-9)
             opp_shaping_terms *= reg_coef
             self.tally.add_metric(
-                path=["opp_shaping_terms_after_var_reg"], 
-                metric=opp_shaping_terms
+                path=["opp_shaping_terms_after_var_reg"], metric=opp_shaping_terms
             )
 
         ad_align_credits = a1 + opp_shaping_terms
 
         self.tally.add_metric(
-            path=["final_advantage_alignment_credits"], 
-            metric=ad_align_credits
+            path=["final_advantage_alignment_credits"], metric=ad_align_credits
         )
 
         self.logger.info(f"\n \n After AdAlign \n  {ram_usage()} \n {vram_usage()}")
 
-
         return ad_align_credits.squeeze()
 
-    def get_discounted_returns(self, rewards: np.ndarray) -> np.ndarray:
+    @staticmethod
+    def get_discounted_returns(
+        rewards: np.ndarray, discount_factor: float
+    ) -> np.ndarray:
         """
         Computes Monte Carlo discounted returns for a sequence of rewards.
 
@@ -797,41 +765,40 @@ class ReinforceTrainerWRS:
         Returns:
             np.ndarray: Array of discounted returns.
         """
-        # TODO: verify
-        dr = np.zeros(rewards.shape)
-        T = rewards.shape[0]    
-        dr[-1] = rewards[-1]
-        for i in range(T - 2, -1, -1):
-            dr[i] = rewards[i] + self.config.discount_factor * dr[i + 1]
-        return dr
+        T = rewards.shape[0]
+        discounted_returns = np.zeros_like(rewards)
+        accumulator = 0.0
+        for t in reversed(range(T)):
+            accumulator = rewards[t] + discount_factor * accumulator
+            discounted_returns[t] = accumulator
+        return discounted_returns
 
+    @staticmethod
     def get_gen_adv_estimates(
-        self,
         rewards: np.ndarray,
         value_estimates: np.ndarray,
         discount_factor: float,
-        lambda_coef: float
-        ) -> np.ndarray:
+        lambda_coef: float,
+    ) -> np.ndarray:
         """
         Computes Generalized Advantage Estimates (GAE) for a sequence of rewards and value estimates.
         See https://arxiv.org/pdf/1506.02438 for details.
 
         Args:
-            rewards (np.ndarray): Array of rewards (length l).
-            value_estimates (np.ndarray): Array of value estimates (length l+1).
+            rewards (np.ndarray): Array of rewards (length T).
+            value_estimates (np.ndarray): Array of value estimates (length T+1).
 
         Returns:
             np.ndarray: Array of GAE values.
         """
-        # TODO: verify
-        # TODO: include lambda = 0 and lambda = 1
-        l = rewards.size
-        gaes = rewards + value_estimates[1:] - value_estimates[:-1]
-        for t in range(l-2,0,-1):
-            gaes[t] += (discount_factor * lambda_coef) * gaes[t+1]
+        T = rewards.size
+        tds = rewards + lambda_coef * value_estimates[1:] - value_estimates[:-1]
+        gaes = np.zeros_like(tds)
+        acc = 0.0
+        for t in reversed(range(T)):
+            acc = tds[t] + lambda_coef * discount_factor * acc
+            gaes[t] = acc
         return gaes
-
-        
 
     def rewards_to_step_credits(
         self,
@@ -859,68 +826,78 @@ class ReinforceTrainerWRS:
         discounted_returns = []
         for i in range(B):
             rewards = batch_rewards[i]
-            discounted_returns.append(self.get_discounted_returns(rewards))
+            discounted_returns.append(
+                self.get_discounted_returns(
+                    rewards=rewards, discount_factor=self.config.discount_factor
+                )
+            )
             self.tally.add_metric(path=["discounted_returns"], metric=rewards)
 
         batch_credits = []
-        # Use GAE 
-        if self.config.use_gae: 
+        # Use GAE
+
+        if self.config.use_gae:
             # use & train critic
             critic_loss = 0.0
-            batch_val_estimates = []
             for i in range(B):
                 target = torch.Tensor(discounted_returns[i]).to(self.config.device)
                 ctx = batch_contexts[i].to(self.config.device)
                 end_flags = batch_state_end_flags[i]
-                
-                # critic causal attention up to end flags
-                vals_estimate = self.critic(ctx.unsqueeze(0)).squeeze()[end_flags == True]
 
-                # append 0 since trajects. are finite
-                detached_vals_estimate = vals_estimate.detach().to(torch.float32).to("cpu").numpy()
-                if detached_vals_estimate.size == batch_rewards[i].size: 
+                # critic causal attention up to end flags
+                vals_estimate = self.critic(ctx.unsqueeze(0)).squeeze()[
+                    end_flags == True
+                ]
+                detached_vals_estimate = (
+                    vals_estimate.detach().to(torch.float32).to("cpu").numpy()
+                )
+                # If no infinite trajectory bootstrap, append V(Terminal State) = 0
+                if detached_vals_estimate.size == batch_rewards[i].size:
                     detached_vals_estimate = np.append(detached_vals_estimate, 0)
 
-                # Get GAE target 
-                target = self.get_gen_adv_estimates(
-                    rewards = batch_rewards[i],
-                    value_estimates = detached_vals_estimate,
-                    discount_factor = self.config.discount_factor,
-                    lambda_coef = self.config.gae_lambda_for_targets
-                ) + detached_vals_estimate[:-1]
+                self.tally.add_metric(
+                    path=["value_estimates"], metric=detached_vals_estimate
+                )
+
+                # Get GAE target
+                target = (
+                    self.get_gen_adv_estimates(
+                        rewards=batch_rewards[i],
+                        value_estimates=detached_vals_estimate,
+                        discount_factor=self.config.discount_factor,
+                        lambda_coef=self.config.gae_lambda_for_targets,
+                    )
+                    + detached_vals_estimate[:-1]
+                )
 
                 critic_loss += F.huber_loss(
-                    input=vals_estimate[:target.size],
+                    input=vals_estimate[: target.size],
                     target=torch.Tensor(target).to(
-                        device=vals_estimate.device,
-                        dtype=vals_estimate.dtype)
+                        device=vals_estimate.device, dtype=vals_estimate.dtype
+                    ),
                 )
                 self.accelerator.backward(critic_loss)
 
-                self.tally.add_metric(
-                    path=["critic loss"], 
-                    metric=critic_loss.item()
-                )
+                self.tally.add_metric(path=["critic_loss"], metric=critic_loss.item())
                 critic_loss = 0.0
 
                 # Get GAE Credit
                 credits = self.get_gen_adv_estimates(
-                    rewards = batch_rewards[i],
-                    value_estimates = detached_vals_estimate,
-                    discount_factor = self.config.discount_factor,
-                    lambda_coef = self.config.gae_lambda_for_credits
+                    rewards=batch_rewards[i],
+                    value_estimates=detached_vals_estimate,
+                    discount_factor=self.config.discount_factor,
+                    lambda_coef=self.config.gae_lambda_for_credits,
                 )
                 batch_credits.append(credits)
-            
+
             self.critic_optimizer.step()
             self.critic_optimizer.zero_grad()
 
         # Simply use Monte Carlo
         else:
             batch_credits = discounted_returns
-        
-        return batch_credits
 
+        return batch_credits
 
     def set_training_data(self, paths: list[str]) -> None:
         """
@@ -939,7 +916,6 @@ class ReinforceTrainerWRS:
         all_action_timestamps = []
         all_state_end_flags = []
 
-
         for filepath in paths:
 
             with open(filepath) as f:
@@ -952,16 +928,12 @@ class ReinforceTrainerWRS:
             all_agent_ids.append(agent_id)
             all_game_ids.append(game_id)
 
-            (
-                token_ids,
-                rewards,
-                action_mask, 
-                credit_mask,
-                state_end_flags
-            ) = process_training_chat(
-                tokenizer=self.tokenizer,
-                chat_history = chat,
-                end_at_last_state_flag=self.config.end_at_last_state_flag
+            (token_ids, rewards, action_mask, credit_mask, state_end_flags) = (
+                process_training_chat(
+                    tokenizer=self.tokenizer,
+                    chat_history=chat,
+                    end_at_last_state_flag=self.config.end_at_last_state_flag,
+                )
             )
 
             all_contexts.append(token_ids)
@@ -972,7 +944,7 @@ class ReinforceTrainerWRS:
 
         self.paths = paths
         self.agent_ids = all_agent_ids
-        self.game_ids = all_game_ids 
+        self.game_ids = all_game_ids
         self.step_rewards = all_rewards
         self.contexts = all_contexts
         self.action_masks = all_action_masks
@@ -980,12 +952,11 @@ class ReinforceTrainerWRS:
         self.state_end_flags = all_state_end_flags
 
         self.step_credits = self.rewards_to_step_credits(
-            batch_rewards = self.step_rewards,
-            batch_contexts = self.contexts,
-            batch_state_end_flags = self.state_end_flags,
+            batch_rewards=self.step_rewards,
+            batch_contexts=self.contexts,
+            batch_state_end_flags=self.state_end_flags,
         )
 
-        
     def send_trainer_info(self) -> dict:
         """
         Prepares and returns reward shaping information (game IDs, step rewards, step credits) to be shared with opponent trainers.
@@ -993,70 +964,70 @@ class ReinforceTrainerWRS:
         Returns:
             dict: Dictionary containing game IDs, step rewards, and step credits.
         """
-        # TODO, get game ids
 
         info = {
-            'agent_ids': deepcopy(self.agent_ids),
-            'game_ids': deepcopy(self.game_ids),
-            'step_rewards': deepcopy(self.step_rewards),
-            'step_credits': deepcopy(self.step_credits)
+            "agent_ids": deepcopy(self.agent_ids),
+            "game_ids": deepcopy(self.game_ids),
+            "step_rewards": deepcopy(self.step_rewards),
+            "step_credits": deepcopy(self.step_credits),
         }
 
         return info
-
 
     def use_co_trainer_info(self, co_trainer_info: dict) -> None:
         """
         Incorporates reward shaping information received from opponent trainers.
         Aligns opponent data with local data, and applies sum or advantage alignment as specified in config.
-        This is a bit convoluted, but it works with self play. 
+        This is a bit convoluted, but it works with self play.
 
         Args:
             co_trainer_info (dict): Dictionary containing opponent trainer info.
         """
 
+        # Map each id's to integers
+        intmap = {
+            s: i
+            for i, s in enumerate(
+                set(
+                    self.agent_ids
+                    + self.game_ids
+                    + co_trainer_info.get("game_ids")
+                    + co_trainer_info.get("agent_ids")
+                )
+            )
+        }
 
-        # Map each id's to integers 
-        intmap = {s: i for i, s in enumerate(set(
-            self.agent_ids 
-            + self.game_ids 
-            + co_trainer_info.get("game_ids")
-            + co_trainer_info.get("agent_ids")
-        ))}
-
-        def intmapf(ar): return np.array([intmap[a] for a in ar])
+        def intmapf(ar):
+            return np.array([intmap[a] for a in ar])
 
         agent_ids = intmapf(self.agent_ids)
         game_ids = intmapf(self.game_ids)
         co_trainer_agent_ids = intmapf(co_trainer_info.get("agent_ids"))
         co_trainer_game_ids = intmapf(co_trainer_info.get("game_ids"))
         B = len(self.step_credits)
-        
-        op_step_credits = [] # Get credits of other agent in right order
+
+        op_step_credits = []  # Get credits of other agent in right order
         for i in range(B):
-            idx = (co_trainer_game_ids == game_ids[i]) \
-                & (co_trainer_agent_ids != agent_ids[i])
+            idx = (co_trainer_game_ids == game_ids[i]) & (
+                co_trainer_agent_ids != agent_ids[i]
+            )
             idx = np.where(idx)[0].item()
             op_step_credits.append(co_trainer_info.get("step_credits")[idx])
-
 
         if self.config.use_sum_credits:
             for i in range(len(self.step_credits)):
                 self.tally.add_metric(
-                    path=["credit_before_sum"],
-                    metric=step_credits[i]
+                    path=["credits_before_sum_credits"], metric=self.step_credits[i]
                 )
                 self.step_credits[i] += op_step_credits[i]
                 self.tally.add_metric(
-                    path=["credit_after_sum"],
-                    metric=step_credits[i]
+                    path=["credits_after_sum_credits"], metric=self.step_credits[i]
                 )
 
         if self.config.use_advantage_alignment:
             for i in range(B):
                 self.step_credits[i] = self.advantages_to_aa_credits(
-                    a1 = self.step_credits[i][None, :],
-                    a2 = op_step_credits[i][None, :]
+                    a1=self.step_credits[i][None, :], a2=op_step_credits[i][None, :]
                 )
 
     def set_token_credits(self) -> None:
@@ -1067,16 +1038,14 @@ class ReinforceTrainerWRS:
         B = len(self.step_credits)
         all_token_credits = []
         for i in range(B):
-            token_credits = np.zeros(
-                self.action_timestamps[i].shape
-            )
-            assert np.max(self.action_timestamps[i]) == self.step_credits[i].size-1, \
-                "Number of steps does not match number of actions."
+            token_credits = np.zeros(self.action_timestamps[i].shape)
+            assert (
+                np.max(self.action_timestamps[i]) == self.step_credits[i].size - 1
+            ), "Number of steps does not match number of actions."
             for j, c in enumerate(self.step_credits[i]):
                 token_credits[self.action_timestamps[i] == j] = c
             all_token_credits.append(torch.Tensor(token_credits))
         self.token_credits = all_token_credits
-
 
     def train(self) -> None:
         """
@@ -1087,18 +1056,16 @@ class ReinforceTrainerWRS:
 
         self.apply_reinforce_step(
             paths=self.paths,
-            contexts=self.contexts, 
-            credits=self.token_credits, 
-            action_masks=self.action_masks
+            contexts=self.contexts,
+            credits=self.token_credits,
+            action_masks=self.action_masks,
         )
-
-
 
     def export_training_metrics(self) -> None:
         """
         Saves and resets the collected training metrics using the tally object.
         """
-        
+
         self.tally.save(path=self.config.logging_path)
         self.tally.reset()
 
@@ -1110,13 +1077,17 @@ class ReinforceTrainerWRS:
             os.makedirs(self.save_path, exist_ok=True)
 
             torch.save(self.optimizer.state_dict(), self.policy_optimizer_path)
-            self.logger.info(f"Saved main optimizer state to {self.policy_optimizer_path}")
+            self.logger.info(
+                f"Saved main optimizer state to {self.policy_optimizer_path}"
+            )
 
             if self.critic_optimizer is not None:
-                torch.save(self.critic_optimizer.state_dict(), self.critic_optimizer_path)
-                self.logger.info(f"Saved critic optimizer state to {self.critic_optimizer_path}")
+                torch.save(
+                    self.critic_optimizer.state_dict(), self.critic_optimizer_path
+                )
+                self.logger.info(
+                    f"Saved critic optimizer state to {self.critic_optimizer_path}"
+                )
         except Exception as e:
             self.logger.error(f"Error saving optimizer states: {str(e)}")
             raise
-
-   

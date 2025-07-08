@@ -48,7 +48,7 @@ class RtConfig:
         log_ctz_next_token_prob: bool = False,
         log_ctz_top_k_tids: bool = False,
         log_ctz_top_k_probs: bool = False,
-        log_ctz_top_slogpi: bool = False,
+        log_ctz_top_clogπ: bool = False,
         log_ctz_entropy: bool = False,
         log_ctz_kl: bool = False,
 
@@ -129,7 +129,7 @@ class RtConfig:
         self.log_ctz_next_token_prob=log_ctz_next_token_prob
         self.log_ctz_top_k_tids=log_ctz_top_k_tids
         self.log_ctz_top_k_probs=log_ctz_top_k_probs
-        self.log_ctz_top_slogpi=log_ctz_top_slogpi
+        self.log_ctz_top_clogπ=log_ctz_top_clogπ
         self.log_ctz_entropy=log_ctz_entropy
         self.log_ctz_kl=log_ctz_kl
 

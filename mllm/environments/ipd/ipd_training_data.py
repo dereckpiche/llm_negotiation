@@ -4,7 +4,11 @@ for the Negotiation game. (Also called Deal or No Deal).
 """
 
 from mllm.utils.common_imports import *
+import pandas as pd
 
+def get_system_msg(match):
+    system_msg = next((d for d in match if d.get("role") == "system"), None)
+    return system_msg
 
 def ipd_generate_training_data_from_raw(
     raw_data_folder:str,
@@ -33,7 +37,6 @@ def ipd_generate_training_data_from_raw(
     round_points_agent, round_points_coagent = ipd_get_round_points_arrays(
         raw_data_folder
     )
-
 
     os.makedirs(training_data_folder, exist_ok=True)
     debug_output_folder = os.path.join(
@@ -79,29 +82,47 @@ def ipd_generate_training_data_from_raw(
 
     for i, match_file in enumerate(match_files):
         chat_history = json.load(open(os.path.join(raw_data_folder, match_file), "r"))
+        agent_id = get_system_msg(chat_history)["agent_id"]
+        game_id = get_system_msg(chat_history)["game_info"]["match_id"]
 
         if exclude_errors:
             chat_history = [
                 msg for msg in chat_history if not msg.get("is_error", False)
             ]
+            
         # Attribute scores to actions
+        round_number = float('-inf')
         for message in chat_history:
             if message.get("role") == "assistant":
-                round_nb = message.get("round_nb")
-                message["reward"] = float(round_points_agent[i, round_nb])
-                message["co_reward"] = float(round_points_coagent[i, round_nb])
+                round_number = message.get("round_nb")
+                # Attribute the score corresponding to correct minibatch / group, match and round number.
+                message["reward"] = round_points_agent[i, round_number]
+                message["time_step"] = round_number
+                
+            elif message.get("role") == "user":
+                # new round
+                if message.get("round_nb") > round_number:
+                    message["is_state_end"] = True
+                else:
+                    message["is_state_end"] = False
 
         # Only keep conversation messages, not system info
         chat_history = [
             message for message in chat_history if message.get("role") != "system"
         ]
 
+        jfile = {
+            "agent_id": agent_id,
+            "game_id": game_id,
+            "chat": chat_history
+        }
+
         # Save file to disk
         training_file = os.path.join(
             training_data_folder, match_file.replace("match_", "training_data_")
         )
         with open(training_file, "w") as f:
-            json.dump(chat_history, f, indent=4)
+            json.dump(jfile, f, indent=4)
 
     return
 
@@ -112,8 +133,7 @@ def ipd_get_round_points_arrays(raw_data_folder):
     Each row corresponds to a match.
     """
     match_files = [
-        f
-        for f in os.listdir(raw_data_folder)
+        f for f in os.listdir(raw_data_folder)
         if f.startswith("match_") and f.endswith(".json")
     ]
     match_files.sort(key=lambda x: int(x.split("_")[-1].split(".")[0]))

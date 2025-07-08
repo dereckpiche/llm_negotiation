@@ -5,14 +5,14 @@ defaults:
 
 experiment:
   name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
-  nb_matches_per_iteration: 4
+  nb_matches_per_iteration: 32
 
 matches:
-  max_length: 3
+  max_length: 10
   continuation_prob: 1.0
   same_length_batch: True
 
 models:
   qwen:
     init_args:
-      model_name: "Qwen/Qwen2.5-0.5B-Instruct"
+      model_name: "Qwen/Qwen2.5-7B-Instruct"

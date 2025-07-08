@@ -59,40 +59,39 @@ def create_markov_games(
     )
     group_size = cfg["matches"]["nb_matches_with_same_roundwise_utilities"]
     for i in range(nb_games):
-        if group_size is not None and (i % group_size == 0):
-            env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
-            # Create Markov Game
-            agents = {}
-            agent_class_name = cfg["matches"]["agent_class"]
-            AgentClass = globals()[agent_class_name]
-            for agent_name in cfg["matches"]["agents"].keys():
-                agents[agent_name] = AgentClass(
-                    **cfg["matches"]["agents"][agent_name]["kwargs"]
-                )
-            env_class_name = cfg["matches"]["env_class"]
-            EnvClass = globals()[env_class_name]
-            env_kwargs = dict(cfg["matches"]["env_kwargs"])
-            rng = copy.deepcopy(env_rng)
-            game_id = i
-            game_length = game_lengths[i]
-            group_id = i // group_size if group_size else -1
-            env = EnvClass(
-                rng=rng,
-                game_id=game_id,
-                group_id=group_id,
-                rounds_per_game=game_length,
-                **env_kwargs,
+        env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
+        # Create Markov Game
+        agents = {}
+        agent_class_name = cfg["matches"]["agent_class"]
+        AgentClass = globals()[agent_class_name]
+        for agent_name in cfg["matches"]["agents"].keys():
+            agents[agent_name] = AgentClass(
+                **cfg["matches"]["agents"][agent_name]["kwargs"]
             )
-            markov_game = {
-                "env": env,
-                "agents": agents,
-                "log_func": globals()[cfg["matches"]["log_func"]],
-            }
-            markov_games.append(markov_game)
+        env_class_name = cfg["matches"]["env_class"]
+        EnvClass = globals()[env_class_name]
+        env_kwargs = dict(cfg["matches"]["env_kwargs"])
+        rng = copy.deepcopy(env_rng)
+        game_id = i
+        game_length = game_lengths[i]
+        group_id = i // group_size if group_size else -1
+        env = EnvClass(
+            rng=rng,
+            game_id=game_id,
+            group_id=group_id,
+            rounds_per_game=game_length,
+            **env_kwargs,
+        )
+        markov_game = {
+            "env": env,
+            "agents": agents,
+            "log_func": globals()[cfg["matches"]["log_func"]],
+        }
+        markov_games.append(markov_game)
     return markov_games, env_rng
     
 
-def generate_and_train(cfg: dict, base_seed: int) -> None:
+def generate_and_train(cfg: dict, base_seed: int) -> None:  
     """
     Main function to generate training data and train models.
     
@@ -245,7 +244,6 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
         # -----------------------------------------------------------------
         # Train
         # -----------------------------------------------------------------
-
         training_start_time = time.time()
 
         # Get training paths for each trainer
@@ -320,7 +318,6 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
                     shared_llm.checkpoint_all_adapters(
                         checkpoint_indicator=f"iter_{iteration}"
                     )
-
 
         iteration_end_time = time.time()
 

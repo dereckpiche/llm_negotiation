@@ -79,6 +79,7 @@ def print_metric_paths(data: list[dict]):
 
 
 def get_metric_iteration_list(data: list[dict], metric_path: list[str]):
+    if isinstance(metric_path, str): metric_path = [metric_path]
     sgl = []
     for d in data:
         sgl.append(get_from_nested_dict(d, metric_path))

@@ -21,6 +21,7 @@ def log_ipd_match(
         A dictionary containing the match information.
     """
 
+
     match_id = info.match_id
     group_id = info.group_id
 
