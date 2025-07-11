@@ -10,22 +10,7 @@ authors = [
 license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.9"
-dependencies = [
-  "hydra-core",
-  "torch",
-  "datasets",
-  "transformers",
-  "trl",
-  "peft",
-  "vllm",
-  "matplotlib",
-  "tensorboard",
-  "diplomacy",
-  "optimum",
-  "auto-gptq",
-  "backoff",
-  "flash-attn"
-]
+
 
 [project.urls]
 Homepage = "https://github.com/dereckpiche/llm_negotiation"

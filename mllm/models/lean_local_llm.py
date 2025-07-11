@@ -12,9 +12,9 @@ from mllm.models.adapter_wrapper import AdapterWrapper
 from torch.optim import SGD, Adam, AdamW, RMSprop
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from trl import AutoModelForCausalLMWithValueHead
-import vllm
-from vllm import LLM, SamplingParams
-from vllm.lora.request import LoRARequest
+import subprocess, json, os, sys, time, requests
+from sglang.utils import launch_server_cmd
+from sglang.utils import wait_for_server, print_highlight, terminate_process
 
 from mllm.utils.common_imports import *
 
@@ -25,7 +25,7 @@ model_logger = logging.getLogger("model_logger")
 
 class LeanLocalLLM:
     """
-    
+
     """
 
     def __init__(
@@ -43,18 +43,18 @@ class LeanLocalLLM:
             "top_p": 1.0,
             "repetition_penalty": 1.0,
         },
-        vllm_params: dict = {},
-        adapter_configs: list[dict] =[{}],
+        sglang_params: dict = {},
+        adapter_configs: dict = {},
         restrict_tokens=None,
         output_directory=None,
-        abort_vllm=False
+        abort_sglang=False
     ) -> None:
         """
         Initializes the LocalLLM.
         """
         super().__init__()
         self.output_directory = output_directory
-        self.vllm_params = vllm_params
+        self.sglang_params = sglang_params
         self.name = name
         self.device = torch.device(device) if device else torch.device("cuda")
         self.model_name = model_name
@@ -64,15 +64,16 @@ class LeanLocalLLM:
         self.adapter_configs = adapter_configs
         self.adapter_ids = list(adapter_configs.keys())
 
-        # TODO: load from external if exists! 
+        # TODO: load from external if exists!
 
         # Path management / imports
         self.save_path = str(os.path.join(
-            output_directory, 
-            model_name, 
+            output_directory,
+            model_name,
             "adapters"
             )
         )
+        self.adapter_paths = {adapter_id:os.path.join(self.save_path, adapter_id) for adapter_id in self.adapter_ids}
         # ID management for tracking adapter versions
         self.adapter_train_ids = {
             adapter_id: self.short_id_generator()
@@ -88,13 +89,13 @@ class LeanLocalLLM:
 
         # Configure sampling parameters
         self.hf_sampling_params = generation_args
-        self.vllm_sampling_params = SamplingParams(
-            temperature=generation_args["temperature"],
-            top_k=-1 if generation_args["top_k"] == 0.0 else generation_args["top_k"],
-            top_p=generation_args["top_p"],
-            max_tokens=generation_args["max_new_tokens"],
-            repetition_penalty=generation_args["repetition_penalty"],
-        )
+        # self.sglang_sampling_params = SamplingParams(
+        #     temperature=generation_args["temperature"],
+        #     top_k=-1 if generation_args["top_k"] == 0.0 else generation_args["top_k"],
+        #     top_p=generation_args["top_p"],
+        #     max_tokens=generation_args["max_new_tokens"],
+        #     repetition_penalty=generation_args["repetition_penalty"],
+        # )
 
         # ---------------------------------------------------------
         # Init HF model, peft adapters
@@ -113,28 +114,43 @@ class LeanLocalLLM:
                 path=os.path.join(self.save_path, adapter_id)
             ).to(device)
             self.hf_adapters[adapter_id] = hf_adapter
-        
+        self.export_adapters()
         # ---------------------------------------------------------
-        # Init vLLM stuff for fast inference
+        # Init sglang stuff for fast inference
         # ---------------------------------------------------------
         from transformers.utils import cached_file
         local_llm_path = os.path.split(cached_file(model_name, "config.json"))[0]
-        if not abort_vllm:
-            self.vllm_model = vllm.LLM(model=local_llm_path, **vllm_params)
-        else:
-            self.vllm_model = None
+        # SGLang requires to load with LoRA to infer space required
+        dummy_lora_path = os.path.join(self.save_path, self.adapter_ids[0])
+        lora_str = "--lora-paths " + " ".join([str(lora_id)+"="+str(lora_path) for lora_id, lora_path in self.adapter_paths.items()])
+        self.sglang_server_process, self.sglang_port = launch_server_cmd(
+            "python3 -m sglang.launch_server " + \
+            f"--model-path {local_llm_path} " + \
+            "--host 0.0.0.0 " + \
+            lora_str + \
+            " --enable-memory-saver" + \
+            " --disable-radix-cache"
+        )
+        wait_for_server(f"http://localhost:{self.sglang_port}")
+        self.gen_url     = f"http://localhost:{self.sglang_port}/generate"
+        self.release_url = f"http://localhost:{self.sglang_port}/release_memory_occupation"
+        self.resume_url  = f"http://localhost:{self.sglang_port}/resume_memory_occupation"
+        self.load_weights_url = f"http://localhost:{self.sglang_port}/resume_memory_occupation"
+        self.load_lora_url   = f"http://localhost:{self.sglang_port}/load_lora_adapter"
+        self.unload_lora_url = f"http://localhost:{self.sglang_port}/unload_lora_adapter"
         self.current_lora_request = None
 
-        
+
     def toggle_training_mode(self) -> None:
         for adn in self.adapter_ids:
             self.adapter_train_ids[adn] = self.short_id_generator()
-        if self.vllm_model is not None: self.vllm_model.sleep()
+        # remove allocated kv cache space from GPU
+        requests.post(self.release_url, json={"tags": ["kv_cache"]}).raise_for_status()
 
     def toggle_eval_mode(self) -> None:
-        if self.vllm_model is not None: self.vllm_model.wake_up()
-
-        
+        # allocate kv cache space on GPU
+        # TODO: make sure this is not allocated twice!
+        requests.post(self.resume_url, json={"tags": ["kv_cache"]}).raise_for_status()
 
     def get_adapter_pointers(self) -> dict:
         pointers = {
@@ -144,65 +160,35 @@ class LeanLocalLLM:
 
     def prepare_adapter_eval(self, adapter_id: str) -> None:
         """
-        
+
         """
         adapter_path = os.path.join(self.save_path, adapter_id)
+        print(str(adapter_id))
+        print(str(adapter_path))
         if os.path.exists(adapter_path):
-            self.current_lora_request = LoRARequest(
-                adapter_id, 
-                self.adapter_train_ids[adapter_id], 
-                adapter_path
-            )
-        else: 
-            self.current_lora_request = None
+            payload = {"lora_name": str(adapter_id)}
+            requests.post(self.unload_lora_url, json=payload).raise_for_status()
+            payload = {
+               "lora_name": str(adapter_id),
+               "lora_path": str(adapter_path)
+            }
+            requests.post(self.load_lora_url, json=payload).raise_for_status()
 
 
-    def prompt(self, contexts) -> list:
+    def generate(self, prompt) -> str:
         """
         """
-
-        # Apply chat template to contexts
-        texts = self.tokenizer.apply_chat_template(
-            contexts, 
-            tokenize=False, 
+        # Apply chat template to prompt
+        prompt = self.tokenizer.apply_chat_template(
+            prompt,
+            tokenize=False,
             add_generation_prompt=True
         )
+        print(prompt)
+        payload = {"text": prompt}
+        response = requests.post(self.gen_url, json=payload).json()
+        return response["text"]
 
-        sampling_params = self.vllm_sampling_params
-
-        # Restrict tokens of model # TODO, put in init??
-        if self.restrict_tokens is not None:
-            allowed_token_ids = []
-            for token in self.restrict_tokens:
-                token_ids = self.tokenizer(
-                    token, 
-                    add_special_tokens=False)["input_ids"]
-                allowed_token_ids.append(token_ids[0])
-            sampling_params = sampling_params.clone()
-            sampling_params.allowed_token_ids = allowed_token_ids
-
-        # Disable deterministic seed for more diversity
-        sampling_params.seed = None
-
-        if self.current_lora_request is not None:
-            model_logger.info(
-                f"Generating using vLLM with LoRA. "
-                f"Current LoRA request ID is {self.current_lora_request.adapter_id}. "
-                f"Current LoRA adapter path is {self.current_lora_request.path}."
-            )
-        else:
-            model_logger.info(
-                f"Generating using vLLM without LoRA. "
-            )
-
-        decoded = self.vllm_model.generate(
-            prompts=texts,
-            sampling_params=sampling_params,
-            lora_request=self.current_lora_request,
-        )
-        responses = [d.outputs[0].text for d in decoded]
-        return responses
-    
     def export_adapters(self) -> None:
         """
         Any peft wrapper, by default, saves all adapters, not just self.

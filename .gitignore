@@ -1,6 +1,7 @@
 # macOS generated files
 .DS_Store
 .sgvenv
+.mllmvenv
 home/
 test_venv/
 home

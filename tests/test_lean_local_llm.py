@@ -1,9 +1,9 @@
 from mllm.models.lean_local_llm import LeanLocalLLM
 
 llm = LeanLocalLLM(
-    max_model_length=1e4,
+    max_model_length=int(1e4),
     device="cuda",
-    model_name="Qwen/Qwen2.5-0.5B-Instruct",
+    model_name="Qwen/Qwen2.5-7B-Instruct",
     generation_args={
         "max_new_tokens": 120,
         "do_sample": True,
@@ -12,7 +12,7 @@ llm = LeanLocalLLM(
         "top_p": 1.0,
         "repetition_penalty": 1
     },
-    vllm_params={
+    sglang_params={
         "max_model_len": 13e3,
         "gpu_memory_utilization": 0.6,
         "enable_lora": True,
@@ -24,7 +24,7 @@ llm = LeanLocalLLM(
     shared_hf_llm_init_kwargs={
         "torch_dtype": "bfloat16",
         "device_map": "auto",
-        "attn_implementation": "flash_attention_2"
+        # "attn_implementation": "flash_attention_2"
     },
     adapter_configs={
         "self_play_agent": {
@@ -45,15 +45,12 @@ llm = LeanLocalLLM(
     output_directory="tests/outputs_for_tests"
 )
 
+
 llm.toggle_training_mode()
 llm.export_adapters()
 llm.checkpoint_all_adapters("check_1")
 pointers = llm.get_adapter_pointers()
 llm.toggle_eval_mode()
 llm.prepare_adapter_eval("self_play_critic")
-print(llm.prompt(["Hello"]))
+print(llm.generate([{"role":"user", "content": "Hello, give me the alphabet."}]))
 llm.toggle_training_mode()
-
-
-
-import pdb; pdb.set_trace()

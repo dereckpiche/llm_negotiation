@@ -31,7 +31,6 @@ async def AlternativeActionsRunner(
 
     folder = os.path.split(markov_game.output_path)[0] # get head
 
-
     async def run_depth_k_max(markov_game: MarkovGame, k: int):
         """
         Executes k steps in a markov game.
