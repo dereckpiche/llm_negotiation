@@ -52,7 +52,7 @@ def ipd_generate_training_data_from_raw(
     )
     if normalize_round_points == True:
 
-        # Subtracts round-wise mean point baseline 
+        # Subtracts round-wise mean point baseline
         def sub_loo_mr(array: np.ndarray):
             n = array.shape[0]
             return array - (np.sum(array, axis=0, keepdims=True) - array) / (n - 1)
@@ -89,7 +89,7 @@ def ipd_generate_training_data_from_raw(
             chat_history = [
                 msg for msg in chat_history if not msg.get("is_error", False)
             ]
-            
+
         # Attribute scores to actions
         round_number = float('-inf')
         for message in chat_history:
@@ -98,7 +98,7 @@ def ipd_generate_training_data_from_raw(
                 # Attribute the score corresponding to correct minibatch / group, match and round number.
                 message["reward"] = round_points_agent[i, round_number]
                 message["time_step"] = round_number
-                
+
             elif message.get("role") == "user":
                 # new round
                 if message.get("round_nb") > round_number:

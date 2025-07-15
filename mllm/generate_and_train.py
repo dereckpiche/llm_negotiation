@@ -33,17 +33,17 @@ compute_logger = logging.getLogger("compute_logger")
 
 
 def create_markov_games(
-    cfg: Dict[str, Any], 
-    env_rng: np.random.Generator, 
+    cfg: Dict[str, Any],
+    env_rng: np.random.Generator,
     iteration: int) -> tuple[List[Dict[str, Any]], np.random.Generator]:
     """
     Creates a list of Markov games for training.
-    
+
     Args:
         cfg: Configuration dictionary
         env_rng: Random number generator for environment
         iteration: Current iteration number
-        
+
     Returns:
         Tuple containing:
         - List of Markov games
@@ -89,19 +89,19 @@ def create_markov_games(
         }
         markov_games.append(markov_game)
     return markov_games, env_rng
-    
 
-def generate_and_train(cfg: dict, base_seed: int) -> None:  
+
+def generate_and_train(cfg: dict, base_seed: int) -> None:
     """
     Main function to generate training data and train models.
-    
+
     Args:
         cfg: Configuration dictionary
         base_seed: Base seed for random number generation
     """
 
     # -----------------------------------------------------------------
-    # Initialize Random States (+ check if resume run) 
+    # Initialize Random States (+ check if resume run)
     # -----------------------------------------------------------------
 
     total_start_time = time.time()
@@ -171,11 +171,11 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
         tokenizer = shared_llms_dict[pointers["model"][0]].tokenizer
         policy_model = get_from_nested_dict(trainable_modules, pointers["model"])
         policy_optimizer = get_from_nested_dict(optimizers, pointers["optimizer"])
-        if pointers.get("critic", True): 
+        if pointers.get("critic", True):
             critic_model = get_from_nested_dict(
                 trainable_modules, pointers["critic"])
         else: critic_model = None
-        if pointers.get("critic_optimizer", True): 
+        if pointers.get("critic_optimizer", True):
             critic_optimizer = get_from_nested_dict(
                 optimizers, pointers["critic_optimizer"])
         else: critic_optimizer = None
@@ -200,7 +200,7 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
     for iteration in range(cfg["experiment"]["start_epoch"], cfg["experiment"]["nb_epochs"]):
 
         # -----------------------------------------------------------------
-        # Create Training Rollouts 
+        # Create Training Rollouts
         # -----------------------------------------------------------------
         for shared_llm in shared_llms_dict.values():
             shared_llm.toggle_eval_mode()
@@ -265,7 +265,7 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
             trainer_training_paths[trainer_id] = training_file_paths
 
 
-        # Prepare base models for training 
+        # Prepare base models for training
         for shared_llm in shared_llms_dict.values():
             shared_llm.toggle_training_mode()
 
@@ -282,13 +282,13 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
         # Training Phase 2: use opp shaping infos, apply reinforce
         trainer_items = list(trainers.items())
         for i, (trainer_id, trainer) in enumerate(trainer_items):
-            info = shaping_info_sets[len(shaping_info_sets)-1-i] 
+            info = shaping_info_sets[len(shaping_info_sets)-1-i]
             trainer.use_co_trainer_info(
                 co_trainer_info=info
             )
             train_log_out_path = os.path.join(
-                    it_folder, 
-                    "training_metrics", 
+                    it_folder,
+                    "training_metrics",
                     trainer_id
                 )
             trainer.config.logging_path = train_log_out_path
@@ -382,6 +382,3 @@ def format_time(seconds):
         return f"{int(seconds // 60)}m {int(seconds % 60)}s"
     else:
         return f"{int(seconds)}s"
-
-
-
