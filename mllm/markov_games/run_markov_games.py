@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from collections.abc import Callable
 
 
-
-
 async def run_all(
     runner: Callable[[MarkovGame], None],
     markov_games: list[MarkovGame]):

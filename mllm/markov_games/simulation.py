@@ -5,8 +5,15 @@ This is the job of the `Agent` class.
 Simulations expect clean actions, and are defined similarly to `gymnasium` environments, except that they are adapted for the Multi-agent setting.
 """
 
+from abc import ABC, abstractmethod
+from numpy.random import default_rng
 
-class Simulation(object):
+class Simulation(ABC):
+
+    @abstractmethod
+    def __init__(self, seed: int, *args, **kwargs):
+        self.seed = seed
+        self.rng = default_rng(self.seed)
 
     def step(self, actions):
         """ Returns terminated, info
@@ -69,9 +76,4 @@ class Simulation(object):
         raise NotImplementedError
 
     def get_simulation_info(self):
-        env_info = {"state_shape": self.get_state_size(),
-                    "obs_shape": self.get_obs_size(),
-                    "n_actions": self.get_total_actions(),
-                    "n_agents": self.n_agents,
-                    "episode_limit": self.episode_limit}
-        return env_info
+        raise NotImplementedError

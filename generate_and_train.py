@@ -1,94 +1,25 @@
 """
 This file contains the code to generate and train the models.
 """
-import copy
-import logging
-import os
-import pickle
-import random
-import time
+import copy, logging, os, shutil, sys, hydra
+from hydra.core.hydra_config import HydraConfig
 from typing import Dict, List, Any
 
-import hydra
-import numpy as np
-import torch
-
-# Local imports
-from mllm.environments.env_imports import *
-from mllm.generation.run_games import run_batched_matches
+from pandas.core.base import IndexLabel
 from mllm.models.dummy_local_llm import DummyLocalLLM
 from mllm.models.local_llm import LocalLLM
 from mllm.models.lean_local_llm import LeanLocalLLM
 from mllm.models.server_llm import ServerLLM
 from mllm.models.critic_wrapper import ScalarCritic
 from mllm.training.reinforce_trainer import *
-from mllm.training.reinforce_trainer_config import *
 from mllm.training.reinforce_trainer_tally import *
 from mllm.utils.common_imports import *
 from mllm.utils.update_start_epoch import update_start_epoch
 from mllm.utils.get_stochastic_game_lengths import get_stochastic_game_lengths
 from mllm.utils.dict_get_path import get_from_nested_dict
-
-compute_logger = logging.getLogger("compute_logger")
-
-
-def create_markov_games(
-    cfg: Dict[str, Any],
-    env_rng: np.random.Generator,
-    iteration: int) -> tuple[List[Dict[str, Any]], np.random.Generator]:
-    """
-    Creates a list of Markov games for training.
-
-    Args:
-        cfg: Configuration dictionary
-        env_rng: Random number generator for environment
-        iteration: Current iteration number
-
-    Returns:
-        Tuple containing:
-        - List of Markov games
-        - Updated random number generator
-    """
-    markov_games = []
-    nb_games = cfg["experiment"]["nb_matches_per_iteration"]
-    game_lengths = get_stochastic_game_lengths(
-        max_length=cfg["matches"]["max_length"],
-        nb_games=nb_games,
-        continuation_prob=cfg["matches"]["continuation_prob"],
-        same_length_batch=cfg["matches"]["same_length_batch"],
-    )
-    group_size = cfg["matches"]["nb_matches_with_same_roundwise_utilities"]
-    for i in range(nb_games):
-        env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
-        # Create Markov Game
-        agents = {}
-        agent_class_name = cfg["matches"]["agent_class"]
-        AgentClass = globals()[agent_class_name]
-        for agent_name in cfg["matches"]["agents"].keys():
-            agents[agent_name] = AgentClass(
-                **cfg["matches"]["agents"][agent_name]["kwargs"]
-            )
-        env_class_name = cfg["matches"]["env_class"]
-        EnvClass = globals()[env_class_name]
-        env_kwargs = dict(cfg["matches"]["env_kwargs"])
-        rng = copy.deepcopy(env_rng)
-        game_id = i
-        game_length = game_lengths[i]
-        group_id = i // group_size if group_size else -1
-        env = EnvClass(
-            rng=rng,
-            game_id=game_id,
-            group_id=group_id,
-            rounds_per_game=game_length,
-            **env_kwargs,
-        )
-        markov_game = {
-            "env": env,
-            "agents": agents,
-            "log_func": globals()[cfg["matches"]["log_func"]],
-        }
-        markov_games.append(markov_game)
-    return markov_games, env_rng
+from mllm.markov_games.mg_utils import AgentConfig, MarkovGameConfig, init_markov_game_components
+from mllm.markov_games.runners import AlternativeActionsRunner
+from mllm.markov_games.run_markov_games import run_all
 
 
 def generate_and_train(cfg: dict, base_seed: int) -> None:
@@ -136,18 +67,24 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
     # Initialize models, critics, optimizers, trainers
     # -----------------------------------------------------------------
 
-    # Models & adapters
-    shared_llms_dict = {}
-    for shared_llm_id, model_config in cfg["models"].items():
+    # Init llms + llm adapters
+    llms_dict = {}
+    for llm_id, model_config in cfg["models"].items():
         model_class = globals()[model_config["class"]]
-        shared_llms_dict[shared_llm_id] = model_class(
+        llms_dict[llm_id] = model_class(
             **model_config["init_args"],
             output_directory=output_directory,
         )
 
+    # Get dictionnary of functionnal-like callable policies (only for inference)
+    policies = {}
+    for llm_id, llm in llms_dict.items():
+        policies.update(llm.get_callable_objects())
+
+    # Get dictionnary of pytorch-like trainable models
     trainable_modules = {}
-    for shared_llm_id, shared_llm in shared_llms_dict.items():
-        trainable_modules[shared_llm_id] = shared_llm.get_adapter_pointers()
+    for llm_id, llm in llms_dict.items():
+        trainable_modules[llm_id] = llm.get_trainable_objects()
 
     # Critics
     for critic_id, critic_config in cfg["critics"].items():
@@ -155,7 +92,8 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
         base = get_from_nested_dict(trainable_modules, pointer)
         trainable_modules[critic_id] = ScalarCritic(base)
 
-    # Optimizers
+
+    # Init optimizers
     optimizers = {}
     for optimizer_id, optimizer_config in cfg["optimizers"].items():
         pointer = optimizer_config["pointer"]
@@ -164,11 +102,11 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
         init_args = optimizer_config["init_args"]
         optimizers[optimizer_id] = optimizer_class(base.parameters(), **init_args)
 
-    # Trainers
+    # Init trainers
     trainers = {}
     for trainer_id, trainer_config in cfg["trainers"].items():
         pointers = trainer_config["pointers"]
-        tokenizer = shared_llms_dict[pointers["model"][0]].tokenizer
+        tokenizer = llms_dict[pointers["model"][0]].tokenizer
         policy_model = get_from_nested_dict(trainable_modules, pointers["model"])
         policy_optimizer = get_from_nested_dict(optimizers, pointers["optimizer"])
         if pointers.get("critic", True):
@@ -200,10 +138,10 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
     for iteration in range(cfg["experiment"]["start_epoch"], cfg["experiment"]["nb_epochs"]):
 
         # -----------------------------------------------------------------
-        # Create Training Rollouts
+        # Create and run Markov Games
         # -----------------------------------------------------------------
-        for shared_llm in shared_llms_dict.values():
-            shared_llm.toggle_eval_mode()
+        for llm in llms_dict.values():
+            llm.toggle_eval_mode()
 
         # Create a new RNG instance by splitting the current one (simulates RNG splitting)
         env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
@@ -212,21 +150,45 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
         os.makedirs(it_folder, exist_ok=True)
         generation_start_time = time.time()
 
-        # Gen. rollouts
-        matches, env_rng = create_markov_games(cfg, env_rng, iteration)
-        agents = matches[0]["agents"]
-        agent_names = agents.keys()
-        run_batched_matches(
-            export_path=it_folder,
-            matches=matches,
-            seed_offset=iteration,
-            models=shared_llms_dict,
-            **cfg["matches"]["run_batched_matches_args"],
+        # TODO: maybe only create these once and then use reset!
+        # Create markov games
+        agent_configs = []
+        for agent_config_ in cfg["markov_games"]["agents"].values():
+            agent_config = AgentConfig(**agent_config_)
+            agent_configs.append(agent_config)
+        markov_game_config = MarkovGameConfig(
+            id = "",
+            seed = 0,
+            simulation_class_name = cfg["markov_games"]["simulation_class_name"],
+            simulation_init_args = cfg["markov_games"]["simulation_class_name"],
+            agent_configs = agent_configs,
+            output_path = ""
         )
+        markov_games = []
+        nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
+        for i in nb_matches:
+            markov_game_config.seed = int(env_rng.integers(0, 1e9).item())
+            markov_game_id = "mgid_" + str(iteration*nb_matches+i)
+            markov_game_config.id = markov_game_id
+            markov_game_config.output_path = os.path.join(it_folder, iteration*nb_matches+i)
+            markov_game = init_markov_game_components(config=markov_game_config, policies=policies)
+            markov_games.append(markov_game)
 
+        # Generate rollouts raw data (using asyncio)
+        runner = eval(cfg["markov_games"]["runner_method_name"])
+        _ = run_all(runner=runner, markov_games=markov_games)
+        print("PHASE 1 DONE!")
         generation_end_time = time.time()
 
         # Process raw data into training data using the specified functions for each agent
+
+
+        # -----------------------------------------------------------------
+        # Train
+        # -----------------------------------------------------------------
+
+
+        # Generate training data files from raw data
         for agent_name in agent_names:
             training_data_path = os.path.join(it_folder, agent_name, "training")
             os.makedirs(training_data_path, exist_ok=True)
@@ -241,9 +203,6 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
                     **training_data_func_args,
                 )
 
-        # -----------------------------------------------------------------
-        # Train
-        # -----------------------------------------------------------------
         training_start_time = time.time()
 
         # Get training paths for each trainer
@@ -266,8 +225,8 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
 
 
         # Prepare base models for training
-        for shared_llm in shared_llms_dict.values():
-            shared_llm.toggle_training_mode()
+        for llm in llms_dict.values():
+            llm.toggle_training_mode()
 
 
         # Training Phase 1: set training data, opp shaping info transfers
@@ -296,7 +255,7 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
             trainer.export_training_metrics()
 
         # Export all HF adapters weights (needed for vLLM inference)
-        for shared_llm in shared_llms_dict.values(): shared_llm.export_adapters()
+        for llm in llms_dict.values(): llm.export_adapters()
 
         # Export optimizer states
         for trainer in trainers.values():
@@ -313,9 +272,9 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
             and iteration % checkpoint_frequency == 0
             and iteration != 0
         ):
-            for shared_llm_id, shared_llm in shared_llms_dict.items():
-                if hasattr(shared_llm, "adapter_paths"):
-                    shared_llm.checkpoint_all_adapters(
+            for llm_id, llm in llms_dict.items():
+                if hasattr(llm, "adapter_paths"):
+                    llm.checkpoint_all_adapters(
                         checkpoint_indicator=f"iter_{iteration}"
                     )
 
@@ -338,7 +297,7 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
         time_est_100 = time_per_iteration * 100
         time_est_500 = time_per_iteration * 500
 
-        compute_logger.info(
+        logger.info(
             f"Iteration {iteration + 1} took {format_time(iteration_duration)} "
             f"({generation_percentage:.2f}% Gen, {training_percentage:.2f}% Train). "
             f"Generation: {format_time(generation_duration)}, "
@@ -375,10 +334,29 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
 
 
 
-def format_time(seconds):
-    if seconds >= 3600:
-        return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m {int(seconds % 60)}s"
-    elif seconds >= 60:
-        return f"{int(seconds // 60)}m {int(seconds % 60)}s"
-    else:
-        return f"{int(seconds)}s"
+@hydra.main()
+def main(cfg):
+    # Get Hydra's runtime directory
+    hydra_run_dir = HydraConfig.get().run.dir
+
+    # Output source code in runtime directory for certain reproducibility
+    os.makedirs(hydra_run_dir, exist_ok=True)
+    shutil.copytree(
+        "mllm",
+        os.path.join(hydra_run_dir, "src_code_for_reproducibility"),
+        dirs_exist_ok=True,
+    )
+
+    # Run the experiment specified in the configuration
+    generate_and_train(
+        OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict"),
+        base_seed=cfg.experiment.base_seed,
+    )
+
+    print(f"Run for seed_{cfg.experiment.base_seed} complete!")
+
+
+
+
+if __name__ == "__main__":
+    main()

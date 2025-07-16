@@ -4,22 +4,22 @@ import re
 from typing import Any, Dict, List, Optional, Tuple, Union
 from mllm.markov_games.agent import Agent
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from copy import deepcopy
 
 @dataclass
 class IPDAgentState:
     """
-    (...)
+    TOWRITE
     """
     nb_retries: int = 0
     round_nb: int = 0
     chat_counter: int = 0
-    chat_history: List[Dict] = []
+    chat_history: List[Dict] = field(default_factory=list)
 
 @dataclass
 class IPDAgent(Agent):
-
+    seed: int
     agent_id: str
     policy: Callable[[List[Dict]], str]
     intro_prompt: str # Introduction prompt explaining the game rules
@@ -34,7 +34,7 @@ class IPDAgent(Agent):
 
     async def act(self, observation):
         """
-
+        TOWRITE
         """
         action = None
         action_is_ready = False
@@ -112,8 +112,6 @@ class IPDAgent(Agent):
     def close(self):
         pass
 
-    def seed(self):
-        pass
 
     def get_agent_info(self):
         pass

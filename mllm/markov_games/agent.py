@@ -8,14 +8,21 @@ It acts as a mini environment, bridging the gap between the core simulation and
 the LLM policies.
 """
 
-class Agent(object):
+from abc import ABC, abstractmethod
+from numpy.random import default_rng
+from collections.abc import Callable
 
-    def __init__(self):
+class Agent(ABC):
+
+    @abstractmethod
+    def __init__(self, seed: int, agent_id:int, policy: Callable[[list[dict]], str], *args, **kwargs):
         """
         Initialize the agent state.
-        Usually, `policies` will be passed here.
-        Policies is a dict that maps policy_id -> policy()
         """
+        self.seed = seed
+        self.agent_id = agent_id
+        self.policy = policy
+        self.rng = default_rng(self.seed)
         raise NotImplementedError
 
     async def act(self, observation):
@@ -51,8 +58,7 @@ class Agent(object):
     def close(self):
         raise NotImplementedError
 
-    def seed(self):
-        raise NotImplementedError
+
 
     def get_agent_info(self):
         raise NotImplementedError

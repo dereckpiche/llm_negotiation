@@ -17,10 +17,8 @@ from peft import (
     prepare_model_for_kbit_training,
 )
 from torch.optim import SGD, Adam, AdamW, RMSprop
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import AutoModelForCausalLMWithValueHead
-from vllm import LLM, SamplingParams
-from vllm.lora.request import LoRARequest
 
 from mllm.utils.common_imports import *
 

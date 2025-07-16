@@ -8,14 +8,14 @@ import time
 import uuid
 from copy import deepcopy
 import torch
-from mllm.models.adapter_wrapper import AdapterWrapper
+from mllm.models.adapter_training_wrapper import AdapterWrapper
 from torch.optim import SGD, Adam, AdamW, RMSprop
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import AutoModelForCausalLMWithValueHead
 import subprocess, json, os, sys, time, requests
 from sglang.utils import launch_server_cmd
 from sglang.utils import wait_for_server, print_highlight, terminate_process
-
+from collections.abc import Callable
 from mllm.utils.common_imports import *
 
 compute_logger = logging.getLogger("compute_logger")
@@ -152,15 +152,12 @@ class LeanLocalLLM:
         # TODO: make sure this is not allocated twice!
         requests.post(self.resume_url, json={"tags": ["kv_cache"]}).raise_for_status()
 
-    def get_adapter_pointers(self) -> dict:
-        pointers = {
-            an : self.hf_adapters[an] for an in self.adapter_ids
-        }
-        return pointers
 
-    def prepare_adapter_eval(self, adapter_id: str) -> None:
+    def set_adapter_eval(self, adapter_id: str) -> None:
         """
-
+        Ensure correct adapter is loaded in SGLang before generation.
+        TODO: make efficient by keeping tabs of whether we made a new export /
+        whether we need to load adapters each time!
         """
         adapter_path = os.path.join(self.save_path, adapter_id)
         print(str(adapter_id))
@@ -174,6 +171,27 @@ class LeanLocalLLM:
             }
             requests.post(self.load_lora_url, json=payload).raise_for_status()
 
+    def get_trainable_objects(self) -> dict:
+        """
+        TOWRITE
+        """
+        trainable_objects = {
+            an : self.hf_adapters[an] for an in self.adapter_ids
+        }
+        return trainable_objects
+
+    def get_callable_objects(self) -> dict[str, Callable]:
+        """
+        TOWRITE
+        """
+        policies = {}
+        for adapter_id in self.adapter_ids:
+            # define policy func
+            def policy(prompt:list[dict]):
+                self.set_adapter_eval(adapter_id=adapter_id)
+                return self.generate(prompt)
+            policies[self.name+"/"+adapter_id] = policy
+        return policies
 
     def generate(self, prompt) -> str:
         """

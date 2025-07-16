@@ -13,14 +13,14 @@ helps following this constraint.
 
 from anytree import Node, RenderTree
 from anytree.exporter import DotExporter
-from os import path
-from _typeshed import NoneType
+import os.path
 import asyncio
+from mllm.markov_games.markov_game import MarkovGame
 
 async def AlternativeActionsRunner(
     markov_game: MarkovGame,
     nb_alternative_actions: int = 2,
-    nb_sub_steps: int = 1)
+    nb_sub_steps: int = 1):
     """
     This method generates a trajectory with partially completed branches,
     where the branching comes from taking unilateraly different actions.
@@ -77,7 +77,7 @@ async def AlternativeActionsRunner(
                 branch_node = Node(
                     branch_name,
                     payload={
-                        "path": mgb_out_path
+                        "path": mgb_out_path,
                         "time_step": time_step,
                         "agent_id": agent_id
                     },

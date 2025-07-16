@@ -13,12 +13,17 @@ The approach we use here centralizes the data gathering aspect,
 making it easy to create sub-trajectories (in the `runners` defined in `runners.py`) descriptions that
 only log information for step transitions occuring after the branching out.
 """
-
+from transformers.models.idefics2 import Idefics2Config
+from mllm.markov_games.simulation import Simulation
+from mllm.markov_games.agent import Agent
+from copy import copy, deepcopy
+import os, json
 
 class MarkovGame(object):
-    def init(
+    def __init__(
         self,
-        simulation: Simulation,
+        id: str,
+        simulation: type[Simulation],
         agents: dict[str, type[Agent]],
         output_path: str
     ):
@@ -30,6 +35,7 @@ class MarkovGame(object):
             output_path:
                 Path where the step infos are saved.
         """
+        self.id = id
         self.simulation = simulation
         self.agents = agents
         self.output_path = output_path
@@ -85,11 +91,12 @@ class MarkovGame(object):
         terminated = self.take_simulation_step()
         return terminated
 
-    def get_new_branch(self)
+    def get_new_branch(self):
         """
         TOWRITE
         """
         # Only deep copy the states. We don't want to deep copy policies, for instance.
+        # TODO: add different id!
         new_markov_game = copy(self)
         new_markov_game.simulation_step_infos = []
         new_markov_game.agents_step_infos = {agent_id : [] for agent_id in self.agent_ids}

@@ -2,8 +2,7 @@ import torch, torch.nn as nn, torch.optim as optim
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import LoraConfig, get_peft_model
 
-from mllm.models.adapter_wrapper import AdapterWrapper
-
+from mllm.models.adapter_training_wrapper import AdapterWrapper
 
 
 class ScalarCritic(nn.Module):
@@ -14,10 +13,10 @@ class ScalarCritic(nn.Module):
     """
     def __init__(self, backbone: AdapterWrapper):
         super().__init__()
-        self.backbone = backbone                    
+        self.backbone = backbone
         hidden_size = self.backbone.shared_llm.config.hidden_size
         self.value_head = nn.Linear(hidden_size, 1).to(
-            dtype=backbone.dtype, 
+            dtype=backbone.dtype,
             device=backbone.device)
 
     def forward(self,

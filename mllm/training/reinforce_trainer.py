@@ -8,15 +8,67 @@ import torch
 import torch.nn.functional as F
 from accelerate import Accelerator
 from torch.nn.utils.rnn import pad_sequence
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from mllm.training.reinforce_trainer_config import RtConfig
 from mllm.training.reinforce_trainer_tally import RtTally
 from mllm.training.process_training_chat import process_training_chat
 from mllm.utils.common_imports import *
 from mllm.utils.time_and_memory_utils import *
 from mllm.utils.print_logger import *
 from typing import Union
+
+from typing import Union
+from peft import LoraConfig
+from dataclasses import dataclass
+
+
+@dataclass
+class RtConfig:
+    entropy_coeff: float # Coefficient of the entropy term in the loss.
+    kl_coeff: float # Coefficient of the KL-divergence term in the loss.
+    gradient_clipping: Union[float, None] # Maximum norm of the gradient component before it gets clipped.
+    restrict_tokens: Union[list[str], None]
+    mini_batch_size: int # The number of conversations/trajectories we backpropagate through at once. This only affects the GPU usage.
+    use_gradient_checkpointing: bool
+    logging_path: str
+    temperature: float
+    device: str
+
+    # Regular credit assignment
+    use_gae: bool
+    gae_lambda_for_credits: float
+    gae_lambda_for_targets: float
+    discount_factor: float
+    end_at_last_state_flag: bool # False
+
+    # Opponent Shaping
+    use_sum_credits: bool
+    use_advantage_alignment: bool
+    ad_align_normalize_advantages: bool
+    ad_align_force_coop_first_step: bool
+    use_sign_in_ad_align: bool
+    ad_align_clipping: float
+    use_time_regularization_in_ad_align: bool
+    use_variance_regularization_in_ad_align: bool
+    ad_align_beta: float
+
+    # Regular logging
+    log_entropy_gradient_terms: bool = False
+    log_kl_gradient_terms: bool = False
+    log_value_gradient_terms: bool = False
+
+    # Contextualized logging
+    log_ctz_length: int = 30
+    log_ctz_top_k: int = 10
+    log_ctz_next_token: bool = False
+    log_ctz_next_token_credit: bool = False
+    log_ctz_next_token_log_prob: bool = False
+    log_ctz_next_token_prob: bool = False
+    log_ctz_top_k_tids: bool = False
+    log_ctz_top_k_probs: bool = False
+    log_ctz_top_clogπ: bool = False
+    log_ctz_entropy: bool = False
+    log_ctz_kl: bool = False
 
 
 class ReinforceTrainerWRS:
