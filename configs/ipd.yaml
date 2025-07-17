@@ -1,219 +1,206 @@
 hydra:
-  run:
-    dir: "${oc.env:SCRATCH}/llm_negotiation/${experiment.name}"
-  job:
-    chdir: false
+    run:
+        dir: "${oc.env:SCRATCH}/llm_negotiation/${experiment.name}"
+    job:
+        chdir: false
 
 experiment:
-  name: "ipd"
-  method: generate_and_train
-  description: "no description"
-  nb_epochs: 500
-  nb_matches_per_iteration: 64
-  reinit_matches_each_it: true
-  checkpoint_every_n_iterations: 25
-  start_epoch: 0
-  resume_experiment: true
-  base_seed: 1000
+    name: "ipd"
+    method: generate_and_train
+    description: "no description"
+    nb_epochs: 500
+    nb_matches_per_iteration: 64
+    reinit_matches_each_it: true
+    checkpoint_every_n_iterations: 25
+    start_epoch: 0
+    resume_experiment: true
+    base_seed: 1000
 
 ####################################################################################################
 #                                           GENERATION
 ####################################################################################################
 
 common_agent_kwargs: &common_agent_kwargs
-  max_errors: 0
-  allow_reasoning: false
-  max_reasoning_chars: 0
+    max_errors: 0
+    allow_reasoning: false
+    max_reasoning_chars: 0
 
-  intro_prompt: |
-    Welcome to an iterated game. You are playing against another agent.
+    intro_prompt: |
+        Welcome to an iterated game. You are playing against another agent.
 
-    Game Rules:
-    1. In each round, both agents simultaneously choose to either play A or B.
-    2. The payoffs for each round are as follows:
-       - If both agents play A, both receive 3 points.
-       - If both agents play B, both receive 1 points.
-       - If one agent plays A and the other plays B, the player who plays A receives 0 points and the player who plays B receives 5 points.
-    3. The goal is to maximize your total points over all rounds.
-    4. You will see the previous play of the other player after the completion of a round.
+        Game Rules:
+        1. In each round, both agents simultaneously choose to either play A or B.
+        2. The payoffs for each round are as follows:
+           - If both agents play A, both receive 3 points.
+           - If both agents play B, both receive 1 points.
+           - If one agent plays A and the other plays B, the player who plays A receives 0 points and the player who plays B receives 5 points.
+        3. The goal is to maximize your total points over all rounds.
+        4. You will see the previous play of the other player after the completion of a round.
 
-    In order to play A, you must write "<A>" and nothing else.
-    In order to play B, you must write "<B>" and nothing else.
+        In order to play A, you must write "<A>" and nothing else.
+        In order to play B, you must write "<B>" and nothing else.
 
-    During the entire game, you must only write "<A>" or "<B>". If you write anything else, your response will be considered as an error.
+        During the entire game, you must only write "<A>" or "<B>". If you write anything else, your response will be considered as an error.
 
-    The game starts now:
+        The game starts now:
 
-  goal_prompt: |
-    Your goal is to maximize your utility.
+    goal_prompt: |
+        Your goal is to maximize your utility.
 
 matches:
-  env_class: "IPDEnv"
-  agent_class: "IPDAgent"
+    env_class: "IPDEnv"
+    agent_class: "IPDAgent"
 
-  max_length: 30
-  continuation_prob: 0.85
-  same_length_batch: True
+    max_length: 30
+    continuation_prob: 0.85
+    same_length_batch: True
 
-  # If set to 0, existing setup will run where utilities are randomly sampled at the beginning of each round.
-  # If set to 1, all utilities will be calculated beforehand but rloo rewards will also be only calculated per game.
-  nb_matches_with_same_roundwise_utilities: null
+    # If set to 0, existing setup will run where utilities are randomly sampled at the beginning of each round.
+    # If set to 1, all utilities will be calculated beforehand but rloo rewards will also be only calculated per game.
+    nb_matches_with_same_roundwise_utilities: null
 
-  log_func: log_ipd_match
+    log_func: log_ipd_match
 
-  stop_condition: game_over_condition
-  stop_condition_kwargs: {}
+    stop_condition: game_over_condition
+    stop_condition_kwargs: {}
 
-  run_batched_matches_args:
-    nb_parallel_matches: -1
+    run_batched_matches_args:
+        nb_parallel_matches: -1
 
-  env_kwargs:
-    agents: ['Alice', 'Bob']
-    reward: 3
-    punishment: 1
-    temptation: 5
-    sucker: 0
+    env_kwargs:
+        agents: ["Alice", "Bob"]
+        reward: 3
+        punishment: 1
+        temptation: 5
+        sucker: 0
 
-  agents:
-    Alice:
-      kwargs:
-        <<: *common_agent_kwargs
-        agent_id: "Alice"
-        policy_id: "qwen/self_play_agent"
-    Bob:
-      kwargs:
-        <<: *common_agent_kwargs
-        agent_id: "Bob"
-        policy_id: "qwen/self_play_agent"
+    agents:
+        Alice:
+            kwargs:
+                <<: *common_agent_kwargs
+                agent_id: "Alice"
+                policy_id: "qwen/self_play_agent"
+        Bob:
+            kwargs:
+                <<: *common_agent_kwargs
+                agent_id: "Bob"
+                policy_id: "qwen/self_play_agent"
 
 temperature: 1.0
 
-
 models:
-
-  qwen:
-    class: LeanLocalLLM
-    init_args:
-      max_model_length: 1e4
-      device: "cuda"
-      restrict_tokens: None
-      model_name: "Qwen/Qwen2.5-7B-Instruct"
-      generation_args:
-        max_new_tokens: 1
-        do_sample: True
-        temperature: ${temperature}
-        top_k: 0
-        top_p: 1.0
-        repetition_penalty: 1
-      vllm_params:
-        max_model_len : 1.3e4
-        gpu_memory_utilization: 0.45
-        enable_lora: True
-        enable_prefix_caching: True
-        enable_sleep_mode : True
-        max_lora_rank: 64
-        dtype: "bfloat16"
-      shared_hf_llm_init_kwargs:
-        torch_dtype: "bfloat16"
-        device_map: "auto"
-        attn_implementation: "flash_attention_2"
-      adapter_configs:
-        self_play_agent:
-          task_type: "CAUSAL_LM"
-          r: 64
-          lora_alpha: 128
-          lora_dropout: 0.0
-          target_modules: "all-linear"
-        self_play_critic:
-          task_type: "CAUSAL_LM"
-          r: 64
-          lora_alpha: 128
-          lora_dropout: 0.0
-          target_modules: "all-linear"
+    qwen:
+        class: LeanLocalLLM
+        init_args:
+            max_model_length: 1e4
+            device: "cuda"
+            restrict_tokens: None
+            model_name: "Qwen/Qwen2.5-7B-Instruct"
+            generation_args:
+                max_new_tokens: 1
+                do_sample: True
+                temperature: ${temperature}
+                top_k: 0
+                top_p: 1.0
+                repetition_penalty: 1
+            vllm_params:
+                max_model_len: 1.3e4
+                gpu_memory_utilization: 0.45
+                enable_lora: True
+                enable_prefix_caching: True
+                enable_sleep_mode: True
+                max_lora_rank: 64
+                dtype: "bfloat16"
+            shared_hf_llm_init_kwargs:
+                torch_dtype: "bfloat16"
+                device_map: "auto"
+                attn_implementation: "flash_attention_2"
+            adapter_configs:
+                self_play_agent:
+                    task_type: "CAUSAL_LM"
+                    r: 64
+                    lora_alpha: 128
+                    lora_dropout: 0.0
+                    target_modules: "all-linear"
+                self_play_critic:
+                    task_type: "CAUSAL_LM"
+                    r: 64
+                    lora_alpha: 128
+                    lora_dropout: 0.0
+                    target_modules: "all-linear"
 
 critics:
-  self_play_agent_critic:
-    pointer: ["qwen", "self_play_critic"]
-  
+    self_play_agent_critic:
+        pointer: ["qwen", "self_play_critic"]
+
 optimizers:
-  self_play_agent_optimizer:
-    pointer: ["qwen", "self_play_agent"]
-    optimizer_class: torch.optim.Adam
-    init_args:
-      lr: 1e-6
-      weight_decay: 0.0
+    self_play_agent_optimizer:
+        pointer: ["qwen", "self_play_agent"]
+        optimizer_class: torch.optim.Adam
+        init_args:
+            lr: 1e-6
+            weight_decay: 0.0
 
-  self_play_agent_critic_optimizer:
-    pointer: self_play_agent_critic
-    optimizer_class: torch.optim.Adam
-    init_args:
-      lr: 1e-6
-      weight_decay: 0.0
+    self_play_agent_critic_optimizer:
+        pointer: self_play_agent_critic
+        optimizer_class: torch.optim.Adam
+        init_args:
+            lr: 1e-6
+            weight_decay: 0.0
 
-trainers: 
+trainers:
+    qwen_trainer:
+        pointers:
+            model: ["qwen", "self_play_agent"]
+            optimizer: "self_play_agent_optimizer"
+            critic: "self_play_agent_critic"
+            critic_optimizer: "self_play_agent_critic_optimizer"
 
-  qwen_trainer:
+        init_args:
+            entropy_coeff: 0.0
+            kl_coeff: 0.0
+            gradient_clipping: 1.0
+            restrict_tokens: null
+            mini_batch_size: 1
+            use_gradient_checkpointing: True
+            temperature: ${temperature}
+            device: "cuda:0"
 
-    pointers:
-      model: ["qwen", "self_play_agent"]
-      optimizer: "self_play_agent_optimizer" 
-      critic: "self_play_agent_critic" 
-      critic_optimizer: "self_play_agent_critic_optimizer" 
+            discount_factor: 1.0
+            use_gae: False
+            gae_lambda_for_credits: 0.92
+            gae_lambda_for_targets: 0.92
+            end_at_last_state_flag: True # if true, will not train on last round actions
 
-    init_args:
+            # Reward Shaping
+            use_sum_credits: False
+            use_advantage_alignment: False
+            ad_align_normalize_advantages: False
+            ad_align_force_coop_first_step: False
+            use_sign_in_ad_align: False
+            ad_align_clipping: null
+            use_time_regularization_in_ad_align: False
+            use_variance_regularization_in_ad_align: False
+            ad_align_beta: 1.0
 
-      entropy_coeff: 0.0
-      kl_coeff: 0.0
-      gradient_clipping: 1.0
-      restrict_tokens: null
-      mini_batch_size: 1
-      use_gradient_checkpointing: True
-      temperature: ${temperature}
-      device: "cuda:0"
-
-      discount_factor: 1.0
-      use_gae: False
-      gae_lambda_for_credits: 0.92
-      gae_lambda_for_targets: 0.92
-      end_at_last_state_flag: True # if true, will not train on last round actions
-
-      # Reward Shaping
-      use_sum_credits: False
-      use_advantage_alignment: False
-      ad_align_normalize_advantages: False
-      ad_align_force_coop_first_step: False
-      use_sign_in_ad_align: False
-      ad_align_clipping: null
-      use_time_regularization_in_ad_align: False
-      use_variance_regularization_in_ad_align: False
-      ad_align_beta: 1.0
-
-      log_ctz_next_token: True
-      log_ctz_next_token_credit: True
-      log_ctz_next_token_log_prob: True
-      log_ctz_next_token_prob: True
-      log_ctz_top_clogπ: True
-      log_ctz_entropy: True
-      log_ctz_kl: True
-
+            log_ctz_next_token: True
+            log_ctz_next_token_credit: True
+            log_ctz_next_token_log_prob: True
+            log_ctz_next_token_prob: True
+            log_ctz_top_clogπ: True
+            log_ctz_entropy: True
+            log_ctz_kl: True
 
 training:
+    agents:
+        Alice:
+            training_data_func: ipd_generate_training_data_from_raw
+            training_data_func_args:
+                exclude_errors: False
+                normalize_round_points: True
 
-  agents:
-
-    Alice:
-      training_data_func: ipd_generate_training_data_from_raw
-      training_data_func_args:
-        exclude_errors: False
-        normalize_round_points: True
-
-
-    Bob:
-      training_data_func: ipd_generate_training_data_from_raw
-      training_data_func_args:
-        exclude_errors: False
-        normalize_round_points: True
-
-
-  
-      
+        Bob:
+            training_data_func: ipd_generate_training_data_from_raw
+            training_data_func_args:
+                exclude_errors: False
+                normalize_round_points: True
