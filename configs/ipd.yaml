@@ -96,16 +96,17 @@ models:
     init_args:
       max_model_length: 1e4
       device: "cuda"
+      restrict_tokens: None
       model_name: "Qwen/Qwen2.5-7B-Instruct"
       generation_args:
-        max_new_tokens: 120
+        max_new_tokens: 1
         do_sample: True
         temperature: ${temperature}
         top_k: 0
         top_p: 1.0
         repetition_penalty: 1
       vllm_params:
-        max_model_len : 13e3
+        max_model_len : 1.3e4
         gpu_memory_utilization: 0.45
         enable_lora: True
         enable_prefix_caching: True
