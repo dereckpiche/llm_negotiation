@@ -3,6 +3,7 @@
 .sgvenv
 .mllmvenv
 home/
+.mllmvenv
 test_venv/
 home
 *.svg

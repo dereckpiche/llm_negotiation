@@ -1,6 +1,6 @@
 hydra:
     run:
-        dir: "${oc.env:SCRATCH}/llm_negotiation/${now:%Y_%m}/${experiment.name}"
+        dir: "${oc.env:SCRATCH}/llm_negotiation/${experiment.name}"
     job:
         chdir: false
 
@@ -47,42 +47,44 @@ common_agent_kwargs: &common_agent_kwargs
     goal_prompt: |
         Your goal is to maximize your utility.
 
-agent_0_id: Alice
-agent_1_id: Bob
-agent_ids: [Alice, Bob]
-
-markov_games:
-    runner_method_name: "AlternativeActionsRunner"
-    simulation_class_name: "IPDSimulation"
-    simulation_init_args:
-        agent_ids: ${agent_ids}
-        reward: 3
-        punishment: 1
-        temptation: 5
-        sucker: 0
-    agents:
-        0:
-            agent_id: ${agent_0_id}
-            agent_class_name: "IPDAgent"
-            policy_id: "qwen/self_play_agent"
-            init_kwargs:
-                <<: *common_agent_kwargs
-
-        1:
-            agent_id: ${agent_1_id}
-            agent_class_name: "IPDAgent"
-            policy_id: "qwen/self_play_agent"
-            init_kwargs:
-                <<: *common_agent_kwargs
+matches:
+    env_class: "IPDEnv"
+    agent_class: "IPDAgent"
 
     max_length: 30
     continuation_prob: 0.85
     same_length_batch: True
 
+    # If set to 0, existing setup will run where utilities are randomly sampled at the beginning of each round.
+    # If set to 1, all utilities will be calculated beforehand but rloo rewards will also be only calculated per game.
+    nb_matches_with_same_roundwise_utilities: null
+
     log_func: log_ipd_match
+
+    stop_condition: game_over_condition
+    stop_condition_kwargs: {}
 
     run_batched_matches_args:
         nb_parallel_matches: -1
+
+    env_kwargs:
+        agents: ["Alice", "Bob"]
+        reward: 3
+        punishment: 1
+        temptation: 5
+        sucker: 0
+
+    agents:
+        Alice:
+            kwargs:
+                <<: *common_agent_kwargs
+                agent_id: "Alice"
+                policy_id: "qwen/self_play_agent"
+        Bob:
+            kwargs:
+                <<: *common_agent_kwargs
+                agent_id: "Bob"
+                policy_id: "qwen/self_play_agent"
 
 temperature: 1.0
 
@@ -92,16 +94,17 @@ models:
         init_args:
             max_model_length: 1e4
             device: "cuda"
+            restrict_tokens: None
             model_name: "Qwen/Qwen2.5-7B-Instruct"
             generation_args:
-                max_new_tokens: 120
+                max_new_tokens: 1
                 do_sample: True
                 temperature: ${temperature}
                 top_k: 0
                 top_p: 1.0
                 repetition_penalty: 1
             vllm_params:
-                max_model_len: 13e3
+                max_model_len: 1.3e4
                 gpu_memory_utilization: 0.45
                 enable_lora: True
                 enable_prefix_caching: True
@@ -190,13 +193,13 @@ trainers:
 
 training:
     agents:
-        ${agent_id_0}:
+        Alice:
             training_data_func: ipd_generate_training_data_from_raw
             training_data_func_args:
                 exclude_errors: False
                 normalize_round_points: True
 
-        ${agent_id_1}:
+        Bob:
             training_data_func: ipd_generate_training_data_from_raw
             training_data_func_args:
                 exclude_errors: False

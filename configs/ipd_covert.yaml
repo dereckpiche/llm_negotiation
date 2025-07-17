@@ -50,7 +50,7 @@ matches:
         agent_id: "Bob"
         policy_id: "qwen/self_play_agent"
 
-temperature: 1.0
+temperature: 0.7
 
 models:
   qwen:

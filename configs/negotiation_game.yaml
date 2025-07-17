@@ -1,6 +1,6 @@
 hydra:
     run:
-        dir: "${oc.env:SCRATCH}/llm_negotiation/${now:%Y_%m}/${experiment.name}"
+        dir: "${oc.env:SCRATCH}/llm_negotiation/${experiment.name}"
     job:
         chdir: false
 
@@ -96,8 +96,8 @@ matches:
 
     agent_class: "DondAgent"
 
-    max_length: 10
-    continuation_prob: 1.0
+    max_length: 30
+    continuation_prob: 0.85
     same_length_batch: True
 
     nb_matches_with_same_roundwise_utilities: 1
@@ -219,8 +219,8 @@ trainers:
             temperature: ${temperature}
             device: "cuda:0"
 
-            discount_factor: 0.9
-            use_gae: True
+            discount_factor: 1.0
+            use_gae: False
             gae_lambda_for_credits: 0.92
             gae_lambda_for_targets: 0.92
             end_at_last_state_flag: True # if true, will not train on last round actions
