@@ -4,7 +4,7 @@ This file contains the code to generate and train the models.
 import copy, logging, os, shutil, sys, hydra
 from hydra.core.hydra_config import HydraConfig
 from typing import Dict, List, Any
-
+import asyncio
 from pandas.core.base import IndexLabel
 from mllm.models.dummy_local_llm import DummyLocalLLM
 from mllm.models.local_llm import LocalLLM
@@ -18,11 +18,12 @@ from mllm.utils.update_start_epoch import update_start_epoch
 from mllm.utils.get_stochastic_game_lengths import get_stochastic_game_lengths
 from mllm.utils.dict_get_path import get_from_nested_dict
 from mllm.markov_games.mg_utils import AgentConfig, MarkovGameConfig, init_markov_game_components
-from mllm.markov_games.runners import AlternativeActionsRunner
-from mllm.markov_games.run_markov_games import run_all
+from mllm.markov_games.runners.alternative_actions_runner import AlternativeActionsRunner
+from mllm.markov_games.runners.linear_runner import LinearRunner
+from mllm.markov_games.run_markov_games import run_markov_games
 
 
-def generate_and_train(cfg: dict, base_seed: int) -> None:
+async def generate_and_train(cfg: dict, base_seed: int) -> None:
     """
     Main function to generate training data and train models.
 
@@ -92,7 +93,6 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
         base = get_from_nested_dict(trainable_modules, pointer)
         trainable_modules[critic_id] = ScalarCritic(base)
 
-
     # Init optimizers
     optimizers = {}
     for optimizer_id, optimizer_config in cfg["optimizers"].items():
@@ -160,23 +160,25 @@ def generate_and_train(cfg: dict, base_seed: int) -> None:
             id = "",
             seed = 0,
             simulation_class_name = cfg["markov_games"]["simulation_class_name"],
-            simulation_init_args = cfg["markov_games"]["simulation_class_name"],
+            simulation_init_args = cfg["markov_games"]["simulation_init_args"],
             agent_configs = agent_configs,
             output_path = ""
         )
         markov_games = []
         nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
-        for i in nb_matches:
-            markov_game_config.seed = int(env_rng.integers(0, 1e9).item())
+        for i in range(nb_matches):
+            markov_game_config.seed = int(env_rng.integers(0, 1e9))
             markov_game_id = "mgid_" + str(iteration*nb_matches+i)
             markov_game_config.id = markov_game_id
-            markov_game_config.output_path = os.path.join(it_folder, iteration*nb_matches+i)
+            markov_game_config.output_path = os.path.join(it_folder, str(iteration*nb_matches+i))
             markov_game = init_markov_game_components(config=markov_game_config, policies=policies)
             markov_games.append(markov_game)
 
         # Generate rollouts raw data (using asyncio)
         runner = eval(cfg["markov_games"]["runner_method_name"])
-        _ = run_all(runner=runner, markov_games=markov_games)
+        # TODO: throw error if error in asyncio call
+        await run_markov_games(runner=runner, markov_games=markov_games)
+
         print("PHASE 1 DONE!")
         generation_end_time = time.time()
 
@@ -348,10 +350,10 @@ def main(cfg):
     )
 
     # Run the experiment specified in the configuration
-    generate_and_train(
+    asyncio.run(generate_and_train(
         OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict"),
         base_seed=cfg.experiment.base_seed,
-    )
+    ))
 
     print(f"Run for seed_{cfg.experiment.base_seed} complete!")
 

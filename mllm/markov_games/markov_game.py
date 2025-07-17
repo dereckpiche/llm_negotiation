@@ -18,6 +18,7 @@ from mllm.markov_games.simulation import Simulation
 from mllm.markov_games.agent import Agent
 from copy import copy, deepcopy
 import os, json
+import asyncio
 
 class MarkovGame(object):
     def __init__(
@@ -44,15 +45,17 @@ class MarkovGame(object):
         self.agents_step_infos = {agent_id : [] for agent_id in self.agent_ids}
         self.actions = {}
 
-    def set_action_of_agent(self, agent_id):
+    async def set_action_of_agent(self, agent_id):
         """
         TOWRITE
         """
         agent = self.agents[agent_id]
         obs = self.simulation.get_obs_agent(agent_id)
-        action, action_info = agent.act(observation=obs)
+        action, action_info = await agent.act(observation=obs)
         self.actions[agent_id] = action
         self.agents_step_infos[agent_id].append(action_info)
+        print(self.actions)
+        print("done with action")
 
     def unset_action_of_agent(self, agent_id):
         """
@@ -61,12 +64,19 @@ class MarkovGame(object):
         self.actions[agent_id] = None
         self.agents_step_infos[agent_id].pop()
 
-    def set_actions(self):
+    async def set_actions(self):
         """
         TOWRITE
         """
+        # background_tasks = set()
+        tasks = []
         for agent_id in self.agent_ids:
-            self.set_action_of_agent(agent_id)
+            print("begin taking action")
+            task = asyncio.create_task(self.set_action_of_agent(agent_id))
+            tasks.append(task)
+        print("waiting for actions")
+        await asyncio.gather(*tasks)
+        print("actions set")
 
     def unset_actions(self):
         """
@@ -87,7 +97,8 @@ class MarkovGame(object):
         """
         TOWRITE
         """
-        self.set_actions()
+        await self.set_actions()
+        print("read_for_simulstep")
         terminated = self.take_simulation_step()
         return terminated
 
@@ -105,23 +116,17 @@ class MarkovGame(object):
             agent.state = deepcopy(agent.state)
         return new_markov_game
 
-    def run(self):
-        """
-        Runs the markov game
-        """
-        terminated = False
-        while not terminated:
-            terminated = self.step()
-
     def export(self):
         """
         Exports the step infos. At the specified path.
         """
-        simulation_out_path = os.path.join(self.output_path, "simulation")
+        os.makedirs(self.output_path, exist_ok=True)
+        simulation_out_path = os.path.join(self.output_path, "simulation.jsonl")
         with open(simulation_out_path, "w") as f:
             json.dump(self.simulation_step_infos, f)
         for agent_id in self.agent_ids:
-            agent_out_path = os.path.join(self.output_path, agent_id)
+            agent_out_path = os.path.join(self.output_path, agent_id+".jsonl")
             with open(agent_out_path, "w") as f:
                 agent_step_infos =  self.agents_step_infos[agent_id]
                 json.dump(agent_step_infos, f)
+        print("Exported JSONS")

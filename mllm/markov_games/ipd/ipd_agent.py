@@ -39,7 +39,6 @@ class IPDAgent(Agent):
         action = None
         action_is_ready = False
         round_nb = observation.round_nb
-
         while not action_is_ready:
 
             # If it's the first round, we need to send the intro prompt
@@ -54,7 +53,7 @@ class IPDAgent(Agent):
 
             # If new round
             if round_nb > self.state.round_nb:
-                coagent_action = observation.last_move_coagent
+                coagent_action = observation.last_coagent_move
                 user_message = f"Last round, the other agent played {coagent_action}."
                 self.state.chat_history.append(
                     {
@@ -66,7 +65,7 @@ class IPDAgent(Agent):
                 self.round_nb = round_nb
 
             # If not new round, try to get valid action from policy
-            policy_output = self.policy(self.state.chat_history)
+            policy_output = self.policy(self.state.chat_history) # TODO: use await here!
             self.state.chat_history.append(
                 {
                     "role": "assistant",
@@ -99,7 +98,6 @@ class IPDAgent(Agent):
         info = deepcopy(self.state.chat_history[self.state.chat_counter:])
 
         self.state.chat_counter = len(self.state.chat_history)
-
         return action, info
 
     def reset(self):

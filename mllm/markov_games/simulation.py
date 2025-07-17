@@ -69,8 +69,8 @@ class Simulation(ABC):
     def close(self):
         raise NotImplementedError
 
-    def seed(self):
-        raise NotImplementedError
+    # def seed(self):
+    #     raise NotImplementedError
 
     def save_replay(self):
         raise NotImplementedError

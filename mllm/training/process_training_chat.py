@@ -13,7 +13,7 @@ def get_sentencepieced_example(tokenizer: AutoTokenizer):
     {"role": "assistant", "content": "..."},
     ]
     token_ids = tokenizer.apply_chat_template(
-        conv_example, 
+        conv_example,
         add_generation_prompt=False,
         use_system_prompt=False,
         return_tensors="pt").tolist()[0]
@@ -29,17 +29,17 @@ def get_qwen_assistant_user_mask(
     ):
     """
     Returns:
-        assistant_user_mask: 
-            assistant_user_mask[i] = -k means that the i'th token id belongs to the 
+        assistant_user_mask:
+            assistant_user_mask[i] = -k means that the i'th token id belongs to the
             (k+1)'th user message
-            assistant_user_mask[i] = k means that the i'th token id belongs to the 
+            assistant_user_mask[i] = k means that the i'th token id belongs to the
             (k-1)'th assistant message
-            assistant_user_mask[i] = 0 means that the i'th token id belongs to the 
+            assistant_user_mask[i] = 0 means that the i'th token id belongs to the
             system prompt.
     For this tokenizer, eos_token_id is 151645 and get_sentencepieced_example(qwen_tokenizer) returns
 
         [(151644, '<|im_start|>'), (8948, 'system'), (198, 'Ċ'), (2610, 'You'), (525, 'Ġare'), (1207, 'ĠQ'), (16948, 'wen'), (11, ','), (3465, 'Ġcreated'), (553, 'Ġby'), (54364, 'ĠAlibaba'), (14817, 'ĠCloud'), (13, '.'), (1446, 'ĠYou'), (525, 'Ġare'), (264, 'Ġa'), (10950, 'Ġhelpful'), (17847, 'Ġassistant'), (13, '.'), (151645, '<|im_end|>'), (198, 'Ċ'), (151644, '<|im_start|>'), (872, 'user'), (198, 'Ċ'), (1112, '...'), (151645, '<|im_end|>'), (198, 'Ċ'), (151644, '<|im_start|>'), (77091, 'assistant'), (198, 'Ċ'), (1112, '...'), (151645, '<|im_end|>'), (198, 'Ċ'), (151644, '<|im_start|>'), (872, 'user'), (198, 'Ċ'), (1112, '...'), (151645, '<|im_end|>'), (198, 'Ċ'), (151644, '<|im_start|>'), (77091, 'assistant'), (198, 'Ċ'), (1112, '...'), (151645, '<|im_end|>'), (198, 'Ċ')]
-    
+
     """
     eos_token_id = 151645
     bos_token_id = 151644
@@ -47,7 +47,7 @@ def get_qwen_assistant_user_mask(
     user_token_id = 872
 
     nb_tokens = token_ids.shape[0]
-    assistant_count = 0 
+    assistant_count = 0
     user_count = 0
     assistant_turn = False
     pointer = 0
@@ -87,9 +87,9 @@ def process_training_chat(
     Args:
         assistant_msg_scores:
             Score attributed to each assistant messages. Length is same
-            as number of assistant messages in conversation. 
+            as number of assistant messages in conversation.
     Returns:
-         action_timestamps: 
+         action_timestamps:
            action_timestamps[i] = t means that token_ids[i] belongs to the t'th action.
            (Each response of the model is considered an action.)
            action_timestamps[i] = -1 means that it was not part of an action. (Part of user message.)
@@ -112,12 +112,12 @@ def process_training_chat(
         use_system_prompt=True,
     )
     token_ids = tokenizer.encode(
-        formatted_conversation,  
-        return_tensors="pt", 
+        formatted_conversation,
+        return_tensors="pt",
         add_special_tokens=True
     ).squeeze(0).long()
     token_ids = token_ids.squeeze()
-    
+
     # Get assistant_user_mask
     tokenizer_name = tokenizer.name_or_path
     if tokenizer_name in ["Qwen/Qwen2.5-7B-Instruct", "Qwen/Qwen2.5-0.5B-Instruct"]:
@@ -155,15 +155,14 @@ def process_training_chat(
                 ).item()
                 state_end_flags[state_end_flag] = True
             user_count -= 1
-            
+
 
     action_mask[credit_mask > -1] = 1.0
 
     return (
         token_ids,
         np.array(rewards),
-        action_mask, 
+        action_mask,
         credit_mask,
         state_end_flags
     )
-    

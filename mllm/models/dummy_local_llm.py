@@ -4,13 +4,12 @@ To debug the code without loading LLM engines.
 
 from typing import List
 
-from mllm.models.local_llm import *
-from mllm.utils.common_imports import *
 from mllm.models.lean_local_llm import LeanLocalLLM
 from collections.abc import Callable
 
 class DummyLocalLLM(LeanLocalLLM):
     def __init__(self, *args, **kwargs):
+        self.name = kwargs["name"]
         self.adapter_ids = list(kwargs["adapter_configs"].keys())
 
     def toggle_training_mode(self):
@@ -29,7 +28,7 @@ class DummyLocalLLM(LeanLocalLLM):
         pass
 
     def get_callable_objects(self) -> dict[str, Callable]:
-        policies = {id:lambda x : self.generate(x) for id in self.adapter_ids}
+        policies = {self.name+"/"+id:lambda x : self.generate(x) for id in self.adapter_ids}
         return policies
 
     def export_current_adapter(self) -> None:

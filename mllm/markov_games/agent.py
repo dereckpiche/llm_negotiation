@@ -58,7 +58,5 @@ class Agent(ABC):
     def close(self):
         raise NotImplementedError
 
-
-
     def get_agent_info(self):
         raise NotImplementedError

@@ -23,7 +23,6 @@ class IPDObs:
     round_nb: int
     last_coagent_move: str | None
 
-@dataclass
 class IPD(Simulation):
     """
     Iterated Prisoner's Dilemma simulation following the standard.
@@ -37,19 +36,30 @@ class IPD(Simulation):
 
     The game is played for a specified number of rounds.
     """
-
-    agent_ids: List[str]
-    rng: np.random.RandomState
-    random_seed: Optional[int]
-    rounds_per_game: int
-    reward: float  # Both cooperate
-    punishment: float  # Both defect
-    temptation: float  # Defector's reward when other cooperates
-    sucker: float  # Cooperator's reward when other defects
-    cooperate_actions: List[str]
-    defect_actions: List[str]
-    gibberish_action: str
-    state = IPDState()
+    d = 5
+    def __init__(
+        self,
+        agent_ids: List[str],
+        seed: int,
+        rounds_per_game: int,
+        reward: float,  # Both cooperate
+        punishment: float, # Both defect
+        temptation: float,  # Defector's reward when other cooperates
+        sucker: float,  # Cooperator's reward when other defects
+        cooperate_actions: List[str],
+        defect_actions: List[str],
+    ):
+        self.agent_ids = agent_ids
+        self.seed =seed
+        self.rounds_per_game =rounds_per_game
+        self.reward =reward
+        self.punishment =punishment
+        self.temptation =temptation
+        self.sucker =sucker
+        self.cooperate_actions =cooperate_actions
+        self.defect_actions =defect_actions
+        self.gibberish_action = "GIBBERISH"
+        self.state = IPDState()
 
     def step(
         self, actions: Dict[str, str]
@@ -172,8 +182,8 @@ class IPD(Simulation):
     def close(self):
         pass
 
-    def seed(self):
-        pass
+    # def seed(self):
+    #     pass
 
     def save_replay(self):
         pass

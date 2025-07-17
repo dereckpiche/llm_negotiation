@@ -129,7 +129,7 @@ class LeanLocalLLM:
             "--host 0.0.0.0 " + \
             lora_str + \
             " --enable-memory-saver" + \
-            " --disable-radix-cache"
+            " --disable-radix-cache" # TODO check when we can add this back with LoRA, it takes way less kv cache with branching if enabled!
         )
         wait_for_server(f"http://localhost:{self.sglang_port}")
         self.gen_url     = f"http://localhost:{self.sglang_port}/generate"
