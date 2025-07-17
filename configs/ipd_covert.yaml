@@ -11,7 +11,7 @@ common_agent_kwargs: &common_agent_kwargs
   max_reasoning_chars: 0
 
   intro_prompt: |
-    Welcome to a game. You are playing against another agent.
+    You are playing an iterated game against another agent.
 
     Game Rules:
     1. In each round, both agents simultaneously choose to either play A or B.
@@ -38,32 +38,38 @@ matches:
     cooperate_actions: ["A"]
     defect_actions: ["B"]
 
-
   agents:
     Alice:
       kwargs:
         <<: *common_agent_kwargs
         agent_id: "Alice"
-        policy_id: "qwen/sp_adapter"
+        policy_id: "qwen/self_play_agent"
     Bob:
       kwargs:
         <<: *common_agent_kwargs
         agent_id: "Bob"
-        policy_id: "qwen/sp_adapter"
+        policy_id: "qwen/self_play_agent"
 
 temperature: 0.7
-
 
 models:
   qwen:
     init_args:
       restrict_tokens: ["A", "B"]
+      generation_args:
+        max_new_tokens: 1
+        do_sample: true
+        temperature: ${temperature}
+        top_k: 0
+        top_p: 1.0
+        repetition_penalty: 1.0
+      
 
 
-training:
-  qwen:
-    adapters:
-      sp_adapter:
-        trainer_config:
-          restrict_tokens: ["A", "B"]
+# training:
+#   qwen:
+#     adapters:
+#       sp_adapter:
+#         trainer_config:
+#           restrict_tokens: ["A", "B"]
 

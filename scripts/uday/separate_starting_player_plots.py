@@ -4,7 +4,7 @@ import sys
 
 # Add project root to sys.path
 sys.path.append(os.path.join(os.path.dirname(__file__), "../../"))
-from src.utils.log_statistics import generate_agent_stats_plots
+from mllm.utils.log_statistics import generate_agent_stats_plots
 
 for agent_name in ["alice", "bob"]:
     for i in ["first", "second"]:

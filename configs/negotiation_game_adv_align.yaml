@@ -2,16 +2,14 @@ defaults:
   - negotiation_game.yaml
 
 experiment:
-  name: "negotiation_game_adv_align_${now:%Y-%m-%d___%H-%M-%S}"
-  # name: "${now:%Y-%m-%d___%H-%M-%S}negotiation_game_adv_align"
+  name: "negotiation_game_adv_align"
   description: "Agents trained on negotiation game with advantage alignment."
+  base_seed: 344
 
-training:
 
-  qwen:
-    adapters:
-      sp_adapter:
-        trainer_config:
-          use_advantage_alignment: True
-          ad_align_beta: 5.0
+trainers: 
+  qwen_trainer:
+    init_args:
+      use_advantage_alignment: True
+      ad_align_beta: 1.0
 

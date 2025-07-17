@@ -1,0 +1,10 @@
+defaults:
+  - ipd_covert.yaml
+
+experiment:
+  name: "ipd_covert_sum_of_credits"
+
+trainers: 
+  qwen_trainer:
+    init_args:
+      use_sum_credits: True

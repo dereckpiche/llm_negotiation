@@ -393,9 +393,9 @@ To run Diplomacy games with LLM agents, you can use the ``run_batched_matches`` 
 
 .. code-block:: python
 
-    from src.environments.diplomacy.diplomacy_env import DiplomacyEnv
-    from src.environments.diplomacy.diplomacy_agent import DiplomacyAgent
-    from src.run_matches import run_batched_matches
+    from mllm.environments.diplomacy.diplomacy_env import DiplomacyEnv
+    from mllm.environments.diplomacy.diplomacy_agent import DiplomacyAgent
+    from mllm.run_matches import run_batched_matches
 
     # Create environment and agent handlers
     env = DiplomacyEnv(max_turns=30)

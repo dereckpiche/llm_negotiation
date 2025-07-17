@@ -1,12 +1,33 @@
 # To quickly check if code still runs
 
 defaults:
-  - ipd.yaml
+  - ipd_covert.yaml
 
 experiment:
   name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
 
-models:
-  qwen:
+matches:
+  max_length: 5
+  continuation_prob: 1.0
+
+optimizers:
+  self_play_agent_optimizer:
+    pointer: ["qwen", "self_play_agent"]
+    optimizer_class: torch.optim.Adam
     init_args:
-      model_name: "Qwen/Qwen2.5-0.5B-Instruct"
+      lr: 1e-5
+      weight_decay: 0.0
+
+  self_play_agent_critic_optimizer:
+    pointer: self_play_agent_critic
+    optimizer_class: torch.optim.Adam
+    init_args:
+      lr: 1e-5
+      weight_decay: 0.0
+
+# # temperature: 5.0
+
+# models:
+#   qwen:
+#     init_args:
+#       model_name: "Qwen/Qwen2.5-0.5B-Instruct"

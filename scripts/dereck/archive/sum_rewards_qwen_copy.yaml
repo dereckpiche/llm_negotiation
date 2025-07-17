@@ -22,7 +22,7 @@ temperature: 0.7
 
 models:
   llama:
-    class: local_llm_v2
+    class: LocalLLM
     init_args:
       model_name: "Qwen/Qwen2.5-7B-Instruct"
       bits_and_bytes_args: null

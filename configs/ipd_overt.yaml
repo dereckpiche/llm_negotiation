@@ -1,68 +1,67 @@
 defaults:
-  - ipd.yaml
+    - ipd.yaml
 
 experiment:
-  name: "ipd_overt"
-
+    name: "ipd_overt"
 
 common_agent_kwargs: &common_agent_kwargs
-  max_errors: 3
-  allow_reasoning: false
-  max_reasoning_chars: 0
+    max_errors: 3
+    allow_reasoning: false
+    max_reasoning_chars: 0
 
-  intro_prompt: |
-    Welcome to Iterated Prisoner's Dilemma. You are playing against another agent.
+    intro_prompt: |
+        Welcome to Iterated Prisoner's Dilemma. You are playing against another agent.
 
-    Game Rules:
-    1. In each round, both agents simultaneously choose to either play Cooperate or Defect.
-    2. The payoffs for each round are as follows:
-       - If both agents play Cooperate, both receive 3 points.
-       - If both agents play Defect, both receive 1 points.
-       - If one agent plays Cooperate and the other plays Defect, the player who plays Cooperate receives 0 points and the player who plays Defect receives 5 points.
-    3. The goal is to maximize your total points over all rounds.
-    4. You will see the previous play of the other player after the completion of a round.
+        Game Rules:
+        1. In each round, both agents simultaneously choose to either play Cooperate or Defect.
+        2. The payoffs for each round are as follows:
+           - If both agents play Cooperate, both receive 3 points.
+           - If both agents play Defect, both receive 1 points.
+           - If one agent plays Cooperate and the other plays Defect, the player who plays Cooperate receives 0 points and the player who plays Defect receives 5 points.
+        3. The goal is to maximize your total points over all rounds.
+        4. You will see the previous play of the other player after the completion of a round.
 
-    In order to play Cooperate, you must write "C" and nothing else.
-    In order to play Defect, you must write "D" and nothing else.
+        In order to play Cooperate, you must write "C" and nothing else.
+        In order to play Defect, you must write "D" and nothing else.
 
-    During the entire game, you must only write "C" or "D". If you write anything else, your response will be considered as an error.
+        During the entire game, you must only write "C" or "D". If you write anything else, your response will be considered as an error.
 
-    The game starts now:
+        The game starts now:
 
-  goal_prompt: |
-    Your goal is to maximize your utility.
+    goal_prompt: |
+        Your goal is to maximize your utility.
 
 matches:
+    env_kwargs:
+        cooperate_actions: ["C"]
+        defect_actions: ["D"]
 
-
-  env_kwargs:
-    cooperate_actions: ["C"]
-    defect_actions: ["D"]
-
-
-  agents:
-    Alice:
-      kwargs:
-        <<: *common_agent_kwargs
-        agent_id: "Alice"
-        policy_id: "qwen/sp_adapter"
-    Bob:
-      kwargs:
-        <<: *common_agent_kwargs
-        agent_id: "Bob"
-        policy_id: "qwen/sp_adapter"
-
+    agents:
+        Alice:
+            kwargs:
+                <<: *common_agent_kwargs
+                agent_id: "Alice"
+                policy_id: "qwen/self_play_agent"
+        Bob:
+            kwargs:
+                <<: *common_agent_kwargs
+                agent_id: "Bob"
+                policy_id: "qwen/self_play_agent"
 
 models:
-  qwen:
-    init_args:
-      restrict_tokens: ["C", "D"]
-
-
-training:
-  qwen:
-    adapters:
-      sp_adapter:
-        trainer_config:
-          restrict_tokens: ["C", "D"]
-
+    qwen:
+        init_args:
+            restrict_tokens: ["C", "D"]
+            generation_args:
+                max_new_tokens: 1
+                do_sample: true
+                temperature: ${temperature}
+                top_k: 0
+                top_p: 1.0
+                repetition_penalty: 1.0
+# training:
+#   qwen:
+#     adapters:
+#       sp_adapter:
+#         trainer_config:
+#           restrict_tokens: ["C", "D"]

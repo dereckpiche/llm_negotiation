@@ -341,8 +341,8 @@ To run Deal or No Deal games with LLM agents, you can use the following structur
 
 .. code-block:: python
 
-    from src.environments.dond.dond_game import DondEnv
-    from src.environments.dond.dond_agent import DondAgent
+    from mllm.environments.dond.dond_game import DondEnv
+    from mllm.environments.dond.dond_agent import DondAgent
     from src.run_matches import run_batched_matches
 
     # Create environment

@@ -326,9 +326,9 @@ To run Iterated Prisoner's Dilemma games with LLM agents, you can use the follow
 
 .. code-block:: python
 
-    from src.environments.ipd.ipd_game import IPDEnv
-    from src.environments.ipd.ipd_agent import IPDAgent
-    from src.run_matches import run_batched_matches
+    from mllm.environments.ipd.ipd_game import IPDEnv
+    from mllm.environments.ipd.ipd_agent import IPDAgent
+    from mllm.run_matches import run_batched_matches
 
     # Create environment
     env = IPDEnv(
@@ -375,7 +375,7 @@ These statistics can be calculated using the ``gather_ipd_statistics`` function:
 
 .. code-block:: python
 
-    from src.environments.ipd.ipd_statistics_funcs import gather_ipd_statistics
+    from mllm.environments.ipd.ipd_statistics_funcs import gather_ipd_statistics
     
     stats = gather_ipd_statistics(match_info, env_info)
     print(f"Cooperation rates: {stats['cooperation_rate']}")
