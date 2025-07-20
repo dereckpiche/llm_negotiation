@@ -16,17 +16,20 @@ only log information for step transitions occuring after the branching out.
 from transformers.models.idefics2 import Idefics2Config
 from mllm.markov_games.simulation import Simulation
 from mllm.markov_games.agent import Agent
+from typing import List, Optional, Any, Tuple, Literal
+from mllm.markov_games.rollout_tree import StepLog
 from copy import copy, deepcopy
 import os, json
 import asyncio
+AgentId = str
+
 
 class MarkovGame(object):
     def __init__(
         self,
         id: str,
         simulation: type[Simulation],
-        agents: dict[str, type[Agent]],
-        output_path: str
+        agents: dict[AgentId, type[Agent]],
     ):
         """
         Args:
@@ -39,10 +42,9 @@ class MarkovGame(object):
         self.id = id
         self.simulation = simulation
         self.agents = agents
-        self.output_path = output_path
         self.agent_ids = self.agents.keys()
-        self.simulation_step_infos = []
-        self.agents_step_infos = {agent_id : [] for agent_id in self.agent_ids}
+        self.simulation_step_log = None
+        self.agent_step_logs = {agent_id : None for agent_id in self.agent_ids}
         self.actions = {}
 
     async def set_action_of_agent(self, agent_id):
@@ -53,16 +55,14 @@ class MarkovGame(object):
         obs = self.simulation.get_obs_agent(agent_id)
         action, action_info = await agent.act(observation=obs)
         self.actions[agent_id] = action
-        self.agents_step_infos[agent_id].append(action_info)
-        print(self.actions)
-        print("done with action")
+        self.agent_step_logs[agent_id] = action_info
 
     def unset_action_of_agent(self, agent_id):
         """
         TOWRITE
         """
         self.actions[agent_id] = None
-        self.agents_step_infos[agent_id].pop()
+        self.agent_step_logs[agent_id] = None
 
     async def set_actions(self):
         """
@@ -71,12 +71,9 @@ class MarkovGame(object):
         # background_tasks = set()
         tasks = []
         for agent_id in self.agent_ids:
-            print("begin taking action")
             task = asyncio.create_task(self.set_action_of_agent(agent_id))
             tasks.append(task)
-        print("waiting for actions")
         await asyncio.gather(*tasks)
-        print("actions set")
 
     def unset_actions(self):
         """
@@ -89,44 +86,38 @@ class MarkovGame(object):
         """
         TOWRITE
         """
-        terminated, simulation_step_info = self.simulation.step(self.actions)
-        self.simulation_step_infos.append(simulation_step_info)
+        terminated, self.simulation_step_log = self.simulation.step(self.actions)
         return terminated
 
-    async def step(self):
+    def get_step_log(self):
+        """
+        TOWRITE
+        TODO: assert actions and simulation have taken step
+        """
+        step_log = StepLog(
+            simulation_step_log=self.simulation_step_log,
+            action_logs=self.agent_step_logs)
+        return step_log
+
+    async def step(self) -> Tuple[bool, StepLog]:
         """
         TOWRITE
         """
         await self.set_actions()
-        print("read_for_simulstep")
         terminated = self.take_simulation_step()
-        return terminated
+        step_log = self.get_step_log()
+        return terminated, step_log
 
-    def get_new_branch(self):
+    def get_safe_copy(self):
         """
         TOWRITE
         """
         # Only deep copy the states. We don't want to deep copy policies, for instance.
         # TODO: add different id!
+        # TODO: this is dangerous. The environments and agents should be responsible of
+        # having a method .get_safe_copy()
         new_markov_game = copy(self)
-        new_markov_game.simulation_step_infos = []
-        new_markov_game.agents_step_infos = {agent_id : [] for agent_id in self.agent_ids}
         new_markov_game.simulation.state = deepcopy(new_markov_game.simulation.state)
-        for agent in new_markov_game.agents:
+        for agent in new_markov_game.agents.values():
             agent.state = deepcopy(agent.state)
         return new_markov_game
-
-    def export(self):
-        """
-        Exports the step infos. At the specified path.
-        """
-        os.makedirs(self.output_path, exist_ok=True)
-        simulation_out_path = os.path.join(self.output_path, "simulation.jsonl")
-        with open(simulation_out_path, "w") as f:
-            json.dump(self.simulation_step_infos, f)
-        for agent_id in self.agent_ids:
-            agent_out_path = os.path.join(self.output_path, agent_id+".jsonl")
-            with open(agent_out_path, "w") as f:
-                agent_step_infos =  self.agents_step_infos[agent_id]
-                json.dump(agent_step_infos, f)
-        print("Exported JSONS")

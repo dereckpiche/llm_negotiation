@@ -35,4 +35,7 @@ class DummyLocalLLM(LeanLocalLLM):
         pass
 
     def generate(self, prompt):
-        return "C"
+        import random
+        n: float = random.random()
+        if n < 0.5: return "C"
+        return "D"

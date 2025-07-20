@@ -22,7 +22,6 @@ from mllm.markov_games.runners.alternative_actions_runner import AlternativeActi
 from mllm.markov_games.runners.linear_runner import LinearRunner
 from mllm.markov_games.run_markov_games import run_markov_games
 
-
 async def generate_and_train(cfg: dict, base_seed: int) -> None:
     """
     Main function to generate training data and train models.
@@ -162,7 +161,6 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
             simulation_class_name = cfg["markov_games"]["simulation_class_name"],
             simulation_init_args = cfg["markov_games"]["simulation_init_args"],
             agent_configs = agent_configs,
-            output_path = ""
         )
         markov_games = []
         nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
@@ -170,14 +168,13 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
             markov_game_config.seed = int(env_rng.integers(0, 1e9))
             markov_game_id = "mgid_" + str(iteration*nb_matches+i)
             markov_game_config.id = markov_game_id
-            markov_game_config.output_path = os.path.join(it_folder, str(iteration*nb_matches+i))
             markov_game = init_markov_game_components(config=markov_game_config, policies=policies)
             markov_games.append(markov_game)
 
         # Generate rollouts raw data (using asyncio)
         runner = eval(cfg["markov_games"]["runner_method_name"])
         # TODO: throw error if error in asyncio call
-        await run_markov_games(runner=runner, markov_games=markov_games)
+        await run_markov_games(runner=runner, output_folder=it_folder, markov_games=markov_games)
 
         print("PHASE 1 DONE!")
         generation_end_time = time.time()
@@ -336,7 +333,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
 
 
 
-@hydra.main()
+@hydra.main(config_path="./configs")
 def main(cfg):
     # Get Hydra's runtime directory
     hydra_run_dir = HydraConfig.get().run.dir

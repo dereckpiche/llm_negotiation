@@ -11,11 +11,14 @@ the LLM policies.
 from abc import ABC, abstractmethod
 from numpy.random import default_rng
 from collections.abc import Callable
+from mllm.markov_games.rollout_tree import AgentStepLog
+from typing import Any, Tuple
+
 
 class Agent(ABC):
 
     @abstractmethod
-    def __init__(self, seed: int, agent_id:int, policy: Callable[[list[dict]], str], *args, **kwargs):
+    def __init__(self, seed: int, agent_id:str, policy: Callable[[list[dict]], str], *args, **kwargs):
         """
         Initialize the agent state.
         """
@@ -25,7 +28,7 @@ class Agent(ABC):
         self.rng = default_rng(self.seed)
         raise NotImplementedError
 
-    async def act(self, observation):
+    async def act(self, observation) ->  Tuple[Any, AgentStepLog]:
         """
         Query (possibly multiple times) a policy (or possibly a pool of policies) to
         obtain the action of the agent.
@@ -39,13 +42,8 @@ class Agent(ABC):
         return action
 
         Returns:
-            action:
-                The action of the agent. Example: "defect"
-            info:
-                Data of agent perspective at time step.
-                Used to generate training data later.
-                Example: [{"role":user, "content":"Other player played cooperate.",
-                {"role":"assistant", "content":"defect"}]
+            action
+            step_info
         """
         raise NotImplementedError
 

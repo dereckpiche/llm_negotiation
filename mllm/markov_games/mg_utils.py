@@ -1,20 +1,15 @@
 
-from types import ClassMethodDescriptorType
-from mllm.markov_games.simulation import Simulation
-from mllm.markov_games.agent import Agent
 from mllm.markov_games.markov_game import MarkovGame
-import os
-import json
-from copy import copy, deepcopy
 from dataclasses import dataclass
 from collections.abc import Callable
 from mllm.markov_games.ipd.ipd_agent import IPDAgent
 from mllm.markov_games.ipd.ipd_simulation import IPD
+AgentId = str
 
 @dataclass
 class AgentConfig:
     agent_class_name: str
-    agent_id: int
+    agent_id: AgentId
     policy_id: str
     init_kwargs: dict
 
@@ -25,7 +20,6 @@ class MarkovGameConfig:
     simulation_class_name: str
     simulation_init_args: dict
     agent_configs: list[AgentConfig]
-    output_path: str
 
 def init_markov_game_components(
     config: MarkovGameConfig,
@@ -49,9 +43,8 @@ def init_markov_game_components(
         agents[agent_id] = agent
 
     markov_game = MarkovGame(
-        id = id,
+        id = config.id,
         simulation=simulation,
         agents=agents,
-        output_path=config.output_path
     )
     return markov_game

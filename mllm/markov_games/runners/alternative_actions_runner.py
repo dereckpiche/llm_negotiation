@@ -1,13 +1,15 @@
-from anytree import Node, RenderTree
-from anytree.exporter import DotExporter
 import os.path
 import asyncio
+import json
 from mllm.markov_games.markov_game import MarkovGame
+from mllm.markov_games.rollout_tree import RolloutTreeNode, RolloutTreeRootNode, RolloutTreeBranchNode, BranchNodeInfo, StepLog
+AgentId = str
 
 async def AlternativeActionsRunner(
     markov_game: MarkovGame,
-    nb_alternative_actions: int = 0,
-    nb_sub_steps: int = 1):
+    output_folder: str,
+    nb_alternative_actions: int = 1,
+    depth: int = 1):
     """
     This method generates a trajectory with partially completed branches,
     where the branching comes from taking unilateraly different actions.
@@ -16,74 +18,81 @@ async def AlternativeActionsRunner(
     the maximum trajectory length.
     """
 
-    folder = os.path.split(markov_game.output_path)[0] # get head
-
-    async def run_depth_k_max(markov_game: MarkovGame, k: int):
+    async def run_with_unilateral_alt_action(
+        markov_game: MarkovGame,
+        agent_id: AgentId,
+        time_step: int,
+        branch_node: RolloutTreeBranchNode,
+        branch_info: BranchNodeInfo):
         """
-        Executes k steps in a markov game.
-        """
-        counter = 0
-
-        # First, take simulation since actions are already set
-        terminated = await markov_game.take_simulation_step()
-        if terminated:
-            markov_game.export()
-            return
-
-        # Then, the remaining steps are taken normally
-        for _ in range(1, k):
-            terminated = await markov_game.step()
-            if terminated:
-                markov_game.export()
-                return
-        markov_game.export()
-        raise NotImplementedError
-
-
-
-    async def run(markov_game: MarkovGame, node: Node):
-        """
-        Run games whilst branching out with different actions.
+        TOWRITE
         """
 
-        # Take step in main trajectory
-        print("launching markov game step")
-        terminated = await markov_game.step()
+        # Generate new action and take a step
+        markov_game.unset_action_of_agent(agent_id)
+        await markov_game.set_action_of_agent(agent_id)
+        terminated = markov_game.take_simulation_step()
+        step_log = markov_game.get_step_log()
+        root = RolloutTreeNode(
+            step_log=step_log,
+            time_step=time_step,
+        )
 
-        #     print("step taken")
-        #     if terminated:
-        #         markov_game.export()
-        #         return
-        #     await markov_game.set_actions()
-        #     time_step = markov_game.time_step
+        # Generate rest of trajectory up to max depth
+        time_step += 1
+        counter = 1
+        previous_node = root
+        while not terminated and counter < depth:
+            terminated, step_log = await markov_game.step()
+            current_node = RolloutTreeNode(step_log=step_log, time_step=time_step)
+            previous_node.child = current_node
+            previous_node = current_node
+            counter += 1
+            time_step += 1
+        branch = (branch_info, root)
 
-        #     # Get alternative branches by generating new unilateral actions
-        #     for agent_id in markov_game.agent_ids:
-        #         for _ in range(nb_alternative_actions):
-        #             mg_branch = markov_game.get_new_branch()
-        #             branch_name = f"alternate_action_of_{agent_id}_time_{time_step}"
-        #             mgb_out_path = os.path.join(folder, branch_name)
-        #             mg_branch.output_path = mgb_out_path
-        #             branch_node = Node(
-        #                 branch_name,
-        #                 payload={
-        #                     "path": mgb_out_path,
-        #                     "time_step": time_step,
-        #                     "agent_id": agent_id
-        #                 },
-        #                 parent=node
-        #             )
-        #             # Sample new action
-        #             mg_branch.unset_action_of_agent(agent_id)
-        #             mg_branch.set_action_of_agent(agent_id)
-        #             # Continue trajectory
-        #             asyncio.create_task(run_depth_k_max(markov_game=mg_branch, k=nb_sub_steps))
+        if branch_node.branches == None:
+            branch_node.branches = [branch]
+        else:
+            branch_node.branches.append(branch)
 
-        #     await run(markov_game, node=root)
+    tasks = []
+    time_step = 0
+    terminated = False
+    root = RolloutTreeRootNode()
+    previous_node = root
 
-        # root = Node("root", payload={"path": markov_game.output_path})
+    while not terminated:
+        terminated, step_log = await markov_game.step()
+        main_node = RolloutTreeNode(step_log=step_log, time_step=time_step)
+        branch_node = RolloutTreeBranchNode(main_child=main_node)
+        previous_node.child = branch_node
+        previous_node = main_node
 
+        # Get alternative branches by generating new unilateral actions
+        for agent_id in markov_game.agent_ids:
+            for _ in range(nb_alternative_actions):
+                mg_branch = markov_game.get_safe_copy()
+                branch_name = f"alternate_action_of_{agent_id}_time_{time_step}"
+                branch_info = BranchNodeInfo(
+                    branch_id = branch_name,
+                    branch_for = agent_id,
+                    branch_type = "unilateral_deviation"
+                )
+                task = asyncio.create_task( run_with_unilateral_alt_action(
+                    markov_game = mg_branch,
+                    time_step = time_step,
+                    agent_id = agent_id,
+                    branch_node = branch_node,
+                    branch_info = branch_info
+                ) )
+                tasks.append(task)
 
-        # TODO: export the Tree object + a pretty print for debugging
-    root = Node("root", payload={"path": markov_game.output_path})
-    await run(markov_game=markov_game, node=root)
+    # wait for all branches to complete
+    await asyncio.gather(*tasks)
+
+    # Export the tree & its schema
+    os.makedirs(output_folder, exist_ok=True)
+    export_path = os.path.join(output_folder, markov_game.id+".json")
+    with open(export_path, "w") as f:
+        f.write(root.model_dump_json(indent=4))

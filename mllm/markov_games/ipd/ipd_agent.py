@@ -6,6 +6,7 @@ from mllm.markov_games.agent import Agent
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from copy import deepcopy
+from mllm.markov_games.rollout_tree import AgentStepLog, ChatTurn
 
 @dataclass
 class IPDAgentState:
@@ -15,7 +16,7 @@ class IPDAgentState:
     nb_retries: int = 0
     round_nb: int = 0
     chat_counter: int = 0
-    chat_history: List[Dict] = field(default_factory=list)
+    chat_history: List[ChatTurn] = field(default_factory=list)
 
 @dataclass
 class IPDAgent(Agent):
@@ -32,7 +33,7 @@ class IPDAgent(Agent):
     defect_strings: List[str] # strings parsed as playing defect by simulation
     state = IPDAgentState()
 
-    async def act(self, observation):
+    async def act(self, observation) -> Tuple[Any, AgentStepLog]:
         """
         TOWRITE
         """
@@ -44,11 +45,13 @@ class IPDAgent(Agent):
             # If it's the first round, we need to send the intro prompt
             if round_nb == 0 and self.state.chat_counter == 0:
                 self.state.chat_history.append(
-                    {
-                        "role": "user",
-                        "content": self.intro_prompt,
-                        "round_nb": round_nb,
-                    }
+                    ChatTurn(
+                        agent_id=self.agent_id,
+                        role="user",
+                        content=self.intro_prompt,
+                        time_step=round_nb,
+                        is_state_end=True
+                    )
                 )
 
             # If new round
@@ -56,22 +59,26 @@ class IPDAgent(Agent):
                 coagent_action = observation.last_coagent_move
                 user_message = f"Last round, the other agent played {coagent_action}."
                 self.state.chat_history.append(
-                    {
-                        "role": "user",
-                        "content": user_message,
-                        "round_nb": round_nb,
-                    }
+                    ChatTurn(
+                        agent_id=self.agent_id,
+                        role="user",
+                        content=user_message,
+                        time_step=round_nb,
+                        is_state_end=True
+                    )
                 )
                 self.round_nb = round_nb
 
             # If not new round, try to get valid action from policy
             policy_output = self.policy(self.state.chat_history) # TODO: use await here!
             self.state.chat_history.append(
-                {
-                    "role": "assistant",
-                    "content": policy_output,
-                    "round_nb": round_nb,
-                }
+                ChatTurn(
+                    agent_id=self.agent_id,
+                    role="assistant",
+                    content=policy_output,
+                    time_step=round_nb,
+                    is_state_end=False
+                )
             )
 
             if policy_output in self.cooperate_strings+self.defect_strings:
@@ -80,12 +87,13 @@ class IPDAgent(Agent):
 
             elif self.nb_retries < self.max_errors:
                 self.state.chat_history.append(
-                    {
-                        "role": "user",
-                        "content": "You have made a formatting error. Try again.",
-                        "is_error": True,
-                        "round_nb": round_nb,
-                    }
+                    ChatTurn(
+                        agent_id=self.agent_id,
+                        role="user",
+                        content= "You have made a formatting error. Try again.",
+                        time_step=round_nb,
+                        is_state_end=False
+                    )
                 )
                 self.nb_retries += 1
 
@@ -95,10 +103,12 @@ class IPDAgent(Agent):
 
         self.state.nb_retries = 0  # reset retry counter
 
-        info = deepcopy(self.state.chat_history[self.state.chat_counter:])
-
+        agent_step_log = AgentStepLog(
+            chat_turns =self.state.chat_history[self.state.chat_counter:],
+            info = None
+        )
         self.state.chat_counter = len(self.state.chat_history)
-        return action, info
+        return action, agent_step_log
 
     def reset(self):
         self.state = IPDAgentState()

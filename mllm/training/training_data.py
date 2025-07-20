@@ -1,0 +1,29 @@
+import torch
+from dataclasses import dataclass
+from torch.nested import NestedTensor
+
+
+@dataclass
+class TensorTrajectory:
+    input_ids:      torch.LongTensor # (T,)
+    action_mask:    torch.BoolTensor # (T,)
+    state_ends:     torch.BoolTensor # (T,)
+    rewards:        torch.FloatTensor # (T,)
+    timesteps:      torch.IntTensor # (T,)
+    """
+    position:       "0  1  2  3  4  5  6  7  8  9  10 11 12 13 14"
+    input_ids:      "U  U  U  a  a  a  U  a  U  a  a  a  U  U  U" (User & Assistant)
+    action_mask:    "x  x  x  ✓  ✓  ✓  x  ✓  x  ✓  ✓  ✓  x  x  x" (F = False, T = True)
+    rewards:        "r1 r1 r1 r1 r1 r1 r2 r2 r2 r2 r2 r2 r3 r3 r3"
+    timestep:       "0  0  0  0  0  0  1  1  1  1  1  1  2  2  2"
+    state_ends:     "x  x  ✓  x  x  x  ✓  x  x  x  x  x  x  x  ✓"
+
+    There must be one `state_end` per timestep.
+    """
+
+timestep = int
+
+@dataclass
+class NeoAdlignData:
+    trajectory : TensorTrajectory
+    alternative_action_branches: dict[timestep, TensorTrajectory]

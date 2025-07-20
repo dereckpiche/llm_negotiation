@@ -5,6 +5,7 @@ from mllm.markov_games.markov_game import Simulation
 import numpy as np
 from dataclasses import dataclass
 from mllm.utils.get_coagent_id import get_coagent_id
+from mllm.markov_games.rollout_tree import SimulationStepLog
 
 @dataclass
 class IPDState:
@@ -63,7 +64,7 @@ class IPD(Simulation):
 
     def step(
         self, actions: Dict[str, str]
-    ) -> Tuple[bool, dict]:
+    ) -> Tuple[bool, SimulationStepLog]:
         """
         Take a step in the environment using the provided actions.
         Here, the observations are just the states of the game.
@@ -121,9 +122,9 @@ class IPD(Simulation):
         self.state.round_nb += 1
         self.state.last_moves = copy.deepcopy(actions)
         done = self.state.round_nb >= self.rounds_per_game
-        info = {"rewards": round_rewards}
+        step_log =  SimulationStepLog(rewards=round_rewards)
 
-        return done, info
+        return done, step_log
 
     def get_obs(self):
         """ Returns all agent observations in dict

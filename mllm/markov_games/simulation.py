@@ -7,6 +7,8 @@ Simulations expect clean actions, and are defined similarly to `gymnasium` envir
 
 from abc import ABC, abstractmethod
 from numpy.random import default_rng
+from mllm.markov_games.rollout_tree import SimulationStepLog
+from typing import Any, Tuple
 
 class Simulation(ABC):
 
@@ -15,12 +17,9 @@ class Simulation(ABC):
         self.seed = seed
         self.rng = default_rng(self.seed)
 
-    def step(self, actions):
-        """ Returns terminated, info
-
-        Returns:
-            Infos:
-
+    def step(self, actions) -> Tuple[bool, SimulationStepLog]:
+        """
+        Returns terminated, info
         """
         raise NotImplementedError
 
