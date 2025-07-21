@@ -17,7 +17,7 @@ class Simulation(ABC):
         self.seed = seed
         self.rng = default_rng(self.seed)
 
-    def step(self, actions) -> Tuple[bool, SimulationStepLog]:
+    def step(self, actions: Any) -> Tuple[bool, SimulationStepLog]:
         """
         Returns terminated, info
         """

@@ -6,7 +6,7 @@ from mllm.markov_games.agent import Agent
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from copy import deepcopy
-from mllm.markov_games.rollout_tree import AgentStepLog, ChatTurn
+from mllm.markov_games.rollout_tree import AgentActLog, ChatTurn
 
 @dataclass
 class IPDAgentState:
@@ -33,7 +33,7 @@ class IPDAgent(Agent):
     defect_strings: List[str] # strings parsed as playing defect by simulation
     state = IPDAgentState()
 
-    async def act(self, observation) -> Tuple[Any, AgentStepLog]:
+    async def act(self, observation) -> Tuple[Any, AgentActLog]:
         """
         TOWRITE
         """
@@ -103,7 +103,7 @@ class IPDAgent(Agent):
 
         self.state.nb_retries = 0  # reset retry counter
 
-        agent_step_log = AgentStepLog(
+        agent_step_log = AgentActLog(
             chat_turns =self.state.chat_history[self.state.chat_counter:],
             info = None
         )

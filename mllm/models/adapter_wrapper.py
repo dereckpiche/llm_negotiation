@@ -42,7 +42,7 @@ class AdapterWrapper(nn.Module):
         if os.path.exists(path):
             self.shared_llm.load_adapter(
                 is_trainable=True,
-                model_id=path, 
+                model_id=path,
                 adapter_name=adapter_id)
 
     def parameters(self, recurse: bool = True):
@@ -53,12 +53,13 @@ class AdapterWrapper(nn.Module):
         params = [p for p in self.shared_llm.parameters() if p.requires_grad]
 
         return params
-   
+
     def forward(self, *args, **kwargs):
         self.shared_llm.set_adapter(self.adapter_id)
         return self.shared_llm(*args, **kwargs)
-    
+
     def save_pretrained(self, save_path):
+        self.shared_llm.set_adapter(self.adapter_id)
         self.shared_llm.save_pretrained(save_path)
 
     def gradient_checkpointing_enable(self, *args, **kwargs):
@@ -71,4 +72,3 @@ class AdapterWrapper(nn.Module):
     @property
     def device(self):
         return self.shared_llm.device
-    

@@ -21,7 +21,7 @@ class DummyLocalLLM(LeanLocalLLM):
     def set_adapter_eval(self, adapter_id: str) -> None:
         pass
 
-    def get_trainable_objects(self) -> dict:
+    def get_inference_policies(self) -> dict:
         return {}
 
     def log_gpu_usage(self, message: str) -> None:

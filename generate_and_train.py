@@ -1,6 +1,7 @@
 """
 This file contains the code to generate and train the models.
 """
+
 import copy, logging, os, shutil, sys, hydra
 from hydra.core.hydra_config import HydraConfig
 from typing import Dict, List, Any
@@ -21,6 +22,7 @@ from mllm.markov_games.mg_utils import AgentConfig, MarkovGameConfig, init_marko
 from mllm.markov_games.runners.alternative_actions_runner import AlternativeActionsRunner
 from mllm.markov_games.runners.linear_runner import LinearRunner
 from mllm.markov_games.run_markov_games import run_markov_games
+
 
 async def generate_and_train(cfg: dict, base_seed: int) -> None:
     """
@@ -84,7 +86,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
     # Get dictionnary of pytorch-like trainable models
     trainable_modules = {}
     for llm_id, llm in llms_dict.items():
-        trainable_modules[llm_id] = llm.get_trainable_objects()
+        trainable_modules[llm_id] = llm.get_inference_policies()
 
     # Critics
     for critic_id, critic_config in cfg["critics"].items():

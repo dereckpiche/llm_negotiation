@@ -18,13 +18,13 @@ class SimulationStepLog(BaseModel):
     rewards: dict[AgentId, float]
     info: Any = None
 
-class AgentStepLog(BaseModel):
+class AgentActLog(BaseModel):
     chat_turns: list[ChatTurn] | None
     info: Any = None
 
 class StepLog(BaseModel):
+    action_logs:  dict[AgentId, AgentActLog]
     simulation_step_log: SimulationStepLog
-    action_logs:  dict[AgentId, AgentStepLog]
 
 
 BranchType = Literal["unilateral_deviation", "common_deviation"] # might not be necessary

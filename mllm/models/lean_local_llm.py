@@ -17,15 +17,20 @@ from sglang.utils import launch_server_cmd
 from sglang.utils import wait_for_server, print_highlight, terminate_process
 from collections.abc import Callable
 from mllm.utils.common_imports import *
+import httpx
+import torch.nn as nn
 
-compute_logger = logging.getLogger("compute_logger")
-memory_logger = logging.getLogger("memory_logger")
-model_logger = logging.getLogger("model_logger")
+
+logger = logging.getLogger(__name__)
+
+AdapterID = str
+PolicyID = str
+
 
 
 class LeanLocalLLM:
     """
-
+    TOWRITE
     """
 
     def __init__(
@@ -35,18 +40,16 @@ class LeanLocalLLM:
         device: str = "cuda",
         shared_hf_llm_init_kwargs: dict = {},
         max_model_length: int = 8000,
-        generation_args={
-            "max_new_tokens": 300,
-            "do_sample": True,
-            "temperature": 1.0,
-            "top_k": 0,
-            "top_p": 1.0,
-            "repetition_penalty": 1.0,
-        },
-        sglang_params: dict = {},
+        max_new_tokens: int = 128, # SGL Default: 128
+        min_new_tokens: int = 1,
+        stop_tokens_id: None | list[int] = None,
+        temperature: float = 1.0,
+        top_p: float = 1.0, # Top-p selects tokens from the smallest sorted set whose cumulative probability exceeds top_p. When top_p = 1, this reduces to unrestricted sampling from all tokens.
+        top_k: int = -1, # Top-k randomly selects from the k highest-probability tokens. -1 means it is not used.
+        frequency_penalty: float = 0.0,
         adapter_configs: dict = {},
         restrict_tokens=None,
-        output_directory=None,
+        output_directory : str = "./models/",
         abort_sglang=False
     ) -> None:
         """
@@ -54,7 +57,6 @@ class LeanLocalLLM:
         """
         super().__init__()
         self.output_directory = output_directory
-        self.sglang_params = sglang_params
         self.name = name
         self.device = torch.device(device) if device else torch.device("cuda")
         self.model_name = model_name
@@ -79,23 +81,15 @@ class LeanLocalLLM:
             adapter_id: self.short_id_generator()
             for adapter_id in self.adapter_ids
         }
-
         # Initialize tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-
         # Setup padding token to be same as EOS token
         self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
-        # Configure sampling parameters
-        self.hf_sampling_params = generation_args
-        # self.sglang_sampling_params = SamplingParams(
-        #     temperature=generation_args["temperature"],
-        #     top_k=-1 if generation_args["top_k"] == 0.0 else generation_args["top_k"],
-        #     top_p=generation_args["top_p"],
-        #     max_tokens=generation_args["max_new_tokens"],
-        #     repetition_penalty=generation_args["repetition_penalty"],
-        # )
+        self.needs_loading : dict[AdapterID, bool] = {adapter_id : True for adapter_id in self.adapter_ids}
+        self.current_lora_request = None
+        self.currently_loaded_adapter_id = None
 
         # ---------------------------------------------------------
         # Init HF model, peft adapters
@@ -115,6 +109,7 @@ class LeanLocalLLM:
             ).to(device)
             self.hf_adapters[adapter_id] = hf_adapter
         self.export_adapters()
+
         # ---------------------------------------------------------
         # Init sglang stuff for fast inference
         # ---------------------------------------------------------
@@ -129,8 +124,16 @@ class LeanLocalLLM:
             "--host 0.0.0.0 " + \
             lora_str + \
             " --enable-memory-saver" + \
-            " --disable-radix-cache" # TODO check when we can add this back with LoRA, it takes way less kv cache with branching if enabled!
+            " --disable-radix-cache" # TODO: With the current SGL implementation, we cannot use radix caching with multiple LoRA adapters. Radix caching is great for our use case. We should check frequently if this has been enabled.
         )
+        self.sglang_sampling_params = {
+            "temperature": temperature,
+            "top_k":top_k,
+            "top_p":top_p,
+            "max_new_tokens":max_new_tokens,
+            "min_new_tokens":min_new_tokens,
+            "frequency_penalty": frequency_penalty,
+        }
         wait_for_server(f"http://localhost:{self.sglang_port}")
         self.gen_url     = f"http://localhost:{self.sglang_port}/generate"
         self.release_url = f"http://localhost:{self.sglang_port}/release_memory_occupation"
@@ -138,7 +141,6 @@ class LeanLocalLLM:
         self.load_weights_url = f"http://localhost:{self.sglang_port}/resume_memory_occupation"
         self.load_lora_url   = f"http://localhost:{self.sglang_port}/load_lora_adapter"
         self.unload_lora_url = f"http://localhost:{self.sglang_port}/unload_lora_adapter"
-        self.current_lora_request = None
 
 
     def toggle_training_mode(self) -> None:
@@ -153,47 +155,61 @@ class LeanLocalLLM:
         requests.post(self.resume_url, json={"tags": ["kv_cache"]}).raise_for_status()
 
 
-    def set_adapter_eval(self, adapter_id: str) -> None:
+    def add_random_noise_to_current_adapter(self) -> None:
+        # Add random noise to current adapter for debugging.
+        pass
+
+    def prepare_adapter_for_inference(self, adapter_id: AdapterID) -> None:
         """
         Ensure correct adapter is loaded in SGLang before generation.
         TODO: make efficient by keeping tabs of whether we made a new export /
         whether we need to load adapters each time!
         """
-        adapter_path = os.path.join(self.save_path, adapter_id)
-        print(str(adapter_id))
-        print(str(adapter_path))
-        if os.path.exists(adapter_path):
-            payload = {"lora_name": str(adapter_id)}
-            requests.post(self.unload_lora_url, json=payload).raise_for_status()
-            payload = {
-               "lora_name": str(adapter_id),
-               "lora_path": str(adapter_path)
-            }
-            requests.post(self.load_lora_url, json=payload).raise_for_status()
+        if self.needs_loading[adapter_id]:
+            adapter_path = os.path.join(self.save_path, adapter_id)
+            if os.path.exists(adapter_path):
+                logger.info(f"Loading adapter {adapter_id} from {adapter_path}")
+                payload = {"lora_name": str(adapter_id)}
+                requests.post(self.unload_lora_url, json=payload).raise_for_status()
+                payload = {
+                "lora_name": str(adapter_id),
+                "lora_path": str(adapter_path)
+                }
+                print(f"Loaded adapter from {adapter_path}.")
+                requests.post(self.load_lora_url, json=payload).raise_for_status()
+            if self.currently_loaded_adapter_id is not None:
+                self.needs_loading[self.currently_loaded_adapter_id] = True
+            self.needs_loading[adapter_id] = False
+            self.currently_loaded_adapter_id = adapter_id
 
-    def get_trainable_objects(self) -> dict:
+
+    def get_training_policies(self) -> dict[PolicyID, nn.Module]:
         """
-        TOWRITE
+        Returns wrappers over the adapters which allows them be
+        interfaced like regular PyTorch models.
+        # TODO: create the adapter wrappers here
+        See adapter_wrapper.py
         """
         trainable_objects = {
             an : self.hf_adapters[an] for an in self.adapter_ids
         }
         return trainable_objects
 
-    def get_callable_objects(self) -> dict[str, Callable]:
+    def get_inference_policies(self) -> dict[PolicyID, Callable]:
         """
         TOWRITE
         """
         policies = {}
         for adapter_id in self.adapter_ids:
             # define policy func
-            def policy(prompt:list[dict]):
-                self.set_adapter_eval(adapter_id=adapter_id)
-                return self.generate(prompt)
+            async def policy(prompt:list[dict], _adapter_id=adapter_id):
+                self.prepare_adapter_for_inference(adapter_id=_adapter_id)
+                response = await self.generate(prompt)
+                return response
             policies[self.name+"/"+adapter_id] = policy
         return policies
 
-    def generate(self, prompt) -> str:
+    async def generate(self, prompt) -> str:
         """
         """
         # Apply chat template to prompt
@@ -202,15 +218,25 @@ class LeanLocalLLM:
             tokenize=False,
             add_generation_prompt=True
         )
-        print(prompt)
-        payload = {"text": prompt}
-        response = requests.post(self.gen_url, json=payload).json()
-        return response["text"]
+        payload = {
+            "text": prompt,
+            "sampling_params": self.sglang_sampling_params
+        }
+
+        async with httpx.AsyncClient() as client:
+                resp = await client.post(self.gen_url, json=payload)
+        response = resp.json()["text"]
+        return response
 
     def export_adapters(self) -> None:
         """
-        Any peft wrapper, by default, saves all adapters, not just self.
+        Any peft wrapper, by default, saves all adapters, not just the one currently loaded.
         """
+
+        # New version of the adapters available
+        for adapter_id in self.adapter_ids:
+            self.needs_loading[adapter_id] = True
+
         adapter_id = self.adapter_ids[0]
         self.hf_adapters[adapter_id].save_pretrained(self.save_path)
 
@@ -225,8 +251,8 @@ class LeanLocalLLM:
         export_path = os.path.join(
             output_dir, f"{adapter_id}-{checkpoint_indicator}-{date_str}"
         )
-        adapter_id = self.adapter_ids[0]
-        self.hf_adapters[adapter_id].save_pretrained(export_path)
+        for adapter_id in self.adapter_ids:
+            self.hf_adapters[adapter_id].save_pretrained(export_path)
 
 
     def log_gpu_usage(self, message: str) -> None:

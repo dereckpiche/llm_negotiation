@@ -47,7 +47,7 @@ class MarkovGame(object):
         self.agent_step_logs = {agent_id : None for agent_id in self.agent_ids}
         self.actions = {}
 
-    async def set_action_of_agent(self, agent_id):
+    async def set_action_of_agent(self, agent_id: AgentId):
         """
         TOWRITE
         """
@@ -89,7 +89,7 @@ class MarkovGame(object):
         terminated, self.simulation_step_log = self.simulation.step(self.actions)
         return terminated
 
-    def get_step_log(self):
+    def get_step_log(self) -> StepLog:
         """
         TOWRITE
         TODO: assert actions and simulation have taken step

@@ -11,9 +11,8 @@ the LLM policies.
 from abc import ABC, abstractmethod
 from numpy.random import default_rng
 from collections.abc import Callable
-from mllm.markov_games.rollout_tree import AgentStepLog
+from mllm.markov_games.rollout_tree import AgentActLog
 from typing import Any, Tuple
-
 
 class Agent(ABC):
 
@@ -28,7 +27,7 @@ class Agent(ABC):
         self.rng = default_rng(self.seed)
         raise NotImplementedError
 
-    async def act(self, observation) ->  Tuple[Any, AgentStepLog]:
+    async def act(self, observation) ->  Tuple[Any, AgentActLog]:
         """
         Query (possibly multiple times) a policy (or possibly a pool of policies) to
         obtain the action of the agent.

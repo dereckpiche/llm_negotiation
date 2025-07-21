@@ -81,10 +81,6 @@ markov_games:
             init_kwargs:
                 <<: *common_agent_kwargs
 
-    max_length: 30
-    continuation_prob: 0.85
-    same_length_batch: True
-
     log_func: log_ipd_match
 
     run_batched_matches_args:
