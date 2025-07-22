@@ -87,7 +87,7 @@ class LeanLocalLLM:
         self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
-        self.needs_loading : dict[AdapterID, bool] = {adapter_id : True for adapter_id in self.adapter_ids}
+        self.needs_loading : dict[AdapterID, bool] = {adapter_id : False for adapter_id in self.adapter_ids}
         self.current_lora_request = None
         self.currently_loaded_adapter_id = None
 
@@ -110,6 +110,7 @@ class LeanLocalLLM:
             self.hf_adapters[adapter_id] = hf_adapter
         self.export_adapters()
 
+
         # ---------------------------------------------------------
         # Init sglang stuff for fast inference
         # ---------------------------------------------------------
@@ -119,13 +120,16 @@ class LeanLocalLLM:
         dummy_lora_path = os.path.join(self.save_path, self.adapter_ids[0])
         lora_str = "--lora-paths " + " ".join([str(lora_id)+"="+str(lora_path) for lora_id, lora_path in self.adapter_paths.items()])
         self.sglang_server_process, self.sglang_port = launch_server_cmd(
-            "python3 -m sglang.launch_server " + \
-            f"--model-path {local_llm_path} " + \
-            "--host 0.0.0.0 " + \
-            lora_str + \
-            " --enable-memory-saver" + \
-            " --disable-radix-cache" # TODO: With the current SGL implementation, we cannot use radix caching with multiple LoRA adapters. Radix caching is great for our use case. We should check frequently if this has been enabled.
+            f"""
+            python3 -m sglang.launch_server --model-path {local_llm_path} \
+            --host 0.0.0.0 \
+            {lora_str} \
+            --disable-radix-cache \
+            """
         )
+        # TODO: With the current SGL implementation, we cannot use radix caching with multiple LoRA adapters. Radix caching is great for our use case. We should check frequently if this has been enabled.
+        print(f"LoRA String: {lora_str}")
+        print(f"Local LLM Path: {local_llm_path}")
         self.sglang_sampling_params = {
             "temperature": temperature,
             "top_k":top_k,
@@ -177,10 +181,7 @@ class LeanLocalLLM:
                 }
                 print(f"Loaded adapter from {adapter_path}.")
                 requests.post(self.load_lora_url, json=payload).raise_for_status()
-            if self.currently_loaded_adapter_id is not None:
-                self.needs_loading[self.currently_loaded_adapter_id] = True
-            self.needs_loading[adapter_id] = False
-            self.currently_loaded_adapter_id = adapter_id
+        self.currently_loaded_adapter_id = adapter_id
 
 
     def get_training_policies(self) -> dict[PolicyID, nn.Module]:
@@ -209,7 +210,7 @@ class LeanLocalLLM:
             policies[self.name+"/"+adapter_id] = policy
         return policies
 
-    async def generate(self, prompt) -> str:
+    async def generate(self, prompt : str) -> str:
         """
         """
         # Apply chat template to prompt
@@ -218,8 +219,10 @@ class LeanLocalLLM:
             tokenize=False,
             add_generation_prompt=True
         )
+        print(f"Generating with adapter {self.currently_loaded_adapter_id}")
         payload = {
             "text": prompt,
+            "lora_path": self.currently_loaded_adapter_id,
             "sampling_params": self.sglang_sampling_params
         }
 
