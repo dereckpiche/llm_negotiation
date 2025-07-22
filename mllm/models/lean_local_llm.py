@@ -81,6 +81,10 @@ class LeanLocalLLM:
             adapter_id: self.short_id_generator()
             for adapter_id in self.adapter_ids
         }
+        self.sglang_adapter_ids = {
+            adapter_id: adapter_id
+            for adapter_id in self.adapter_ids
+        }
         # Initialize tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
         # Setup padding token to be same as EOS token
@@ -90,6 +94,7 @@ class LeanLocalLLM:
         self.needs_loading : dict[AdapterID, bool] = {adapter_id : False for adapter_id in self.adapter_ids}
         self.current_lora_request = None
         self.currently_loaded_adapter_id = None
+
 
         # ---------------------------------------------------------
         # Init HF model, peft adapters
@@ -112,7 +117,7 @@ class LeanLocalLLM:
 
 
         # ---------------------------------------------------------
-        # Init sglang stuff for fast inference
+        # Init Fast Inference Engine
         # ---------------------------------------------------------
         from transformers.utils import cached_file
         local_llm_path = os.path.split(cached_file(model_name, "config.json"))[0]
@@ -169,14 +174,17 @@ class LeanLocalLLM:
         TODO: make efficient by keeping tabs of whether we made a new export /
         whether we need to load adapters each time!
         """
+        sg_lang_id = self.sglang_adapter_ids[adapter_id]
         if self.needs_loading[adapter_id]:
             adapter_path = os.path.join(self.save_path, adapter_id)
             if os.path.exists(adapter_path):
                 logger.info(f"Loading adapter {adapter_id} from {adapter_path}")
-                payload = {"lora_name": str(adapter_id)}
+                payload = {"lora_name": str(sg_lang_id)}
                 requests.post(self.unload_lora_url, json=payload).raise_for_status()
+                new_sglang_id = self.short_id_generator()
+                self.sglang_adapter_ids[adapter_id] = new_sglang_id
                 payload = {
-                "lora_name": str(adapter_id),
+                "lora_name": str(new_sglang_id),
                 "lora_path": str(adapter_path)
                 }
                 print(f"Loaded adapter from {adapter_path}.")
@@ -219,17 +227,18 @@ class LeanLocalLLM:
             tokenize=False,
             add_generation_prompt=True
         )
+        sg_lang_adapter_id = self.sglang_adapter_ids[self.currently_loaded_adapter_id]
         print(f"Generating with adapter {self.currently_loaded_adapter_id}")
         payload = {
-            "text": prompt,
-            "lora_path": self.currently_loaded_adapter_id,
+            "text": [prompt],
+            "lora_path": [sg_lang_adapter_id],
             "sampling_params": self.sglang_sampling_params
         }
 
         async with httpx.AsyncClient() as client:
                 resp = await client.post(self.gen_url, json=payload)
-        response = resp.json()["text"]
-        return response
+        response = resp.json()
+        return response[0]['text']
 
     def export_adapters(self) -> None:
         """
@@ -239,6 +248,12 @@ class LeanLocalLLM:
         # New version of the adapters available
         for adapter_id in self.adapter_ids:
             self.needs_loading[adapter_id] = True
+
+        # import random
+        # self.save_path = self.save_path + str(random.randint(1,500))
+        # print(f"Save path: {self.save_path}")
+        # self.adapter_paths = {adapter_id:os.path.join(self.save_path, adapter_id) for adapter_id in self.adapter_ids}
+
 
         adapter_id = self.adapter_ids[0]
         self.hf_adapters[adapter_id].save_pretrained(self.save_path)
@@ -269,11 +284,11 @@ class LeanLocalLLM:
         gpu_memory = (total_memory - free_memory) / (1024**3)
         memory_logger.info(f"{message}: GPU memory allocated: {gpu_memory:.2f} GB")
 
-    def short_id_generator(self) -> int:
+    def short_id_generator(self) -> str:
         """
         Generates a short unique ID for tracking adapter versions.
 
         Returns:
             int: An 8-digit integer ID.
         """
-        return int(str(uuid.uuid4().int)[:8])
+        return str(uuid.uuid4().int)[:8]
