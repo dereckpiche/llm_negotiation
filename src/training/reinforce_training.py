@@ -34,6 +34,7 @@ def reinforce_train(
     gradient_clipping=1.0,
     debug_log_path=None,
     debug_enabled=False,
+    sum_action_log_probs=False,
 ):
     """Trains a language model using the REINFORCE algorithm (policy gradient method).
 
@@ -318,10 +319,12 @@ def reinforce_train(
 
             # Avoid division by zero by adding a small epsilon value to the denominator
             epsilon = 1e-8
-
-            loss = -rewarded_action_log_probs.sum(dim=1) / (
-                torch.sum(mask_batch, dim=1) + epsilon
-            )  # (B,)
+            if sum_action_log_probs:
+                loss = -rewarded_action_log_probs.sum(dim=1)  # (B,)
+            else:
+                loss = -rewarded_action_log_probs.sum(dim=1) / (
+                    torch.sum(mask_batch, dim=1) + epsilon
+                )  # (B,)
 
             loss = loss.mean()
 

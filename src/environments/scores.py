@@ -70,27 +70,54 @@ def rloo_advantage_alignment_scores(
     clipping=False,
     do_rloo_later=False,
     first_coop=False,
+    use_curr_step=False,
+    no_discounting_aa=False,
 ):
     """
     TODO: documentation
     """
-    n = rewards_agent_1.shape[0]
     rewards_agent_1 = rewards_agent_1 / normalizing_factor
     rewards_agent_2 = rewards_agent_2 / normalizing_factor
+    original_shape = rewards_agent_1.shape
+    error_mask = (rewards_agent_1 < 0) | (rewards_agent_2 < 0)
+    error_mask = np.any(error_mask, axis=1)
+    valid_rewards_agent_1 = rewards_agent_1[~error_mask]
+    valid_rewards_agent_2 = rewards_agent_2[~error_mask]
+    n = valid_rewards_agent_1.shape[0]
+    if n > 0:
+        valid_a1 = rewards_to_rloo_advantages(
+            valid_rewards_agent_1, discount_factor=discount_factor
+        )
+        valid_a2 = rewards_to_rloo_advantages(
+            valid_rewards_agent_2, discount_factor=discount_factor
+        )
+        valid_advantage_alignment_scores = advantages_to_aa_scores(
+            valid_a1,
+            valid_a2,
+            beta=beta,
+            gamma=discount_factor,
+            regulate_var=regulate_var,
+            time_decay=time_decay,
+            clipping=clipping,
+            use_sign=use_sign,
+            first_coop=first_coop,
+            use_curr_step=use_curr_step,
+            no_discounting_aa=no_discounting_aa,
+        )
+    else:
+        valid_a1 = np.array([]).reshape(0, original_shape[1])
+        valid_a2 = np.array([]).reshape(0, original_shape[1])
+        valid_advantage_alignment_scores = np.array([]).reshape(0, original_shape[1])
 
-    a1 = rewards_to_rloo_advantages(rewards_agent_1, discount_factor=discount_factor)
-    a2 = rewards_to_rloo_advantages(rewards_agent_2, discount_factor=discount_factor)
-    advantage_alignment_scores = advantages_to_aa_scores(
-        a1,
-        a2,
-        beta=beta,
-        gamma=discount_factor,
-        regulate_var=regulate_var,
-        time_decay=time_decay,
-        clipping=clipping,
-        use_sign=use_sign,
-        first_coop=first_coop,
-    )
+    a1 = np.zeros(original_shape)
+    a2 = np.zeros(original_shape)
+    advantage_alignment_scores = np.zeros(original_shape)
+
+    if n > 0:
+        a1[~error_mask] = valid_a1
+        a2[~error_mask] = valid_a2
+        advantage_alignment_scores[~error_mask] = valid_advantage_alignment_scores
+
     if do_rloo_later:
         rloo_advantages_alignment_scores = advantage_alignment_scores - (
             np.sum(advantage_alignment_scores, axis=0, keepdims=True)
@@ -146,6 +173,8 @@ def advantages_to_aa_scores(
     clipping=False,
     use_sign=False,
     first_coop=False,
+    use_curr_step=False,
+    no_discounting_aa=False,
 ):
     """
     Calculate the advantage alignment scores with vectorization.
@@ -165,11 +194,18 @@ def advantages_to_aa_scores(
         A^2(s_t, a_t, b_t)
     Refer to https://arxiv.org/abs/2406.14662
     """
-
+    if no_discounting_aa:
+        gamma = 1.0
     # Regular alignment terms
     T = a1.shape[1]
     discounted_a1 = a1 * (gamma * np.ones(shape=(1, T))) ** (-np.arange(0, T, 1))
-    discounted_sums_a1 = discounted_a1 @ (np.triu(np.ones((T, T))) - np.identity(T))
+    if use_curr_step:
+        assert (
+            first_coop is False
+        ), "first_coop should be False when using use_curr_step"
+        discounted_sums_a1 = discounted_a1 @ np.triu(np.ones((T, T)))
+    else:
+        discounted_sums_a1 = discounted_a1 @ (np.triu(np.ones((T, T))) - np.identity(T))
     if first_coop:
         discounted_sums_a1[:, 0] = 1  # First time step cooperation
     t_discounts = (gamma * np.ones(shape=(1, T))) ** (np.arange(0, T, 1))
@@ -183,13 +219,14 @@ def advantages_to_aa_scores(
         )
         alignment_terms = sign_values * a2
     else:
-        original_terms = gamma * t_discounts * discounted_sums_a1 * beta
+        if use_curr_step:
+            original_terms = t_discounts * discounted_sums_a1 * beta
+        else:
+            original_terms = gamma * t_discounts * discounted_sums_a1 * beta
         if clipping:
             upper_mask = original_terms > 1
             lower_mask = original_terms < -1
-            clipped_values = np.clip(
-                gamma * t_discounts * discounted_sums_a1 * beta, -1, 1
-            )
+            clipped_values = np.clip(original_terms, -1, 1)
             clipping_ratio = (np.sum(upper_mask) + np.sum(lower_mask)) / upper_mask.size
             print(f"ratio of clipping {clipping_ratio}")
             alignment_terms = clipped_values * a2

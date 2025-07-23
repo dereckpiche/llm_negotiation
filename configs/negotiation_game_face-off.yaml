@@ -1,12 +1,12 @@
 defaults:
-  - negotiation_game.yaml
+  - negotiation_game_fixed_manual.yaml
 
 experiment:
-  name: "negotiation_game_faceoff_${now:%Y-%m-%d___%H-%M-%S}"
+  name: "negotiation_game_fixed_manual_faceoff_adv_align_rerun_temp1.0_nodiscountingaa_timedecay_usecurrstep_greedy"
   # name: "${now:%Y-%m-%d___%H-%M-%S}_no_name" (having timestamp is good for debugging, but it is difficult to restart with preemption)
   description: "Agents facing off."
   nb_epochs: 1
-  nb_matches_per_iteration: 256
+  nb_matches_per_iteration: 64
   checkpoint_every_n_iterations: -1 # don't save checkpoint
   base_seed: 344
 
@@ -15,10 +15,10 @@ experiment:
 ####################################################################################################
 
 matches:
-  max_length: 10
+  max_length: 20
   continuation_prob: 1.0
   same_length_batch: True
-  nb_matches_with_same_roundwise_utilities: 0
+  nb_matches_with_same_roundwise_utilities: 64
   log_func: dond_log_match
   stop_condition: game_over_condition
   stop_condition_kwargs: {}
@@ -37,7 +37,7 @@ matches:
         agent_name: "Bob"
         policy_id: "qwen/adapter_bob"
 
-temperature: 0.7
+temperature: 1.0
 
 
 
@@ -49,10 +49,13 @@ models:
       adapter_configs:
         adapter_alice:
           type: "lora"
-          hf_server_import_kwargs:
-            repo_id: LLMnegotiation/sum_of_rewards
-            repo_type: model
-            allow_patterns: ["seed_344/sp_adapter/model/*"]
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/negotiation_game_fixed_manual_adv_align_temp1.0_beta0.1_usecurrstep/seed_344/sp_adapter/model/
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/negotiation_game_fixed_manual_greedyrl/seed_344/sp_adapter/model/
+          local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/negotiation_game_fixed_manual_adv_align_rerun_temp1.0_nodiscountingaa_timedecay_usecurrstep/seed_344/sp_adapter/model/
+          # hf_server_import_kwargs:
+          #   repo_id: LLMnegotiation/sum_of_rewards
+          #   repo_type: model
+          #   allow_patterns: ["seed_344/sp_adapter/model/*"]
           optimizer_method: "SGD"
           optimizer_kwargs: {}
           lora_kwargs:
@@ -64,10 +67,13 @@ models:
 
         adapter_bob:
           type: "lora"
-          hf_server_import_kwargs:
-            repo_id: LLMnegotiation/greedy_rl
-            repo_type: model
-            allow_patterns: ["seed_645/sp_adapter/model/*"]
+          local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/negotiation_game_fixed_manual_greedyrl/seed_344/sp_adapter/model/
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/negotiation_game_fixed_manual_adv_align_temp1.0_beta0.1_usecurrstep/seed_344/sp_adapter/model/
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/negotiation_game_fixed_manual_adv_align_temp1.0_nodiscountingaa_timedecay_usecurrstep/seed_344/sp_adapter/model/
+          # hf_server_import_kwargs:
+          #   repo_id: LLMnegotiation/greedy_rl
+          #   repo_type: model
+          #   allow_patterns: ["seed_645/sp_adapter/model/*"]
           optimizer_method: "SGD"
           optimizer_kwargs: {}
           lora_kwargs:

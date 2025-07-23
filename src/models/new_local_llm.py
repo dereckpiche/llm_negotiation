@@ -656,6 +656,9 @@ class LocalLLMV2:
                 lora_request=self.current_lora_request,
             )
             responses = [d.outputs[0].text for d in decoded]
+            import ipdb
+
+            ipdb.set_trace()
             del decoded
         else:
             model_logger.error(f"Unsupported generation method: {self.eval_with}")

@@ -55,6 +55,7 @@ class DondEnv:
         self.game_rng = rng
         self.agents = agents
         self.roles = ["starting_negotiator", "responding_negotiator"]
+        self.default_role_points = -1
         self.mode = mode
         self.max_messages = max_messages
         self.min_messages = min_messages
@@ -196,7 +197,7 @@ class DondEnv:
             if self.has_finalized:
                 # We are in the second finalization phase.
                 if not is_finalization:
-                    self.points = {role: 0 for role in self.roles}
+                    self.points = {role: -1 for role in self.roles}
                     self.agreement_reached = False
                 else:
                     self.finalize(processed_response)
@@ -286,7 +287,11 @@ class DondEnv:
         current_agent = self.get_current_agent()
 
         # Handle explicit rejection
-        if finalization == "reject_flag":
+        if (
+            finalization == "reject_flag"
+            or finalization is None
+            or finalization == "[ERROR]"
+        ):
             # Mark the agreement as explicitly rejected
             self.agreement_reached = False
             self.role_props[current_role] = {"reject_flag": True}
@@ -370,7 +375,7 @@ class DondEnv:
         """
         # Ensure points are initialized for all roles
         if not all(role in self.points for role in self.roles):
-            self.points = {role: 0 for role in self.roles}
+            self.points = {role: self.default_role_points for role in self.roles}
 
         self.round_agent_roles.append(self.agent_to_role.copy())
         self.round_quantities.append(self.quantities)
@@ -388,7 +393,9 @@ class DondEnv:
         self.archive_agent_states()
         self.has_finalized = False
         self.role_props = {role: {} for role in self.roles}
-        self.points = {role: 0 for role in self.roles}  # Ensure points are reset
+        self.points = {
+            role: self.default_role_points for role in self.roles
+        }  # Ensure points are reset
         self.agreement_reached = False
         self.last_raw_response = None
         self.last_processed_response = None
@@ -427,7 +434,7 @@ class DondEnv:
             self.has_finalized = False
             self.role_props = {role: {} for role in self.roles}
             self.points = {
-                role: 0 for role in self.roles
+                role: self.default_role_points for role in self.roles
             }  # Ensure points are initialized
             self.agreement_reached = False
             self.last_raw_response = None
@@ -550,7 +557,9 @@ def dond_random_setup(items, min_quant, max_quant, min_val, max_val, rng):
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
 
-def independent_random_vals(items, min_quant, max_quant, min_val, max_val, rng):
+def independent_random_vals(
+    items, min_quant, max_quant, min_val, max_val, rng, round_normalize=False
+):
     quantities = {item: int(rng.integers(min_quant, max_quant + 1)) for item in items}
     val_starting_negotiator = {
         item: int(rng.integers(min_val, max_val + 1)) for item in items
@@ -558,6 +567,19 @@ def independent_random_vals(items, min_quant, max_quant, min_val, max_val, rng):
     val_responding_negotiator = {
         item: int(rng.integers(min_val, max_val + 1)) for item in items
     }
+    if round_normalize:
+        sum_vals = {
+            item: val_starting_negotiator[item] + val_responding_negotiator[item]
+            for item in items
+        }
+        val_starting_negotiator = {
+            item: int(val_starting_negotiator[item] * max_quant / sum_vals[item])
+            for item in items
+        }
+        val_responding_negotiator = {
+            item: int(val_responding_negotiator[item] * max_quant / sum_vals[item])
+            for item in items
+        }
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
 
@@ -689,7 +711,7 @@ def regular_set_points(state, **kwargs):
     for role in roles:
         if role_props.get(role, {}).get("reject_flag", False):
             # Agreement rejected, everyone gets 0 points
-            return {role: 0 for role in roles}, False
+            return {role: -1 for role in roles}, False
 
     # Verify if finalizations match the total quantities
     valid_agreement = True
@@ -754,7 +776,7 @@ def negotiation_payoff(state, use_max_divisor=True, value_dict=None):
     for role in roles:
         if role_props.get(role, {}).get("reject_flag", False):
             # Agreement rejected, everyone gets 0 points
-            return {role: 0 for role in roles}, False
+            return {role: -1 for role in roles}, False
 
     # Verify if finalizations match the total quantities
     valid_agreement = True
