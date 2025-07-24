@@ -1,19 +1,4 @@
-# Reinforcement Learning Leads to Myopic LLM Play in Social Dilemmas
-
-## Abstract
-
-"As agentic AI becomes more widespread, agents with separate and possibly conflicting goals will interact in complex ways.
-Social dilemmas pose a fundamental challenge where individual agents' incentives can undermine collective welfare.
-While reinforcement learning (RL) has been instrumental in fine-tuning large language models (LLMs) for state-of-the-art performance, prior work suggests that naive RL can lead to unfair and welfare-reducing behaviors in small scale neural networks.
-We hypothesize that similar effects may emerge in LLMs, despite their initial alignment toward fairness and cooperation.
-We investigate how state-of-the-art LLMs behave and learn in classic social dilemmas, including the prisoners dilemma and negotiation games. To the best of our knowledge, we are the first to explore RL methods for fine-tuning LLMs in a multi-agent setting.
-Our results show that naive RL fine-tuning produces agents that behave unfairly or reduce overall welfare.
-While shared reward mechanisms can encourage cooperation, they leave agents vulnerable to exploitation by selfish counterparts.
-Finally, we find that even API-accessible LLMs are exploitable by trained selfish agents, highlighting a persistent gap in their ability to handle social dilemmas effectively."
-
-
 ## Installation
-
 ```bash
 cd path/to/repo
 pip install -e .
@@ -49,3 +34,17 @@ We recommended using [CSV](https://marketplace.cursorapi.com/items?itemName=Repr
 ```bash
 PYTHONPATH=src python 'src/training/produce_training_stats.py' tab_render --inpath=path/to/json
 ```
+
+
+## Papers
+This code base was used in the following papers:
+
+### Paper 1: Reinforcement Learning Leads to Myopic LLM Play in Social Dilemmas
+"As agentic AI becomes more widespread, agents with separate and possibly conflicting goals will interact in complex ways.
+Social dilemmas pose a fundamental challenge where individual agents' incentives can undermine collective welfare.
+While reinforcement learning (RL) has been instrumental in fine-tuning large language models (LLMs) for state-of-the-art performance, prior work suggests that naive RL can lead to unfair and welfare-reducing behaviors in small scale neural networks.
+We hypothesize that similar effects may emerge in LLMs, despite their initial alignment toward fairness and cooperation.
+We investigate how state-of-the-art LLMs behave and learn in classic social dilemmas, including the prisoners dilemma and negotiation games. To the best of our knowledge, we are the first to explore RL methods for fine-tuning LLMs in a multi-agent setting.
+Our results show that naive RL fine-tuning produces agents that behave unfairly or reduce overall welfare.
+While shared reward mechanisms can encourage cooperation, they leave agents vulnerable to exploitation by selfish counterparts.
+Finally, we find that even API-accessible LLMs are exploitable by trained selfish agents, highlighting a persistent gap in their ability to handle social dilemmas effectively."

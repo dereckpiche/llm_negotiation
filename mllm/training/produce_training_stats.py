@@ -115,7 +115,6 @@ def get_single_metric_vector(data, metric_path, iterations=None):
     return np.concatenate(vecs) if vecs else np.empty(0, dtype=float)
 
 
-
 def get_iterations_data(iterations_path: str):
     iterations_data = []
     more_iterations = True
@@ -135,4 +134,3 @@ def get_iterations_data(iterations_path: str):
         n += 1
         iteration_path = os.path.join(iterations_path, f"iteration_{n:03d}")
     return iterations_data
-

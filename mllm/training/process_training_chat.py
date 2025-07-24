@@ -3,8 +3,6 @@ import numpy as np
 import torch
 
 
-
-
 def get_sentencepieced_example(tokenizer: AutoTokenizer):
     conv_example = [
     {"role": "user", "content": "..."},
