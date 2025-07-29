@@ -1,20 +1,22 @@
-import numpy as np
 from mllm.training.tally import RtTally
+import torch
 
 def get_discounted_returns(
-    rewards: np.ndarray, discount_factor: float
-) -> np.ndarray :
+    rewards: torch.Tensor, # (B, T)
+    discount_factor: float
+) -> torch.Tensor :
     """
     Computes Monte Carlo discounted returns for a sequence of rewards.
 
     Args:
-        rewards (np.ndarray): Array of rewards for each timestep.
+        rewards (torch.Tensor): Array of rewards for each timestep.
 
     Returns:
-        np.ndarray: Array of discounted returns.
+        torch.Tensor: Array of discounted returns.
     """
+    assert not rewards.is_nested, "Input must not be a nested tensor."
     T = rewards.shape[0]
-    discounted_returns = np.zeros_like(rewards)
+    discounted_returns = torch.zeros_like(rewards)
     accumulator = 0.0
     for t in reversed(range(T)):
         accumulator = rewards[t] + discount_factor * accumulator
@@ -22,25 +24,27 @@ def get_discounted_returns(
     return discounted_returns
 
 def get_generalized_advantage_estimates(
-    rewards: np.ndarray,
-    value_estimates: np.ndarray,
+    rewards: torch.Tensor, # (B, T)
+    value_estimates: torch.Tensor, # (B, T)
     discount_factor: float,
     lambda_coef: float,
-) -> np.ndarray:
+) -> torch.Tensor:
     """
     Computes Generalized Advantage Estimates (GAE) for a sequence of rewards and value estimates.
     See https://arxiv.org/pdf/1506.02438 for details.
 
     Args:
-        rewards (np.ndarray): Array of rewards (length T).
-        value_estimates (np.ndarray): Array of value estimates (length T+1).
+        rewards (torch.Tensor): Array of rewards (length T).
+        value_estimates (torch.Tensor): Array of value estimates (length T+1).
 
     Returns:
-        np.ndarray: Array of GAE values.
+        torch.Tensor: Array of GAE values.
     """
-    T = rewards.size
+
+    assert not rewards.is_nested, "Input must not be a nested tensor."
+    T = rewards.shape[1]
     tds = rewards + lambda_coef * value_estimates[1:] - value_estimates[:-1]
-    gaes = np.zeros_like(tds)
+    gaes = torch.zeros_like(tds)
     acc = 0.0
     for t in reversed(range(T)):
         acc = tds[t] + lambda_coef * discount_factor * acc
@@ -48,10 +52,10 @@ def get_generalized_advantage_estimates(
     return gaes
 
 def get_advantage_alignment_weights(
-    advantages: np.ndarray,
+    advantages: torch.Tensor,
     beta: float,
     gamma: float,
-) -> np.ndarray:
+) -> torch.Tensor:
     """
     The advantage alignment credit is calculated as
 
@@ -67,23 +71,23 @@ def get_advantage_alignment_weights(
     # TODO: verify
     # Regular alignment terms
     T = advantages.shape[1]
-    discounted_advantages = advantages * (gamma * np.ones(shape=(1, T))) ** (
-        -np.arange(0, T, 1)
+    discounted_advantages = advantages * (gamma * torch.ones(shape=(1, T))) ** (
+        -torch.arange(0, T, 1)
     )
     # Identity is for \( k < t \), remove for \( k \leq t \)
     discounted_sums_advantages = discounted_advantages @ (
-        np.triu(np.ones((T, T))) - np.identity(T)
+        torch.triu(torch.ones((T, T))) - torch.identity(T)
     )
-    t_discounts = (gamma * np.ones(shape=(1, T))) ** (np.arange(0, T, 1))
+    t_discounts = (gamma * torch.ones(shape=(1, T))) ** (torch.arange(0, T, 1))
     adalign_weights = beta * t_discounts * discounted_sums_advantages
     return adalign_weights
 
 
 def advantages_to_aa_credits(
-    a1: np.ndarray,
-    a2: np.ndarray,
+    a1: torch.Tensor, # (B, S)
+    a2: torch.Tensor, # (B, S)
     tally: RtTally
-) -> np.ndarray:
+) -> torch.Tensor:
     """
     Calculate the advantage alignment credits with vectorization, as described in https://arxiv.org/abs/2406.14662.
     Applies normalization, sign, clipping, and regularization as specified in config.
@@ -97,20 +101,21 @@ def advantages_to_aa_credits(
     \]
 
     Args:
-        a1 (np.ndarray): The first advantage array.
-        a2 (np.ndarray): The second advantage array.
+        a1 (torch.Tensor): The first advantage array.
+        a2 (torch.Tensor): The second advantage array.
 
     Returns:
-        np.ndarray: The advantage alignment terms.
+        torch.Tensor: The advantage alignment terms.
     """
+    assert not rewards.is_nested, "Input must not be a nested tensor."
     if len(a1.shape) == 1:
         a1 = a1[None, :]
     if len(a2.shape) == 1:
         a2 = a2[None, :]
     assert a1.shape == a2.shape, "Not the same shape"
     T = a1.shape[1]
-    a1 = np.array(a1)
-    a2 = np.array(a2)
+    a1 = torch.array(a1)
+    a2 = torch.array(a2)
     gamma = self.config.discount_factor
     beta = self.config.ad_align_beta
 
@@ -149,12 +154,12 @@ def advantages_to_aa_credits(
         upper_mask = adalign_weights > 1
         lower_mask = adalign_weights < -1
 
-        adalign_weights = np.clip(
+        adalign_weights = torch.clip(
             adalign_weights,
             -self.config.ad_align_clipping,
             self.config.ad_align_clipping,
         )
-        clipping_ratio = (np.sum(upper_mask) + np.sum(lower_mask)) / upper_mask.size
+        clipping_ratio = (torch.sum(upper_mask) + torch.sum(lower_mask)) / upper_mask.size
 
         self.tally.add_metric(
             path=["ad_align_clipping_ratio"], metric=clipping_ratio
@@ -166,7 +171,7 @@ def advantages_to_aa_credits(
 
     # 1/1+t Regularization
     if self.config.use_time_regularization_in_ad_align:
-        t_values = np.arange(1, T + 1)
+        t_values = torch.arange(1, T + 1)
         adalign_weights = adalign_weights / t_values
         self.tally.add_metric(
             path=["adalign_weights_after_1_over_t_reg"], metric=adalign_weights
@@ -189,7 +194,7 @@ def advantages_to_aa_credits(
     # Normalize alignment terms (across same time step)
     if self.config.use_variance_regularization_in_ad_align:
         # TODO: verify
-        reg_coef = np.std(a1[:, -1]) / (np.std(opp_shaping_terms[:, -1]) + 1e-9)
+        reg_coef = torch.std(a1[:, -1]) / (torch.std(opp_shaping_terms[:, -1]) + 1e-9)
         opp_shaping_terms *= reg_coef
         self.tally.add_metric(
             path=["opp_shaping_terms_after_var_reg"], metric=opp_shaping_terms

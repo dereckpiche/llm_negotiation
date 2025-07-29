@@ -1,6 +1,15 @@
+"""
+TODO: this code is terrible and needs to be improved.
+"""
+
+
+
 from transformers import AutoTokenizer
 import numpy as np
 import torch
+
+from mllm.markov_games.rollout_tree import ChatTurn
+from mllm.training.training_data_utils import TrajectoryBatch
 
 
 def get_sentencepieced_example(tokenizer: AutoTokenizer):
@@ -74,10 +83,14 @@ def get_qwen_assistant_user_mask(
         pointer += 1
     return assistant_user_mask
 
+def get_chat_dicts(chat: list[ChatTurn]) -> list[dict]:
+    chat_dicts = [chat_turn.dict() for chat_turn in chat]
+    return chat_dicts
+
 
 def process_training_chat(
     tokenizer: AutoTokenizer,
-    chat_history: dict,
+    chat_history: list[ChatTurn],
     end_at_last_state_flag: bool = False
     ):
     """
@@ -92,12 +105,16 @@ def process_training_chat(
            (Each response of the model is considered an action.)
            action_timestamps[i] = -1 means that it was not part of an action. (Part of user message.)
     """
+    # TODO: clean up!
+
+    chat_history = get_chat_dicts(chat_history)
+
 
     # End chat on the last state introduction
     if end_at_last_state_flag:
         count = 0
         for message in chat_history:
-            if message.get("is_state_end", False):
+            if message["is_state_end"]:
                 last_state_flag_index = count
             count += 1
         chat_history = chat_history[:last_state_flag_index+1]
@@ -127,7 +144,6 @@ def process_training_chat(
        raise TypeError("Tokenizer not supported. Must be implemented here.")
 
     # Create masks and flags
-    rewards = []
     action_mask = torch.zeros(size=token_ids.shape)
     credit_mask = np.full(shape=token_ids.shape, fill_value=-1.0)
     state_end_flags = np.full(shape=token_ids.shape, fill_value=False)
@@ -141,12 +157,11 @@ def process_training_chat(
         if message["role"] == "assistant":
             time_step = message["time_step"]
             if current_time_step < time_step:
-                rewards.append(message["reward"])
                 current_time_step = time_step
             credit_mask[assistant_user_mask == assistant_count] = current_time_step
             assistant_count += 1
         if message["role"] == "user":
-            if message.get("is_state_end", False):
+            if message["is_state_end"]:
                 # Get index of first token with value = user_count
                 state_end_flag = torch.argmax(
                     (assistant_user_mask == -user_count).int()
@@ -154,13 +169,20 @@ def process_training_chat(
                 state_end_flags[state_end_flag] = True
             user_count -= 1
 
-
     action_mask[credit_mask > -1] = 1.0
 
+
+    # TODO: clean up original code
+
+    # Adapt old code outputs to new outputs
+    # import pdb; pdb.set_trace()
+    input_ids = token_ids
+    timesteps = credit_mask
+    state_ends_idx = torch.where(torch.BoolTensor(state_end_flags) == True)[0]
+
     return (
-        token_ids,
-        np.array(rewards),
+        input_ids,
         action_mask,
-        credit_mask,
-        state_end_flags
+        timesteps,
+        state_ends_idx
     )

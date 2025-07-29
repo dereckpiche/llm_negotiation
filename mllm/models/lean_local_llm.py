@@ -119,8 +119,21 @@ class LeanLocalLLM:
         # ---------------------------------------------------------
         # Init Fast Inference Engine
         # ---------------------------------------------------------
+        self.temperature = temperature
+        self.top_k = top_k
+        self.top_p = top_p
+        self.max_new_tokens = max_new_tokens
+        self.min_new_tokens = min_new_tokens
+        self.frequency_penalty = frequency_penalty
+        self.init_sg_lang_server()
+
+
+    def init_sg_lang_server(self) -> None:
+        """
+        TOWRITE
+        """
         from transformers.utils import cached_file
-        local_llm_path = os.path.split(cached_file(model_name, "config.json"))[0]
+        local_llm_path = os.path.split(cached_file(self.model_name, "config.json"))[0]
         # SGLang requires to load with LoRA to infer space required
         dummy_lora_path = os.path.join(self.save_path, self.adapter_ids[0])
         lora_str = "--lora-paths " + " ".join([str(lora_id)+"="+str(lora_path) for lora_id, lora_path in self.adapter_paths.items()])
@@ -136,12 +149,12 @@ class LeanLocalLLM:
         print(f"LoRA String: {lora_str}")
         print(f"Local LLM Path: {local_llm_path}")
         self.sglang_sampling_params = {
-            "temperature": temperature,
-            "top_k":top_k,
-            "top_p":top_p,
-            "max_new_tokens":max_new_tokens,
-            "min_new_tokens":min_new_tokens,
-            "frequency_penalty": frequency_penalty,
+            "temperature": self.temperature,
+            "top_k": self.top_k,
+            "top_p": self.top_p,
+            "max_new_tokens": self.max_new_tokens,
+            "min_new_tokens": self.min_new_tokens,
+            "frequency_penalty": self.frequency_penalty,
         }
         wait_for_server(f"http://localhost:{self.sglang_port}")
         self.gen_url     = f"http://localhost:{self.sglang_port}/generate"
@@ -218,8 +231,9 @@ class LeanLocalLLM:
             policies[self.name+"/"+adapter_id] = policy
         return policies
 
-    async def generate(self, prompt : str) -> str:
+    async def generate(self, prompt : list[dict]) -> str:
         """
+        TODO : add json regex parser option
         """
         # Apply chat template to prompt
         prompt = self.tokenizer.apply_chat_template(

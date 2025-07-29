@@ -13,10 +13,10 @@ class IPDAgentState:
     """
     TOWRITE
     """
-    nb_retries: int = 0
-    round_nb: int = 0
-    chat_counter: int = 0
-    chat_history: List[ChatTurn] = field(default_factory=list)
+    nb_retries: int
+    round_nb: int
+    chat_counter: int
+    chat_history: List[ChatTurn]
 
 @dataclass
 class IPDAgent(Agent):
@@ -31,7 +31,9 @@ class IPDAgent(Agent):
     max_reasoning_chars: int # Maximum number of characters for reasoning
     cooperate_strings: List[str] # strings parsed as playing cooperate by simulation
     defect_strings: List[str] # strings parsed as playing defect by simulation
-    state = IPDAgentState()
+
+    def __post_init__(self):
+        self.state = IPDAgentState(nb_retries=0,round_nb=0,chat_counter=0,chat_history=[])
 
     async def act(self, observation) -> Tuple[Any, AgentActLog]:
         """
@@ -70,7 +72,7 @@ class IPDAgent(Agent):
                 self.round_nb = round_nb
 
             # If not new round, try to get valid action from policy
-            policy_output = self.policy(self.state.chat_history) # TODO: use await here!
+            policy_output = await self.policy(self.state.chat_history) # TODO: use await here!
             self.state.chat_history.append(
                 ChatTurn(
                     agent_id=self.agent_id,
@@ -102,13 +104,19 @@ class IPDAgent(Agent):
                 action_is_ready = False
 
         self.state.nb_retries = 0  # reset retry counter
-
+        import copy
         agent_step_log = AgentActLog(
-            chat_turns =self.state.chat_history[self.state.chat_counter:],
+            chat_turns = copy.deepcopy(self.state.chat_history[self.state.chat_counter:]),
             info = None
         )
         self.state.chat_counter = len(self.state.chat_history)
         return action, agent_step_log
+
+    # def get_safe_copy(self):
+    #     """
+
+    #     """
+
 
     def reset(self):
         self.state = IPDAgentState()

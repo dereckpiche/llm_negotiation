@@ -3,22 +3,24 @@ import asyncio
 import json
 from mllm.markov_games.markov_game import MarkovGame
 from mllm.markov_games.rollout_tree import RolloutTreeNode, RolloutTreeRootNode
-
+import uuid
 
 async def LinearRunner(
     markov_game: MarkovGame,
     output_folder: str
-    ):
+    ) -> RolloutTreeRootNode:
     """
     This method generates a trajectory without branching.
     """
     time_step = 0
     terminated = False
-    root = RolloutTreeRootNode()
+    root = RolloutTreeRootNode(id=int(str(uuid.uuid4().int)[:8]))
     previous_node = root
     while not terminated:
         terminated, step_log = await markov_game.step()
-        current_node = RolloutTreeNode(step_log=step_log, time_step=time_step)
+        current_node = RolloutTreeNode(
+            step_log=step_log,
+            time_step=time_step)
         previous_node.child = current_node
         previous_node = current_node
 
@@ -28,4 +30,5 @@ async def LinearRunner(
     with open(export_path, "w") as f:
         f.write(root.model_dump_json(indent=4))
 
+    return root
     # TODO: export schema

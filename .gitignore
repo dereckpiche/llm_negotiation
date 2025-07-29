@@ -2,6 +2,7 @@
 .DS_Store
 .sgvenv
 .mllmvenv
+.rebuttal
 home/
 .mllmvenv
 test_venv/

@@ -10,7 +10,6 @@ class ChatTurn(BaseModel):
     role: str = Field(pattern="^(user|assistant)$")
     agent_id: AgentId # ID of the agent with which the chat occured
     content: str
-    reward: Optional[float] = None #
     is_state_end: bool = False # indicates whether this chatturn marks the end of a state in the trajectory
     time_step: Optional[int] = None # t
 
@@ -46,6 +45,7 @@ class RolloutTreeBranchNode(BaseModel):
     branches: list[tuple[BranchNodeInfo, RolloutTreeNode]] | None = None
 
 class RolloutTreeRootNode(BaseModel):
+    id: int
     child: RolloutTreeNode | RolloutTreeBranchNode | None = None
 
 class RolloutTreeLeafNode(BaseModel):

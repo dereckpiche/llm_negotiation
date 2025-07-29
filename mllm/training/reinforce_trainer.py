@@ -11,9 +11,9 @@ from accelerate import Accelerator
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from mllm.training.reinforce_trainer_tally import RtTally
-from mllm.training.training_data import TensorTrajectory
-from mllm.training.process_training_chat import process_training_chat
+from mllm.training.tally import RtTally
+from mllm.training.training_data_utils import TrajectoryBatch, TrainingBatch
+from mllm.training.tokenize_chats import process_training_chat
 from mllm.utils.common_imports import *
 from mllm.utils.time_and_memory_utils import *
 from mllm.utils.print_logger import *
@@ -22,19 +22,23 @@ from typing import Union, Tuple, Any
 from typing import Union
 from peft import LoraConfig
 from dataclasses import dataclass
-from mllm.training.training_data import *
 from mllm.markov_games.rollout_tree import RolloutTreeRootNode
 from mllm.training.credit_methods import get_discounted_returns, get_generalized_advantage_estimates
+from mllm.training.training_data_utils import *
+from mllm.training.tokenize_chats import *
+from mllm.markov_games.rollout_tree import *
+
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.StreamHandler(sys.stdout))
 
 @dataclass
-class RtConfig:
+class BaseTrainerConfig:
     entropy_coeff: float # Coefficient of the entropy term in the loss.
     kl_coeff: float # Coefficient of the KL-divergence term in the loss.
     gradient_clipping: Union[float, None] # Maximum norm of the gradient component before it gets clipped.
     restrict_tokens: Union[list[str], None]
     mini_batch_size: int # The number of conversations/trajectories we backpropagate through at once. This only affects the GPU usage.
     use_gradient_checkpointing: bool
-    logging_path: str
     temperature: float
     device: str
 
@@ -65,12 +69,9 @@ class RtConfig:
     debug_mode: bool = False
 
 
-
-class ReinforceTrainerWRS:
+class BaseTrainer:
     """
-    REINFORCE trainer with reward shaping.
-    To be used in a multi-agent context.
-    Generalizes to single-agent case if used carefully.
+    Trainer
     """
 
     # TODO: use in place operations to minimize GPU usage // allocation
@@ -94,8 +95,9 @@ class ReinforceTrainerWRS:
         critic: Union[AutoModelForCausalLM, None],
         critic_optimizer: Union[torch.optim.Optimizer, None],
         critic_lr_scheduler: Union[torch.optim.lr_scheduler.LRScheduler, None],
-        config: RtConfig,
+        # config: BaseTrainerConfig,
         save_path: str,
+        **kwargs
     ):
         """
         Initialize the REINFORCE trainer with reward shaping for multi-agent or single-agent training.
@@ -110,16 +112,15 @@ class ReinforceTrainerWRS:
             critic_lr_scheduler (torch.optim.lr_scheduler.LRScheduler or None): LR scheduler for the critic (optional).
             config (RtConfig): Configuration object for training.
         """
-        # TODO: add lr schedulers
+        self.config = BaseTrainerConfig(**kwargs)
 
+        # TODO: add lr schedulers
         model.train()
         self.tokenizer = tokenizer
-        self.tokenizer.padding_side = "left"  # needed for flash attention
-        if self.tokenizer.pad_token_id is None:
-            self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+        # self.tokenizer.padding_side = "left"  # needed for flash attention
+        if self.tokenizer.pad_token_id is None: self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         self.optimizer = optimizer
         self.lr_scheduler = lr_scheduler
-        self.config = config
         self.accelerator = Accelerator()
         self.model, self.optimizer, self.critic, self.critic_optimizer = (
             self.accelerator.prepare(model, optimizer, critic, critic_optimizer)
@@ -204,123 +205,7 @@ class ReinforceTrainerWRS:
 
         return logits
 
-    def get_expected_entropy(
-        self,
-        contexts: torch.Tensor,
-        shifted_contexts: torch.Tensor,
-        logits: torch.Tensor,
-        action_mask: torch.Tensor,
-    ) -> torch.Tensor:
-        """
-        Computes the expected entropy of the action distribution for LLM-generated token sequences.
-        Optionally logs contextualized entropy metrics if enabled in config.
 
-        Args:
-            game_ids (list[str]): List of game IDs for each sample in the batch.
-            contexts (torch.Tensor): Input context tensor.
-            shifted_contexts (torch.Tensor): Shifted context tensor (for next-token prediction).
-            logits (torch.Tensor): Logits tensor from the model.
-            action_mask (torch.Tensor): Mask indicating which tokens are actions.
-
-        Returns:
-            torch.Tensor: The expected entropy (scalar).
-        """
-        try:
-            B, S, T = logits.shape
-        except:
-            print("Missing batch dimension.")
-
-        token_entropy_terms = -F.softmax(logits, dim=-1) * F.log_softmax(logits, dim=-1)
-        # (B, S, T)
-
-        # We only take the entropy of actions
-        token_entropy_terms *= action_mask[:, :, None]
-
-        # if self.config.debug_mode:
-        #     self.tally.add_contextualized_token_metrics(
-        #         game_ids=paths,
-        #         metric_id="entropy",
-        #         contexts=shifted_contexts,
-        #         metrics=token_entropy_terms.sum(dim=-1),
-        #         action_mask=action_mask,
-        #     )
-
-        expected_entropy = token_entropy_terms.sum()
-
-        del token_entropy_terms
-
-        return expected_entropy
-
-    def get_kl_divergence(
-        self,
-        contexts: torch.Tensor,
-        shifted_contexts: torch.Tensor,
-        attention_mask: torch.Tensor,
-        action_log_probs: torch.Tensor,
-        action_mask: torch.Tensor,
-    ) -> torch.Tensor:
-        """
-        Computes the approximate KL divergence between the current policy
-        and a reference (base) model for the action tokens.
-        Optionally logs contextualized KL metrics if enabled in config.
-
-        Args:
-            game_ids (list[str]): List of game IDs for each sample in the batch.
-            contexts (torch.Tensor): Input context tensor.
-            shifted_contexts (torch.Tensor): Shifted context tensor (for next-token prediction).
-            attention_mask (torch.Tensor): Attention mask for the input.
-            action_log_probs (torch.Tensor): Log probabilities of actions taken.
-            action_mask (torch.Tensor): Mask indicating which tokens are actions.
-
-        Returns:
-            torch.Tensor: The KL divergence (scalar).
-        # Ref 1: http://joschu.net/blog/kl-approx.html
-        # Ref 2: https://github.dev/huggingface/trl/blob/main/trl/trainer/grpo_trainer.py#L1332
-        """
-
-        # Disable policy adapter to run inference on base model
-        with torch.no_grad():
-            with self.model.disable_adapter():
-                ref_model_logits = self.model(
-                    input_ids=contexts, attention_mask=attention_mask
-                )[0]
-
-        ref_model_logits = ref_model_logits / self.config.temperature
-
-        # (B, S, V)
-        ref_model_logits = self.mask_non_restricted_token_logits(
-            logits=ref_model_logits
-        )
-        # (B, S, V)
-        ref_model_log_probs = F.log_softmax(ref_model_logits, dim=-1)
-        # (B, S, V)
-        ref_model_action_log_probs = ref_model_log_probs.gather(
-            dim=-1, index=shifted_contexts.unsqueeze(-1)
-        ).squeeze(
-            -1
-        )  # (B,S)
-        # Approximating KL Divergence (see refs in docstring)
-        kl_div = (
-            torch.exp(ref_model_action_log_probs - action_log_probs)
-            - (ref_model_action_log_probs - action_log_probs)
-            - 1
-        )
-
-        # if self.config.debug_mode:
-        #     self.tally.add_contextualized_token_metrics(
-        #         game_ids=game_ids,
-        #         metric_id="kl",
-        #         contexts=shifted_contexts,
-        #         metrics=kl_div,
-        #         action_mask=action_mask,
-        #     )
-
-        # We only care about KLD of action tokens
-        kl_div *= action_mask
-
-        kl_div = kl_div.sum()
-
-        return kl_div
 
     def get_gradient_magnitude(self, loss_term: torch.Tensor) -> float:
         """
@@ -364,29 +249,29 @@ class ReinforceTrainerWRS:
         self.logger.info(
             f"\n Before Reinforce Step \n  {ram_usage()} \n {vram_usage()}"
         )
-
         self.model.train()
         mb_size = self.config.mini_batch_size
         device = self.accelerator.device
-        nb_rollouts = len(contexts)
+        nb_rollouts = len(training_batch)
         self.tally.add_metric(path=["nb_rollouts"], metric=nb_rollouts)
 
         # Count total number of tokens trained on
-        total_nb_action_tokens = 0
-        for am in action_masks:
-            nb_tokens = am.shape[0]
-            self.tally.add_metric(path=["nb_tokens", "action_tokens"], metric=nb_tokens)
-            total_nb_action_tokens += nb_tokens
+        # total_nb_action_tokens = 0
+        # for am in action_masks:
+        #     nb_tokens = am.shape[0]
+        #     self.tally.add_metric(path=["nb_tokens", "action_tokens"], metric=nb_tokens)
+        #     total_nb_action_tokens += nb_tokens
 
-        self.tally.add_metric(
-            path=["nb_tokens", "batch_action_tokens"], metric=total_nb_action_tokens
-        )
+        # self.tally.add_metric(
+        #     path=["nb_tokens", "batch_action_tokens"], metric=total_nb_action_tokens
+        # )
 
-        for mb in range(0, len(contexts), mb_size):
+        for mb in range(0, nb_rollouts, mb_size):
             loss = 0.0
-            paths_mb = paths[mb : mb + mb_size]
-            data = training_batch[mb: mb + mb_size]
-            tokens_mb, action_mask_mb, credits_mb = data.batch_input_ids, data.batch_action_mask, data.batch_credits
+            training_mb = training_batch[mb: mb + mb_size]
+            training_mb = training_mb.get_padded_tensors()
+            training_mb.to("cuda") # TODO: clean
+            tokens_mb, action_mask_mb, credits_mb = training_mb.batch_input_ids, training_mb.batch_action_mask, training_mb.batch_credits
 
             # Next token prediction
             contexts_mb = tokens_mb[:, :-1]
@@ -451,8 +336,6 @@ class ReinforceTrainerWRS:
                 )
                 self.tally.add_contextualized_token_metrics(
                     paths=paths_mb,
-                    metric_id=f"top_{5}_probs",
-                    contexts=shifted_contexts_mb,
                     metrics=torch.exp(log_probs).gather(
                         dim=-1, index=top_k_indices
                     ),
@@ -489,20 +372,30 @@ class ReinforceTrainerWRS:
                 )
             loss += mb_value
 
-            # Add entropy regularization term to loss
+            # -------------------------------------------------
+            # Entropy Regularization
+            # -------------------------------------------------
             if self.config.entropy_coeff != 0.0:
 
                 self.logger.info(
                     f"\n Before Computing Entropy \n  {ram_usage()} \n {vram_usage()}"
                 )
 
-                mb_entropy = self.get_expected_entropy(
-                    paths=paths_mb,
-                    contexts=contexts_mb,
-                    shifted_contexts=shifted_contexts_mb,
-                    logits=logits,
-                    action_mask=action_mask_mb,
-                )
+                token_entropy_terms = -F.softmax(logits, dim=-1) * F.log_softmax(logits, dim=-1)
+                # (B, S, T)
+                # We only take the entropy of actions
+                token_entropy_terms *= action_mask_mb[:, :, None]
+                # if self.config.debug_mode:
+                #     self.tally.add_contextualized_token_metrics(
+                #         game_ids=paths,
+                #         metric_id="entropy",
+                #         contexts=shifted_contexts,
+                #         metrics=token_entropy_terms.sum(dim=-1),
+                #         action_mask=action_mask,
+                #     )
+
+                mb_entropy = token_entropy_terms.sum()
+                del token_entropy_terms
                 mb_entropy *= self.config.entropy_coeff
                 self.tally.add_metric(
                     path=["loss_mb_total", "entropy_mb_total"], metric=mb_entropy.item()
@@ -519,22 +412,54 @@ class ReinforceTrainerWRS:
                     f"\n After Computing Entropy \n  {ram_usage()} \n {vram_usage()}"
                 )
 
-            # Add KL-divergence regularization term to loss
+            # -------------------------------------------------
+            # KL-DIVERGENCE
+            # -------------------------------------------------
             if self.config.kl_coeff != 0.0:
-
                 self.logger.info(
                     f"\n Before Computing KLD \n  {ram_usage()} \n {vram_usage()}"
                 )
-
-                # TODO: verify
-                mb_kl = self.get_kl_divergence(
-                    paths=paths_mb,
-                    contexts=contexts_mb,
-                    shifted_contexts=shifted_contexts_mb,
-                    attention_mask=attention_mask,
-                    action_log_probs=action_log_probs,
-                    action_mask=action_mask_mb,
+                with torch.no_grad():
+                    with self.model.disable_adapter():
+                        ref_model_logits = self.model(
+                            input_ids=contexts_mb, # attention_mask=attention_mask
+                        )[0]
+                ref_model_logits = ref_model_logits / self.config.temperature
+                # (B, S, V)
+                ref_model_logits = self.mask_non_restricted_token_logits(
+                    logits=ref_model_logits
                 )
+                # (B, S, V)
+                ref_model_log_probs = F.log_softmax(ref_model_logits, dim=-1)
+                # (B, S, V)
+                ref_model_action_log_probs = ref_model_log_probs.gather(
+                    dim=-1, index=shifted_contexts_mb.unsqueeze(-1)
+                ).squeeze(
+                    -1
+                )  # (B,S)
+                # Approximating KL Divergence (see refs in docstring)
+                # Ref 1: http://joschu.net/blog/kl-approx.html
+                # Ref 2: https://github.dev/huggingface/trl/blob/main/trl/trainer/grpo_trainer.py#L1332
+                kl_div = (
+                    torch.exp(ref_model_action_log_probs - action_log_probs)
+                    - (ref_model_action_log_probs - action_log_probs)
+                    - 1
+                )
+
+                # if self.config.debug_mode:
+                #     self.tally.add_contextualized_token_metrics(
+                #         game_ids=game_ids,
+                #         metric_id="kl",
+                #         contexts=shifted_contexts,
+                #         metrics=kl_div,
+                #         action_mask=action_mask,
+                #     )
+
+                # We only care about KLD of action tokens
+                kl_div *= action_mask_mb
+                mb_kl = kl_div.sum()
+
+
                 mb_kl *= self.config.kl_coeff
 
                 self.tally.add_metric(path=["mb_kl_loss_terms"], metric=mb_kl.item())
@@ -599,7 +524,7 @@ class ReinforceTrainerWRS:
         self,
         trajectories: TrajectoryBatch,
         loss_scaling_factor: float = 1
-    ) -> NestedFloatTensors:
+    ) -> torch.FloatTensor:
         """
         TOWRITE
         Uses GAE if enabled, otherwise uses Monte Carlo returns.
@@ -667,22 +592,104 @@ class ReinforceTrainerWRS:
                     lambda_coef=self.config.gae_lambda_for_credits,
                 )
                 credits.append(credits_mb)
-            credits = torch.nested.nested_tensor(credits)
+            credits = torch.nested.nested_tensor(credits, layout=torch.jagged)
 
         else:
-            rewards = trajectories.batch_rewards
-            credits = get_discounted_returns(
+            batch_rewards = trajectories.batch_rewards
+            credits = [ get_discounted_returns(
                 rewards=rewards,
                 discount_factor=self.config.discount_factor
             )
+            for rewards in batch_rewards ]
+            credits = torch.nested.nested_tensor(credits, layout=torch.jagged)
 
         return credits
 
-    def set_rollout_trees(self, rollout_trees: list[RolloutTreeRootNode]) -> None:
+
+    def set_policy_gradient_data(self, rollout_trees: list[RolloutTreeRootNode], agent_ids: list[str]) -> None:
         """
         TOWRITE
         """
-        self.rollout_trees = rollout_trees
+
+        # Tensorize Chats
+        rollout_ids = []
+        chats = []
+
+        def get_chat_list_and_rewards(
+            agent_id: str, root : RolloutTreeRootNode) -> Tuple[list[ChatTurn], torch.FloatTensor]:
+            """
+            TOWRITE
+            """
+            # TODO; extend for all trees, not just linear
+            current_node = root.child
+            chat = []
+            rewards = []
+            while current_node is not None:
+                reward : float = current_node.step_log.simulation_step_log.rewards[agent_id]
+                rewards.append(reward)
+                chat_turns: list[ChatTurn] = current_node.step_log.action_logs[agent_id].chat_turns
+                chat.extend(chat_turns)
+                current_node = current_node.child
+            return chat, torch.FloatTensor(rewards)
+
+
+        batch_input_ids = []
+        batch_action_mask = []
+        batch_timesteps = []
+        batch_state_ends_idx = []
+        batch_rewards = []
+        for agent_id in agent_ids:
+            for root in rollout_trees:
+                rollout_ids.append(root.id)
+                chat, rewards = get_chat_list_and_rewards(agent_id=agent_id, root=root)
+                (
+                    input_ids,
+                    action_mask,
+                    timesteps,
+                    state_ends_idx,
+                ) = process_training_chat(
+                    tokenizer=self.tokenizer,
+                    chat_history=chat
+                )
+                batch_input_ids.append(input_ids)
+                batch_action_mask.append(action_mask)
+                batch_timesteps.append(timesteps)
+                batch_state_ends_idx.append(state_ends_idx)
+                batch_rewards.append(rewards)
+
+        trajectory_batch = TrajectoryBatch(
+            rollout_ids = torch.Tensor(rollout_ids),
+            batch_input_ids = torch.nested.nested_tensor(batch_input_ids, layout=torch.jagged),
+            batch_action_mask = torch.nested.nested_tensor(batch_action_mask, layout=torch.jagged),
+            batch_timesteps = torch.nested.nested_tensor(batch_timesteps, layout=torch.jagged),
+            batch_state_ends_idx = torch.nested.nested_tensor(batch_state_ends_idx, layout=torch.jagged),
+            batch_rewards = torch.nested.nested_tensor(batch_rewards, layout=torch.jagged)
+        )
+
+        # Get Advantages & Train Critic
+        batch_advantages: torch.FloatTensor = self.get_advantages_with_critic_gradient_accumulation(trajectory_batch)
+        self.critic_optimizer.step()
+        self.critic_optimizer.zero_grad()
+
+        batch_advantages = get_tokenwise_credits(
+            batch_timesteps = trajectory_batch.batch_timesteps,
+            batch_credits = batch_advantages
+        )
+
+        # Get training batch and apply single step
+        self.training_batch = TrainingBatch(
+            rollout_ids = trajectory_batch.rollout_ids,
+            batch_input_ids = trajectory_batch.batch_input_ids,
+            batch_action_mask = trajectory_batch.batch_action_mask,
+            batch_credits = batch_advantages
+        )
+
+
+    def train(self) -> None:
+        """
+        TOWRITE
+        """
+        self.apply_reinforce_step(training_batch=self.training_batch)
 
 
     def set_token_credits(self) -> None:
@@ -690,31 +697,7 @@ class ReinforceTrainerWRS:
         Converts per-step credits into per-token credits for each batch element, based on action timestamps.
         Stores the result in self.token_credits.
         """
-        B = len(self.step_credits)
-        all_token_credits = []
-        for i in range(B):
-            token_credits = np.zeros(self.action_timestamps[i].shape)
-            assert (
-                np.max(self.action_timestamps[i]) == self.step_credits[i].size - 1
-            ), "Number of steps does not match number of actions."
-            for j, c in enumerate(self.step_credits[i]):
-                token_credits[self.action_timestamps[i] == j] = c
-            all_token_credits.append(torch.Tensor(token_credits))
-        self.token_credits = all_token_credits
 
-    # def train(self) -> None:
-    #     """
-    #     Runs a single training iteration: sets token credits and applies a REINFORCE step using the current batch.
-    #     """
-
-    #     self.set_token_credits()
-
-    #     self.apply_reinforce_step(
-    #         paths=self.paths,
-    #         contexts=self.contexts,
-    #         credits=self.token_credits,
-    #         action_masks=self.action_masks,
-    #     )
 
     def export_training_metrics(self) -> None:
         """

@@ -1,20 +1,19 @@
 """
 This file contains the code to generate and train the models.
 """
-
+from omegaconf import OmegaConf
 import copy, logging, os, shutil, sys, hydra
 from hydra.core.hydra_config import HydraConfig
 from typing import Dict, List, Any
+import torch, numpy as np, random, time, pickle
 import asyncio
 from pandas.core.base import IndexLabel
 from mllm.models.dummy_local_llm import DummyLocalLLM
-from mllm.models.local_llm import LocalLLM
 from mllm.models.lean_local_llm import LeanLocalLLM
 from mllm.models.server_llm import ServerLLM
 from mllm.models.critic_wrapper import ScalarCritic
-from mllm.training.reinforce_trainer import *
-from mllm.training.reinforce_trainer_tally import *
-from mllm.utils.common_imports import *
+from mllm.training.reinforce_trainer import BaseTrainer, BaseTrainerConfig
+from mllm.training.tally import RtTally
 from mllm.utils.update_start_epoch import update_start_epoch
 from mllm.utils.get_stochastic_game_lengths import get_stochastic_game_lengths
 from mllm.utils.dict_get_path import get_from_nested_dict
@@ -22,6 +21,9 @@ from mllm.markov_games.mg_utils import AgentConfig, MarkovGameConfig, init_marko
 from mllm.markov_games.runners.alternative_actions_runner import AlternativeActionsRunner
 from mllm.markov_games.runners.linear_runner import LinearRunner
 from mllm.markov_games.run_markov_games import run_markov_games
+
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.StreamHandler(sys.stdout))
 
 
 async def generate_and_train(cfg: dict, base_seed: int) -> None:
@@ -72,7 +74,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
     # Init llms + llm adapters
     llms_dict = {}
     for llm_id, model_config in cfg["models"].items():
-        model_class = globals()[model_config["class"]]
+        model_class: LeanLocalLLM | DummyLocalLLM | ServerLLM = globals()[model_config["class"]]
         llms_dict[llm_id] = model_class(
             **model_config["init_args"],
             output_directory=output_directory,
@@ -81,12 +83,12 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
     # Get dictionnary of functionnal-like callable policies (only for inference)
     policies = {}
     for llm_id, llm in llms_dict.items():
-        policies.update(llm.get_callable_objects())
+        policies.update(llm.get_inference_policies())
 
     # Get dictionnary of pytorch-like trainable models
     trainable_modules = {}
     for llm_id, llm in llms_dict.items():
-        trainable_modules[llm_id] = llm.get_inference_policies()
+        trainable_modules[llm_id] = llm.get_training_policies()
 
     # Critics
     for critic_id, critic_config in cfg["critics"].items():
@@ -99,7 +101,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
     for optimizer_id, optimizer_config in cfg["optimizers"].items():
         pointer = optimizer_config["pointer"]
         base = get_from_nested_dict(trainable_modules, pointer)
-        optimizer_class = eval(optimizer_config["optimizer_class"])
+        optimizer_class: torch.optim.Adam | torch.optim.SGD = eval(optimizer_config["optimizer_class"])
         init_args = optimizer_config["init_args"]
         optimizers[optimizer_id] = optimizer_class(base.parameters(), **init_args)
 
@@ -118,7 +120,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
             critic_optimizer = get_from_nested_dict(
                 optimizers, pointers["critic_optimizer"])
         else: critic_optimizer = None
-        trainer = ReinforceTrainerWRS(
+        trainer = BaseTrainer(
                     model=policy_model,
                     optimizer=policy_optimizer,
                     tokenizer=tokenizer,
@@ -126,11 +128,8 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
                     critic=critic_model,
                     critic_optimizer=critic_optimizer,
                     critic_lr_scheduler=None, # TODO add
-                    config=RtConfig(
-                        **trainer_config["init_args"],
-                        logging_path=None,
-                    ),
-                    save_path=os.path.join(output_directory, trainer_id)
+                    save_path=os.path.join(output_directory, trainer_id),
+                    **trainer_config["kwargs"]
                 )
         trainers[trainer_id] = trainer
 
@@ -176,9 +175,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         # Generate rollouts raw data (using asyncio)
         runner = eval(cfg["markov_games"]["runner_method_name"])
         # TODO: throw error if error in asyncio call
-        await run_markov_games(runner=runner, output_folder=it_folder, markov_games=markov_games)
-
-        print("PHASE 1 DONE!")
+        rollout_roots = await run_markov_games(runner=runner, output_folder=it_folder, markov_games=markov_games)
         generation_end_time = time.time()
 
         # Process raw data into training data using the specified functions for each agent
@@ -189,40 +186,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         # -----------------------------------------------------------------
 
 
-        # Generate training data files from raw data
-        for agent_name in agent_names:
-            training_data_path = os.path.join(it_folder, agent_name, "training")
-            os.makedirs(training_data_path, exist_ok=True)
-            raw_data_path = os.path.join(it_folder, agent_name, "raw_data")
-            if agent_name in cfg["training"]["agents"]:
-                agent_cfg = cfg["training"]["agents"][agent_name]
-                training_data_func = agent_cfg.get("training_data_func")
-                training_data_func_args = agent_cfg.get("training_data_func_args", {})
-                globals()[training_data_func](
-                    raw_data_folder=raw_data_path,
-                    training_data_folder=training_data_path,
-                    **training_data_func_args,
-                )
-
         training_start_time = time.time()
-
-        # Get training paths for each trainer
-        trainer_training_paths = {}
-        for trainer_id, trainer in trainers.items():
-            hf_adapter_id = cfg["trainers"][trainer_id]["pointers"]["model"]
-            policy_id = f"{hf_adapter_id[0]}/{hf_adapter_id[1]}"
-            training_file_paths = []
-            for agent in agents.values():
-                if agent.policy_id == policy_id:
-                    agent_export_path = os.path.join(
-                        it_folder, agent.agent_name, "training"
-                    )
-                    filepaths = [
-                        os.path.join(agent_export_path, path)
-                        for path in os.listdir(agent_export_path)
-                    ]
-                    training_file_paths += filepaths
-            trainer_training_paths[trainer_id] = training_file_paths
 
 
         # Prepare base models for training
@@ -230,30 +194,15 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
             llm.toggle_training_mode()
 
 
-        # Training Phase 1: set training data, opp shaping info transfers
-        shaping_info_sets = []
         for trainer_id, trainer in trainers.items():
-            trainer.set_training_data(
-                paths = trainer_training_paths[trainer_id]
+            agent_ids = cfg["train_on_which_data"][trainer_id] # ids of the agents on which the trainer takes steps
+            trainer.set_policy_gradient_data(
+                agent_ids = agent_ids,
+                rollout_trees = rollout_roots
             )
-            info = trainer.send_trainer_info()
-            shaping_info_sets.append(info)
-
-        # Training Phase 2: use opp shaping infos, apply reinforce
-        trainer_items = list(trainers.items())
-        for i, (trainer_id, trainer) in enumerate(trainer_items):
-            info = shaping_info_sets[len(shaping_info_sets)-1-i]
-            trainer.use_co_trainer_info(
-                co_trainer_info=info
-            )
-            train_log_out_path = os.path.join(
-                    it_folder,
-                    "training_metrics",
-                    trainer_id
-                )
-            trainer.config.logging_path = train_log_out_path
+            print(f"Training {trainer_id}.")
             trainer.train()
-            trainer.export_training_metrics()
+
 
         # Export all HF adapters weights (needed for vLLM inference)
         for llm in llms_dict.values(): llm.export_adapters()
@@ -261,7 +210,6 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         # Export optimizer states
         for trainer in trainers.values():
             trainer.export_optimizer_states()
-
 
         training_end_time = time.time()
 
@@ -298,6 +246,14 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         time_est_100 = time_per_iteration * 100
         time_est_500 = time_per_iteration * 500
 
+        def format_time(seconds):
+            if seconds >= 3600:
+                return f"{int(seconds // 3600)}h {int((seconds % 3600) // 60)}m {int(seconds % 60)}s"
+            elif seconds >= 60:
+                return f"{int(seconds // 60)}m {int(seconds % 60)}s"
+            else:
+                return f"{int(seconds)}s"
+
         logger.info(
             f"Iteration {iteration + 1} took {format_time(iteration_duration)} "
             f"({generation_percentage:.2f}% Gen, {training_percentage:.2f}% Train). "
@@ -326,11 +282,8 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         with open(random_state_dir, "wb") as f:
             pickle.dump(random_state_dict, f)
 
-    total_end_time = time.time()
-    total_duration = total_end_time - total_start_time
-    compute_logger.info(
-        f"Total time taken for the entire run: {format_time(total_duration)}"
-    )
+
+
 
 
 
@@ -339,6 +292,8 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
 def main(cfg):
     # Get Hydra's runtime directory
     hydra_run_dir = HydraConfig.get().run.dir
+    filename = os.path.join(hydra_run_dir, "generate_and_train_log.log")
+    logging.basicConfig(filename=filename, level=logging.INFO)
 
     # Output source code in runtime directory for certain reproducibility
     os.makedirs(hydra_run_dir, exist_ok=True)
