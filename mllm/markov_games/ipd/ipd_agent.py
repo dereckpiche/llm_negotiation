@@ -72,7 +72,9 @@ class IPDAgent(Agent):
                 self.round_nb = round_nb
 
             # If not new round, try to get valid action from policy
-            policy_output = await self.policy(self.state.chat_history) # TODO: use await here!
+            prompt = [chat_item.dict() for chat_item in self.state.chat_history]
+            # TODO: regex should be optionnal and change with respect to class parameters
+            policy_output = await self.policy(prompt=prompt, regex="(C|D)")
             self.state.chat_history.append(
                 ChatTurn(
                     agent_id=self.agent_id,

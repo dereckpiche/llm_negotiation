@@ -1,3 +1,8 @@
+"""
+TODO: Figure out how to tweak SGlang not to go OOM when batch size is 32. See https://github.com/sgl-project/sglang/issues/6309.
+"""
+
+
 import gc
 import hashlib
 import json
@@ -22,9 +27,12 @@ import torch.nn as nn
 
 
 logger = logging.getLogger(__name__)
+logger.addHandler(logging.StreamHandler(sys.stdout))
 
 AdapterID = str
 PolicyID = str
+
+
 
 
 
@@ -191,17 +199,18 @@ class LeanLocalLLM:
         if self.needs_loading[adapter_id]:
             adapter_path = os.path.join(self.save_path, adapter_id)
             if os.path.exists(adapter_path):
-                logger.info(f"Loading adapter {adapter_id} from {adapter_path}")
                 payload = {"lora_name": str(sg_lang_id)}
                 requests.post(self.unload_lora_url, json=payload).raise_for_status()
                 new_sglang_id = self.short_id_generator()
+                logger.info(f"Loading adapter {adapter_id} from {adapter_path}. Previous SGLang id: {self.sglang_adapter_ids[adapter_id]}. New: {new_sglang_id}.")
                 self.sglang_adapter_ids[adapter_id] = new_sglang_id
                 payload = {
                 "lora_name": str(new_sglang_id),
                 "lora_path": str(adapter_path)
                 }
-                print(f"Loaded adapter from {adapter_path}.")
+                logger.info(f"Loaded adapter from {adapter_path}.")
                 requests.post(self.load_lora_url, json=payload).raise_for_status()
+                self.needs_loading[adapter_id] = False
         self.currently_loaded_adapter_id = adapter_id
 
 
@@ -224,14 +233,14 @@ class LeanLocalLLM:
         policies = {}
         for adapter_id in self.adapter_ids:
             # define policy func
-            async def policy(prompt:list[dict], _adapter_id=adapter_id):
+            async def policy(prompt:list[dict], regex:str|None=None, _adapter_id=adapter_id):
                 self.prepare_adapter_for_inference(adapter_id=_adapter_id)
-                response = await self.generate(prompt)
+                response = await self.generate(prompt, regex)
                 return response
             policies[self.name+"/"+adapter_id] = policy
         return policies
 
-    async def generate(self, prompt : list[dict]) -> str:
+    async def generate(self, prompt : list[dict], regex:str|None=None) -> str:
         """
         TODO : add json regex parser option
         """
@@ -243,14 +252,18 @@ class LeanLocalLLM:
         )
         sg_lang_adapter_id = self.sglang_adapter_ids[self.currently_loaded_adapter_id]
         print(f"Generating with adapter {self.currently_loaded_adapter_id}")
+        self.sglang_sampling_params["regex"] = regex
         payload = {
             "text": [prompt],
             "lora_path": [sg_lang_adapter_id],
             "sampling_params": self.sglang_sampling_params
         }
 
-        async with httpx.AsyncClient() as client:
-                resp = await client.post(self.gen_url, json=payload)
+        httpx_timeout = httpx.Timeout(
+            connect=3600.0, read=3600.0, write=3600.0, pool=3600.0
+        )
+        async with httpx.AsyncClient(timeout=httpx_timeout) as client:
+            resp = await client.post(self.gen_url, json=payload)
         response = resp.json()
         return response[0]['text']
 

@@ -21,7 +21,7 @@ from mllm.markov_games.mg_utils import AgentConfig, MarkovGameConfig, init_marko
 from mllm.markov_games.runners.alternative_actions_runner import AlternativeActionsRunner
 from mllm.markov_games.runners.linear_runner import LinearRunner
 from mllm.markov_games.run_markov_games import run_markov_games
-
+from mllm.utils.kill_sglang import kill_sglang
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
@@ -315,4 +315,8 @@ def main(cfg):
 
 
 if __name__ == "__main__":
-    main()
+    kill_sglang()
+    try:
+        main()
+    except:
+        kill_sglang()

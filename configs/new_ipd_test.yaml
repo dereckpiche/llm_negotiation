@@ -10,7 +10,7 @@ experiment:
     method: generate_and_train
     description: "no description"
     nb_epochs: 10
-    nb_matches_per_iteration: 64
+    nb_matches_per_iteration: 16
     reinit_matches_each_it: true
     checkpoint_every_n_iterations: 25
     start_epoch: 0
@@ -58,7 +58,7 @@ markov_games:
     runner_method_name: "LinearRunner"
     simulation_class_name: "IPD"
     simulation_init_args:
-        rounds_per_game: 5
+        rounds_per_game: 16
         cooperate_actions: ["C"]
         defect_actions: ["D"]
         agent_ids: ${agent_ids}
@@ -90,20 +90,20 @@ temperature: 1.0
 
 models:
     qwen:
-        class: DummyLocalLLM
+        class: LeanLocalLLM
         init_args:
             name: "qwen"
             model_name: Qwen/Qwen2.5-0.5B-Instruct # HuggingFaceTB/SmolLM-135M # "Qwen/Qwen2.5-7B-Instruct"
             adapter_configs:
                 self_play_agent:
                     task_type: "CAUSAL_LM"
-                    r: 64
+                    r: 32
                     lora_alpha: 128
                     lora_dropout: 0.0
                     target_modules: "all-linear"
                 self_play_critic:
                     task_type: "CAUSAL_LM"
-                    r: 64
+                    r: 32
                     lora_alpha: 128
                     lora_dropout: 0.0
                     target_modules: "all-linear"

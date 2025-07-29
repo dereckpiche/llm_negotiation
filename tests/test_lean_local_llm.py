@@ -41,26 +41,42 @@ llm = LeanLocalLLM(
 )
 try:
     async def main():
-        llm.toggle_training_mode()
+        # llm.toggle_training_mode()
         # llm.export_adapters()
-        llm.checkpoint_all_adapters("check_1")
+        # llm.checkpoint_all_adapters("check_1")
+        llm.toggle_eval_mode()
         inference_policies = llm.get_inference_policies()
         training_policies = llm.get_training_policies()
         carl = training_policies["Carl"]
         carl_params = carl.parameters()
         carl_inference = inference_policies["llama/Carl"]
-        res = await carl_inference([{"role":"user", "content": "Hello, give me the alphabet."}])
-        print(f"Reponse from correct Carl: {res}")
+        alice_inference = inference_policies["llama/Alice"]
+        bob_inference   = inference_policies["llama/Bob"]
+        tasks = [
+            alice_inference([{"role":"user","content":"Hello, give me the alphabet."}]),
+            carl_inference([{"role":"user","content":"Hello, give me the alphabet."}]),
+            bob_inference([{"role":"user","content":"Hello, give me the alphabet."}]),
+        ]
+        alice_res, carl_res, bob_res = await asyncio.gather(*tasks)
+        print(f"Alice (concurrent): {alice_res}")
+        print(f"Carl  (concurrent): {carl_res}")
+        print(f"Bob   (concurrent): {bob_res}")
+
+
+        # Corrupt Carl
         for p in carl_params:
             p.requires_grad = False
             p[:] = torch.randn(p.shape).to(p.device)
         llm.export_adapters()
         res = await carl_inference([{"role":"user", "content": "Hello, give me the alphabet."}])
         print(f"Reponse from corrupted Carl: {res}")
+
+        # Normal Bob
         bob_inference = inference_policies["llama/Bob"]
         res = await bob_inference([{"role":"user", "content": "Hello, give me the alphabet."}])
         print(f"Reponse from correct Bob: {res}")
-        import ipdb; ipdb.set_trace()
+
+
     asyncio.run(main())
     terminate_process(llm.sglang_server_process)
 except Exception:

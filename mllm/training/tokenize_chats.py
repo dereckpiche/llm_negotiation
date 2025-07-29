@@ -1,7 +1,7 @@
 """
 TODO: this code is terrible and needs to be improved.
+TODO: Use the return_assistant_tokens_mask feature from  https://huggingface.co/docs/transformers/main_classes/tokenizer#transformers.PreTrainedTokenizer.apply_chat_template
 """
-
 
 
 from transformers import AutoTokenizer
