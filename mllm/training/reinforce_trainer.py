@@ -1,3 +1,8 @@
+"""
+TODO: Add coefficients for losses (depend on total number of tokens or batch)
+"""
+
+
 import logging
 import os
 import random
@@ -162,6 +167,7 @@ class BaseTrainer:
             self.critic_optimizer.load_state_dict(
                 torch.load(self.critic_optimizer_path)
             )
+        self.device = self.accelerator.device
 
         # TODO
         # log data type of model
@@ -251,7 +257,6 @@ class BaseTrainer:
         )
         self.model.train()
         mb_size = self.config.mini_batch_size
-        device = self.accelerator.device
         nb_rollouts = len(training_batch)
         self.tally.add_metric(path=["nb_rollouts"], metric=nb_rollouts)
 
@@ -270,7 +275,7 @@ class BaseTrainer:
             loss = 0.0
             training_mb = training_batch[mb: mb + mb_size]
             training_mb = training_mb.get_padded_tensors()
-            training_mb.to("cuda") # TODO: clean
+            training_mb.to(self.device)
             tokens_mb, action_mask_mb, credits_mb = training_mb.batch_input_ids, training_mb.batch_action_mask, training_mb.batch_credits
 
             # Next token prediction
@@ -534,7 +539,7 @@ class BaseTrainer:
         """
 
         mb_size = self.config.mini_batch_size
-        batch_size = 1 # TODO
+        batch_size = trajectories.rollout_ids.shape[0]
         # self.tally.add_metric(path=["discounted_returns"], metric=rewards)
 
         if self.config.use_gae:
@@ -545,54 +550,69 @@ class BaseTrainer:
             for mb in range(0, batch_size, mb_size):
 
                 trajectory_mb = trajectories[mb:mb+mb_size]
+                trajectory_mb.to(self.device)
                 rewards_mb = trajectory_mb.batch_rewards
 
                 # use & train critic
-                tokens_mb = trajectory_mb.get_padded_input_ids()
-                state_ends_idx_mb = trajectory_mb.batch_state_ends_idx
+                tokens_mb, state_ends_mask_mb, _ = trajectory_mb.get_padded_tensors_for_critic()
 
                 # critic causal attention up to end flags
-                vals_estimate = self.critic(tokens_mb)
-                vals_estimate = vals_estimate[state_ends_idx_mb] # Get value estimates only where states end
+                vals_estimate_mb = self.critic(tokens_mb)
+                vals_estimate_mb = torch.nested.masked_select(vals_estimate_mb, state_ends_mask_mb) # Get value estimates only where states end
+                if vals_estimate_mb.dim() == 1: vals_estimate_mb = vals_estimate_mb.unsqueeze(0)
 
-                detached_vals_estimate = vals_estimate.detach()
+                # Get padded tensors
+                jagged_lengths = vals_estimate_mb.offsets().diff()
+                padded_shape = (vals_estimate_mb.shape[0], torch.max(jagged_lengths))
+                vals_estimate_mb = torch.nested.to_padded_tensor(vals_estimate_mb, padding=0.0, output_size=padded_shape)
+                rewards_mb = torch.nested.to_padded_tensor(rewards_mb, padding=0.0, output_size=padded_shape)
+
+                det_vals_estimate_mb = vals_estimate_mb.detach()
 
                 # If no infinite trajectory bootstrap, append V(Terminal State) = 0
-                # if detached_vals_estimate.size == batch_rewards[i].size:
-                #     detached_vals_estimate = np.append(detached_vals_estimate, 0)
+                # TODO: use alternative approach!
+                if det_vals_estimate_mb.numel() == rewards_mb.numel():
+                        B = det_vals_estimate_mb.shape[0]
+                        device = det_vals_estimate_mb.device
+                        det_vals_estimate_mb = torch.cat([det_vals_estimate_mb, torch.zeros((B, 1), device=device)], dim=1)
 
-                self.tally.add_metric(
-                    path=["value_estimates"], metric=detached_vals_estimate
-                )
+                # self.tally.add_metric(
+                #     path=["value_estimates"], metric=detached_vals_estimate
+                # )
 
                 # Get GAE target
                 targets = (
                     get_generalized_advantage_estimates(
                         rewards=rewards_mb,
-                        value_estimates=detached_vals_estimate,
+                        value_estimates=det_vals_estimate_mb,
                         discount_factor=self.config.discount_factor,
                         lambda_coef=self.config.gae_lambda_for_targets,
                     )
-                    + detached_vals_estimate[:-1]
+                    + det_vals_estimate_mb[:, :-1]
                 )
 
                 loss = loss_scaling_factor * F.huber_loss(
-                    input=vals_estimate,
+                    input=vals_estimate_mb,
                     target=targets,
                 )
                 self.accelerator.backward(loss)
 
-                self.tally.add_metric(path=["critic_loss"], metric=loss.item())
+                # self.tally.add_metric(path=["critic_loss"], metric=loss.item())
 
                 # Get GAE Credit
                 credits_mb = get_generalized_advantage_estimates(
                     rewards=rewards_mb,
-                    value_estimates=detached_vals_estimate,
+                    value_estimates=det_vals_estimate_mb,
                     discount_factor=self.config.discount_factor,
                     lambda_coef=self.config.gae_lambda_for_credits,
                 )
-                credits.append(credits_mb)
-            credits = torch.nested.nested_tensor(credits, layout=torch.jagged)
+
+                # Get jagged back
+                # import pdb; pdb.set_trace()
+                credits_mb = torch.nested.narrow(credits_mb, dim=1, start=0, length=jagged_lengths, layout=torch.jagged)
+                credits.extend(credits_mb.unbind())
+
+            credits = torch.nested.nested_tensor(credits, dtype=torch.float32, layout=torch.jagged)
 
         else:
             batch_rewards = trajectories.batch_rewards
@@ -601,7 +621,7 @@ class BaseTrainer:
                 discount_factor=self.config.discount_factor
             )
             for rewards in batch_rewards ]
-            credits = torch.nested.nested_tensor(credits, layout=torch.jagged)
+            credits = torch.nested.nested_tensor(credits, dtype=torch.float32, layout=torch.jagged)
 
         return credits
 
@@ -636,7 +656,7 @@ class BaseTrainer:
         batch_input_ids = []
         batch_action_mask = []
         batch_timesteps = []
-        batch_state_ends_idx = []
+        batch_state_ends_mask = []
         batch_rewards = []
         for agent_id in agent_ids:
             for root in rollout_trees:
@@ -646,7 +666,7 @@ class BaseTrainer:
                     input_ids,
                     action_mask,
                     timesteps,
-                    state_ends_idx,
+                    state_ends_mask,
                 ) = process_training_chat(
                     tokenizer=self.tokenizer,
                     chat_history=chat
@@ -654,7 +674,7 @@ class BaseTrainer:
                 batch_input_ids.append(input_ids)
                 batch_action_mask.append(action_mask)
                 batch_timesteps.append(timesteps)
-                batch_state_ends_idx.append(state_ends_idx)
+                batch_state_ends_mask.append(state_ends_mask)
                 batch_rewards.append(rewards)
 
         trajectory_batch = TrajectoryBatch(
@@ -662,7 +682,7 @@ class BaseTrainer:
             batch_input_ids = torch.nested.nested_tensor(batch_input_ids, layout=torch.jagged),
             batch_action_mask = torch.nested.nested_tensor(batch_action_mask, layout=torch.jagged),
             batch_timesteps = torch.nested.nested_tensor(batch_timesteps, layout=torch.jagged),
-            batch_state_ends_idx = torch.nested.nested_tensor(batch_state_ends_idx, layout=torch.jagged),
+            batch_state_ends_mask = torch.nested.nested_tensor(batch_state_ends_mask, layout=torch.jagged),
             batch_rewards = torch.nested.nested_tensor(batch_rewards, layout=torch.jagged)
         )
 
@@ -670,6 +690,7 @@ class BaseTrainer:
         batch_advantages: torch.FloatTensor = self.get_advantages_with_critic_gradient_accumulation(trajectory_batch)
         self.critic_optimizer.step()
         self.critic_optimizer.zero_grad()
+
 
         batch_advantages = get_tokenwise_credits(
             batch_timesteps = trajectory_batch.batch_timesteps,

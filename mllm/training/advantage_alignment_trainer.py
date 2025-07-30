@@ -34,6 +34,7 @@ class AdAlignTrainer(BaseTrainer):
     Extends the reinforce trainer to support Neo Advantage Alignment.
     """
 
+
     def set_policy_gradient_data(self, roots: list[RolloutTreeRootNode], coordinator):
 
         # ---------------------------------------------------
@@ -66,7 +67,6 @@ class AdAlignTrainer(BaseTrainer):
             batch_action_mask = self.main_trajectories.batch_action_mask,
             batch_credits = credits
         )
-
 
 
 

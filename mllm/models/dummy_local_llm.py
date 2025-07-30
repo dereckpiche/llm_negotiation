@@ -35,7 +35,7 @@ class DummyLocalLLM(LeanLocalLLM):
     def prepare_adapter_for_inference(self, adapter_id: str) -> None:
         pass
 
-    async def generate(self, prompt):
+    async def generate(self, prompt, regex=None):
         import random
         n: float = random.random()
         if n < 0.5: return "C"

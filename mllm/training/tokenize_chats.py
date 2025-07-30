@@ -178,7 +178,7 @@ def process_training_chat(
     # import pdb; pdb.set_trace()
     input_ids = token_ids
     timesteps = credit_mask
-    state_ends_idx = torch.where(torch.BoolTensor(state_end_flags) == True)[0]
+    state_ends_idx = state_end_flags # torch.where(torch.BoolTensor(state_end_flags) == True)[0]
 
     return (
         input_ids,

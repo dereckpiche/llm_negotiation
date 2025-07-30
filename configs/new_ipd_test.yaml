@@ -90,7 +90,7 @@ temperature: 1.0
 
 models:
     qwen:
-        class: LeanLocalLLM
+        class: DummyLocalLLM
         init_args:
             name: "qwen"
             model_name: Qwen/Qwen2.5-0.5B-Instruct # HuggingFaceTB/SmolLM-135M # "Qwen/Qwen2.5-7B-Instruct"
@@ -132,13 +132,13 @@ common_trainer_kwargs: &common_trainer_kwargs
     kl_coeff: 0.0
     gradient_clipping: 1.0
     restrict_tokens: null
-    mini_batch_size: 1
+    mini_batch_size: 4
     use_gradient_checkpointing: True
     temperature: ${temperature}
     device: "cuda:0"
 
     discount_factor: 1.0
-    use_gae: False
+    use_gae: True
     gae_lambda_for_credits: 0.92
     gae_lambda_for_targets: 0.92
     end_at_last_state_flag: True # if true, will not train on last round actions
