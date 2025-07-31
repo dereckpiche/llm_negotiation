@@ -27,7 +27,7 @@ def conversation_to_rl_data(tokenizer, conversation, average_score_over_message)
         conversation,
         add_generation_prompt=False,
         tokenize=False,
-        use_system_prompt=True,
+        use_system_prompt=False,
     )
     # strip "\n" at end of the conversation if present (case for gemma)
     if formatted_conversation.endswith("\n"):
@@ -48,7 +48,10 @@ def conversation_to_rl_data(tokenizer, conversation, average_score_over_message)
         eot_id = tokenizer.eos_token_id
         all_eot_positions = (tokens == eot_id).nonzero(as_tuple=True)[0].tolist()
         # Remove the first <|eot_id|> position which corresponds to the system prompt as we don't have in conversation.
-        all_eot_positions = all_eot_positions[1:]
+        # but qwen2.5 has system prompt in the conversation even after use_system_prompt=False
+        if "qwen2.5" in tokenizer_name:
+            all_eot_positions = all_eot_positions[1:]  # Skip the first one
+        # all_eot_positions = all_eot_positions[1:]
 
     score_values = []
     output_mask = []

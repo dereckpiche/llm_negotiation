@@ -130,8 +130,21 @@ class IPDAgent:
                 "round_nb": round_nb,
             }
         )
-        if policy_output in cooperate_actions + defect_actions:
-            action = policy_output
+
+        def extract_action(response):
+            if response in ["<Cooperate>", "<Defect>", "<A>", "<B>"]:
+                return response
+            # Remove <think>...</think> block
+            response = re.sub(r"<think>.*?</think>", "", response, flags=re.DOTALL)
+            # Etract content inside \boxed{}
+            match = re.search(r"\\boxed{(.*?)}", response)
+            if match:
+                return match.group(1).strip()
+            return None
+
+        action = extract_action(policy_output)
+        if action not in cooperate_actions + defect_actions:
+            action = "ERROR"
         elif self.nb_retries < self.max_errors:
             self.chat_history.append(
                 {
@@ -143,8 +156,6 @@ class IPDAgent:
             )
             self.nb_retries += 1
             return (self.policy_id, self.chat_history, None, False, None)
-        else:
-            action = "ERROR"
 
         self.nb_retries = 0  # reset retry counter
         return (

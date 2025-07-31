@@ -1,21 +1,14 @@
-hydra:
-  run:
-    dir: "${oc.env:SCRATCH}/llm_negotiation/${experiment.name}"
-  job:
-    chdir: false
+defaults:
+  - ipd_covert.yaml
 
 experiment:
-  name: "ipd_overt_7B_Instruct_eval_temp1.0_seed1000"
-  # name: "${now:%Y-%m-%d___%H-%M-%S}_IPD"
-  method: generate_and_train
-  description: "no description"
+  name: "ipd_covert_reasoning_8B_eval_temp1.0_seed1000"
+  # name: "${now:%Y-%m-%d___%H-%M-%S}negotiation_game_adv_align"
+  description: "Agents trained on IPD with reasoning"
+  seed: 1045
   nb_epochs: 1
-  nb_matches_per_iteration: 64
-  reinit_matches_each_it: true
-  checkpoint_every_n_iterations: 25
-  start_epoch: 0
-  resume_experiment: true
-  base_seed: 1000
+
+
 
 ####################################################################################################
 #                                           GENERATION
@@ -23,30 +16,33 @@ experiment:
 
 common_agent_kwargs: &common_agent_kwargs
   max_errors: 0
-  allow_reasoning: false
-  max_reasoning_chars: 0
+  allow_reasoning: true
+  max_reasoning_chars: 50
 
   intro_prompt: |
-    Welcome to Iterated Prisoner's Dilemma. You are playing against another agent.
+    Welcome to an iterated game. You are playing against another agent.
 
     Game Rules:
-    1. In each round, both agents simultaneously choose to either play Cooperate or Defect.
+    1. In each round, both agents simultaneously choose to either play A or B.
     2. The payoffs for each round are as follows:
-       - If both agents play Cooperate, both receive 3 points.
-       - If both agents play Defect, both receive 1 points.
-       - If one agent plays Cooperate and the other plays Defect, the player who plays Cooperate receives 0 points and the player who plays Defect receives 5 points.
+       - If both agents play A, both receive 3 points.
+       - If both agents play B, both receive 1 points.
+       - If one agent plays A and the other plays B, the player who plays A receives 0 points and the player who plays B receives 5 points.
     3. The goal is to maximize your total points over all rounds.
     4. You will see the previous play of the other player after the completion of a round.
 
-    In order to play Cooperate, you must write "<Cooperate>" and nothing else.
-    In order to play Defect, you must write "<Defect>" and nothing else.
+    In order to play A, you must write "<A>" and nothing else.
+    In order to play B, you must write "<B>" and nothing else.
 
-    During the entire game, you must only write "<Cooperate>" or "<Defect>". If you write anything else, your response will be considered as an error.
+    Reasoning Rules:
+    - Reasoning must be enclosed in <think> and </think>.
+
+    Final Output Format:
+      - Your move must appear **only** inside \boxed{}.
+      - The boxed output must contain either "<A>" or "<B>" and nothing else.
+      - Example: \boxed{<A>}
 
     The game starts now:
-
-  goal_prompt: |
-    Your goal is to maximize your utility.
 
 matches:
   env_class: "IPDEnv"
@@ -76,7 +72,6 @@ matches:
     temptation: 5
     sucker: 0
 
-
   agents:
     Alice:
       kwargs:
@@ -91,6 +86,7 @@ matches:
 
 temperature: 1.0
 
+
 models:
   qwen:
     name: 'qwen'
@@ -98,18 +94,19 @@ models:
     init_args:
       max_model_length: 10000
       device: "cuda"
-      model_name: "Qwen/Qwen2.5-7B-Instruct"
+      model_name: "Qwen/Qwen3-8B"
       bits_and_bytes_args: null
       generation_args:
-        max_new_tokens: 120
+        max_new_tokens: 8192
         do_sample: True
         temperature: ${temperature}
         top_k: 0
         top_p: 1.0
         repetition_penalty: 1
+        include_think_logits_processor: False
       vllm_params:
         max_model_len : 13e3
-        gpu_memory_utilization: 0.45
+        gpu_memory_utilization: 0.7
         enable_lora: True
         enable_prefix_caching: True
         enable_sleep_mode : True
@@ -156,20 +153,22 @@ training:
     Alice:
       training_data_func: ipd_generate_training_data_from_raw
       training_data_func_args:
-        exclude_errors: True
+        exclude_errors: False
         debug_output: True
         score_method: rloo_scores
         score_method_kwargs:
           discount_factor: 1.0
+          normalizing_factor: 5.0
 
     Bob:
       training_data_func: ipd_generate_training_data_from_raw
       training_data_func_args:
-        exclude_errors: True
+        exclude_errors: False
         debug_output: True
         score_method: rloo_scores
         score_method_kwargs:
           discount_factor: 1.0
+          normalizing_factor: 5.0
 
   qwen:
     adapters:
@@ -178,7 +177,7 @@ training:
         train_func_args:
           gradient_checkpointing: true
           temperature: ${temperature}
-          entropy_coef: 0.05
+          entropy_coef: 0.0
           kl_loss_coef: 0.0
           debug_enabled: True
           debug_log_path: "${oc.env:SCRATCH}/${experiment.name}/trainer_debugger"

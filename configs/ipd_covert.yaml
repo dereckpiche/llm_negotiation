@@ -5,11 +5,11 @@ hydra:
     chdir: false
 
 experiment:
-  name: "ipd_covert"
+  name: "ipd_covert_7B_Instruct_eval_temp1.0_seed1000"
   # name: "${now:%Y-%m-%d___%H-%M-%S}_IPD"
   method: generate_and_train
   description: "no description"
-  nb_epochs: 2000
+  nb_epochs: 1
   nb_matches_per_iteration: 64
   reinit_matches_each_it: true
   checkpoint_every_n_iterations: 25
@@ -52,8 +52,8 @@ matches:
   env_class: "IPDEnv"
   agent_class: "IPDAgent"
 
-  max_length: 30
-  continuation_prob: 0.85
+  max_length: 10
+  continuation_prob: 1.0
   same_length_batch: True
 
   # If set to 0, existing setup will run where utilities are randomly sampled at the beginning of each round.
@@ -88,7 +88,7 @@ matches:
         agent_id: "Bob"
         policy_id: "qwen/sp_adapter"
 
-temperature: 0.7
+temperature: 1.0
 
 
 models:

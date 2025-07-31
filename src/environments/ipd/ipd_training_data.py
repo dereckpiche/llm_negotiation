@@ -32,7 +32,7 @@ def ipd_generate_training_data_from_raw(
         raw_data_folder
     )
 
-    scores = globals()[score_method](
+    scores, _ = globals()[score_method](
         round_points_agent, round_points_coagent, **score_method_kwargs
     )
 

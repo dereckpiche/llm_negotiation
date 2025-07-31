@@ -7,6 +7,7 @@ import shutil
 import time
 import uuid
 from copy import deepcopy
+from typing import List
 
 import torch
 from peft import (
@@ -27,6 +28,63 @@ from utils.common_imports import *
 compute_logger = logging.getLogger("compute_logger")
 memory_logger = logging.getLogger("memory_logger")
 model_logger = logging.getLogger("model_logger")
+
+
+class ThinkLogitsProcessor:
+    """A logits processor that limit the number of thinking tokens."""
+
+    def __init__(
+        self,
+        think_start_token=151667,
+        think_end_token=151668,
+        num_think_tokens: int = 512,
+    ):
+        """
+        Initialize the think logits processor.
+
+        Args:
+            tokenizer: The tokenizer used for the model
+            num_think_tokens: Maximum number of tokens allowed in thinking section
+        """
+        self.num_think_tokens = num_think_tokens
+        self.think_start_token = think_start_token
+        self.think_end_token = think_end_token
+
+    def __call__(
+        self,
+        input_ids: List[int],
+        logits: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Process the logits to enforce </think> token when needed.
+
+        Args:
+            input_ids: List of input token IDs.
+            logits: Tensor of logits for the next token.
+
+        Returns:
+            Processed logits tensor.
+        """
+        # Check if we're in a thinking section
+        if (
+            self.think_start_token in input_ids
+            and self.think_end_token not in input_ids
+        ):
+            # Find the position of the last <think> token
+            think_start_pos = (
+                len(input_ids) - 1 - input_ids[::-1].index(self.think_start_token)
+            )
+
+            # Calculate number of tokens since <think>
+            tokens_since_think = len(input_ids) - think_start_pos - 1
+
+            # If we've reached the maximum thinking length, force </think>
+            if tokens_since_think >= self.num_think_tokens:
+                # Set all other logits to -inf except for </think>
+                logits = torch.full_like(logits, float("-inf"))
+                logits[self.think_end_token] = 1.0
+
+        return logits
 
 
 class LocalLLMV2:
@@ -226,6 +284,9 @@ class LocalLLMV2:
             top_p=generation_args["top_p"],
             max_tokens=generation_args["max_new_tokens"],
             repetition_penalty=generation_args["repetition_penalty"],
+            logits_processors=[ThinkLogitsProcessor()]
+            if generation_args.get("include_think_logits_processor", False)
+            else None,
         )
 
         self.optimizer_on_gpu_during_training = optimizer_on_gpu_during_training
