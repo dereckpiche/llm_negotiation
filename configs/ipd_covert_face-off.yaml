@@ -1,0 +1,68 @@
+defaults:
+  - ipd_covert.yaml
+
+experiment:
+  name: "ipd_covert_faceoff_advalign_temp1.0_rerun1k_usecurrstep_beta0.1_greedy_debug"
+  # name: "${now:%Y-%m-%d___%H-%M-%S}negotiation_game_adv_align"
+  description: "Agents facing off bewtween signadvalign and sum of the rewards"
+  nb_epochs: 1
+  nb_matches_per_iteration: 1
+  checkpoint_every_n_iterations: -1 # don't save checkpoint
+
+matches:
+  max_length: 30
+  continuation_prob: 1.0
+  same_length_batch: True
+
+  agents:
+    Alice:
+      kwargs:
+        policy_id: "qwen/adapter_alice"
+    Bob:
+      kwargs:
+        policy_id: "qwen/adapter_bob"
+
+models:
+  qwen:
+    init_args:
+      vllm_params:
+        gpu_memory_utilization: 0.9
+      adapter_configs:
+        adapter_alice:
+          type: "lora"
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/ipd_covert_adv_align_rloolater_temp1.0_lr1e5_sign/seed_1000/checkpoints/sp_adapter-iter_50-2025-05-23_15-34-58
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/ipd_covert_adv_align_rloolater_temp1.0_lr1e5_sign/seed_1000/sp_adapter/model/
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/ipd_covert_adv_align_rloolater_temp1.0_fixedrounds30_gamma0.9_clipped/seed_1000/checkpoints/sp_adapter-iter_275-2025-05-25_19-52-22
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/ipd_covert_adv_align_rloolater_temp1.0_fixedrounds30_gamma0.9_clipped/seed_1000/sp_adapter/model/
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/ipd_covert_adv_align_temp1.0_sign_firstcoop/seed_1000/sp_adapter/model/
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/ipd_covert_adv_align_temp1.0_clip_rerun1k_firstcoop/seed_1000/sp_adapter/model/
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/ipd_covert_adv_align_temp1.0_rerun1k/seed_1000/sp_adapter/model/
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/ipd_covert_adv_align_temp1.0_rerun1k_firstcoop/seed_1000/sp_adapter/model/
+          local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/ipd_covert_adv_align_temp1.0_beta0.1_rerun1k_usecurrstep/seed_1000/sp_adapter/model/
+          optimizer_method: "SGD"
+          optimizer_kwargs: {}
+          lora_kwargs:
+            task_type: "CAUSAL_LM"
+            r: 64
+            lora_alpha: 128
+            lora_dropout: 0.0
+            target_modules: "all-linear"
+
+        adapter_bob:
+          type: "lora"
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/ipd_covert_sum_of_rewards_lr1e5/seed_1000/sp_adapter/model/
+          local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/ipd_covert/seed_1000/sp_adapter/model/
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/ipd_covert_adv_align_rloolater_temp1.0_lr1e5_sign/seed_1000/sp_adapter/model/
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/ipd_covert_adv_align_rloolater_temp1.0_fixedrounds30_gamma0.9_clipped/seed_1000/sp_adapter/model/
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/ipd_covert_adv_align_temp1.0_rerun1k/seed_1000/sp_adapter/model/
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/ipd_covert_adv_align_temp1.0_rerun1k_firstcoop/seed_1000/sp_adapter/model/
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/ipd_covert_adv_align_temp1.0_clip_rerun1k_firstcoop/seed_1000/sp_adapter/model/
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/ipd_covert_adv_align_temp1.0_rerun1k_usecurrstep/seed_1000/sp_adapter/model/
+          optimizer_method: "SGD"
+          optimizer_kwargs: {}
+          lora_kwargs:
+            task_type: "CAUSAL_LM"
+            r: 64
+            lora_alpha: 128
+            lora_dropout: 0.0
+            target_modules: "all-linear"

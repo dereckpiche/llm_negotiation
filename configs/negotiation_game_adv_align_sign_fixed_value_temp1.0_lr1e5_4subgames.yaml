@@ -1,0 +1,38 @@
+defaults:
+  - negotiation_game.yaml
+
+experiment:
+  name: "negotiation_game_adv_align_sign_fixed_value_temp1.0_lr1e5_4subgames"
+  # name: "${now:%Y-%m-%d___%H-%M-%S}negotiation_game_adv_align"
+  description: "Agents trained on negotiation game with advantage alignment."
+  seed: 1045
+  nb_epochs: 1000
+
+matches:
+  env_kwargs:
+    points_attribution_method: negotiation_payoff
+    points_attributions_kwargs: {value_dict: {'coins': 10}}
+  nb_matches_with_same_roundwise_utilities: 4
+
+training:
+  agents:
+    Alice:
+      training_data_func_args:
+        score_method: rloo_advantage_alignment_scores
+        score_method_kwargs:
+          discount_factor: 1.0
+          beta: 1.0
+          time_decay: False
+          regulate_var: False
+          normalizing_factor: 200.0
+          use_sign: True
+    Bob:
+      training_data_func_args:
+        score_method: rloo_advantage_alignment_scores
+        score_method_kwargs:
+          discount_factor: 1.0
+          beta: 1.0
+          time_decay: False
+          regulate_var: False
+          normalizing_factor: 200.0
+          use_sign: True

@@ -1,0 +1,43 @@
+defaults:
+  - negotiation_game_fixed_manual.yaml
+
+experiment:
+  name: "negotiation_game_fixed_manual_adv_align_temp1.0_beta0.5_usecurrstep"
+  # name: "${now:%Y-%m-%d___%H-%M-%S}negotiation_game_adv_align"
+  description: "Agents trained on negotiation game with advantage alignment."
+  seed: 1045
+  nb_epochs: 1000
+
+matches:
+  max_length: 20
+  continuation_prob: 1.0
+  nb_matches_with_same_roundwise_utilities: 64
+
+training:
+  agents:
+    Alice:
+      training_data_func_args:
+        score_method: rloo_advantage_alignment_scores
+        score_method_kwargs:
+          discount_factor: 0.9
+          beta: 0.5
+          time_decay: False
+          regulate_var: False
+          normalizing_factor: 90.0
+          use_sign: False
+          first_coop: False
+          do_rloo_later: False
+          use_curr_step: True
+    Bob:
+      training_data_func_args:
+        score_method: rloo_advantage_alignment_scores
+        score_method_kwargs:
+          discount_factor: 0.9
+          beta: 0.5
+          time_decay: False
+          regulate_var: False
+          normalizing_factor: 90.0
+          use_sign: False
+          first_coop: False
+          do_rloo_later: False
+          use_curr_step: True
