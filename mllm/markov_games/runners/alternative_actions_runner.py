@@ -4,6 +4,7 @@ import json
 from mllm.markov_games.markov_game import MarkovGame
 from mllm.markov_games.rollout_tree import RolloutTreeNode, RolloutTreeRootNode, RolloutTreeBranchNode, BranchNodeInfo, StepLog
 AgentId = str
+import uuid
 
 async def AlternativeActionsRunner(
     markov_game: MarkovGame,
@@ -21,11 +22,11 @@ async def AlternativeActionsRunner(
     async def run_with_unilateral_alt_action(
         markov_game: MarkovGame,
         agent_id: AgentId,
+        branch_id: int,
         time_step: int,
-        branch_node: RolloutTreeBranchNode,
-        branch_info: BranchNodeInfo):
+        branch_node: RolloutTreeBranchNode):
         """
-        TOWRITE
+        This function is used to generate a new branch for a given agent.
         """
 
         # Generate new action and take a step
@@ -49,17 +50,20 @@ async def AlternativeActionsRunner(
             previous_node = current_node
             counter += 1
             time_step += 1
-        branch = (branch_info, root)
+
+        root = RolloutTreeRootNode(id=branch_id, child=root)
 
         if branch_node.branches == None:
-            branch_node.branches = [branch]
+            branch_node.branches = {agent_id: [root]}
         else:
-            branch_node.branches.append(branch)
+            agent_branches = branch_node.branches.get(agent_id, [])
+            agent_branches.append(root)
+            branch_node.branches[agent_id] = agent_branches
 
     tasks = []
     time_step = 0
     terminated = False
-    root = RolloutTreeRootNode()
+    root = RolloutTreeRootNode(id = int(str(uuid.uuid4().int)[:8]))
     previous_node = root
 
     while not terminated:
@@ -73,18 +77,19 @@ async def AlternativeActionsRunner(
         for agent_id in markov_game.agent_ids:
             for _ in range(nb_alternative_actions):
                 mg_branch = markov_game.get_safe_copy()
-                branch_name = f"alternate_action_of_{agent_id}_time_{time_step}"
-                branch_info = BranchNodeInfo(
-                    branch_id = branch_name,
-                    branch_for = agent_id,
-                    branch_type = "unilateral_deviation"
-                )
+                # branch_name = f"alternate_action_of_{agent_id}_time_{time_step}"
+                # branch_info = BranchNodeInfo(
+                #     branch_id = branch_name,
+                #     branch_for = agent_id,
+                #     branch_type = "unilateral_deviation"
+                # )
+                branch_id = int(str(uuid.uuid4().int)[:8])
                 task = asyncio.create_task( run_with_unilateral_alt_action(
                     markov_game = mg_branch,
                     time_step = time_step,
                     agent_id = agent_id,
+                    branch_id = branch_id,
                     branch_node = branch_node,
-                    branch_info = branch_info
                 ) )
                 tasks.append(task)
 

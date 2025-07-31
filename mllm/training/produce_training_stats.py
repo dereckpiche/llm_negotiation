@@ -32,7 +32,7 @@ def set_at_path(dictio: dict, path: list[str], value):
         dictio = dictio[sp]
     dictio[path[-1]] = value
 
-
+ 
 def produce_tabular_render(inpath: str, outpath: str = None):
     """
     TODO: docstring

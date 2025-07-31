@@ -1,5 +1,6 @@
 """
 TODO: Add coefficients for losses (depend on total number of tokens or batch)
+TODO: adapt reinforce step for torch.compile  
 """
 import logging
 import os

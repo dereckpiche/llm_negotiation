@@ -9,6 +9,7 @@ from mllm.training.training_data_utils import get_main_chat_list_and_rewards
 from mllm.training.tokenize_chats import process_training_chat
 from mllm.training.training_data_utils import TrajectoryBatch, TrainingBatch
 from mllm.training.training_data_utils import get_advantage_alignment_credits
+import copy
 
 RolloutId = int
 
@@ -16,6 +17,47 @@ class advantage_packet:
     agent_id: str
     rollout_ids: torch.IntTensor # (B,)
     advantages: torch.FloatTensor # (B, jT)
+
+def get_alternative_chat_histories(
+    agent_id: str, 
+    time_step: int, # The time_step of the branching we want the alt
+    root : RolloutTreeRootNode) -> list[list[ChatTurn], list[torch.FloatTensor]]:
+    """
+    
+    args:
+        agent_id: The agent we want to get the chat history for.
+        time_step: The time_step of the branching we want the alternative chat histories for.
+        root: The root of the rollout tree.
+    returns:
+        alternative_chats: list[list[ChatTurn]]
+        alternative_rewards: list[torch.FloatTensor]
+    """
+    # TODO: debug
+    current_node = root.child
+    main_chat = []
+    for i in range(time_step):
+        current_node = current_node.main_child
+        chat_turns: list[ChatTurn] = current_node.step_log.action_logs[agent_id].chat_turns
+        chat_turns = copy.deepcopy(chat_turns)
+
+        # This is crucial. We do not need to estimate the advantages before we branch out.  (This is already done when we process the main trajectory.)
+        # We want the first estimated advantage that we return later to be the one for taking the alternative action.
+        for chat_turn in chat_turns:
+            chat_turn.is_state_end = False
+
+        main_chat.extend(chat_turns)
+        current_node = current_node.child
+
+    alternative_roots = current_node.branches[agent_id]
+    alternative_chats = []
+    alternative_rewards = []
+    for root in alternative_roots:
+        chat, rewards = get_main_chat_list_and_rewards(agent_id=agent_id, root=root)
+        alternative_chats.append(chat)
+        alternative_rewards.append(rewards)
+    
+    alernative_chats = [main_chat.extend(alt_chat) for alt_chat in alternative_chats]
+    return alernative_chats, alternative_rewards
 
 class AdAlignTrainer(BaseTrainer):
     """
@@ -70,13 +112,15 @@ class AdAlignTrainer(BaseTrainer):
         alternative_batch_state_ends_mask = []
         alternative_batch_rewards = []
         nb_alternative_actions = []
+        jT_list = []
 
         for agent_id in agent_ids:
 
             for root in roots:
 
+                # Get main trajectory 
                 batch_rollout_ids.append(root.id)
-                main_chat, rewards = get_main_chat_list_and_rewards(agent_id=agent_id, root=root)
+                main_chat, main_rewards = get_main_chat_list_and_rewards(agent_id=agent_id, root=root)
                 (
                     input_ids,
                     action_mask,
@@ -86,17 +130,19 @@ class AdAlignTrainer(BaseTrainer):
                     tokenizer=self.tokenizer,
                     chat_history=main_chat
                 )
+                batch_input_ids.append(input_ids)
+                batch_action_mask.append(action_mask)
+                batch_timesteps.append(timesteps)
+                batch_state_ends_mask.append(state_ends_mask)
+                batch_rewards.append(main_rewards)
+                jT = timesteps.shape[0]
+                jT_list.append(jT)
 
-                # get the alternative trajectories of the rollout TODO: make sure to append existing history
-                current_node = root.child
-                chat = []
-                rewards = []
-                while current_node is not None:
-                    assert isinstance(current_node, RolloutTreeBranchNode), "Current node must be a branch node"
-                    branches = current_node.branches[agent_id]
-                    nb_alternative_actions.append(len(branches)) # Number of alternative actions
-                    for branch in branches:
-                        chat, rewards = get_main_chat_list_and_rewards(agent_id=agent_id, root=branch)
+                # Get all of the alternative trajectories in the tree
+                for t in range(jT):
+                    alternative_chats, alternative_rewards = get_alternative_chat_histories(agent_id=agent_id, time_step=t, root=root)
+                    nb_alternative_actions.append(len(alternative_chats))
+                    for chat, rewards in zip(alternative_chats, alternative_rewards):
                         (
                             input_ids,
                             action_mask,
@@ -112,22 +158,11 @@ class AdAlignTrainer(BaseTrainer):
                         alternative_batch_state_ends_mask.append(state_ends_mask)
                         alternative_batch_rewards.append(rewards)
 
-                    reward : float = current_node.step_log.simulation_step_log.rewards[agent_id]
-                    rewards.append(reward)
-                    chat_turns: list[ChatTurn] = current_node.step_log.action_logs[agent_id].chat_turns
-                    chat.extend(chat_turns)
-                    current_node = current_node.child 
+        jT_list = torch.Tensor(jT_list)
 
-                # Assert that number of alternative actions is constant
-                assert len(set(nb_alternative_actions)) == 1, "Number of alternative actions must be constant"
-                A = nb_alternative_actions[0]
-
-                # Add main rollout to batch
-                batch_input_ids.append(input_ids)
-                batch_action_mask.append(action_mask)
-                batch_timesteps.append(timesteps)
-                batch_state_ends_mask.append(state_ends_mask)
-                batch_rewards.append(rewards)
+        # Assert that number of alternative actions is constant
+        assert len(set(nb_alternative_actions)) == 1, "Number of alternative actions must be constant"
+        A = nb_alternative_actions[0]
 
         trajectory_batch = TrajectoryBatch(
             rollout_ids = torch.Tensor(batch_rollout_ids), # (B,)
@@ -139,19 +174,26 @@ class AdAlignTrainer(BaseTrainer):
         )
 
         # Here, `A` is the number of alternative actions / trajectories taken at each time step. 
+        # For each of the `B` rollout, at each of its jT (`j` is for jagged, since each main rollout may be of a different length) steps, we take A alternate trajectories (from different actions).
+        # Therefore, we have ∑jT * A trajectories to process. If each of the main trajectories have T steps, we will have `B*T*A` to process.
+
         alternative_trajectory_batch = TrajectoryBatch(
             rollout_ids = torch.zeros(B*A, dtype=torch.int32), # (B*A,) we don't have ids here
-            batch_input_ids = torch.nested.nested_tensor(alternative_batch_input_ids, layout=torch.jagged), # (B*A, jS)
-            batch_action_mask = torch.nested.nested_tensor(alternative_batch_action_mask, layout=torch.jagged), # (B*A, jS)
-            batch_timesteps = torch.nested.nested_tensor(alternative_batch_timesteps, layout=torch.jagged), # (B*A, jS)
-            batch_state_ends_mask = torch.nested.nested_tensor(alternative_batch_state_ends_mask, layout=torch.jagged), # (B*A, jS)
-            batch_rewards = torch.nested.nested_tensor(alternative_batch_rewards, layout=torch.jagged) # (B*A, jT)
-        )
+            batch_input_ids = torch.nested.nested_tensor(alternative_batch_input_ids, layout=torch.jagged), # (∑jT * A, jS')
+            batch_action_mask = torch.nested.nested_tensor(alternative_batch_action_mask, layout=torch.jagged), # (∑jT * A, jS')
+            batch_timesteps = torch.nested.nested_tensor(alternative_batch_timesteps, layout=torch.jagged), # (∑jT * A, jS')
+            batch_state_ends_mask = torch.nested.nested_tensor(alternative_batch_state_ends_mask, layout=torch.jagged), # (∑jT * A, jS')
+            batch_rewards = torch.nested.nested_tensor(alternative_batch_rewards, layout=torch.jagged) # (∑jT * A, jT')
+        ) 
 
         # Get Advantages & Train Critic
         self.batch_advantages: torch.FloatTensor = self.get_advantages_with_critic_gradient_accumulation(trajectory_batch) # (B, jT)
-        self.batch_alternative_advantages: torch.FloatTensor = self.get_advantages_with_critic_gradient_accumulation(alternative_trajectory_batch) # (B*A, jT)
-        self.batch_alternative_advantages = self.batch_alternative_advantages.reshape(B, A, -1) # (B, A, jT)
+
+        # Get alternative advantages
+        self.batch_alternative_advantages: torch.FloatTensor = self.get_advantages_with_critic_gradient_accumulation(alternative_trajectory_batch) # (∑jT * A, jT')
+        self.batch_alternative_advantages = self.batch_alternative_advantages[:, 0] # (∑jT * A,) # (we only want the advantages where we branched out)
+        self.batch_alternative_advantages = torch.nested.narrow(self.batch_alternative_advantages, dim=0, start=0, length=jT_list, layout=torch.jagged) # (B*A, jT')
+        self.batch_alternative_advantages = self.batch_alternative_advantages.reshape(B, A, -1) # (B, A, jT')
 
         # Update Critic
         self.critic_optimizer.step()

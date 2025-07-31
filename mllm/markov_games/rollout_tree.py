@@ -1,3 +1,8 @@
+"""
+TODO: the time step should be in the step log, not in every ChatTurns.
+TODO: enforce that for each AgentActLog, there is exactly one ChatTurn which is a state end.
+"""
+
 from __future__ import annotations
 from pathlib import Path
 import json, jsonschema
@@ -26,11 +31,11 @@ class StepLog(BaseModel):
     simulation_step_log: SimulationStepLog
 
 
-BranchType = Literal["unilateral_deviation", "common_deviation"] # might not be necessary
-class BranchNodeInfo(BaseModel):
-    branch_id: str
-    branch_for: AgentId
-    branch_type: BranchType
+# BranchType = Literal["unilateral_deviation", "common_deviation"] # might not be necessary
+# class BranchNodeInfo(BaseModel):
+#     branch_id: str
+#     branch_for: AgentId
+#     branch_type: BranchType
 
 class RolloutTreeNode(BaseModel):
     step_log: StepLog
@@ -42,7 +47,7 @@ class RolloutTreeBranchNode(BaseModel):
     First item of the tuple indicates which agent "called" for an alternative branch.
     """
     main_child: RolloutTreeNode
-    branches: dict[AgentId, list[RolloutTreeNode]] | None = None
+    branches: dict[AgentId, list[RolloutTreeRootNode]] | None = None
 
 class RolloutTreeRootNode(BaseModel):
     id: int
