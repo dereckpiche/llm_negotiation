@@ -1,7 +1,29 @@
 import torch
 from dataclasses import dataclass
 import torch.nested as tn
-from typing import Literal
+from typing import Literal, Tuple
+from mllm.markov_games.rollout_tree import RolloutTreeBranchNode, RolloutTreeRootNode, ChatTurn
+from typing import Self
+
+def get_main_chat_list_and_rewards(
+    agent_id: str, root : RolloutTreeRootNode) -> Tuple[list[ChatTurn], torch.FloatTensor]:
+    """
+    This method traverses a rollout tree and returns a the list of ChatTurn
+    for an agent. If it encounters a branch node, it follows the main path.
+    """
+    # TODO; extend for all trees, not just linear
+    current_node = root.child
+    chat = []
+    rewards = []
+    while current_node is not None:
+        if isinstance(current_node, RolloutTreeBranchNode):
+            current_node = current_node.main_child
+        reward : float = current_node.step_log.simulation_step_log.rewards[agent_id]
+        rewards.append(reward)
+        chat_turns: list[ChatTurn] = current_node.step_log.action_logs[agent_id].chat_turns
+        chat.extend(chat_turns)
+        current_node = current_node.child
+    return chat, torch.FloatTensor(rewards)
 
 
 def get_tokenwise_credits(
@@ -23,7 +45,6 @@ def get_tokenwise_credits(
     return batch_token_credits
 
 
-
 @dataclass
 class TrajectoryBatch:
     """
@@ -38,6 +59,10 @@ class TrajectoryBatch:
     batch_rewards:        torch.FloatTensor | torch.Tensor # (B, jT)
 
     def __post_init__(self):
+        """
+        This method is executed after initialization automatically.
+        It ensures that the tensors created match the requirements.
+        """
         B = self.rollout_ids.shape[0]
         if self.batch_input_ids.dim() == 1:
             self.batch_input_ids = self.batch_input_ids.unsqueeze(0)
@@ -74,8 +99,7 @@ class TrajectoryBatch:
         state_ends_dx:  [2, 6, 14]
         rewards:        [r0, r1, r2]
     """
-
-    def __getitem__(self, key) -> "TrajectoryBatch":
+    def __getitem__(self, key) -> Self:
         if isinstance(key, slice):
             ret = TrajectoryBatch(
                 rollout_ids = self.rollout_ids.__getitem__(key),
@@ -141,7 +165,7 @@ class TrainingBatch:
         assert torch.all(input_diff == action_diff).item() and torch.all(action_diff == credit_diff).item(), \
             "Tensors must have the same shapes along the jagged dimension."
 
-    def __getitem__(self, key) -> "TrainingBatch":
+    def __getitem__(self, key) -> Self:
         if isinstance(key, slice):
             ret = TrainingBatch(
                 rollout_ids = self.rollout_ids.__getitem__(key),
@@ -172,5 +196,11 @@ class TrainingBatch:
 
 
         return PaddedTensorTrainingBatch(padded_batch_input_ids, padded_batch_action_mask, padded_batch_credits)
+
+    def append(self, other: Self):
+        self.rollout_ids = torch.cat([self.rollout_ids, other.rollout_ids])
+        self.batch_input_ids = tn.cat([self.batch_input_ids, other.batch_input_ids], layout=torch.jagged)
+        self.batch_action_mask = tn.cat([self.batch_action_mask, other.batch_action_mask], layout=torch.jagged)
+        self.batch_credits = tn.cat([self.batch_credits, other.batch_credits], layout=torch.jagged)
 
 timestep = int

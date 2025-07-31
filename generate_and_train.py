@@ -22,6 +22,8 @@ from mllm.markov_games.runners.alternative_actions_runner import AlternativeActi
 from mllm.markov_games.runners.linear_runner import LinearRunner
 from mllm.markov_games.run_markov_games import run_markov_games
 from mllm.utils.kill_sglang import kill_sglang
+from mllm.training.advantage_alignment_trainer import AdAlignTrainer
+
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
@@ -106,8 +108,12 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         optimizers[optimizer_id] = optimizer_class(base.parameters(), **init_args)
 
     # Init trainers
+    use_advantage_alignment = False
     trainers = {}
     for trainer_id, trainer_config in cfg["trainers"].items():
+        trainer_class = eval(trainer_config["class"])
+        if trainer_class == AdAlignTrainer:
+            use_advantage_alignment = True
         pointers = trainer_config["pointers"]
         tokenizer = llms_dict[pointers["model"][0]].tokenizer
         policy_model = get_from_nested_dict(trainable_modules, pointers["model"])
@@ -120,7 +126,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
             critic_optimizer = get_from_nested_dict(
                 optimizers, pointers["critic_optimizer"])
         else: critic_optimizer = None
-        trainer = BaseTrainer(
+        trainer = trainer_class(
                     model=policy_model,
                     optimizer=policy_optimizer,
                     tokenizer=tokenizer,
@@ -129,7 +135,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
                     critic_optimizer=critic_optimizer,
                     critic_lr_scheduler=None, # TODO add
                     save_path=os.path.join(output_directory, trainer_id),
-                    **trainer_config["kwargs"]
+                    **trainer_config["init_args"]
                 )
         trainers[trainer_id] = trainer
 
@@ -193,15 +199,34 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         for llm in llms_dict.values():
             llm.toggle_training_mode()
 
+        # ----------- Advantage Alignment Training 
+        if use_advantage_alignment: # Trainers can share critic advantage estimations
+            for trainer_id, trainer in trainers.items():
+                trainer.set_advantage_alignment_data(
+                    rollout_roots = rollout_roots
+                )
 
-        for trainer_id, trainer in trainers.items():
-            agent_ids = cfg["train_on_which_data"][trainer_id] # ids of the agents on which the trainer takes steps
-            trainer.set_policy_gradient_data(
-                agent_ids = agent_ids,
-                rollout_trees = rollout_roots
-            )
-            print(f"Training {trainer_id}.")
-            trainer.train()
+        # ----------- Regular Training 
+        else: # Regular training 
+
+            # Send advantage packets to other players
+            advantage_packets = []
+            for trainer_id, trainer in trainers.items():
+                agent_ids = cfg["train_on_which_data"][trainer_id] # ids of the agents on which the trainer takes steps
+                advantage_packet = trainer.set_pre_advantage_alignment_data(
+                    agent_ids = agent_ids,
+                    rollout_trees = rollout_roots
+                )
+                advantage_packets.append(advantage_packet)
+
+            # Receive advantage packets from other players
+            for trainer_id, trainer in trainers.items():
+                trainer.set_advantage_alignment_data(advantage_packets)
+
+            # Train
+            for trainer_id, trainer in trainers.items():
+                print(f"Training {trainer_id}.")
+                trainer.train()
 
 
         # Export all HF adapters weights (needed for vLLM inference)

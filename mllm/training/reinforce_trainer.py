@@ -1,8 +1,6 @@
 """
 TODO: Add coefficients for losses (depend on total number of tokens or batch)
 """
-
-
 import logging
 import os
 import random
@@ -36,42 +34,6 @@ from mllm.markov_games.rollout_tree import *
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
-@dataclass
-class BaseTrainerConfig:
-    entropy_coeff: float # Coefficient of the entropy term in the loss.
-    kl_coeff: float # Coefficient of the KL-divergence term in the loss.
-    gradient_clipping: Union[float, None] # Maximum norm of the gradient component before it gets clipped.
-    restrict_tokens: Union[list[str], None]
-    mini_batch_size: int # The number of conversations/trajectories we backpropagate through at once. This only affects the GPU usage.
-    use_gradient_checkpointing: bool
-    temperature: float
-    device: str
-
-    # Regular credit assignment
-    use_gae: bool
-    gae_lambda_for_credits: float
-    gae_lambda_for_targets: float
-    discount_factor: float
-    end_at_last_state_flag: bool # False
-
-    # Opponent Shaping
-    use_sum_credits: bool
-    use_advantage_alignment: bool
-    ad_align_normalize_advantages: bool
-    ad_align_force_coop_first_step: bool
-    use_sign_in_ad_align: bool
-    ad_align_clipping: float
-    use_time_regularization_in_ad_align: bool
-    use_variance_regularization_in_ad_align: bool
-    ad_align_beta: float
-
-    # Regular logging
-    log_entropy_gradient_terms: bool = False
-    log_kl_gradient_terms: bool = False
-    log_value_gradient_terms: bool = False
-
-    # Contextualized logging
-    debug_mode: bool = False
 
 
 class BaseTrainer:
@@ -100,8 +62,21 @@ class BaseTrainer:
         critic: Union[AutoModelForCausalLM, None],
         critic_optimizer: Union[torch.optim.Optimizer, None],
         critic_lr_scheduler: Union[torch.optim.lr_scheduler.LRScheduler, None],
-        # config: BaseTrainerConfig,
+        ######################################################################
+        entropy_coeff: float,
+        kl_coeff: float,
+        gradient_clipping: Union[float, None],
+        restrict_tokens: Union[list[str], None],
+        mini_batch_size: int,
+        use_gradient_checkpointing: bool,
+        temperature: float,
+        device: str,
+        use_gae: bool,
+        gae_lambda_for_credits: float,
+        gae_lambda_for_targets: float,
+        discount_factor: float,
         save_path: str,
+        debug_mode: bool,
         **kwargs
     ):
         """
@@ -117,7 +92,6 @@ class BaseTrainer:
             critic_lr_scheduler (torch.optim.lr_scheduler.LRScheduler or None): LR scheduler for the critic (optional).
             config (RtConfig): Configuration object for training.
         """
-        self.config = BaseTrainerConfig(**kwargs)
 
         # TODO: add lr schedulers
         model.train()
@@ -137,7 +111,7 @@ class BaseTrainer:
 
         self.logger = PrintLogger(logging.getLogger("reinforcer_trainer_logger"))
 
-        if self.config.use_gradient_checkpointing == True:
+        if self.use_gradient_checkpointing == True:
             self.logger.info("Enabling gradient checkpointing.")
             self.model.gradient_checkpointing_enable(dict(use_reentrant=False))
             self.critic.gradient_checkpointing_enable(dict(use_reentrant=False))
@@ -168,6 +142,18 @@ class BaseTrainer:
                 torch.load(self.critic_optimizer_path)
             )
         self.device = self.accelerator.device
+        self.entropy_coeff = entropy_coeff
+        self.kl_coeff = kl_coeff
+        self.gradient_clipping = gradient_clipping
+        self.restrict_tokens = restrict_tokens
+        self.mini_batch_size = mini_batch_size
+        self.use_gradient_checkpointing = use_gradient_checkpointing
+        self.temperature = temperature
+        self.use_gae = use_gae
+        self.gae_lambda_for_credits = gae_lambda_for_credits
+        self.gae_lambda_for_targets = gae_lambda_for_targets
+        self.discount_factor = discount_factor
+        self.debug_mode = debug_mode
 
         # TODO
         # log data type of model
@@ -191,9 +177,9 @@ class BaseTrainer:
         # TODO: verify. Not sure what we do here is differentiable
         # also, we recompute for nothing
 
-        if self.config.restrict_tokens is not None:
+        if self.restrict_tokens is not None:
             allowed_token_ids = []
-            for token in self.config.restrict_tokens:
+            for token in self.restrict_tokens:
                 token_ids = self.tokenizer(token, add_special_tokens=False)["input_ids"]
                 allowed_token_ids.append(token_ids[0])
             allowed_token_ids.append(
@@ -256,7 +242,7 @@ class BaseTrainer:
             f"\n Before Reinforce Step \n  {ram_usage()} \n {vram_usage()}"
         )
         self.model.train()
-        mb_size = self.config.mini_batch_size
+        mb_size = self.mini_batch_size
         nb_rollouts = len(training_batch)
         self.tally.add_metric(path=["nb_rollouts"], metric=nb_rollouts)
 
@@ -284,7 +270,7 @@ class BaseTrainer:
             action_mask_mb = action_mask_mb[:, 1:]
             credits_mb = credits_mb[:, 1:]
 
-            if self.config.debug_mode:
+            if self.debug_mode:
                 self.tally.add_contextualized_token_metrics(
                     paths=paths_mb,
                     metric_id="next_token_credit",
@@ -298,10 +284,10 @@ class BaseTrainer:
             logits = self.model(input_ids=contexts_mb)[0]  # (B, S, V)
 
             # Mask non-restricted tokens
-            if self.config.restrict_tokens is not None:
+            if self.restrict_tokens is not None:
                 logits = self.mask_non_restricted_token_logits(logits)
 
-            logits /= self.config.temperature  # (B, S, V)
+            logits /= self.temperature  # (B, S, V)
 
             # Compute new log probabilities
             log_probs = F.log_softmax(logits, dim=-1)  # (B, S, V)
@@ -313,7 +299,7 @@ class BaseTrainer:
                 -1
             )  # (B, S)
 
-            if self.config.debug_mode:
+            if self.debug_mode:
                 self.tally.add_contextualized_token_metrics(
                     paths=paths_mb,
                     metric_id="next_token_log_prob",
@@ -354,7 +340,7 @@ class BaseTrainer:
             rewarded_action_log_probs = action_mask_mb * credits_mb * action_log_probs
             # (B, S)
 
-            if self.config.debug_mode:
+            if self.debug_mode:
                 self.tally.add_contextualized_token_metrics(
                     paths=paths_mb,
                     metric_id="next_token_clogπ",
@@ -370,7 +356,7 @@ class BaseTrainer:
                 path=["loss_mb_total", "value_mb_total"], metric=mb_value.item()
             )
 
-            if self.config.debug_mode:
+            if self.debug_mode:
                 self.tally.add_metric(
                     path=["gradient_term_magnitudes", "value"],
                     metric=self.get_gradient_magnitude(loss_term=mb_value),
@@ -380,7 +366,7 @@ class BaseTrainer:
             # -------------------------------------------------
             # Entropy Regularization
             # -------------------------------------------------
-            if self.config.entropy_coeff != 0.0:
+            if self.entropy_coeff != 0.0:
 
                 self.logger.info(
                     f"\n Before Computing Entropy \n  {ram_usage()} \n {vram_usage()}"
@@ -390,7 +376,7 @@ class BaseTrainer:
                 # (B, S, T)
                 # We only take the entropy of actions
                 token_entropy_terms *= action_mask_mb[:, :, None]
-                # if self.config.debug_mode:
+                # if self.debug_mode:
                 #     self.tally.add_contextualized_token_metrics(
                 #         game_ids=paths,
                 #         metric_id="entropy",
@@ -401,12 +387,12 @@ class BaseTrainer:
 
                 mb_entropy = token_entropy_terms.sum()
                 del token_entropy_terms
-                mb_entropy *= self.config.entropy_coeff
+                mb_entropy *= self.entropy_coeff
                 self.tally.add_metric(
                     path=["loss_mb_total", "entropy_mb_total"], metric=mb_entropy.item()
                 )
 
-                if self.config.debug_mode:
+                if self.debug_mode:
                     self.tally.add_metric(
                         path=["gradient_term_magnitudes", "entropy"],
                         metric=self.get_gradient_magnitude(loss_term=mb_entropy),
@@ -420,7 +406,7 @@ class BaseTrainer:
             # -------------------------------------------------
             # KL-DIVERGENCE
             # -------------------------------------------------
-            if self.config.kl_coeff != 0.0:
+            if self.kl_coeff != 0.0:
                 self.logger.info(
                     f"\n Before Computing KLD \n  {ram_usage()} \n {vram_usage()}"
                 )
@@ -429,7 +415,7 @@ class BaseTrainer:
                         ref_model_logits = self.model(
                             input_ids=contexts_mb, # attention_mask=attention_mask
                         )[0]
-                ref_model_logits = ref_model_logits / self.config.temperature
+                ref_model_logits = ref_model_logits / self.temperature
                 # (B, S, V)
                 ref_model_logits = self.mask_non_restricted_token_logits(
                     logits=ref_model_logits
@@ -451,7 +437,7 @@ class BaseTrainer:
                     - 1
                 )
 
-                # if self.config.debug_mode:
+                # if self.debug_mode:
                 #     self.tally.add_contextualized_token_metrics(
                 #         game_ids=game_ids,
                 #         metric_id="kl",
@@ -465,11 +451,11 @@ class BaseTrainer:
                 mb_kl = kl_div.sum()
 
 
-                mb_kl *= self.config.kl_coeff
+                mb_kl *= self.kl_coeff
 
                 self.tally.add_metric(path=["mb_kl_loss_terms"], metric=mb_kl.item())
 
-                if self.config.debug_mode:
+                if self.debug_mode:
                     self.tally.add_metric(
                         path=["gradient_term_magnitudes", "kl"],
                         metric=self.get_gradient_magnitude(loss_term=mb_kl),
@@ -501,9 +487,9 @@ class BaseTrainer:
         # self.accelerator.sync_gradients
 
         # Clip gradients and take step
-        if self.config.gradient_clipping is not None:
+        if self.gradient_clipping is not None:
             grad_norm = self.accelerator.clip_grad_norm_(
-                self.model.parameters(), self.config.gradient_clipping
+                self.model.parameters(), self.gradient_clipping
             )
             # TODO: log at right place
             self.tally.add_metric(path=["gradient_norm"], metric=grad_norm.item())
@@ -538,11 +524,11 @@ class BaseTrainer:
             credits: NestedFloatTensors
         """
 
-        mb_size = self.config.mini_batch_size
+        mb_size = self.mini_batch_size
         batch_size = trajectories.rollout_ids.shape[0]
         # self.tally.add_metric(path=["discounted_returns"], metric=rewards)
 
-        if self.config.use_gae:
+        if self.use_gae:
 
             credits = []
 
@@ -585,8 +571,8 @@ class BaseTrainer:
                     get_generalized_advantage_estimates(
                         rewards=rewards_mb,
                         value_estimates=det_vals_estimate_mb,
-                        discount_factor=self.config.discount_factor,
-                        lambda_coef=self.config.gae_lambda_for_targets,
+                        discount_factor=self.discount_factor,
+                        lambda_coef=self.gae_lambda_for_targets,
                     )
                     + det_vals_estimate_mb[:, :-1]
                 )
@@ -603,8 +589,8 @@ class BaseTrainer:
                 credits_mb = get_generalized_advantage_estimates(
                     rewards=rewards_mb,
                     value_estimates=det_vals_estimate_mb,
-                    discount_factor=self.config.discount_factor,
-                    lambda_coef=self.config.gae_lambda_for_credits,
+                    discount_factor=self.discount_factor,
+                    lambda_coef=self.gae_lambda_for_credits,
                 )
 
                 # Get jagged back
@@ -618,7 +604,7 @@ class BaseTrainer:
             batch_rewards = trajectories.batch_rewards
             credits = [ get_discounted_returns(
                 rewards=rewards,
-                discount_factor=self.config.discount_factor
+                discount_factor=self.discount_factor
             )
             for rewards in batch_rewards ]
             credits = torch.nested.nested_tensor(credits, dtype=torch.float32, layout=torch.jagged)
@@ -631,28 +617,10 @@ class BaseTrainer:
         TOWRITE
         """
 
+        # TODO: append to current batch data instead, else we will only train for one agent! 
+
         # Tensorize Chats
         rollout_ids = []
-        chats = []
-
-        def get_chat_list_and_rewards(
-            agent_id: str, root : RolloutTreeRootNode) -> Tuple[list[ChatTurn], torch.FloatTensor]:
-            """
-            TOWRITE
-            """
-            # TODO; extend for all trees, not just linear
-            current_node = root.child
-            chat = []
-            rewards = []
-            while current_node is not None:
-                reward : float = current_node.step_log.simulation_step_log.rewards[agent_id]
-                rewards.append(reward)
-                chat_turns: list[ChatTurn] = current_node.step_log.action_logs[agent_id].chat_turns
-                chat.extend(chat_turns)
-                current_node = current_node.child
-            return chat, torch.FloatTensor(rewards)
-
-
         batch_input_ids = []
         batch_action_mask = []
         batch_timesteps = []
@@ -661,7 +629,7 @@ class BaseTrainer:
         for agent_id in agent_ids:
             for root in rollout_trees:
                 rollout_ids.append(root.id)
-                chat, rewards = get_chat_list_and_rewards(agent_id=agent_id, root=root)
+                chat, rewards = get_main_chat_list_and_rewards(agent_id=agent_id, root=root)
                 (
                     input_ids,
                     action_mask,
@@ -698,19 +666,22 @@ class BaseTrainer:
         )
 
         # Get training batch and apply single step
-        self.training_batch = TrainingBatch(
-            rollout_ids = trajectory_batch.rollout_ids,
-            batch_input_ids = trajectory_batch.batch_input_ids,
-            batch_action_mask = trajectory_batch.batch_action_mask,
-            batch_credits = batch_advantages
-        )
+        self.policy_gradient_data = TrainingBatch(
+                rollout_ids = trajectory_batch.rollout_ids,
+                batch_input_ids = trajectory_batch.batch_input_ids,
+                batch_action_mask = trajectory_batch.batch_action_mask,
+                batch_credits = batch_advantages
+            )
+        
 
 
     def train(self) -> None:
         """
         TOWRITE
         """
-        self.apply_reinforce_step(training_batch=self.training_batch)
+        assert self.policy_gradient_data is not None, "Policy gradient data is not set"
+        self.apply_reinforce_step(training_batch=self.policy_gradient_data)
+        self.policy_gradient_data = None
 
 
     def set_token_credits(self) -> None:
@@ -725,7 +696,7 @@ class BaseTrainer:
         Saves and resets the collected training metrics using the tally object.
         """
 
-        self.tally.save(path=self.config.logging_path)
+        self.tally.save(path=self.logging_path)
         self.tally.reset()
 
     def export_optimizer_states(self) -> None:

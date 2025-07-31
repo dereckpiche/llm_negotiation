@@ -78,9 +78,8 @@ def get_generalized_advantage_estimates(
     return gaes
 
 def get_advantage_alignment_weights(
-    advantages: torch.Tensor, # (B,S)
-    beta: float,
-    gamma: float,
+    advantages: torch.Tensor, # (B, T)
+    include_k_equals_t: bool,
 ) -> torch.Tensor:
     """
     The advantage alignment credit is calculated as
@@ -94,144 +93,168 @@ def get_advantage_alignment_weights(
     Here, the weights are defined as \( \beta \cdot
         \left( \sum_{k < t} \gamma^{t-k} A^1(s_k, a_k, b_k) \)
     """
-    # TODO: verify
-    # Regular alignment terms
     T = advantages.shape[1]
-    discounted_advantages = advantages * (gamma * torch.ones(shape=(1, T))) ** (
-        -torch.arange(0, T, 1)
-    )
+
+    if include_k_equals_t:
+        sub = torch.zeros((T, T))
+    else:
+        sub = torch.identity(T)
+        
     # Identity is for \( k < t \), remove for \( k \leq t \)
-    discounted_sums_advantages = discounted_advantages @ (
-        torch.triu(torch.ones((T, T))) - torch.identity(T)
+    ad_align_weights = advantages @ (
+        torch.triu(torch.ones((T, T))) - sub
     )
-    t_discounts = (gamma * torch.ones(shape=(1, T))) ** (torch.arange(0, T, 1))
-    adalign_weights = beta * t_discounts * discounted_sums_advantages
-    return adalign_weights
+    # t_discounts = (gamma * torch.ones(shape=(1, T))) ** (torch.arange(0, T, 1))
+    # adalign_weights = beta * t_discounts * discounted_sums_advantages
+    return ad_align_weights
 
 
-def advantages_to_aa_credits(
+def get_advantage_alignment_credits(
     a1: torch.Tensor, # (B, S)
+    a1_alternative: torch.Tensor, # (B, A, S)
     a2: torch.Tensor, # (B, S)
-    tally: RtTally
-) -> torch.Tensor:
+    discount_factor: float,
+    include_k_equals_t: bool,
+    beta: float,
+    gamma: float,
+    use_sign_in_ad_align: bool,
+    ad_align_clipping: float,
+    use_time_regularization_in_ad_align: bool,
+    ad_align_force_coop_first_step: bool,
+    use_variance_regularization_in_ad_align: bool,
+    tally: RtTally,
+    ) -> torch.Tensor:
     """
     Calculate the advantage alignment credits with vectorization, as described in https://arxiv.org/abs/2406.14662.
-    Applies normalization, sign, clipping, and regularization as specified in config.
-    Optionally logs intermediate and final metrics.
 
-    The advantage alignment credit is calculated as:
+    Recall that the advantage opponent shaping term of the AdAlign policy gradient is:
     \[
-        A^*(s_t, a_t, b_t) = A^1(s_t, a_t, b_t) + \\beta \\gamma \\cdot
-        \\left( \\sum_{k < t} \\gamma^{t-k} A^1(s_k, a_k, b_k) \\right)
-        A^2(s_t, a_t, b_t)
+        \beta \mathbb{E}_{\substack{
+        \tau \sim \text{Pr}_{\mu}^{\pi^1, \pi^2} \\
+        a_t' \sim \pi^1(\cdot \mid s_t)
+        }} 
+        \left[\sum_{t=0}^\infty  \gamma^{t}\left( \sum_{k\leq t} A^1(s_k,a^{\prime}_k,b_k) \right) A^{2}(s_t,a_t, b_t)\nabla_{\theta^1}\text{log } \pi^1(a_t|s_t) \right]
+    \]
+
+    This method computes the following:
+    \[
+        Credit(s_t, a_t, b_t) = \gamma^t \left[ A^1(s_t, a_t, b_t) + \beta \left( \sum_{k\leq t} A^1(s_k,a^{\prime}_k,b_k) \right) A^{2}(s_t,a_t, b_t) \right]
     \]
 
     Args:
-        a1 (torch.Tensor): The first advantage array.
-        a2 (torch.Tensor): The second advantage array.
+        a1: Advantages of the main trajectories for the current agent.
+        a1_alternative: Advantages of the alternative trajectories for the current agent.
+        a2: Advantages of the main trajectories for the other agent.
+        discount_factor: Discount factor for the advantage alignment.
+        beta: Beta parameter for the advantage alignment.
+        gamma: Gamma parameter for the advantage alignment.
+        use_sign_in_ad_align: Whether to use sign in the advantage alignment.
 
     Returns:
-        torch.Tensor: The advantage alignment terms.
+        torch.Tensor: The advantage alignment credits.
     """
-    assert not rewards.is_nested, "Input must not be a nested tensor."
-    if len(a1.shape) == 1:
-        a1 = a1[None, :]
-    if len(a2.shape) == 1:
-        a2 = a2[None, :]
+    assert a1.dim() == a2.dim() == 2, "Advantages must be of shape (B, S)"
+    assert a1_alternative.dim() == 3, "Alternative advantages must be of shape (B, A, S)"
     assert a1.shape == a2.shape, "Not the same shape"
-    T = a1.shape[1]
-    a1 = torch.array(a1)
-    a2 = torch.array(a2)
-    gamma = self.config.discount_factor
-    beta = self.config.ad_align_beta
+    assert a1.shape == a1_alternative.shape, "Not the same shape"
+    B, A, T = a1_alternative.shape
 
-    adalign_weights = self.get_advantage_alignment_weights(
-        advantages=a1, beta=beta, gamma=gamma
+    a1_alternative = a1_alternative.mean(dim=1)
+
+    adalign_weights = get_advantage_alignment_weights(
+        advantages=a1_alternative, include_k_equals_t=include_k_equals_t
     )
 
-    self.tally.add_metric(
+    tally.add_metric(
         path=["raw_advantage_alignment_weights"], metric=adalign_weights
     )
 
     # Use sign
-    if self.config.use_sign_in_ad_align:
+    if use_sign_in_ad_align:
         assert beta == 1.0, "beta should be 1.0 when using sign"
         positive_signs = adalign_weights > 0
         negative_signs = adalign_weights < 0
         adalign_weights[positive_signs] = 1
         adalign_weights[negative_signs] = -1
-        self.tally.add_metric(
+        tally.add_metric(
             path=["adalign_weights_ratio_positive_signs"],
             metric=positive_signs.sum() / adalign_weights.size,
         )
-        self.tally.add_metric(
+        tally.add_metric(
             path=["adalign_weights_ratio_negative_signs"],
             metric=negative_signs.sum() / adalign_weights.size,
         )
         # (rest are 0)
 
-        self.tally.add_metric(
+        tally.add_metric(
             path=["ad_align_weights_after_using_sign"], metric=adalign_weights
         )
 
+    ###################
+    # Process weights
+    ###################
+
     # Use clipping
-    if self.config.ad_align_clipping not in [0.0, None]:
+    if ad_align_clipping not in [0.0, None]:
 
         upper_mask = adalign_weights > 1
         lower_mask = adalign_weights < -1
 
         adalign_weights = torch.clip(
             adalign_weights,
-            -self.config.ad_align_clipping,
-            self.config.ad_align_clipping,
+            -ad_align_clipping,
+            ad_align_clipping,
         )
         clipping_ratio = (torch.sum(upper_mask) + torch.sum(lower_mask)) / upper_mask.size
 
-        self.tally.add_metric(
+        tally.add_metric(
             path=["ad_align_clipping_ratio"], metric=clipping_ratio
         )
 
-        self.tally.add_metric(
+        tally.add_metric(
             path=["ad_align_weights_after_clipping"], metric=adalign_weights
         )
 
     # 1/1+t Regularization
-    if self.config.use_time_regularization_in_ad_align:
+    if use_time_regularization_in_ad_align:
         t_values = torch.arange(1, T + 1)
         adalign_weights = adalign_weights / t_values
-        self.tally.add_metric(
+        tally.add_metric(
             path=["adalign_weights_after_1_over_t_reg"], metric=adalign_weights
         )
 
     # Use coop on t=0
-    if self.config.ad_align_force_coop_first_step:
+    if ad_align_force_coop_first_step:
         adalign_weights[:, 0] = 1
-        self.tally.add_metric(
+        tally.add_metric(
             path=["adalign_weights_after_force_coop_first_step"],
             metric=adalign_weights,
         )
 
-    opp_shaping_terms = adalign_weights * a2
+    # # Normalize alignment terms (across same time step)
+    # if use_variance_regularization_in_ad_align:
+    #     # TODO: verify
+    #     reg_coef = torch.std(a1[:, -1]) / (torch.std(opp_shaping_terms[:, -1]) + 1e-9)
+    #     opp_shaping_terms *= reg_coef
+    #     tally.add_metric(
+    #         path=["opp_shaping_terms_after_var_reg"], metric=opp_shaping_terms
+    #     )
 
-    self.tally.add_metric(
+    ####################################
+    # Compose elements together 
+    ####################################
+
+    opp_shaping_terms = beta * adalign_weights * a2
+
+    tally.add_metric(
         path=["ad_align_opp_shaping_terms"], metric=opp_shaping_terms
     )
 
-    # Normalize alignment terms (across same time step)
-    if self.config.use_variance_regularization_in_ad_align:
-        # TODO: verify
-        reg_coef = torch.std(a1[:, -1]) / (torch.std(opp_shaping_terms[:, -1]) + 1e-9)
-        opp_shaping_terms *= reg_coef
-        self.tally.add_metric(
-            path=["opp_shaping_terms_after_var_reg"], metric=opp_shaping_terms
-        )
+    t_discounts = (gamma * torch.ones(shape=(1, T))) ** (torch.arange(0, T, 1))
+    credits = t_discounts * (a1 + opp_shaping_terms)
 
-    ad_align_credits = a1 + opp_shaping_terms
-
-    self.tally.add_metric(
-        path=["final_advantage_alignment_credits"], metric=ad_align_credits
+    tally.add_metric(
+        path=["final_advantage_alignment_credits"], metric=credits
     )
 
-    self.logger.info(f"\n \n After AdAlign \n  {ram_usage()} \n {vram_usage()}")
-
-    return ad_align_credits.squeeze()
+    return credits

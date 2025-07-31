@@ -150,6 +150,7 @@ optimizers:
 
 trainers:
     qwen_trainer:
+        class: AdAlignTrainer
         pointers:
             model: ["qwen", "self_play_agent"]
             optimizer: "self_play_agent_optimizer"
@@ -165,14 +166,11 @@ trainers:
             use_gradient_checkpointing: True
             temperature: ${temperature}
             device: "cuda:0"
-
             discount_factor: 1.0
             use_gae: False
             gae_lambda_for_credits: 0.92
             gae_lambda_for_targets: 0.92
-            end_at_last_state_flag: True # if true, will not train on last round actions
-
-            # Reward Shaping
+            debug_mode: False
             use_sum_credits: False
             use_advantage_alignment: False
             ad_align_normalize_advantages: False
@@ -183,13 +181,7 @@ trainers:
             use_variance_regularization_in_ad_align: False
             ad_align_beta: 1.0
 
-            log_ctz_next_token: True
-            log_ctz_next_token_credit: True
-            log_ctz_next_token_log_prob: True
-            log_ctz_next_token_prob: True
-            log_ctz_top_clogπ: True
-            log_ctz_entropy: True
-            log_ctz_kl: True
+            
 
 training:
     agents:

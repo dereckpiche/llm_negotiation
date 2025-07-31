@@ -42,7 +42,7 @@ class RolloutTreeBranchNode(BaseModel):
     First item of the tuple indicates which agent "called" for an alternative branch.
     """
     main_child: RolloutTreeNode
-    branches: list[tuple[BranchNodeInfo, RolloutTreeNode]] | None = None
+    branches: dict[AgentId, list[RolloutTreeNode]] | None = None
 
 class RolloutTreeRootNode(BaseModel):
     id: int

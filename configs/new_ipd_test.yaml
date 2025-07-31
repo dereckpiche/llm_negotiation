@@ -156,6 +156,7 @@ common_trainer_kwargs: &common_trainer_kwargs
 
 trainers:
     self_play_trainer:
+        class: AdAlignTrainer
         pointers:
             model: ["qwen", "self_play_agent"]
             optimizer: "self_play_agent_optimizer"
