@@ -79,7 +79,7 @@ def get_generalized_advantage_estimates(
 
 def get_advantage_alignment_weights(
     advantages: torch.Tensor, # (B, T)
-    include_k_equals_t: bool,
+    exclude_k_equals_t: bool,
 ) -> torch.Tensor:
     """
     The advantage alignment credit is calculated as
@@ -95,10 +95,11 @@ def get_advantage_alignment_weights(
     """
     T = advantages.shape[1]
 
-    if include_k_equals_t:
-        sub = torch.zeros((T, T))
-    else:
+    if exclude_k_equals_t:
         sub = torch.identity(T)
+    else:
+        sub = torch.zeros((T, T))
+
         
     # Identity is for \( k < t \), remove for \( k \leq t \)
     ad_align_weights = advantages @ (
@@ -114,7 +115,7 @@ def get_advantage_alignment_credits(
     a1_alternative: torch.Tensor, # (B, A, S)
     a2: torch.Tensor, # (B, S)
     discount_factor: float,
-    include_k_equals_t: bool,
+    exclude_k_equals_t: bool,
     beta: float,
     gamma: float,
     use_sign_in_ad_align: bool,

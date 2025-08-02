@@ -8,7 +8,7 @@ from collections.abc import Callable
 from mllm.markov_games.rollout_tree import RolloutTreeRootNode
 
 async def run_markov_games(
-    runner: Callable[[MarkovGame], None],
+    runner: Callable[[MarkovGame], RolloutTreeRootNode],
     output_folder: str,
     markov_games: list[MarkovGame]) -> list[RolloutTreeRootNode]:
     for mg in markov_games:

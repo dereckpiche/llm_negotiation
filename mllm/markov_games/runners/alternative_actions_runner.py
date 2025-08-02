@@ -2,7 +2,7 @@ import os.path
 import asyncio
 import json
 from mllm.markov_games.markov_game import MarkovGame
-from mllm.markov_games.rollout_tree import RolloutTreeNode, RolloutTreeRootNode, RolloutTreeBranchNode, BranchNodeInfo, StepLog
+from mllm.markov_games.rollout_tree import RolloutTreeNode, RolloutTreeRootNode, RolloutTreeBranchNode, StepLog
 AgentId = str
 import uuid
 
@@ -51,13 +51,13 @@ async def AlternativeActionsRunner(
             counter += 1
             time_step += 1
 
-        root = RolloutTreeRootNode(id=branch_id, child=root)
+        node = RolloutTreeNode(id=branch_id, child=root)
 
         if branch_node.branches == None:
-            branch_node.branches = {agent_id: [root]}
+            branch_node.branches = {agent_id: [node]}
         else:
             agent_branches = branch_node.branches.get(agent_id, [])
-            agent_branches.append(root)
+            agent_branches.append(node)
             branch_node.branches[agent_id] = agent_branches
 
     tasks = []
@@ -101,3 +101,5 @@ async def AlternativeActionsRunner(
     export_path = os.path.join(output_folder, markov_game.id+".json")
     with open(export_path, "w") as f:
         f.write(root.model_dump_json(indent=4))
+
+    return root

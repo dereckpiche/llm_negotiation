@@ -214,7 +214,7 @@ class LeanLocalLLM:
         self.currently_loaded_adapter_id = adapter_id
 
 
-    def get_training_policies(self) -> dict[PolicyID, nn.Module]:
+    def get_adapter_modules(self) -> dict[PolicyID, nn.Module]:
         """
         Returns wrappers over the adapters which allows them be
         interfaced like regular PyTorch models.

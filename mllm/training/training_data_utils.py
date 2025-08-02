@@ -3,7 +3,6 @@ from dataclasses import dataclass
 import torch.nested as tn
 from typing import Literal, Tuple
 from mllm.markov_games.rollout_tree import RolloutTreeBranchNode, RolloutTreeRootNode, ChatTurn
-from typing import Self
 
 def get_main_chat_list_and_rewards(
     agent_id: str, root : RolloutTreeRootNode) -> Tuple[list[ChatTurn], torch.FloatTensor]:
@@ -73,6 +72,7 @@ class TrajectoryBatch:
         for b in range(B):
             nb_rewards = self.batch_rewards[b].shape[0]
             nb_timesteps = torch.max(self.batch_timesteps[b]).item() + 1
+            print(nb_rewards, nb_timesteps)
             assert nb_rewards == nb_timesteps, "Number of rewards and timesteps mismatch."
             assert self.batch_input_ids[b].shape[0] == self.batch_action_mask[b].shape[0] == self.batch_timesteps[b].shape[0], "Tensors must have the same shape along the jagged dimension."
             assert self.batch_state_ends_mask[b].sum() == self.batch_rewards[b].shape[0], "Number of rewards must match number of state ends."
@@ -97,9 +97,9 @@ class TrajectoryBatch:
         action_mask:    "x  x  x  ✓  ✓  ✓  x  ✓  x  ✓  ✓  ✓  x  x  x"
         timestep:       "0  0  0  0  0  0  1  1  1  1  1  1  2  2  2"
         state_ends_dx:  [2, 6, 14]
-        rewards:        [r0, r1, r2]
+        rewards:        [r0, r1, r2] 
     """
-    def __getitem__(self, key) -> Self:
+    def __getitem__(self, key) -> "TrajectoryBatch":
         if isinstance(key, slice):
             ret = TrajectoryBatch(
                 rollout_ids = self.rollout_ids.__getitem__(key),
@@ -165,7 +165,7 @@ class TrainingBatch:
         assert torch.all(input_diff == action_diff).item() and torch.all(action_diff == credit_diff).item(), \
             "Tensors must have the same shapes along the jagged dimension."
 
-    def __getitem__(self, key) -> Self:
+    def __getitem__(self, key) -> "TrainingBatch":
         if isinstance(key, slice):
             ret = TrainingBatch(
                 rollout_ids = self.rollout_ids.__getitem__(key),
@@ -197,7 +197,7 @@ class TrainingBatch:
 
         return PaddedTensorTrainingBatch(padded_batch_input_ids, padded_batch_action_mask, padded_batch_credits)
 
-    def append(self, other: Self):
+    def append(self, other: "TrainingBatch"):
         self.rollout_ids = torch.cat([self.rollout_ids, other.rollout_ids])
         self.batch_input_ids = tn.cat([self.batch_input_ids, other.batch_input_ids], layout=torch.jagged)
         self.batch_action_mask = tn.cat([self.batch_action_mask, other.batch_action_mask], layout=torch.jagged)

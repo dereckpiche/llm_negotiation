@@ -10,7 +10,7 @@ experiment:
     method: generate_and_train
     description: "no description"
     nb_epochs: 10
-    nb_matches_per_iteration: 16
+    nb_matches_per_iteration: 2
     reinit_matches_each_it: true
     checkpoint_every_n_iterations: 25
     start_epoch: 0
@@ -55,10 +55,10 @@ agent_1_id: "Bob"
 agent_ids: ["Alice", "Bob"]
 
 markov_games:
-    runner_method_name: "LinearRunner"
-    simulation_class_name: "IPD"
+    runner_method_name: AlternativeActionsRunner
+    simulation_class_name: IPD
     simulation_init_args:
-        rounds_per_game: 16
+        rounds_per_game: 2
         cooperate_actions: ["C"]
         defect_actions: ["D"]
         agent_ids: ${agent_ids}
@@ -70,14 +70,14 @@ markov_games:
         0:
             agent_id: ${agent_0_id}
             agent_class_name: "IPDAgent"
-            policy_id: "qwen/self_play_agent"
+            policy_id: "qwen/agent_adapter"
             init_kwargs:
                 <<: *common_agent_kwargs
 
         1:
             agent_id: ${agent_1_id}
             agent_class_name: "IPDAgent"
-            policy_id: "qwen/self_play_agent"
+            policy_id: "qwen/agent_adapter"
             init_kwargs:
                 <<: *common_agent_kwargs
 
@@ -95,39 +95,43 @@ models:
             name: "qwen"
             model_name: Qwen/Qwen2.5-0.5B-Instruct # HuggingFaceTB/SmolLM-135M # "Qwen/Qwen2.5-7B-Instruct"
             adapter_configs:
-                self_play_agent:
+                agent_adapter:
                     task_type: "CAUSAL_LM"
                     r: 32
                     lora_alpha: 128
                     lora_dropout: 0.0
                     target_modules: "all-linear"
-                self_play_critic:
+                critic_adapter:
                     task_type: "CAUSAL_LM"
                     r: 32
                     lora_alpha: 128
                     lora_dropout: 0.0
                     target_modules: "all-linear"
+
+    
 
 critics:
-    self_play_agent_critic:
-        pointer: ["qwen", "self_play_critic"]
+    agent_critic:
+        module_pointer: ["qwen", "critic_adapter"]
 
 optimizers:
-    self_play_agent_optimizer:
-        pointer: ["qwen", "self_play_agent"]
-        optimizer_class: torch.optim.Adam
-        init_args:
+    agent_optimizer:
+        module_pointer: ["qwen", "agent_adapter"]
+        optimizer_class_name: torch.optim.Adam
+        init_args:  
             lr: 1e-6
             weight_decay: 0.0
 
-    self_play_agent_critic_optimizer:
-        pointer: self_play_agent_critic
+    critic_optimizer:
+        module_pointer: agent_critic
         optimizer_class: torch.optim.Adam
         init_args:
             lr: 1e-6
             weight_decay: 0.0
 
 common_trainer_kwargs: &common_trainer_kwargs
+    
+    # Base Trainer 
     entropy_coeff: 0.0
     kl_coeff: 0.0
     gradient_clipping: 1.0
@@ -136,34 +140,32 @@ common_trainer_kwargs: &common_trainer_kwargs
     use_gradient_checkpointing: True
     temperature: ${temperature}
     device: "cuda:0"
-
-    discount_factor: 1.0
     use_gae: True
     gae_lambda_for_credits: 0.92
     gae_lambda_for_targets: 0.92
-    end_at_last_state_flag: True # if true, will not train on last round actions
+    discount_factor: 1.0
+    debug_mode: False
+    
 
-    # Reward Shaping
-    use_sum_credits: False
-    use_advantage_alignment: False
-    ad_align_normalize_advantages: False
+    # Advantage Alignment Trainer
     ad_align_force_coop_first_step: False
-    use_sign_in_ad_align: False
     ad_align_clipping: null
-    use_time_regularization_in_ad_align: False
-    use_variance_regularization_in_ad_align: False
+    ad_align_gamma: 1.0
+    ad_align_include_k_equals_t: True
+    ad_align_use_sign: False
     ad_align_beta: 1.0
 
+
 trainers:
-    self_play_trainer:
+    agent_trainer:
         class: AdAlignTrainer
-        pointers:
-            model: ["qwen", "self_play_agent"]
-            optimizer: "self_play_agent_optimizer"
-            critic: "self_play_agent_critic"
-            critic_optimizer: "self_play_agent_critic_optimizer"
+        module_pointers:
+            policy: ["qwen", "agent_adapter"]
+            policy_optimizer: "agent_optimizer"
+            critic: "agent_critic"
+            critic_optimizer: "critic_optimizer"
         kwargs:
             <<: *common_trainer_kwargs
 
 train_on_which_data:
-    self_play_trainer: ${agent_ids} # take gradient steps on the reinforce data of both agents at once
+    agent_trainer: ${agent_ids} # take gradient steps on the reinforce data of both agents at once

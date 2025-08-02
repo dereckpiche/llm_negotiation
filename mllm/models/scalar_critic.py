@@ -7,24 +7,24 @@ from mllm.models.adapter_training_wrapper import AdapterWrapper
 
 class ScalarCritic(nn.Module):
     """
-    A causal-LM backbone + a scalar value head:
+    A causal-LM critic_adapter + a scalar value head:
         V_φ(s) = wᵀ h_last + b
-    Only LoRA adapters (inside backbone) and the value head are trainable.
+    Only LoRA adapters (inside critic_adapter) and the value head are trainable.
     """
-    def __init__(self, backbone: AdapterWrapper):
+    def __init__(self, critic_adapter: AdapterWrapper):
         super().__init__()
-        self.backbone = backbone
-        hidden_size = self.backbone.shared_llm.config.hidden_size
+        self.critic_adapter = critic_adapter
+        hidden_size = self.critic_adapter.shared_llm.config.hidden_size
         self.value_head = nn.Linear(hidden_size, 1).to(
-            dtype=backbone.dtype,
-            device=backbone.device)
+            dtype=critic_adapter.dtype,
+            device=critic_adapter.device)
 
     def forward(self,
                 input_ids,
                 attention_mask=None,
                 **kwargs):
         # AdapterWrapper activates its own adapter internally
-        outputs = self.backbone(
+        outputs = self.critic_adapter(
             input_ids=input_ids,
             attention_mask=attention_mask,
             output_hidden_states=True,
@@ -37,18 +37,18 @@ class ScalarCritic(nn.Module):
     def parameters(self, recurse: bool = True):
         """Iterator over *trainable* parameters for this critic."""
         # 1) LoRA params for *this* adapter
-        for p in self.backbone.parameters():
+        for p in self.critic_adapter.parameters():
             yield p
         # 2) scalar head
         yield from self.value_head.parameters()
 
     def gradient_checkpointing_enable(self, *args, **kwargs):
-        self.backbone.gradient_checkpointing_enable(*args, **kwargs)
+        self.critic_adapter.gradient_checkpointing_enable(*args, **kwargs)
 
     @property
     def dtype(self):
-        return self.backbone.dtype
+        return self.critic_adapter.dtype
 
     @property
     def device(self):
-        return self.backbone.device
+        return self.critic_adapter.device

@@ -47,15 +47,15 @@ class RolloutTreeBranchNode(BaseModel):
     First item of the tuple indicates which agent "called" for an alternative branch.
     """
     main_child: RolloutTreeNode
-    branches: dict[AgentId, list[RolloutTreeRootNode]] | None = None
+    branches: dict[AgentId, list[RolloutTreeNode]] | None = None
 
 class RolloutTreeRootNode(BaseModel):
     id: int
     child: RolloutTreeNode | RolloutTreeBranchNode | None = None
 
-class RolloutTreeLeafNode(BaseModel):
-    step_log: StepLog
-    time_step: int
+# class RolloutTreeLeafNode(BaseModel):
+#     step_log: StepLog
+#     time_step: int
 
 
 # Necessary for self-referential stuff in pydantic

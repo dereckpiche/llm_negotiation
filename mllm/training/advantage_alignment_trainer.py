@@ -3,17 +3,21 @@ from dataclasses import dataclass
 import torch
 import numpy as np
 from typing import Tuple
-from markov_games.rollout_tree import RolloutTreeRootNode, ChatTurn, RolloutTreeBranchNode
-from credit_methods import get_advantage_alignment_weights, advantages_to_aa_credits
+from mllm.markov_games.rollout_tree import RolloutTreeRootNode, ChatTurn, RolloutTreeBranchNode
 from mllm.training.training_data_utils import get_main_chat_list_and_rewards
 from mllm.training.tokenize_chats import process_training_chat
 from mllm.training.training_data_utils import TrajectoryBatch, TrainingBatch
-from mllm.training.training_data_utils import get_advantage_alignment_credits
+from mllm.training.credit_methods import get_advantage_alignment_credits
 import copy
+import logging
+import sys
+
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.StreamHandler(sys.stdout))
 
 RolloutId = int
 
-class advantage_packet:
+class AdvantagePacket:
     agent_id: str
     rollout_ids: torch.IntTensor # (B,)
     advantages: torch.FloatTensor # (B, jT)
@@ -32,32 +36,34 @@ def get_alternative_chat_histories(
         alternative_chats: list[list[ChatTurn]]
         alternative_rewards: list[torch.FloatTensor]
     """
-    # TODO: debug
     current_node = root.child
+    branches = current_node.branches
     main_chat = []
     for i in range(time_step):
-        current_node = current_node.main_child
-        chat_turns: list[ChatTurn] = current_node.step_log.action_logs[agent_id].chat_turns
-        chat_turns = copy.deepcopy(chat_turns)
+        # TODO: We don't need to do this fully at each time step. It wastes so much compute. Just save the intermediate chat history.
+        if current_node is not None:
+            main_node = current_node.main_child
+            branches = current_node.branches
+            current_node = main_node.child
+            chat_turns: list[ChatTurn] = main_node.step_log.action_logs[agent_id].chat_turns
+            chat_turns = copy.copy(chat_turns)
 
-        # This is crucial. We do not need to estimate the advantages before we branch out.  (This is already done when we process the main trajectory.)
-        # We want the first estimated advantage that we return later to be the one for taking the alternative action.
-        for chat_turn in chat_turns:
-            chat_turn.is_state_end = False
+            # This is crucial. We do not need to estimate the advantages before we branch out.  (This is already done when we process the main trajectory.)
+            # We want the first estimated advantage that we return later to be the one for taking the alternative action.
+            for chat_turn in chat_turns:
+                chat_turn.is_state_end = False
 
-        main_chat.extend(chat_turns)
-        current_node = current_node.child
+            main_chat.extend(chat_turns)
 
-    alternative_roots = current_node.branches[agent_id]
+    alternative_roots = branches[agent_id]
     alternative_chats = []
     alternative_rewards = []
-    for root in alternative_roots:
-        chat, rewards = get_main_chat_list_and_rewards(agent_id=agent_id, root=root)
+    for alt_root in alternative_roots:
+        chat, rewards = get_main_chat_list_and_rewards(agent_id=agent_id, root=alt_root)
         alternative_chats.append(chat)
         alternative_rewards.append(rewards)
-    
-    alernative_chats = [main_chat.extend(alt_chat) for alt_chat in alternative_chats]
-    return alernative_chats, alternative_rewards
+    alternative_chats_with_main = [  + alt_chat for alt_chat in alternative_chats]
+    return alternative_chats_with_main, alternative_rewards
 
 class AdAlignTrainer(BaseTrainer):
     """
@@ -87,7 +93,8 @@ class AdAlignTrainer(BaseTrainer):
         self.ad_align_gamma = ad_align_gamma
         self.ad_align_include_k_equals_t = ad_align_include_k_equals_t
         self.ad_align_use_sign = ad_align_use_sign
-
+        self.ad_align_clipping = ad_align_clipping
+        self.ad_align_force_coop_first_step = ad_align_force_coop_first_step
 
     def set_pre_advantage_alignment_data(self, agent_ids: list[str], roots: list[RolloutTreeRootNode]):
         """
@@ -115,8 +122,8 @@ class AdAlignTrainer(BaseTrainer):
         jT_list = []
 
         for agent_id in agent_ids:
-
             for root in roots:
+                logger.info(f"Processing main trajectory of root {root.id} for agent {agent_id}")
 
                 # Get main trajectory 
                 batch_rollout_ids.append(root.id)
@@ -135,13 +142,16 @@ class AdAlignTrainer(BaseTrainer):
                 batch_timesteps.append(timesteps)
                 batch_state_ends_mask.append(state_ends_mask)
                 batch_rewards.append(main_rewards)
-                jT = timesteps.shape[0]
+                jT = main_rewards.numel() # TODO: better than this
                 jT_list.append(jT)
 
                 # Get all of the alternative trajectories in the tree
+                logger.info(f"Processing alternative trajectory of root {root.id} for agent {agent_id}")
                 for t in range(jT):
                     alternative_chats, alternative_rewards = get_alternative_chat_histories(agent_id=agent_id, time_step=t, root=root)
                     nb_alternative_actions.append(len(alternative_chats))
+                    print(len(alternative_chats), len(alternative_rewards))
+                    print(alternative_chats[0], alternative_rewards[0])
                     for chat, rewards in zip(alternative_chats, alternative_rewards):
                         (
                             input_ids,
@@ -163,6 +173,7 @@ class AdAlignTrainer(BaseTrainer):
         # Assert that number of alternative actions is constant
         assert len(set(nb_alternative_actions)) == 1, "Number of alternative actions must be constant"
         A = nb_alternative_actions[0]
+        logger.info(f"Number of alternative actions: {A}")
 
         trajectory_batch = TrajectoryBatch(
             rollout_ids = torch.Tensor(batch_rollout_ids), # (B,)
@@ -200,7 +211,7 @@ class AdAlignTrainer(BaseTrainer):
         self.critic_optimizer.zero_grad()
 
         # Send advantage packet to other players
-        advantage_packet = advantage_packet(
+        advantage_packet = AdvantagePacket(
             agent_id = self.agent_id,
             rollout_ids = self.trajectory_batch.rollout_ids,
             advantages = self.batch_advantages
@@ -209,13 +220,13 @@ class AdAlignTrainer(BaseTrainer):
 
 
 
-    def set_advantage_alignment_data(self, advantage_packets: list[advantage_packet]):
+    def set_advantage_alignment_data(self, advantage_packets: list[AdvantagePacket]):
         """
         Receive advantage packets from other players.
         These contain the advantages of the other players' rollouts estimated by them.
         """
         # TODO: do not assume a single agent is sending packet
-        co_agent_packet = advantage_packets[0]
+        co_agent_packet = advantage_packets[0] # TODO: get packet of other agent 
         co_agent_advantages = co_agent_packet.advantages
         co_agent_rollout_ids = co_agent_packet.rollout_ids
         assert self.batch_advantages.shape[0] == co_agent_advantages.shape[0], "Advantage shapes must match!"

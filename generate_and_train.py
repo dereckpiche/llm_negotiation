@@ -1,5 +1,7 @@
 """
 This file contains the code to generate and train the models.
+TODO: don't use any eval() (maybe switch to gin configs instead of hydra)
+TODO: use ModulePointer instead of nested dicts
 """
 from omegaconf import OmegaConf
 import copy, logging, os, shutil, sys, hydra
@@ -12,7 +14,8 @@ from mllm.models.dummy_local_llm import DummyLocalLLM
 from mllm.models.lean_local_llm import LeanLocalLLM
 from mllm.models.server_llm import ServerLLM
 from mllm.models.critic_wrapper import ScalarCritic
-from mllm.training.reinforce_trainer import BaseTrainer, BaseTrainerConfig
+from mllm.training.reinforce_trainer import BaseTrainer
+from mllm.training.advantage_alignment_trainer import AdAlignTrainer
 from mllm.training.tally import RtTally
 from mllm.utils.update_start_epoch import update_start_epoch
 from mllm.utils.get_stochastic_game_lengths import get_stochastic_game_lengths
@@ -22,11 +25,16 @@ from mllm.markov_games.runners.alternative_actions_runner import AlternativeActi
 from mllm.markov_games.runners.linear_runner import LinearRunner
 from mllm.markov_games.run_markov_games import run_markov_games
 from mllm.utils.kill_sglang import kill_sglang
-from mllm.training.advantage_alignment_trainer import AdAlignTrainer
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
+@dataclass
+class ModulePointer:
+    base_llm_id: str
+    adapter_id: str
+  
 
 async def generate_and_train(cfg: dict, base_seed: int) -> None:
     """
@@ -87,25 +95,28 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
     for llm_id, llm in llms_dict.items():
         policies.update(llm.get_inference_policies())
 
-    # Get dictionnary of pytorch-like trainable models
-    trainable_modules = {}
+    # 
+    adapter_modules = {} # These are trainable Pytorch modules
     for llm_id, llm in llms_dict.items():
-        trainable_modules[llm_id] = llm.get_training_policies()
+        adapter_modules[llm_id] = llm.get_adapter_modules()
 
-    # Critics
+    # Scalar Critics
+    critics = {}
     for critic_id, critic_config in cfg["critics"].items():
-        pointer = critic_config["pointer"]
-        base = get_from_nested_dict(trainable_modules, pointer)
-        trainable_modules[critic_id] = ScalarCritic(base)
+        critic_module_pointer = critic_config["module_pointer"]
+        critic_adapter = get_from_nested_dict(adapter_modules, critic_module_pointer)
+        critics[critic_id] = ScalarCritic(critic_adapter)
+
+    trainable_modules = {**adapter_modules, **critics}
 
     # Init optimizers
     optimizers = {}
     for optimizer_id, optimizer_config in cfg["optimizers"].items():
-        pointer = optimizer_config["pointer"]
-        base = get_from_nested_dict(trainable_modules, pointer)
+        optimizer_module_pointer = optimizer_config["module_pointer"]
+        module = get_from_nested_dict(trainable_modules, optimizer_module_pointer)
         optimizer_class: torch.optim.Adam | torch.optim.SGD = eval(optimizer_config["optimizer_class"])
         init_args = optimizer_config["init_args"]
-        optimizers[optimizer_id] = optimizer_class(base.parameters(), **init_args)
+        optimizers[optimizer_id] = optimizer_class(module.parameters(), **init_args)
 
     # Init trainers
     use_advantage_alignment = False
@@ -114,28 +125,28 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         trainer_class = eval(trainer_config["class"])
         if trainer_class == AdAlignTrainer:
             use_advantage_alignment = True
-        pointers = trainer_config["pointers"]
-        tokenizer = llms_dict[pointers["model"][0]].tokenizer
-        policy_model = get_from_nested_dict(trainable_modules, pointers["model"])
-        policy_optimizer = get_from_nested_dict(optimizers, pointers["optimizer"])
-        if pointers.get("critic", True):
-            critic_model = get_from_nested_dict(
-                trainable_modules, pointers["critic"])
-        else: critic_model = None
-        if pointers.get("critic_optimizer", True):
+        module_pointers = trainer_config["module_pointers"]
+        tokenizer = llms_dict[module_pointers["policy"][0]].tokenizer
+        policy = get_from_nested_dict(adapter_modules, module_pointers["policy"])
+        policy_optimizer = get_from_nested_dict(optimizers, module_pointers["policy_optimizer"])
+        if module_pointers.get("critic", True):
+            critic = get_from_nested_dict(
+                critics, module_pointers["critic"])
+        else: critic = None
+        if module_pointers.get("critic_optimizer", True):
             critic_optimizer = get_from_nested_dict(
-                optimizers, pointers["critic_optimizer"])
+                optimizers, module_pointers["critic_optimizer"])
         else: critic_optimizer = None
-        trainer = trainer_class(
-                    model=policy_model,
-                    optimizer=policy_optimizer,
+        trainer : BaseTrainer | AdAlignTrainer = trainer_class(
+                    policy=policy,
+                    policy_optimizer=policy_optimizer,
+                    critic=critic,
+                    critic_optimizer=critic_optimizer,
                     tokenizer=tokenizer,
                     lr_scheduler=None, # TODO add
-                    critic=critic_model,
-                    critic_optimizer=critic_optimizer,
                     critic_lr_scheduler=None, # TODO add
                     save_path=os.path.join(output_directory, trainer_id),
-                    **trainer_config["init_args"]
+                    **trainer_config["kwargs"]
                 )
         trainers[trainer_id] = trainer
 
@@ -200,22 +211,15 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
             llm.toggle_training_mode()
 
         # ----------- Advantage Alignment Training 
+        
         if use_advantage_alignment: # Trainers can share critic advantage estimations
-            for trainer_id, trainer in trainers.items():
-                trainer.set_advantage_alignment_data(
-                    rollout_roots = rollout_roots
-                )
-
-        # ----------- Regular Training 
-        else: # Regular training 
-
             # Send advantage packets to other players
             advantage_packets = []
             for trainer_id, trainer in trainers.items():
                 agent_ids = cfg["train_on_which_data"][trainer_id] # ids of the agents on which the trainer takes steps
                 advantage_packet = trainer.set_pre_advantage_alignment_data(
                     agent_ids = agent_ids,
-                    rollout_trees = rollout_roots
+                    roots = rollout_roots
                 )
                 advantage_packets.append(advantage_packet)
 
@@ -227,6 +231,16 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
             for trainer_id, trainer in trainers.items():
                 print(f"Training {trainer_id}.")
                 trainer.train()
+
+        # ----------- Regular Training 
+        else: # Regular training 
+            for trainer_id, trainer in trainers.items():
+                trainer.set_policy_gradient_data(
+                    rollout_roots = rollout_roots
+                )
+                trainer.train()
+
+            
 
 
         # Export all HF adapters weights (needed for vLLM inference)

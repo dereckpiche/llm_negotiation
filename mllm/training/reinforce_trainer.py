@@ -1,6 +1,7 @@
 """
 TODO: Add coefficients for losses (depend on total number of tokens or batch)
 TODO: adapt reinforce step for torch.compile  
+TODO: add lr schedulers support 
 """
 import logging
 import os
@@ -56,9 +57,9 @@ class BaseTrainer:
 
     def __init__(
         self,
-        model: AutoModelForCausalLM,
+        policy_model: AutoModelForCausalLM,
         tokenizer: AutoTokenizer,
-        optimizer: torch.optim.Optimizer,
+        policy_optimizer: torch.optim.Optimizer,
         lr_scheduler: torch.optim.lr_scheduler.LRScheduler,
         critic: Union[AutoModelForCausalLM, None],
         critic_optimizer: Union[torch.optim.Optimizer, None],
@@ -76,9 +77,8 @@ class BaseTrainer:
         gae_lambda_for_credits: float,
         gae_lambda_for_targets: float,
         discount_factor: float,
-        save_path: str,
         debug_mode: bool,
-        **kwargs
+        save_path: str,
     ):
         """
         Initialize the REINFORCE trainer with reward shaping for multi-agent or single-agent training.
@@ -94,16 +94,15 @@ class BaseTrainer:
             config (RtConfig): Configuration object for training.
         """
 
-        # TODO: add lr schedulers
-        model.train()
+        policy_model.train()
         self.tokenizer = tokenizer
         # self.tokenizer.padding_side = "left"  # needed for flash attention
         if self.tokenizer.pad_token_id is None: self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
-        self.optimizer = optimizer
+        self.policy_optimizer = policy_optimizer
         self.lr_scheduler = lr_scheduler
         self.accelerator = Accelerator()
-        self.model, self.optimizer, self.critic, self.critic_optimizer = (
-            self.accelerator.prepare(model, optimizer, critic, critic_optimizer)
+        self.policy, self.policy_optimizer, self.critic, self.critic_optimizer = (
+            self.accelerator.prepare(policy_model, policy_optimizer, critic, critic_optimizer)
         )
 
         self.critic_lr_scheduler = critic_lr_scheduler
@@ -112,9 +111,9 @@ class BaseTrainer:
 
         self.logger = PrintLogger(logging.getLogger("reinforcer_trainer_logger"))
 
-        if self.use_gradient_checkpointing == True:
+        if use_gradient_checkpointing == True:
             self.logger.info("Enabling gradient checkpointing.")
-            self.model.gradient_checkpointing_enable(dict(use_reentrant=False))
+            self.policy.gradient_checkpointing_enable(dict(use_reentrant=False))
             self.critic.gradient_checkpointing_enable(dict(use_reentrant=False))
 
         self.save_path = save_path
@@ -127,7 +126,7 @@ class BaseTrainer:
             self.logger.info(
                 f"Loading policy optimizer state from {self.policy_optimizer_path}"
             )
-            self.optimizer.load_state_dict(torch.load(self.policy_optimizer_path))
+            self.policy_optimizer.load_state_dict(torch.load(self.policy_optimizer_path))
 
         self.critic_optimizer_path = os.path.join(
             self.save_path, "critic_optimizer_state.pt"
@@ -156,12 +155,6 @@ class BaseTrainer:
         self.discount_factor = discount_factor
         self.debug_mode = debug_mode
 
-        # TODO
-        # log data type of model
-        # log adapter type, rank, etc.
-        # log optimizer learning rate
-        # log model data type
-        # log adapter data type
 
     def mask_non_restricted_token_logits(self, logits: torch.Tensor) -> torch.Tensor:
         """
@@ -213,7 +206,7 @@ class BaseTrainer:
         with torch.no_grad():
             grads = torch.autograd.grad(
                 loss_term,
-                [p for p in self.model.parameters() if p.requires_grad],
+                [p for p in self.policy.parameters() if p.requires_grad],
                 retain_graph=True,
                 allow_unused=True,
             )
@@ -242,7 +235,7 @@ class BaseTrainer:
         self.logger.info(
             f"\n Before Reinforce Step \n  {ram_usage()} \n {vram_usage()}"
         )
-        self.model.train()
+        self.policy.train()
         mb_size = self.mini_batch_size
         nb_rollouts = len(training_batch)
         self.tally.add_metric(path=["nb_rollouts"], metric=nb_rollouts)
@@ -282,7 +275,7 @@ class BaseTrainer:
 
             # Forward pass + cast to FP-32 for higher prec.
             # TODO: create attention mask if not relying on default (assume causal llm)
-            logits = self.model(input_ids=contexts_mb)[0]  # (B, S, V)
+            logits = self.policy(input_ids=contexts_mb)[0]  # (B, S, V)
 
             # Mask non-restricted tokens
             if self.restrict_tokens is not None:
@@ -412,8 +405,8 @@ class BaseTrainer:
                     f"\n Before Computing KLD \n  {ram_usage()} \n {vram_usage()}"
                 )
                 with torch.no_grad():
-                    with self.model.disable_adapter():
-                        ref_model_logits = self.model(
+                    with self.policy.disable_adapter():
+                        ref_model_logits = self.policy(
                             input_ids=contexts_mb, # attention_mask=attention_mask
                         )[0]
                 ref_model_logits = ref_model_logits / self.temperature
@@ -490,7 +483,7 @@ class BaseTrainer:
         # Clip gradients and take step
         if self.gradient_clipping is not None:
             grad_norm = self.accelerator.clip_grad_norm_(
-                self.model.parameters(), self.gradient_clipping
+                self.policy.parameters(), self.gradient_clipping
             )
             # TODO: log at right place
             self.tally.add_metric(path=["gradient_norm"], metric=grad_norm.item())
@@ -498,12 +491,12 @@ class BaseTrainer:
         # TODO: log grad norm even if no grad clip
 
         # Take step
-        self.optimizer.step()
-        self.optimizer.zero_grad()
+        self.policy_optimizer.step()
+        self.policy_optimizer.zero_grad()
 
         # Clear
         # TODO: verify
-        self.accelerator.clear(self.model, self.optimizer)
+        self.accelerator.clear(self.policy, self.policy_optimizer)
         import gc
 
         gc.collect()
@@ -707,7 +700,7 @@ class BaseTrainer:
         try:
             os.makedirs(self.save_path, exist_ok=True)
 
-            torch.save(self.optimizer.state_dict(), self.policy_optimizer_path)
+            torch.save(self.policy_optimizer.state_dict(), self.policy_optimizer_path)
             self.logger.info(
                 f"Saved main optimizer state to {self.policy_optimizer_path}"
             )
