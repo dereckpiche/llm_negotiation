@@ -1,4 +1,4 @@
-from mllm.training.tally import RtTally
+from mllm.training.tallies import Tally
 import torch
 
 NestedTensor = torch.Tensor
@@ -96,14 +96,14 @@ def get_advantage_alignment_weights(
     T = advantages.shape[1]
 
     if exclude_k_equals_t:
-        sub = torch.identity(T)
+        sub = torch.eye(T, device=advantages.device)
     else:
-        sub = torch.zeros((T, T))
+        sub = torch.zeros((T, T), device=advantages.device)
 
         
     # Identity is for \( k < t \), remove for \( k \leq t \)
     ad_align_weights = advantages @ (
-        torch.triu(torch.ones((T, T))) - sub
+        torch.triu(torch.ones((T, T), device=advantages.device)) - sub
     )
     # t_discounts = (gamma * torch.ones(shape=(1, T))) ** (torch.arange(0, T, 1))
     # adalign_weights = beta * t_discounts * discounted_sums_advantages
@@ -114,16 +114,15 @@ def get_advantage_alignment_credits(
     a1: torch.Tensor, # (B, S)
     a1_alternative: torch.Tensor, # (B, A, S)
     a2: torch.Tensor, # (B, S)
-    discount_factor: float,
     exclude_k_equals_t: bool,
     beta: float,
     gamma: float,
-    use_sign_in_ad_align: bool,
-    ad_align_clipping: float,
-    use_time_regularization_in_ad_align: bool,
-    ad_align_force_coop_first_step: bool,
-    use_variance_regularization_in_ad_align: bool,
-    tally: RtTally,
+    use_sign: bool = False,
+    clipping: float | None = None,
+    use_time_regularization: bool= False,
+    force_coop_first_step: bool=False,
+    use_variance_regularization: bool=False,
+    tally: Tally  = Tally(),
     ) -> torch.Tensor:
     """
     Calculate the advantage alignment credits with vectorization, as described in https://arxiv.org/abs/2406.14662.
@@ -157,21 +156,22 @@ def get_advantage_alignment_credits(
     assert a1.dim() == a2.dim() == 2, "Advantages must be of shape (B, S)"
     assert a1_alternative.dim() == 3, "Alternative advantages must be of shape (B, A, S)"
     assert a1.shape == a2.shape, "Not the same shape"
-    assert a1.shape == a1_alternative.shape, "Not the same shape"
-    B, A, T = a1_alternative.shape
+    B, T, A = a1_alternative.shape
 
-    a1_alternative = a1_alternative.mean(dim=1)
+    a1_alternative = a1_alternative.mean(dim=2)
+    assert a1.shape == a1_alternative.shape, "Not the same shape"
+
 
     adalign_weights = get_advantage_alignment_weights(
-        advantages=a1_alternative, include_k_equals_t=include_k_equals_t
+        advantages=a1_alternative, exclude_k_equals_t=exclude_k_equals_t
     )
 
-    tally.add_metric(
-        path=["raw_advantage_alignment_weights"], metric=adalign_weights
-    )
+    # tally.add_metric(
+    #     path=["raw_advantage_alignment_weights"], metric=adalign_weights
+    # )
 
     # Use sign
-    if use_sign_in_ad_align:
+    if use_sign:
         assert beta == 1.0, "beta should be 1.0 when using sign"
         positive_signs = adalign_weights > 0
         negative_signs = adalign_weights < 0
@@ -196,15 +196,15 @@ def get_advantage_alignment_credits(
     ###################
 
     # Use clipping
-    if ad_align_clipping not in [0.0, None]:
+    if clipping not in [0.0, None]:
 
         upper_mask = adalign_weights > 1
         lower_mask = adalign_weights < -1
 
         adalign_weights = torch.clip(
             adalign_weights,
-            -ad_align_clipping,
-            ad_align_clipping,
+            -clipping,
+            clipping,
         )
         clipping_ratio = (torch.sum(upper_mask) + torch.sum(lower_mask)) / upper_mask.size
 
@@ -217,7 +217,7 @@ def get_advantage_alignment_credits(
         )
 
     # 1/1+t Regularization
-    if use_time_regularization_in_ad_align:
+    if use_time_regularization:
         t_values = torch.arange(1, T + 1)
         adalign_weights = adalign_weights / t_values
         tally.add_metric(
@@ -225,7 +225,7 @@ def get_advantage_alignment_credits(
         )
 
     # Use coop on t=0
-    if ad_align_force_coop_first_step:
+    if force_coop_first_step:
         adalign_weights[:, 0] = 1
         tally.add_metric(
             path=["adalign_weights_after_force_coop_first_step"],
@@ -247,15 +247,15 @@ def get_advantage_alignment_credits(
 
     opp_shaping_terms = beta * adalign_weights * a2
 
-    tally.add_metric(
-        path=["ad_align_opp_shaping_terms"], metric=opp_shaping_terms
-    )
+    # tally.add_metric(
+    #     path=["ad_align_opp_shaping_terms"], metric=opp_shaping_terms
+    # )
 
-    t_discounts = (gamma * torch.ones(shape=(1, T))) ** (torch.arange(0, T, 1))
+    t_discounts = (gamma * torch.ones(size=(1, T), device=a1.device)) ** (torch.arange(0, T, 1, device=a1.device))
     credits = t_discounts * (a1 + opp_shaping_terms)
 
-    tally.add_metric(
-        path=["final_advantage_alignment_credits"], metric=credits
-    )
+    # tally.add_metric(
+    #     path=["final_advantage_alignment_credits"], metric=credits
+    # )
 
     return credits

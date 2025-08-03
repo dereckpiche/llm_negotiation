@@ -13,10 +13,10 @@ from pandas.core.base import IndexLabel
 from mllm.models.dummy_local_llm import DummyLocalLLM
 from mllm.models.lean_local_llm import LeanLocalLLM
 from mllm.models.server_llm import ServerLLM
-from mllm.models.critic_wrapper import ScalarCritic
+from mllm.models.scalar_critic  import ScalarCritic
 from mllm.training.reinforce_trainer import BaseTrainer
 from mllm.training.advantage_alignment_trainer import AdAlignTrainer
-from mllm.training.tally import RtTally
+from mllm.training.tallies import Tally
 from mllm.utils.update_start_epoch import update_start_epoch
 from mllm.utils.get_stochastic_game_lengths import get_stochastic_game_lengths
 from mllm.utils.dict_get_path import get_from_nested_dict
@@ -56,7 +56,6 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
     os.makedirs(output_directory, exist_ok=True)
 
     update_start_epoch(cfg=cfg, output_directory=output_directory)
-    print("Start iteration: ", cfg["experiment"]["start_epoch"])
 
     random.seed(base_seed)  # Python random
     np.random.seed(base_seed)  # NumPy
@@ -114,7 +113,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
     for optimizer_id, optimizer_config in cfg["optimizers"].items():
         optimizer_module_pointer = optimizer_config["module_pointer"]
         module = get_from_nested_dict(trainable_modules, optimizer_module_pointer)
-        optimizer_class: torch.optim.Adam | torch.optim.SGD = eval(optimizer_config["optimizer_class"])
+        optimizer_class: torch.optim.Adam | torch.optim.SGD = eval(optimizer_config["optimizer_class_name"])
         init_args = optimizer_config["init_args"]
         optimizers[optimizer_id] = optimizer_class(module.parameters(), **init_args)
 
@@ -153,7 +152,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
 
 
     for iteration in range(cfg["experiment"]["start_epoch"], cfg["experiment"]["nb_epochs"]):
-
+        logger.info(f"Starting iteration {iteration}.")
         # -----------------------------------------------------------------
         # Create and run Markov Games
         # -----------------------------------------------------------------
@@ -214,22 +213,24 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         
         if use_advantage_alignment: # Trainers can share critic advantage estimations
             # Send advantage packets to other players
-            advantage_packets = []
+            all_advantage_packets = []
             for trainer_id, trainer in trainers.items():
                 agent_ids = cfg["train_on_which_data"][trainer_id] # ids of the agents on which the trainer takes steps
-                advantage_packet = trainer.set_pre_advantage_alignment_data(
-                    agent_ids = agent_ids,
-                    roots = rollout_roots
-                )
-                advantage_packets.append(advantage_packet)
+                for agent_id in agent_ids:
+                    trainer.set_pre_advantage_alignment_data(
+                        agent_id =  agent_id,
+                        roots = rollout_roots
+                    )
+                advantage_packets = trainer.share_advantage_alignment_data()
+                all_advantage_packets.extend(advantage_packets)
 
             # Receive advantage packets from other players
             for trainer_id, trainer in trainers.items():
-                trainer.set_advantage_alignment_data(advantage_packets)
+                trainer.set_advantage_alignment_data(all_advantage_packets)
+                trainer.set_policy_gradient_data()
 
             # Train
             for trainer_id, trainer in trainers.items():
-                print(f"Training {trainer_id}.")
                 trainer.train()
 
         # ----------- Regular Training 
@@ -348,7 +349,6 @@ def main(cfg):
         base_seed=cfg.experiment.base_seed,
     ))
 
-    print(f"Run for seed_{cfg.experiment.base_seed} complete!")
 
 
 

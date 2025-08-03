@@ -7,10 +7,138 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer
 
-
-class RtTally:
+class Tally:
     """
-    RtTally is a utility class for collecting, storing, and saving training metrics for reinforcement learning with language models.
+    Tally is a utility class for collecting and storing training metrics.
+    It supports adding metrics at specified paths and saving them to disk.
+    """
+    def __init__(self):
+        """
+        Initializes the Tally object.
+
+        Args:
+            tokenizer (AutoTokenizer): Tokenizer for converting token IDs to strings.
+            max_context_length (int, optional): Maximum context length for contextualized metrics. Defaults to 30.
+        """
+        self.base_tally = {}
+
+
+    def reset(self):
+        """
+        Resets the base and contextualized tallies to empty dictionaries.
+        """
+        self.base_tally = {}
+
+
+    def get_from_nested_dict(self, dictio: dict, path: str):
+        """
+        Retrieves the value at a nested path in a dictionary.
+
+        Args:
+            dictio (dict): The dictionary to search.
+            path (list): List of keys representing the path.
+
+        Returns:
+            Any: The value at the specified path, or None if not found.
+        """
+        assert isinstance(path, list), "Path must be list."
+        for sp in path[:-1]:
+            dictio = dictio.setdefault(sp, {})
+        return dictio.get(path[-1], None)
+
+    def set_at_path(self, dictio: dict, path: str, value):
+        """
+        Sets a value at a nested path in a dictionary, creating intermediate dictionaries as needed.
+
+        Args:
+            dictio (dict): The dictionary to modify.
+            path (list): List of keys representing the path.
+            value (Any): The value to set at the specified path.
+        """
+        for sp in path[:-1]:
+            dictio = dictio.setdefault(sp, {})
+        dictio[path[-1]] = value
+
+    def add_metric(
+        self, 
+        path: str, 
+        metric: Union[float, int, str, np.ndarray, dict]):
+        """
+        Adds a metric to the base tally at the specified path.
+
+        Args:
+            path (list): List of keys representing the path in the base tally.
+            metric (float|int|str|np.ndarray|dict): The metric value to add.
+        """
+        metric = deepcopy(metric)
+        assert isinstance(
+            metric, Union[float, int, str, np.ndarray, dict]
+        ), "Metric of incorrect type"
+
+        current_metric = self.get_from_nested_dict(dictio=self.base_tally, path=path)
+
+        if isinstance(metric, np.ndarray): 
+            metric = metric.tolist()
+
+        if current_metric == None:
+            self.set_at_path(dictio=self.base_tally, path=path, value=[metric])
+        else:
+            current_metric.append(metric)
+            
+    
+
+    def save(self, path: str):
+        """
+        Saves the base and contextualized tallies to disk as JSON files, and also saves contextualized tallies as CSV files for each game/rollout.
+
+        Args:
+            path (str): Directory path where the metrics will be saved.
+        """
+        os.makedirs(
+            name=path, 
+            exist_ok=True)
+
+        from datetime import datetime
+        now = datetime.now()
+
+        savepath = os.path.join(
+            path, 
+            f"basic_training_metrics_{now:%Y-%m-%d___%H-%M-%S}.json"
+        )
+        with open(savepath, "w") as fp:
+            json.dump(self.base_tally, fp, indent=4)
+
+        savepath = os.path.join(
+            path, 
+            f"contextualized_training_metrics_{now:%Y-%m-%d___%H-%M-%S}.json"
+        )
+        with open(savepath, "w") as fp:
+            json.dump(self.contextualized_tally, fp, indent=4)
+
+        data = self.contextualized_tally
+        paths = data.keys()
+        for g_id in paths:
+            m_path = (
+                os.path.split(savepath)[0]
+                + "/contextualized_tabular_renders/"
+                + str(g_id)
+                + "_tabular_render.csv"
+            )
+            # import pdb; pdb.set_trace()
+            os.makedirs(os.path.split(m_path)[0], exist_ok=True)
+            metrics = data[g_id]
+            if metrics ==  {}: metrics = {"None":None}
+            d = {k: [] for k in metrics[0].keys()}
+            for m in metrics:
+                for k, v in m.items():
+                    d[k].append(v)
+            d = pd.DataFrame(d)
+            d.to_csv(m_path)
+
+
+class ContextualizedTally:
+    """
+    Tally is a utility class for collecting, storing, and saving training metrics for reinforcement learning with language models.
     It supports both basic and contextualized tallies, allowing for flexible metric tracking at various granularities.
 
     Attributes:
@@ -24,7 +152,7 @@ class RtTally:
         tokenizer: AutoTokenizer, 
         max_context_length: int = 30):
         """
-        Initializes the RtTally object.
+        Initializes the Tally object.
 
         Args:
             tokenizer (AutoTokenizer): Tokenizer for converting token IDs to strings.
@@ -218,3 +346,4 @@ class RtTally:
                     d[k].append(v)
             d = pd.DataFrame(d)
             d.to_csv(m_path)
+

@@ -124,7 +124,7 @@ optimizers:
 
     critic_optimizer:
         module_pointer: agent_critic
-        optimizer_class: torch.optim.Adam
+        optimizer_class_name: torch.optim.Adam
         init_args:
             lr: 1e-6
             weight_decay: 0.0
@@ -151,7 +151,7 @@ common_trainer_kwargs: &common_trainer_kwargs
     ad_align_force_coop_first_step: False
     ad_align_clipping: null
     ad_align_gamma: 1.0
-    ad_align_include_k_equals_t: True
+    ad_align_exclude_k_equals_t: True
     ad_align_use_sign: False
     ad_align_beta: 1.0
 

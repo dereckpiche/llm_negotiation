@@ -2,16 +2,42 @@ import torch
 from dataclasses import dataclass
 import torch.nested as tn
 from typing import Literal, Tuple
-from mllm.markov_games.rollout_tree import RolloutTreeBranchNode, RolloutTreeRootNode, ChatTurn
+from mllm.markov_games.rollout_tree import RolloutTreeNode, RolloutTreeBranchNode, RolloutTreeRootNode, ChatTurn
+
+class TrainingChatTurn:
+    # TODO: simplify by making this a child of ChatTurn
+    """
+    This class contains the chat turns for a single agent. 
+    It is like ChatTurn, but with the time step added.
+    """ 
+    def __init__(self, time_step: int, role: str, agent_id: str, content: str, is_state_end: bool):
+        self.time_step = time_step
+        self.role = role
+        self.agent_id = agent_id
+        self.content = content
+        self.is_state_end = is_state_end
+    def dict(self):
+        return {
+            "time_step": self.time_step,
+            "role": self.role,
+            "agent_id": self.agent_id,
+            "content": self.content,
+            "is_state_end": self.is_state_end
+        }
+
 
 def get_main_chat_list_and_rewards(
-    agent_id: str, root : RolloutTreeRootNode) -> Tuple[list[ChatTurn], torch.FloatTensor]:
+    agent_id: str, root : RolloutTreeRootNode | RolloutTreeNode) -> Tuple[list[TrainingChatTurn], torch.FloatTensor]:
     """
     This method traverses a rollout tree and returns a the list of ChatTurn
     for an agent. If it encounters a branch node, it follows the main path.
     """
     # TODO; extend for all trees, not just linear
-    current_node = root.child
+    if isinstance(root, RolloutTreeRootNode):
+        current_node = root.child
+    else:
+        current_node = root
+
     chat = []
     rewards = []
     while current_node is not None:
@@ -19,7 +45,8 @@ def get_main_chat_list_and_rewards(
             current_node = current_node.main_child
         reward : float = current_node.step_log.simulation_step_log.rewards[agent_id]
         rewards.append(reward)
-        chat_turns: list[ChatTurn] = current_node.step_log.action_logs[agent_id].chat_turns
+        chat_turns: list[TrainingChatTurn] = current_node.step_log.action_logs[agent_id].chat_turns
+        chat_turns = [TrainingChatTurn(time_step=current_node.time_step, **turn.model_dump()) for turn in chat_turns]
         chat.extend(chat_turns)
         current_node = current_node.child
     return chat, torch.FloatTensor(rewards)
@@ -156,6 +183,11 @@ class TrainingBatch:
     batch_credits: torch.FloatTensor | torch.Tensor # (B, jS)
 
     def __post_init__(self):
+        # Put everything in the right device
+        self.rollout_ids = self.rollout_ids.to("cuda" if torch.cuda.is_available() else "cpu")
+        self.batch_input_ids = self.batch_input_ids.to("cuda" if torch.cuda.is_available() else "cpu")
+        self.batch_action_mask = self.batch_action_mask.to("cuda" if torch.cuda.is_available() else "cpu")
+        self.batch_credits = self.batch_credits.to("cuda" if torch.cuda.is_available() else "cpu")
         # Ensure batch dimension is present
         assert self.batch_input_ids.dim() == self.batch_action_mask.dim() == self.batch_credits.dim() == 2, "Tensors must be of shape (B,jS)"
         assert self.batch_input_ids.shape[0] == self.batch_action_mask.shape[0] == self.batch_credits.shape[0], "Tensors must have the same batch size."

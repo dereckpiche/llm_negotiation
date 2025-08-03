@@ -16,7 +16,7 @@ from accelerate import Accelerator
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from mllm.training.tally import RtTally
+from mllm.training.tallies import Tally
 from mllm.training.training_data_utils import TrajectoryBatch, TrainingBatch
 from mllm.training.tokenize_chats import process_training_chat
 from mllm.utils.common_imports import *
@@ -57,7 +57,7 @@ class BaseTrainer:
 
     def __init__(
         self,
-        policy_model: AutoModelForCausalLM,
+        policy: AutoModelForCausalLM,
         tokenizer: AutoTokenizer,
         policy_optimizer: torch.optim.Optimizer,
         lr_scheduler: torch.optim.lr_scheduler.LRScheduler,
@@ -94,7 +94,7 @@ class BaseTrainer:
             config (RtConfig): Configuration object for training.
         """
 
-        policy_model.train()
+        policy.train()
         self.tokenizer = tokenizer
         # self.tokenizer.padding_side = "left"  # needed for flash attention
         if self.tokenizer.pad_token_id is None: self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
@@ -102,12 +102,12 @@ class BaseTrainer:
         self.lr_scheduler = lr_scheduler
         self.accelerator = Accelerator()
         self.policy, self.policy_optimizer, self.critic, self.critic_optimizer = (
-            self.accelerator.prepare(policy_model, policy_optimizer, critic, critic_optimizer)
+            self.accelerator.prepare(policy, policy_optimizer, critic, critic_optimizer)
         )
 
         self.critic_lr_scheduler = critic_lr_scheduler
 
-        self.tally = RtTally(tokenizer=tokenizer)
+        self.tally = Tally()
 
         self.logger = PrintLogger(logging.getLogger("reinforcer_trainer_logger"))
 
@@ -648,10 +648,8 @@ class BaseTrainer:
             batch_rewards = torch.nested.nested_tensor(batch_rewards, layout=torch.jagged)
         )
 
-        # Get Advantages & Train Critic
+        # Get Advantages
         batch_advantages: torch.FloatTensor = self.get_advantages_with_critic_gradient_accumulation(trajectory_batch)
-        self.critic_optimizer.step()
-        self.critic_optimizer.zero_grad()
 
 
         batch_advantages = get_tokenwise_credits(
@@ -673,6 +671,8 @@ class BaseTrainer:
         """
         TOWRITE
         """
+        self.critic_optimizer.step()
+        self.critic_optimizer.zero_grad()
         assert self.policy_gradient_data is not None, "Policy gradient data is not set"
         self.apply_reinforce_step(training_batch=self.policy_gradient_data)
         self.policy_gradient_data = None

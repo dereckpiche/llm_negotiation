@@ -51,7 +51,6 @@ class IPDAgent(Agent):
                         agent_id=self.agent_id,
                         role="user",
                         content=self.intro_prompt,
-                        time_step=round_nb,
                         is_state_end=True
                     )
                 )
@@ -65,7 +64,6 @@ class IPDAgent(Agent):
                         agent_id=self.agent_id,
                         role="user",
                         content=user_message,
-                        time_step=round_nb,
                         is_state_end=True
                     )
                 )
@@ -80,7 +78,6 @@ class IPDAgent(Agent):
                     agent_id=self.agent_id,
                     role="assistant",
                     content=policy_output,
-                    time_step=round_nb,
                     is_state_end=False
                 )
             )
@@ -95,7 +92,6 @@ class IPDAgent(Agent):
                         agent_id=self.agent_id,
                         role="user",
                         content= "You have made a formatting error. Try again.",
-                        time_step=round_nb,
                         is_state_end=False
                     )
                 )

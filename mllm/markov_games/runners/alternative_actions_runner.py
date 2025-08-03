@@ -6,20 +6,7 @@ from mllm.markov_games.rollout_tree import RolloutTreeNode, RolloutTreeRootNode,
 AgentId = str
 import uuid
 
-async def AlternativeActionsRunner(
-    markov_game: MarkovGame,
-    output_folder: str,
-    nb_alternative_actions: int = 1,
-    depth: int = 1):
-    """
-    This method generates a trajectory with partially completed branches,
-    where the branching comes from taking unilateraly different actions.
-    The resulting data is used to estimate the updated advantage alignment policy gradient terms.
-    Let k := nb_sub_steps. Then the number of steps generated is O(Tk), where T is
-    the maximum trajectory length.
-    """
-
-    async def run_with_unilateral_alt_action(
+async def run_with_unilateral_alt_action(
         markov_game: MarkovGame,
         agent_id: AgentId,
         branch_id: int,
@@ -34,7 +21,7 @@ async def AlternativeActionsRunner(
         await markov_game.set_action_of_agent(agent_id)
         terminated = markov_game.take_simulation_step()
         step_log = markov_game.get_step_log()
-        root = RolloutTreeNode(
+        first_alternative_node = RolloutTreeNode(
             step_log=step_log,
             time_step=time_step,
         )
@@ -42,7 +29,7 @@ async def AlternativeActionsRunner(
         # Generate rest of trajectory up to max depth
         time_step += 1
         counter = 1
-        previous_node = root
+        previous_node = first_alternative_node
         while not terminated and counter < depth:
             terminated, step_log = await markov_game.step()
             current_node = RolloutTreeNode(step_log=step_log, time_step=time_step)
@@ -51,15 +38,29 @@ async def AlternativeActionsRunner(
             counter += 1
             time_step += 1
 
-        node = RolloutTreeNode(id=branch_id, child=root)
 
         if branch_node.branches == None:
-            branch_node.branches = {agent_id: [node]}
+            branch_node.branches = {agent_id: [first_alternative_node]}
         else:
             agent_branches = branch_node.branches.get(agent_id, [])
-            agent_branches.append(node)
+            agent_branches.append(first_alternative_node)
             branch_node.branches[agent_id] = agent_branches
 
+
+async def AlternativeActionsRunner(
+    markov_game: MarkovGame,
+    output_folder: str,
+    nb_alternative_actions: int = 1,
+    depth: int = 1):
+    """
+    This method generates a trajectory with partially completed branches,
+    where the branching comes from taking unilateraly different actions.
+    The resulting data is used to estimate the updated advantage alignment policy gradient terms.
+    Let k := nb_sub_steps. Then the number of steps generated is O(Tk), where T is
+    the maximum trajectory length.
+    """
+
+    
     tasks = []
     time_step = 0
     terminated = False
@@ -92,6 +93,7 @@ async def AlternativeActionsRunner(
                     branch_node = branch_node,
                 ) )
                 tasks.append(task)
+        time_step += 1
 
     # wait for all branches to complete
     await asyncio.gather(*tasks)
