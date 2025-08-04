@@ -1,7 +1,7 @@
 """
 TODO: Add coefficients for losses (depend on total number of tokens or batch)
-TODO: adapt reinforce step for torch.compile  
-TODO: add lr schedulers support 
+TODO: adapt reinforce step for torch.compile
+TODO: add lr schedulers support
 """
 import logging
 import os
@@ -9,33 +9,40 @@ import random
 from collections import defaultdict
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
-from pandas._libs.tslibs.offsets import CBMonthBegin
+from dataclasses import dataclass
+from typing import Any, Tuple, Union
+
+import numpy as np
 import torch
 import torch.nn.functional as F
 from accelerate import Accelerator
+from pandas._libs.tslibs.offsets import CBMonthBegin
+from peft import LoraConfig
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from mllm.training.tallies import Tally
-from mllm.training.training_data_utils import TrajectoryBatch, TrainingBatch
-from mllm.training.tokenize_chats import process_training_chat
-from mllm.utils.common_imports import *
-from mllm.utils.time_and_memory_utils import *
-from mllm.utils.print_logger import *
-from typing import Union, Tuple, Any
-
-from typing import Union
-from peft import LoraConfig
-from dataclasses import dataclass
-from mllm.markov_games.rollout_tree import RolloutTreeRootNode
-from mllm.training.credit_methods import get_discounted_returns, get_generalized_advantage_estimates
-from mllm.training.training_data_utils import *
-from mllm.training.tokenize_chats import *
 from mllm.markov_games.rollout_tree import *
+from mllm.markov_games.rollout_tree import RolloutTreeRootNode
+from mllm.training.credit_methods import (
+    get_discounted_returns,
+    get_generalized_advantage_estimates,
+    get_rloo_credits,
+)
+from mllm.training.tallies import Tally
+from mllm.training.tokenize_chats import *
+from mllm.training.tokenize_chats import process_training_chat
+from mllm.training.training_data_utils import *
+from mllm.training.training_data_utils import (
+    TrainingBatch,
+    TrajectoryBatch,
+    get_tokenwise_credits,
+)
+from mllm.utils.common_imports import *
+from mllm.utils.print_logger import *
+from mllm.utils.time_and_memory_utils import *
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
-
 
 
 class BaseTrainer:
@@ -58,11 +65,11 @@ class BaseTrainer:
     def __init__(
         self,
         policy: AutoModelForCausalLM,
-        tokenizer: AutoTokenizer,
         policy_optimizer: torch.optim.Optimizer,
-        lr_scheduler: torch.optim.lr_scheduler.LRScheduler,
         critic: Union[AutoModelForCausalLM, None],
         critic_optimizer: Union[torch.optim.Optimizer, None],
+        tokenizer: AutoTokenizer,
+        lr_scheduler: torch.optim.lr_scheduler.LRScheduler,
         critic_lr_scheduler: Union[torch.optim.lr_scheduler.LRScheduler, None],
         ######################################################################
         entropy_coeff: float,
@@ -74,11 +81,13 @@ class BaseTrainer:
         temperature: float,
         device: str,
         use_gae: bool,
+        use_rloo: bool,
         gae_lambda_for_credits: float,
         gae_lambda_for_targets: float,
         discount_factor: float,
         debug_mode: bool,
         save_path: str,
+        reward_normalizing_constant: float = 1.0,
     ):
         """
         Initialize the REINFORCE trainer with reward shaping for multi-agent or single-agent training.
@@ -94,16 +103,18 @@ class BaseTrainer:
             config (RtConfig): Configuration object for training.
         """
 
-        policy.train()
         self.tokenizer = tokenizer
         # self.tokenizer.padding_side = "left"  # needed for flash attention
-        if self.tokenizer.pad_token_id is None: self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
-        self.policy_optimizer = policy_optimizer
+        if self.tokenizer.pad_token_id is None:
+            self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         self.lr_scheduler = lr_scheduler
         self.accelerator = Accelerator()
-        self.policy, self.policy_optimizer, self.critic, self.critic_optimizer = (
-            self.accelerator.prepare(policy, policy_optimizer, critic, critic_optimizer)
-        )
+        (
+            self.policy,
+            self.policy_optimizer,
+            self.critic,
+            self.critic_optimizer,
+        ) = self.accelerator.prepare(policy, policy_optimizer, critic, critic_optimizer)
 
         self.critic_lr_scheduler = critic_lr_scheduler
 
@@ -114,7 +125,8 @@ class BaseTrainer:
         if use_gradient_checkpointing == True:
             self.logger.info("Enabling gradient checkpointing.")
             self.policy.gradient_checkpointing_enable(dict(use_reentrant=False))
-            self.critic.gradient_checkpointing_enable(dict(use_reentrant=False))
+            if critic is not None:
+                self.critic.gradient_checkpointing_enable(dict(use_reentrant=False))
 
         self.save_path = save_path
 
@@ -126,7 +138,9 @@ class BaseTrainer:
             self.logger.info(
                 f"Loading policy optimizer state from {self.policy_optimizer_path}"
             )
-            self.policy_optimizer.load_state_dict(torch.load(self.policy_optimizer_path))
+            self.policy_optimizer.load_state_dict(
+                torch.load(self.policy_optimizer_path)
+            )
 
         self.critic_optimizer_path = os.path.join(
             self.save_path, "critic_optimizer_state.pt"
@@ -150,11 +164,12 @@ class BaseTrainer:
         self.use_gradient_checkpointing = use_gradient_checkpointing
         self.temperature = temperature
         self.use_gae = use_gae
+        self.use_rloo = use_rloo
         self.gae_lambda_for_credits = gae_lambda_for_credits
         self.gae_lambda_for_targets = gae_lambda_for_targets
         self.discount_factor = discount_factor
         self.debug_mode = debug_mode
-
+        self.reward_normalizing_constant = reward_normalizing_constant
 
     def mask_non_restricted_token_logits(self, logits: torch.Tensor) -> torch.Tensor:
         """
@@ -191,34 +206,31 @@ class BaseTrainer:
 
         return logits
 
+    # def get_gradient_magnitude(self, loss_term: torch.Tensor) -> float:
+    #     """
+    #     Computes the L2 norm of the gradients of the given loss term with respect to the model parameters.
 
+    #     Args:
+    #         loss_term (torch.Tensor): The loss tensor to compute gradients for.
 
-    def get_gradient_magnitude(self, loss_term: torch.Tensor) -> float:
-        """
-        Computes the L2 norm of the gradients of the given loss term with respect to the model parameters.
-
-        Args:
-            loss_term (torch.Tensor): The loss tensor to compute gradients for.
-
-        Returns:
-            float: The L2 norm of the gradients, or 0.0 if no gradients are present.
-        """
-        with torch.no_grad():
-            grads = torch.autograd.grad(
-                loss_term,
-                [p for p in self.policy.parameters() if p.requires_grad],
-                retain_graph=True,
-                allow_unused=True,
-            )
-            grads = [g for g in grads if g is not None]
-            if not grads:
-                return torch.tensor(0.0, device=loss_term.device)
-            return torch.norm(torch.stack([g.norm(2) for g in grads])).item()
+    #     Returns:
+    #         float: The L2 norm of the gradients, or 0.0 if no gradients are present.
+    #     """
+    #     with torch.no_grad():
+    #         grads = torch.autograd.grad(
+    #             loss_term,
+    #             [p for p in self.policy.parameters() if p.requires_grad],
+    #             retain_graph=True,
+    #             allow_unused=True,
+    #         )
+    #         grads = [g for g in grads if g is not None]
+    #         if not grads:
+    #             return torch.tensor(0.0, device=loss_term.device)
+    #         return torch.norm(torch.stack([g.norm(2) for g in grads])).item()
 
     def apply_reinforce_step(
         self,
         training_batch: TrainingBatch,
-        loss_scaling_factor: float = 1
     ) -> None:
         """
         Applies a single REINFORCE policy gradient step using the provided batch of rollouts.
@@ -231,7 +243,6 @@ class BaseTrainer:
             credits (list[torch.Tensor]): List of credit tensors (rewards/advantages) for each rollout.
             action_masks (list[torch.Tensor]): List of action mask tensors for each rollout.
         """
-
         self.logger.info(
             f"\n Before Reinforce Step \n  {ram_usage()} \n {vram_usage()}"
         )
@@ -250,13 +261,17 @@ class BaseTrainer:
         # self.tally.add_metric(
         #     path=["nb_tokens", "batch_action_tokens"], metric=total_nb_action_tokens
         # )
-
+        gradient_accumulation_steps = np.ceil(nb_rollouts / mb_size).astype(int)
         for mb in range(0, nb_rollouts, mb_size):
             loss = 0.0
-            training_mb = training_batch[mb: mb + mb_size]
+            training_mb = training_batch[mb : mb + mb_size]
             training_mb = training_mb.get_padded_tensors()
             training_mb.to(self.device)
-            tokens_mb, action_mask_mb, credits_mb = training_mb.batch_input_ids, training_mb.batch_action_mask, training_mb.batch_credits
+            tokens_mb, action_mask_mb, credits_mb = (
+                training_mb.batch_input_ids,
+                training_mb.batch_action_mask,
+                training_mb.batch_credits,
+            )
 
             # Next token prediction
             contexts_mb = tokens_mb[:, :-1]
@@ -308,9 +323,7 @@ class BaseTrainer:
                     metrics=torch.exp(action_log_probs),
                     action_mask=action_mask_mb,
                 )
-                top_k_indices = torch.topk(
-                    logits, k=5, dim=-1
-                ).indices
+                top_k_indices = torch.topk(logits, k=5, dim=-1).indices
                 self.tally.add_contextualized_token_metrics(
                     paths=paths_mb,
                     metric_id=f"top_{5}_tids",
@@ -321,9 +334,7 @@ class BaseTrainer:
                 )
                 self.tally.add_contextualized_token_metrics(
                     paths=paths_mb,
-                    metrics=torch.exp(log_probs).gather(
-                        dim=-1, index=top_k_indices
-                    ),
+                    metrics=torch.exp(log_probs).gather(dim=-1, index=top_k_indices),
                     action_mask=action_mask_mb,
                 )
 
@@ -344,29 +355,29 @@ class BaseTrainer:
                 )
 
             # Add value term to loss
-            nb_act_tokens = torch.sum(action_mask_mb)
-            mb_value = -rewarded_action_log_probs.sum()
+            nb_act_tokens = action_mask_mb.sum()
+            mb_value = -rewarded_action_log_probs.sum() / nb_act_tokens
+
+            # if self.debug_mode:
+            #     self.tally.add_metric(
+            #         path=["gradient_term_magnitudes", "value"],
+            #         metric=self.get_gradient_magnitude(loss_term=mb_value),
+            #     )
+            loss += mb_value
             self.tally.add_metric(
                 path=["loss_mb_total", "value_mb_total"], metric=mb_value.item()
             )
-
-            if self.debug_mode:
-                self.tally.add_metric(
-                    path=["gradient_term_magnitudes", "value"],
-                    metric=self.get_gradient_magnitude(loss_term=mb_value),
-                )
-            loss += mb_value
-
             # -------------------------------------------------
             # Entropy Regularization
             # -------------------------------------------------
             if self.entropy_coeff != 0.0:
-
                 self.logger.info(
                     f"\n Before Computing Entropy \n  {ram_usage()} \n {vram_usage()}"
                 )
 
-                token_entropy_terms = -F.softmax(logits, dim=-1) * F.log_softmax(logits, dim=-1)
+                token_entropy_terms = -F.softmax(logits, dim=-1) * F.log_softmax(
+                    logits, dim=-1
+                )
                 # (B, S, T)
                 # We only take the entropy of actions
                 token_entropy_terms *= action_mask_mb[:, :, None]
@@ -407,7 +418,7 @@ class BaseTrainer:
                 with torch.no_grad():
                     with self.policy.disable_adapter():
                         ref_model_logits = self.policy(
-                            input_ids=contexts_mb, # attention_mask=attention_mask
+                            input_ids=contexts_mb,  # attention_mask=attention_mask
                         )[0]
                 ref_model_logits = ref_model_logits / self.temperature
                 # (B, S, V)
@@ -444,7 +455,6 @@ class BaseTrainer:
                 kl_div *= action_mask_mb
                 mb_kl = kl_div.sum()
 
-
                 mb_kl *= self.kl_coeff
 
                 self.tally.add_metric(path=["mb_kl_loss_terms"], metric=mb_kl.item())
@@ -462,23 +472,16 @@ class BaseTrainer:
                 )
 
             # Accumulate gradient
-            loss *= loss_scaling_factor
+            loss /= gradient_accumulation_steps
             self.accelerator.backward(loss)
 
-
             # ensure gpu memory is freed
-            # del log_probs
-            # del contexts_mb
-            # del shifted_contexts_mb
-            # del credits_mb
-            # del action_mask_mb
-            # del attention_mask
-            # del logits
-            # del action_log_probs
-            # del rewarded_action_log_probs
-            # torch.cuda.empty_cache()
-
-        # self.accelerator.sync_gradients
+            del training_mb
+            del log_probs
+            del logits
+            del loss
+            del action_log_probs
+            del rewarded_action_log_probs
 
         # Clip gradients and take step
         if self.gradient_clipping is not None:
@@ -504,11 +507,8 @@ class BaseTrainer:
 
         self.logger.info(f"\n After Reinforce Step \n  {ram_usage()} \n {vram_usage()}")
 
-
     def get_advantages_with_critic_gradient_accumulation(
-        self,
-        trajectories: TrajectoryBatch,
-        loss_scaling_factor: float = 1
+        self, trajectories: TrajectoryBatch, loss_scaling_factor: float = 1
     ) -> torch.FloatTensor:
         """
         TOWRITE
@@ -523,38 +523,50 @@ class BaseTrainer:
         # self.tally.add_metric(path=["discounted_returns"], metric=rewards)
 
         if self.use_gae:
-
             credits = []
 
             # For each minibatch
             for mb in range(0, batch_size, mb_size):
-
-                trajectory_mb = trajectories[mb:mb+mb_size]
+                trajectory_mb = trajectories[mb : mb + mb_size]
                 trajectory_mb.to(self.device)
                 rewards_mb = trajectory_mb.batch_rewards
 
                 # use & train critic
-                tokens_mb, state_ends_mask_mb, _ = trajectory_mb.get_padded_tensors_for_critic()
+                (
+                    tokens_mb,
+                    state_ends_mask_mb,
+                    _,
+                ) = trajectory_mb.get_padded_tensors_for_critic()
 
                 # critic causal attention up to end flags
                 vals_estimate_mb = self.critic(tokens_mb)
-                vals_estimate_mb = torch.nested.masked_select(vals_estimate_mb, state_ends_mask_mb) # Get value estimates only where states end
-                if vals_estimate_mb.dim() == 1: vals_estimate_mb = vals_estimate_mb.unsqueeze(0)
+                vals_estimate_mb = torch.nested.masked_select(
+                    vals_estimate_mb, state_ends_mask_mb
+                )  # Get value estimates only where states end
+                if vals_estimate_mb.dim() == 1:
+                    vals_estimate_mb = vals_estimate_mb.unsqueeze(0)
 
                 # Get padded tensors
                 jagged_lengths = vals_estimate_mb.offsets().diff()
                 padded_shape = (vals_estimate_mb.shape[0], torch.max(jagged_lengths))
-                vals_estimate_mb = torch.nested.to_padded_tensor(vals_estimate_mb, padding=0.0, output_size=padded_shape)
-                rewards_mb = torch.nested.to_padded_tensor(rewards_mb, padding=0.0, output_size=padded_shape)
+                vals_estimate_mb = torch.nested.to_padded_tensor(
+                    vals_estimate_mb, padding=0.0, output_size=padded_shape
+                )
+                rewards_mb = torch.nested.to_padded_tensor(
+                    rewards_mb, padding=0.0, output_size=padded_shape
+                )
 
                 det_vals_estimate_mb = vals_estimate_mb.detach()
 
                 # If no infinite trajectory bootstrap, append V(Terminal State) = 0
                 # TODO: use alternative approach!
                 if det_vals_estimate_mb.numel() == rewards_mb.numel():
-                        B = det_vals_estimate_mb.shape[0]
-                        device = det_vals_estimate_mb.device
-                        det_vals_estimate_mb = torch.cat([det_vals_estimate_mb, torch.zeros((B, 1), device=device)], dim=1)
+                    B = det_vals_estimate_mb.shape[0]
+                    device = det_vals_estimate_mb.device
+                    det_vals_estimate_mb = torch.cat(
+                        [det_vals_estimate_mb, torch.zeros((B, 1), device=device)],
+                        dim=1,
+                    )
 
                 # self.tally.add_metric(
                 #     path=["value_estimates"], metric=detached_vals_estimate
@@ -589,101 +601,127 @@ class BaseTrainer:
 
                 # Get jagged back
                 # import pdb; pdb.set_trace()
-                credits_mb = torch.nested.narrow(credits_mb, dim=1, start=0, length=jagged_lengths, layout=torch.jagged)
+                credits_mb = torch.nested.narrow(
+                    credits_mb,
+                    dim=1,
+                    start=0,
+                    length=jagged_lengths,
+                    layout=torch.jagged,
+                )
                 credits.extend(credits_mb.unbind())
 
-            credits = torch.nested.nested_tensor(credits, dtype=torch.float32, layout=torch.jagged)
+            credits = torch.nested.nested_tensor(
+                credits, dtype=torch.float32, layout=torch.jagged
+            )
 
         else:
             batch_rewards = trajectories.batch_rewards
-            credits = [ get_discounted_returns(
-                rewards=rewards,
-                discount_factor=self.discount_factor
+            credits = [
+                get_discounted_returns(
+                    rewards=rewards,
+                    discount_factor=self.discount_factor,
+                    reward_normalizing_constant=self.reward_normalizing_constant,
+                )
+                for rewards in batch_rewards
+            ]
+            credits = torch.nested.nested_tensor(
+                credits, dtype=torch.float32, layout=torch.jagged
             )
-            for rewards in batch_rewards ]
-            credits = torch.nested.nested_tensor(credits, dtype=torch.float32, layout=torch.jagged)
+            if self.use_rloo:
+                credits = get_rloo_credits(credits=credits)
 
         return credits
 
-
-    def set_policy_gradient_data(self, rollout_trees: list[RolloutTreeRootNode], agent_ids: list[str]) -> None:
+    def set_policy_gradient_data(
+        self, rollout_trees: list[RolloutTreeRootNode], agent_ids: list[str]
+    ) -> None:
         """
         TOWRITE
         """
-
-        # TODO: append to current batch data instead, else we will only train for one agent! 
-
-        # Tensorize Chats
-        rollout_ids = []
-        batch_input_ids = []
-        batch_action_mask = []
-        batch_timesteps = []
-        batch_state_ends_mask = []
-        batch_rewards = []
+        # TODO: append to current batch data instead, else we will only train for one agent!
+        self.policy_gradient_data = None
         for agent_id in agent_ids:
+            # Tensorize Chats
+            rollout_ids = []
+            batch_input_ids = []
+            batch_action_mask = []
+            batch_timesteps = []
+            batch_state_ends_mask = []
+            batch_rewards = []
             for root in rollout_trees:
                 rollout_ids.append(root.id)
-                chat, rewards = get_main_chat_list_and_rewards(agent_id=agent_id, root=root)
+                chat, rewards = get_main_chat_list_and_rewards(
+                    agent_id=agent_id, root=root
+                )
                 (
                     input_ids,
                     action_mask,
                     timesteps,
                     state_ends_mask,
-                ) = process_training_chat(
-                    tokenizer=self.tokenizer,
-                    chat_history=chat
-                )
+                ) = process_training_chat(tokenizer=self.tokenizer, chat_history=chat)
                 batch_input_ids.append(input_ids)
                 batch_action_mask.append(action_mask)
                 batch_timesteps.append(timesteps)
                 batch_state_ends_mask.append(state_ends_mask)
                 batch_rewards.append(rewards)
 
-        trajectory_batch = TrajectoryBatch(
-            rollout_ids = torch.Tensor(rollout_ids),
-            batch_input_ids = torch.nested.nested_tensor(batch_input_ids, layout=torch.jagged),
-            batch_action_mask = torch.nested.nested_tensor(batch_action_mask, layout=torch.jagged),
-            batch_timesteps = torch.nested.nested_tensor(batch_timesteps, layout=torch.jagged),
-            batch_state_ends_mask = torch.nested.nested_tensor(batch_state_ends_mask, layout=torch.jagged),
-            batch_rewards = torch.nested.nested_tensor(batch_rewards, layout=torch.jagged)
-        )
-
-        # Get Advantages
-        batch_advantages: torch.FloatTensor = self.get_advantages_with_critic_gradient_accumulation(trajectory_batch)
-
-
-        batch_advantages = get_tokenwise_credits(
-            batch_timesteps = trajectory_batch.batch_timesteps,
-            batch_credits = batch_advantages
-        )
-
-        # Get training batch and apply single step
-        self.policy_gradient_data = TrainingBatch(
-                rollout_ids = trajectory_batch.rollout_ids,
-                batch_input_ids = trajectory_batch.batch_input_ids,
-                batch_action_mask = trajectory_batch.batch_action_mask,
-                batch_credits = batch_advantages
+            trajectory_batch = TrajectoryBatch(
+                rollout_ids=torch.Tensor(rollout_ids),
+                batch_input_ids=torch.nested.nested_tensor(
+                    batch_input_ids, layout=torch.jagged
+                ),
+                batch_action_mask=torch.nested.nested_tensor(
+                    batch_action_mask, layout=torch.jagged
+                ),
+                batch_timesteps=torch.nested.nested_tensor(
+                    batch_timesteps, layout=torch.jagged
+                ),
+                batch_state_ends_mask=torch.nested.nested_tensor(
+                    batch_state_ends_mask, layout=torch.jagged
+                ),
+                batch_rewards=torch.nested.nested_tensor(
+                    batch_rewards, layout=torch.jagged
+                ),
             )
-        
 
+            # Get Advantages
+            batch_advantages: torch.FloatTensor = (
+                self.get_advantages_with_critic_gradient_accumulation(trajectory_batch)
+            )
+            if self.critic_optimizer is not None:
+                self.critic_optimizer.step()
+                self.critic_optimizer.zero_grad()
+
+            batch_advantages = get_tokenwise_credits(
+                batch_timesteps=trajectory_batch.batch_timesteps,
+                batch_credits=batch_advantages,
+            )
+            policy_gradient_data = TrainingBatch(
+                rollout_ids=trajectory_batch.rollout_ids,
+                batch_input_ids=trajectory_batch.batch_input_ids,
+                batch_action_mask=trajectory_batch.batch_action_mask,
+                batch_credits=batch_advantages,
+            )
+            if self.policy_gradient_data is not None:
+                self.policy_gradient_data.append(policy_gradient_data)
+            else:
+                self.policy_gradient_data = policy_gradient_data
 
     def train(self) -> None:
         """
         TOWRITE
         """
-        self.critic_optimizer.step()
-        self.critic_optimizer.zero_grad()
         assert self.policy_gradient_data is not None, "Policy gradient data is not set"
+        if self.critic_optimizer is not None:
+            self.critic.train()
+            self.critic_optimizer.zero_grad()
         self.apply_reinforce_step(training_batch=self.policy_gradient_data)
-        self.policy_gradient_data = None
-
 
     def set_token_credits(self) -> None:
         """
         Converts per-step credits into per-token credits for each batch element, based on action timestamps.
         Stores the result in self.token_credits.
         """
-
 
     def export_training_metrics(self) -> None:
         """
