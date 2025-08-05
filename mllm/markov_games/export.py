@@ -68,17 +68,13 @@ def get_rollout_tree_paths(root: RolloutTreeRootNode) -> Tuple[RolloutNodeList, 
             traverse_for_branches(current.child, new_prefix, path_id.extend(str(current.time_step)))
             
         elif isinstance(current, RolloutTreeBranchNode):
-            # Process the main child first and add to prefix
-            new_prefix = main_path_prefix
-            if current.main_child:
-                new_prefix = main_path_prefix + [current.main_child]
-                
+            
             # Collect all branch paths
             if current.branches:
                 for agent_id, branch_node_list in current.branches.items():
                     if branch_node_list:
                         # Start with the main path prefix, then recursively collect all nodes in this branch
-                        branch_path_nodes = new_prefix.copy()
+                        branch_path_nodes = main_path_prefix.copy()
                         for branch_node in branch_node_list:
                             branch_path_nodes.extend(collect_path_nodes(branch_node))
                         
@@ -87,6 +83,11 @@ def get_rollout_tree_paths(root: RolloutTreeRootNode) -> Tuple[RolloutNodeList, 
                             id=branch_path_id,
                             nodes=branch_path_nodes
                         ))
+
+            # Process the main child and add to prefix
+            new_prefix = main_path_prefix
+            if current.main_child:
+                new_prefix = main_path_prefix + [current.main_child]
             
             # Continue traversing the main path
             if current.main_child:
