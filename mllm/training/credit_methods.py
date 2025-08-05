@@ -1,8 +1,13 @@
-from mllm.training.tallies import Tally
 import torch
 
+from mllm.training.tallies import Tally
+
 NestedTensor = torch.Tensor
-def apply_method_on_nested(method, nested_tensor_inputs: list[torch.Tensor]) -> NestedTensor:
+
+
+def apply_method_on_nested(
+    method, nested_tensor_inputs: list[torch.Tensor]
+) -> NestedTensor:
     """
     Applies in for loop. When possible, this should be replaced with a padded version.
     """
@@ -14,9 +19,10 @@ def apply_method_on_nested(method, nested_tensor_inputs: list[torch.Tensor]) -> 
 
 
 def get_discounted_returns(
-    rewards: torch.Tensor, # (B, T)
-    discount_factor: float
-) -> torch.Tensor :
+    rewards: torch.Tensor,  # (T)
+    discount_factor: float,
+    reward_normalizing_constant: float = 1.0,
+) -> torch.Tensor:
     """
     Computes Monte Carlo discounted returns for a sequence of rewards.
 
@@ -26,27 +32,38 @@ def get_discounted_returns(
     Returns:
         torch.Tensor: Array of discounted returns.
     """
+    rewards = rewards / reward_normalizing_constant
     # TODO: verify, some changes were made here
-
-    assert rewards.dim() == 2, "Wrong dimensions."
-
+    assert rewards.dim() == 1, "Wrong dimensions."
 
     # # Apply method in for loop instead
     # if rewards.is_nested:
     #     f = lambda rewards : get_discounted_returns(rewards, discount_factor)
     #     return apply_method_on_nested(f, [rewards])
 
-    T = rewards.shape[1]
+    T = rewards.shape[0]
     discounted_returns = torch.zeros_like(rewards)
     accumulator = 0.0
     for t in reversed(range(T)):
-        accumulator = rewards[:, t] + discount_factor * accumulator
-        discounted_returns[:, t] = accumulator
+        accumulator = rewards[t] + discount_factor * accumulator
+        discounted_returns[t] = accumulator
     return discounted_returns
 
+
+def get_rloo_credits(credits):
+    credits = torch.nested.to_padded_tensor(credits, padding=0.0)
+    n = credits.shape[0]
+    if n == 1:
+        return credits
+    rloo_credits = credits - (torch.sum(credits, dim=0, keepdim=True) - credits) / (
+        n - 1
+    )
+    return rloo_credits
+
+
 def get_generalized_advantage_estimates(
-    rewards: torch.Tensor, # (B, T)
-    value_estimates: torch.Tensor, # (B, T+1)
+    rewards: torch.Tensor,  # (B, T)
+    value_estimates: torch.Tensor,  # (B, T+1)
     discount_factor: float,
     lambda_coef: float,
 ) -> torch.Tensor:
@@ -65,8 +82,12 @@ def get_generalized_advantage_estimates(
     #     f = lambda rewards, value_estimates : get_generalized_advantage_estimates(rewards, value_estimates, discount_factor, lambda_coef)
     #     return apply_method_on_nested(f, [rewards, value_estimates])
 
-    assert rewards.shape[0] == value_estimates.shape[0], f"Got shapes {rewards.shape} and {value_estimates.shape}."
-    assert rewards.shape[1] == value_estimates.shape[1]-1, f"Got shapes {rewards.shape} and {value_estimates.shape}."
+    assert (
+        rewards.shape[0] == value_estimates.shape[0]
+    ), f"Got shapes {rewards.shape} and {value_estimates.shape}."
+    assert (
+        rewards.shape[1] == value_estimates.shape[1] - 1
+    ), f"Got shapes {rewards.shape} and {value_estimates.shape}."
 
     T = rewards.shape[1]
     tds = rewards + lambda_coef * value_estimates[:, 1:] - value_estimates[:, :-1]
@@ -77,8 +98,9 @@ def get_generalized_advantage_estimates(
         gaes[:, t] = acc
     return gaes
 
+
 def get_advantage_alignment_weights(
-    advantages: torch.Tensor, # (B, T)
+    advantages: torch.Tensor,  # (B, T)
     exclude_k_equals_t: bool,
 ) -> torch.Tensor:
     """
@@ -100,7 +122,6 @@ def get_advantage_alignment_weights(
     else:
         sub = torch.zeros((T, T), device=advantages.device)
 
-        
     # Identity is for \( k < t \), remove for \( k \leq t \)
     ad_align_weights = advantages @ (
         torch.triu(torch.ones((T, T), device=advantages.device)) - sub
@@ -111,19 +132,19 @@ def get_advantage_alignment_weights(
 
 
 def get_advantage_alignment_credits(
-    a1: torch.Tensor, # (B, S)
-    a1_alternative: torch.Tensor, # (B, A, S)
-    a2: torch.Tensor, # (B, S)
+    a1: torch.Tensor,  # (B, S)
+    a1_alternative: torch.Tensor,  # (B, A, S)
+    a2: torch.Tensor,  # (B, S)
     exclude_k_equals_t: bool,
     beta: float,
     gamma: float,
     use_sign: bool = False,
     clipping: float | None = None,
-    use_time_regularization: bool= False,
-    force_coop_first_step: bool=False,
-    use_variance_regularization: bool=False,
-    tally: Tally  = Tally(),
-    ) -> torch.Tensor:
+    use_time_regularization: bool = False,
+    force_coop_first_step: bool = False,
+    use_variance_regularization: bool = False,
+    tally: Tally = Tally(),
+) -> torch.Tensor:
     """
     Calculate the advantage alignment credits with vectorization, as described in https://arxiv.org/abs/2406.14662.
 
@@ -132,7 +153,7 @@ def get_advantage_alignment_credits(
         \beta \mathbb{E}_{\substack{
         \tau \sim \text{Pr}_{\mu}^{\pi^1, \pi^2} \\
         a_t' \sim \pi^1(\cdot \mid s_t)
-        }} 
+        }}
         \left[\sum_{t=0}^\infty  \gamma^{t}\left( \sum_{k\leq t} A^1(s_k,a^{\prime}_k,b_k) \right) A^{2}(s_t,a_t, b_t)\nabla_{\theta^1}\text{log } \pi^1(a_t|s_t) \right]
     \]
 
@@ -154,13 +175,14 @@ def get_advantage_alignment_credits(
         torch.Tensor: The advantage alignment credits.
     """
     assert a1.dim() == a2.dim() == 2, "Advantages must be of shape (B, S)"
-    assert a1_alternative.dim() == 3, "Alternative advantages must be of shape (B, A, S)"
+    assert (
+        a1_alternative.dim() == 3
+    ), "Alternative advantages must be of shape (B, A, S)"
     assert a1.shape == a2.shape, "Not the same shape"
     B, T, A = a1_alternative.shape
 
     a1_alternative = a1_alternative.mean(dim=2)
     assert a1.shape == a1_alternative.shape, "Not the same shape"
-
 
     adalign_weights = get_advantage_alignment_weights(
         advantages=a1_alternative, exclude_k_equals_t=exclude_k_equals_t
@@ -197,7 +219,6 @@ def get_advantage_alignment_credits(
 
     # Use clipping
     if clipping not in [0.0, None]:
-
         upper_mask = adalign_weights > 1
         lower_mask = adalign_weights < -1
 
@@ -206,11 +227,11 @@ def get_advantage_alignment_credits(
             -clipping,
             clipping,
         )
-        clipping_ratio = (torch.sum(upper_mask) + torch.sum(lower_mask)) / upper_mask.size
+        clipping_ratio = (
+            torch.sum(upper_mask) + torch.sum(lower_mask)
+        ) / upper_mask.size
 
-        tally.add_metric(
-            path=["ad_align_clipping_ratio"], metric=clipping_ratio
-        )
+        tally.add_metric(path=["ad_align_clipping_ratio"], metric=clipping_ratio)
 
         tally.add_metric(
             path=["ad_align_weights_after_clipping"], metric=adalign_weights
@@ -242,7 +263,7 @@ def get_advantage_alignment_credits(
     #     )
 
     ####################################
-    # Compose elements together 
+    # Compose elements together
     ####################################
 
     opp_shaping_terms = beta * adalign_weights * a2
@@ -251,7 +272,9 @@ def get_advantage_alignment_credits(
     #     path=["ad_align_opp_shaping_terms"], metric=opp_shaping_terms
     # )
 
-    t_discounts = (gamma * torch.ones(size=(1, T), device=a1.device)) ** (torch.arange(0, T, 1, device=a1.device))
+    t_discounts = (gamma * torch.ones(size=(1, T), device=a1.device)) ** (
+        torch.arange(0, T, 1, device=a1.device)
+    )
     credits = t_discounts * (a1 + opp_shaping_terms)
 
     # tally.add_metric(
