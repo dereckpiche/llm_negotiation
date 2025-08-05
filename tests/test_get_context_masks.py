@@ -21,7 +21,7 @@ def test_get_assistant_actions_mask_and_score():
     (
         token_ids,
         rewards,
-        action_mask, 
+        action_mask,
         credit_mask,
         state_end_flags
     ) = process_training_chat(
@@ -33,7 +33,7 @@ def test_get_assistant_actions_mask_and_score():
     df = pd.DataFrame(df)
     print(df.to_string())
     print(rewards)
-   
+
 
 if __name__ == "__main__":
     test_get_assistant_actions_mask_and_score()
