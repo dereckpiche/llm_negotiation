@@ -8,9 +8,13 @@ pip install -e .
 It is recommended to use python version `3.10.11`.
 
 ```bash
-pip install -r requirements_dev.txt
+pip install uv
+uv pip install -r requirements.txt
 pre-commit install
+cd path/to/repo
+pip install -e .
 ```
+
 The most useful files to understand the codebase are:
 - `src/experiments/generate_and_train.py`: This file contains the code for the online RL pipeline. (Generate, Train, Repeat.)
 - `src/environments/dond/*`: Contains the implementation of *Trust and Split*.

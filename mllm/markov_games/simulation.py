@@ -57,6 +57,12 @@ class Simulation(ABC):
         """ Returns the total number of actions an agent could ever take """
         # TODO: This is only suitable for a discrete 1 dimensional action space for each agent
         raise NotImplementedError
+    
+    def get_safe_copy(self):    
+        """
+        Return copy of the agent object that is decorrelated from the original object.
+        """
+        raise NotImplementedError
 
     def reset(self):
         """ Returns initial observations and states"""

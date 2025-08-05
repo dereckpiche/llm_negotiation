@@ -1,6 +1,5 @@
 """
-TODO: the time step should be in the step log, not in every ChatTurns.
-TODO: enforce that for each AgentActLog, there is exactly one ChatTurn which is a state end.
+TODO: add parent to nodes so that some verification can be done. For instance, to ensure that node reward keys match the parent node.
 """
 
 from __future__ import annotations

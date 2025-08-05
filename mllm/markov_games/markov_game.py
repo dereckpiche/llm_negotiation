@@ -21,6 +21,7 @@ from mllm.markov_games.rollout_tree import StepLog
 from copy import copy, deepcopy
 import os, json
 import asyncio
+from mllm.markov_games.rollout_tree import AgentActLog
 AgentId = str
 
 
@@ -47,6 +48,43 @@ class MarkovGame(object):
         self.agent_step_logs = {agent_id : None for agent_id in self.agent_ids}
         self.actions = {}
 
+    async def get_action_of_agent_without_side_effects(self, agent_id: AgentId) -> Tuple[Any, AgentActLog]:
+        """
+        Safe function to get an action of an agent without modifying the agent or the simulation.
+        """
+        agent = self.agents[agent_id]
+        agent_before_action = agent.get_safe_copy()
+        obs = self.simulation.get_obs_agent(agent_id)
+        action, action_info = await agent.act(observation=obs)
+        self.agents[agent_id] = agent_before_action
+        return action, action_info
+    
+    async def get_actions_of_agents_without_side_effects(self) -> dict[AgentId, Tuple[Any, AgentActLog]]:
+        """
+        Safe function to get an action of an agent without modifying the agent or the simulation.
+        """
+        tasks = []
+        for agent_id in self.agent_ids:
+            task = asyncio.create_task(self.get_action_of_agent_without_side_effects(agent_id))
+            tasks.append(task)
+        actions = await asyncio.gather(*tasks)
+        return {agent_id: action_tuple for agent_id, action_tuple in zip(self.agent_ids, actions)}
+    
+    def set_action_of_agent_manually(self, agent_id: AgentId, action: Any, action_info: AgentActLog):
+        """
+        Set the action of an agent manually.
+        """
+        self.actions[agent_id] = action
+        self.agent_step_logs[agent_id] = action_info
+
+    def set_actions_of_agents_manually(self, actions: dict[AgentId, Tuple[Any, AgentActLog]]):
+        """
+        Set the actions of agents manually.
+        """
+        for agent_id, (action, action_info) in actions.items():
+            self.set_action_of_agent_manually(agent_id, action, action_info)
+
+
     async def set_action_of_agent(self, agent_id: AgentId):
         """
         TOWRITE
@@ -57,12 +95,6 @@ class MarkovGame(object):
         self.actions[agent_id] = action
         self.agent_step_logs[agent_id] = action_info
 
-    def unset_action_of_agent(self, agent_id):
-        """
-        TOWRITE
-        """
-        self.actions[agent_id] = None
-        self.agent_step_logs[agent_id] = None
 
     async def set_actions(self):
         """
@@ -74,13 +106,6 @@ class MarkovGame(object):
             task = asyncio.create_task(self.set_action_of_agent(agent_id))
             tasks.append(task)
         await asyncio.gather(*tasks)
-
-    def unset_actions(self):
-        """
-        TOWRITE
-        """
-        for agent_id in self.agent_ids:
-            self.unset_action_of_agent(agent_id)
 
     def take_simulation_step(self):
         """
@@ -117,7 +142,8 @@ class MarkovGame(object):
         # TODO: this is dangerous. The environments and agents should be responsible of
         # having a method .get_safe_copy()
         new_markov_game = copy(self)
-        new_markov_game.simulation.state = deepcopy(new_markov_game.simulation.state)
-        for agent in new_markov_game.agents.values():
-            agent.state = deepcopy(agent.state)
+        new_simulation = self.simulation.get_safe_copy()
+        new_agents = {agent_id: agent.get_safe_copy() for agent_id, agent in self.agents.items()}
+        new_markov_game.simulation = new_simulation
+        new_markov_game.agents = new_agents
         return new_markov_game
