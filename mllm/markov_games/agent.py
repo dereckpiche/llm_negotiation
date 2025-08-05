@@ -45,6 +45,12 @@ class Agent(ABC):
             step_info
         """
         raise NotImplementedError
+    
+    def get_safe_copy(self):    
+        """
+        Return copy of the agent object that is decorrelated from the original object.
+        """
+        raise NotImplementedError
 
     def reset(self):
         raise NotImplementedError

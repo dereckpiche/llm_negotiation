@@ -99,6 +99,8 @@ class TrajectoryBatch:
         for b in range(B):
             nb_rewards = self.batch_rewards[b].shape[0]
             nb_timesteps = torch.max(self.batch_timesteps[b]).item() + 1
+            if nb_rewards != nb_timesteps:
+                import pdb; pdb.set_trace()
             print(nb_rewards, nb_timesteps)
             assert nb_rewards == nb_timesteps, "Number of rewards and timesteps mismatch."
             assert self.batch_input_ids[b].shape[0] == self.batch_action_mask[b].shape[0] == self.batch_timesteps[b].shape[0], "Tensors must have the same shape along the jagged dimension."

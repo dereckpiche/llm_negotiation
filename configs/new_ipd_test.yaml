@@ -10,7 +10,7 @@ experiment:
     method: generate_and_train
     description: "no description"
     nb_epochs: 10
-    nb_matches_per_iteration: 2
+    nb_matches_per_iteration: 1
     reinit_matches_each_it: true
     checkpoint_every_n_iterations: 25
     start_epoch: 0
@@ -58,7 +58,7 @@ markov_games:
     runner_method_name: AlternativeActionsRunner
     simulation_class_name: IPD
     simulation_init_args:
-        rounds_per_game: 2
+        rounds_per_game: 3
         cooperate_actions: ["C"]
         defect_actions: ["D"]
         agent_ids: ${agent_ids}

@@ -176,6 +176,14 @@ class IPD(Simulation):
         """Returns initial observations and states"""
         self.state = IPDState()
         return self.get_obs()
+    
+    def get_safe_copy(self):
+        """
+        Return a safe copy of the simulation.
+        """
+        simulation_copy = copy.copy(self)
+        simulation_copy.state = copy.deepcopy(self.state)
+        return simulation_copy
 
     def render(self):
         pass

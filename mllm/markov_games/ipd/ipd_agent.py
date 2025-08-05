@@ -5,8 +5,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from mllm.markov_games.agent import Agent
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from copy import deepcopy
 from mllm.markov_games.rollout_tree import AgentActLog, ChatTurn
+import copy
 
 @dataclass
 class IPDAgentState:
@@ -102,19 +102,20 @@ class IPDAgent(Agent):
                 action_is_ready = False
 
         self.state.nb_retries = 0  # reset retry counter
-        import copy
         agent_step_log = AgentActLog(
-            chat_turns = copy.deepcopy(self.state.chat_history[self.state.chat_counter:]),
+            chat_turns = self.state.chat_history[self.state.chat_counter:],
             info = None
         )
         self.state.chat_counter = len(self.state.chat_history)
         return action, agent_step_log
 
-    # def get_safe_copy(self):
-    #     """
-
-    #     """
-
+    def get_safe_copy(self):
+        """
+        Return a safe copy of the agent.
+        """
+        agent_copy = copy.copy(self)
+        agent_copy.state = copy.deepcopy(self.state)
+        return agent_copy
 
     def reset(self):
         self.state = IPDAgentState()
@@ -125,7 +126,6 @@ class IPDAgent(Agent):
 
     def close(self):
         pass
-
 
     def get_agent_info(self):
         pass

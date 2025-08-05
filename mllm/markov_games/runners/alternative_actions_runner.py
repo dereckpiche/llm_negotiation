@@ -3,6 +3,8 @@ import asyncio
 import json
 from mllm.markov_games.markov_game import MarkovGame
 from mllm.markov_games.rollout_tree import RolloutTreeNode, RolloutTreeRootNode, RolloutTreeBranchNode, StepLog
+from mllm.markov_games.rollout_tree import AgentActLog
+from typing import Tuple, Any
 AgentId = str
 import uuid
 
@@ -11,15 +13,15 @@ async def run_with_unilateral_alt_action(
         agent_id: AgentId,
         branch_id: int,
         time_step: int,
-        branch_node: RolloutTreeBranchNode):
+        branch_node: RolloutTreeBranchNode,
+        max_depth: int):
         """
         This function is used to generate a new branch for a given agent.
         """
 
-        # Generate new action and take a step
-        markov_game.unset_action_of_agent(agent_id)
+        # Generate alternative action and take a step
         await markov_game.set_action_of_agent(agent_id)
-        terminated = markov_game.take_simulation_step()
+        terminated : bool = markov_game.take_simulation_step()
         step_log = markov_game.get_step_log()
         first_alternative_node = RolloutTreeNode(
             step_log=step_log,
@@ -30,7 +32,7 @@ async def run_with_unilateral_alt_action(
         time_step += 1
         counter = 1
         previous_node = first_alternative_node
-        while not terminated and counter < depth:
+        while not terminated and counter < max_depth:
             terminated, step_log = await markov_game.step()
             current_node = RolloutTreeNode(step_log=step_log, time_step=time_step)
             previous_node.child = current_node
@@ -51,7 +53,7 @@ async def AlternativeActionsRunner(
     markov_game: MarkovGame,
     output_folder: str,
     nb_alternative_actions: int = 1,
-    depth: int = 1):
+    max_depth: int = 1):
     """
     This method generates a trajectory with partially completed branches,
     where the branching comes from taking unilateraly different actions.
@@ -68,8 +70,11 @@ async def AlternativeActionsRunner(
     previous_node = root
 
     while not terminated:
-        terminated, step_log = await markov_game.step()
-        main_node = RolloutTreeNode(step_log=step_log, time_step=time_step)
+        mg_before_action = markov_game.get_safe_copy()
+        actions: dict[AgentId, Tuple[Any, AgentActLog]] = await markov_game.get_actions_of_agents_without_side_effects()
+        markov_game.set_actions_of_agents_manually(actions)
+        terminated = markov_game.take_simulation_step()
+        main_node = RolloutTreeNode(step_log=markov_game.get_step_log(), time_step=time_step)
         branch_node = RolloutTreeBranchNode(main_child=main_node)
         previous_node.child = branch_node
         previous_node = main_node
@@ -77,13 +82,11 @@ async def AlternativeActionsRunner(
         # Get alternative branches by generating new unilateral actions
         for agent_id in markov_game.agent_ids:
             for _ in range(nb_alternative_actions):
-                mg_branch = markov_game.get_safe_copy()
-                # branch_name = f"alternate_action_of_{agent_id}_time_{time_step}"
-                # branch_info = BranchNodeInfo(
-                #     branch_id = branch_name,
-                #     branch_for = agent_id,
-                #     branch_type = "unilateral_deviation"
-                # )
+                mg_branch : MarkovGame = mg_before_action.get_safe_copy()
+                other_agent_id = [id for id in mg_branch.agent_ids if id != agent_id][0]
+                other_action : Any = actions[other_agent_id][0]
+                other_action_info : AgentActLog = actions[other_agent_id][1]
+                mg_branch.set_action_of_agent_manually(other_agent_id, other_action, other_action_info)
                 branch_id = int(str(uuid.uuid4().int)[:8])
                 task = asyncio.create_task( run_with_unilateral_alt_action(
                     markov_game = mg_branch,
@@ -91,6 +94,7 @@ async def AlternativeActionsRunner(
                     agent_id = agent_id,
                     branch_id = branch_id,
                     branch_node = branch_node,
+                    max_depth = max_depth,
                 ) )
                 tasks.append(task)
         time_step += 1
