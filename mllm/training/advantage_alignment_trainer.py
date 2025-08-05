@@ -34,45 +34,51 @@ class AdvantagePacket:
 
 def get_alternative_chat_histories(
     agent_id: str, 
-    time_step: int, # The time_step of the branching we want the alt
     root : RolloutTreeRootNode) -> list[list[TrainingChatTurn], list[torch.FloatTensor]]:
     """
-    
     args:
         agent_id: The agent we want to get the chat history for.
-        time_step: The time_step of the branching we want the alternative chat histories for.
         root: The root of the rollout tree.
     returns:
-        alternative_chats: list[list[ChatTurn]]
-        alternative_rewards: list[torch.FloatTensor]
+        alternative_chats: list[list[TrainingChatTurn]] (jT*A, jS')
+        alternative_rewards: list[torch.FloatTensor] (jT*A, jT')
     """
     current_node = root.child
     branches = current_node.branches
-    main_chat = []
-    for _ in range(time_step):
-        # TODO: We don't need to do this fully at each time step. It wastes so much compute. Just save the intermediate chat history.
-        if current_node is not None:
-            main_node = current_node.main_child
-            branches = current_node.branches
-            current_node = main_node.child
-            chat_turns: list[ChatTurn] = main_node.step_log.action_logs[agent_id].chat_turns
-            chat_turns: list[TrainingChatTurn] = [TrainingChatTurn(time_step=main_node.time_step, **turn.model_dump()) for turn in chat_turns]
-            # This is crucial. We do not need to estimate the advantages before we branch out.  (This is already done when we process the main trajectory.)
-            # We want the first estimated advantage that we return later to be the one for taking the alternative action.
-            for chat_turn in chat_turns:
-                chat_turn.is_state_end = False
-
-            main_chat.extend(chat_turns)
-
-    alternative_roots = branches[agent_id]
-    alternative_chats = []
+    pre_branch_chat = []
+    pre_branch_rewards = []
     alternative_rewards = []
-    for alt_root in alternative_roots:
-        chat, rewards = get_main_chat_list_and_rewards(agent_id=agent_id, root=alt_root)
-        alternative_chats.append(chat)
-        alternative_rewards.append(rewards)
-    alternative_chats_with_main = [ main_chat + alt_chat for alt_chat in alternative_chats]
-    return alternative_chats_with_main, alternative_rewards
+    alternative_chats = []
+    while current_node is not None:
+        assert isinstance(current_node, RolloutTreeBranchNode), "Current node should be a branch node."
+        main_node = current_node.main_child
+        branches = current_node.branches
+        current_node = main_node.child
+        
+        # Get the `A` alternative trajectories
+        alternative_nodes = branches[agent_id]
+        for alt_node in alternative_nodes:
+            post_branch_chat, post_branch_rewards = get_main_chat_list_and_rewards(agent_id=agent_id, root=alt_node)
+            print(100*"-")
+            print("\n\nPre branch chat\n\n")
+            for turn in pre_branch_chat:
+                print(turn.dict())
+            print("\n\nPost branch chat\n\n")
+            for turn in post_branch_chat:
+                print(turn.dict())
+            print(100*"-")
+
+            branch_chat = pre_branch_chat + post_branch_chat
+            alternative_chats.append(branch_chat)
+            alternative_rewards.append(torch.cat([torch.tensor(pre_branch_rewards),post_branch_rewards]))
+
+        chat_turns: list[ChatTurn] = main_node.step_log.action_logs[agent_id].chat_turns
+        chat_turns: list[TrainingChatTurn] = [TrainingChatTurn(time_step=main_node.time_step, **turn.model_dump()) for turn in chat_turns]
+
+        pre_branch_chat.extend(chat_turns)
+        pre_branch_rewards.append(main_node.step_log.simulation_step_log.rewards[agent_id])
+
+    return alternative_chats, alternative_rewards
 
 class AdAlignTrainer(BaseTrainer):
     """
@@ -123,13 +129,15 @@ class AdAlignTrainer(BaseTrainer):
         batch_rewards = []
 
         # For alternative actions rollouts
+        batch_branching_time_steps = []
         alternative_batch_input_ids = []
         alternative_batch_action_mask = []
         alternative_batch_timesteps = []
         alternative_batch_state_ends_mask = []
         alternative_batch_rewards = []
-        nb_alternative_actions = []
         jT_list = []
+
+        A = len(roots[0].child.branches[agent_id]) # Number of alternative actions
 
         for root in roots:
             logger.info(f"Processing main trajectory of root {root.id} for agent {agent_id}")
@@ -155,40 +163,36 @@ class AdAlignTrainer(BaseTrainer):
             logger.info(f"Main trajectory length (jT): {jT}")
             jT_list.append(jT)
 
-            # Get all of the alternative trajectories in the tree
+            # We get the branching time steps for each of the `jT` time steps in the main trajectory.
+            batch_branching_time_steps.extend(range(jT))
+
+            # Get all of the (jT*A) alternative trajectories in the tree 
+            # (jT is the number of time steps in the main trajectory, A is the number of alternative actions)
             logger.info(f"Processing alternative trajectory of root {root.id} for agent {agent_id}")
-            for t in range(jT):
-                alternative_chats, alternative_rewards = get_alternative_chat_histories(agent_id=agent_id, time_step=t, root=root)
-                for alt in alternative_chats:
-                    print(100*"-")
-                    for turn in alt:
-                        print(turn.dict())
-                    print(100*"-")
-                nb_alternative_actions.append(len(alternative_chats))
-                print(len(alternative_chats), len(alternative_rewards))
-                print(alternative_chats[0], alternative_rewards[0])
-                for chat, rewards in zip(alternative_chats, alternative_rewards):
-                    (
-                        input_ids,
-                        action_mask,
-                        timesteps,
-                        state_ends_mask,
-                    ) = process_training_chat(
-                        tokenizer=self.tokenizer,
-                        chat_history=chat
-                    )
-                    alternative_batch_input_ids.append(input_ids)
-                    print("Nb input ids", len(alternative_batch_input_ids))
-                    alternative_batch_action_mask.append(action_mask)
-                    alternative_batch_timesteps.append(timesteps)
-                    alternative_batch_state_ends_mask.append(state_ends_mask)
-                    alternative_batch_rewards.append(rewards)
+            alternative_chats, alternative_rewards = get_alternative_chat_histories(agent_id=agent_id, root=root)
+            assert len(alternative_chats) == A * jT, "Incorrect number of alternative trajectories."
+
+            for chat, rewards in zip(alternative_chats, alternative_rewards):
+                (
+                    input_ids,
+                    action_mask,
+                    timesteps,
+                    state_ends_mask,
+                ) = process_training_chat(
+                    tokenizer=self.tokenizer,
+                    chat_history=chat
+                )
+                alternative_batch_input_ids.append(input_ids)
+                alternative_batch_action_mask.append(action_mask)
+                alternative_batch_timesteps.append(timesteps)
+                alternative_batch_state_ends_mask.append(state_ends_mask)
+                alternative_batch_rewards.append(rewards)
 
         jT_list = torch.Tensor(jT_list)
 
         # Assert that number of alternative actions is constant
-        assert len(set(nb_alternative_actions)) == 1, "Number of alternative actions must be constant"
-        A = nb_alternative_actions[0]
+        # assert len(set(nb_alternative_actions)) == 1, "Number of alternative actions must be constant"
+        # A = nb_alternative_actions[0]
         logger.info(f"Number of alternative actions: {A}")
 
         trajectory_batch = TrajectoryBatch(
@@ -213,6 +217,7 @@ class AdAlignTrainer(BaseTrainer):
             batch_state_ends_mask = torch.nested.nested_tensor(alternative_batch_state_ends_mask, layout=torch.jagged), # (∑jT * A, jS')
             batch_rewards = torch.nested.nested_tensor(alternative_batch_rewards, layout=torch.jagged) # (∑jT * A, jT')
         ) 
+        batch_branching_time_steps = torch.Tensor(batch_branching_time_steps).to(dtype=torch.int64, device=self.device) # (∑jT * A, 1)
 
         # Get Advantages & Train Critic
         self.batch_advantages: torch.FloatTensor = self.get_advantages_with_critic_gradient_accumulation(trajectory_batch) # (B, jT)
@@ -225,7 +230,7 @@ class AdAlignTrainer(BaseTrainer):
         # (torch nested tensors have very little api support, so we have to do some odd manual work here)
         BAAs: torch.FloatTensor = self.get_advantages_with_critic_gradient_accumulation(alternative_trajectory_batch) # (∑jT * A, jT')
         BAAs = torch.nested.to_padded_tensor(BAAs, padding=0.0) # (∑jT * A, P) # necessary for slice operations
-        BAAs = BAAs[:, 0] # (∑jT * A,) # (we only want the advantages where we branched out)
+        BAAs = torch.gather(BAAs, dim=1, index=batch_branching_time_steps.unsqueeze(1)) # (∑jT * A,) # (we only want the advantages where we branched out)
         BAAs = torch.nested.nested_tensor( [chunk for block in BAAs.view(A, sum_jT) for chunk in block.split(jT_list)], layout=torch.jagged ) # (B*A, jT)
         BAAs = torch.nested.to_padded_tensor(BAAs, padding=0.0) # (B*A, P) # necessary for reshape operation
         BAAs = BAAs.reshape(B, -1, A) # (B, P, A)
@@ -275,13 +280,13 @@ class AdAlignTrainer(BaseTrainer):
                 agent_advantages = agent_data.main_advantages
                 co_agent_advantages = co_agent_packet.main_advantages
                 co_agent_rollout_ids = co_agent_packet.rollout_ids
+                B = agent_advantages.shape[0]
                 assert agent_advantages.shape[0] == agent_advantages.shape[0], "Batch dimensions must match for advantage alignment."
-                
                 # Get co-agent advantages in the right order
-                permutation = []
-                for id in agent_rollout_ids: permutation.append(torch.where(id == co_agent_rollout_ids)[0].item())
-                co_agent_advantages = torch.permute(co_agent_advantages, permutation)
-                
+                if B > 1:
+                    permutation = []
+                    for id in agent_rollout_ids: permutation.append(torch.where(id == co_agent_rollout_ids)[0].item())
+                    co_agent_advantages = torch.permute(co_agent_advantages, permutation)
                 assert torch.all(co_agent_advantages.offsets().diff() == agent_advantages.offsets().diff()), "Number of advantages must match for advantage alignment."
  
                 # Get padded tensors (advantage alignment is invariant to padding)

@@ -92,16 +92,19 @@ class TrajectoryBatch:
         B = self.rollout_ids.shape[0]
         if self.batch_input_ids.dim() == 1:
             self.batch_input_ids = self.batch_input_ids.unsqueeze(0)
+        if self.batch_action_mask.dim() == 1:
             self.batch_action_mask = self.batch_action_mask.unsqueeze(0)
+        if self.batch_timesteps.dim() == 1:
             self.batch_timesteps = self.batch_timesteps.unsqueeze(0)
+        if self.batch_state_ends_mask.dim() == 1:
             self.batch_state_ends_mask = self.batch_state_ends_mask.unsqueeze(0)
+        if self.batch_rewards.dim() == 1:
             self.batch_rewards = self.batch_rewards.unsqueeze(0)
         for b in range(B):
             nb_rewards = self.batch_rewards[b].shape[0]
             nb_timesteps = torch.max(self.batch_timesteps[b]).item() + 1
             if nb_rewards != nb_timesteps:
                 import pdb; pdb.set_trace()
-            print(nb_rewards, nb_timesteps)
             assert nb_rewards == nb_timesteps, "Number of rewards and timesteps mismatch."
             assert self.batch_input_ids[b].shape[0] == self.batch_action_mask[b].shape[0] == self.batch_timesteps[b].shape[0], "Tensors must have the same shape along the jagged dimension."
             assert self.batch_state_ends_mask[b].sum() == self.batch_rewards[b].shape[0], "Number of rewards must match number of state ends."

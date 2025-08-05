@@ -10,7 +10,7 @@ experiment:
     method: generate_and_train
     description: "no description"
     nb_epochs: 10
-    nb_matches_per_iteration: 1
+    nb_matches_per_iteration: 2
     reinit_matches_each_it: true
     checkpoint_every_n_iterations: 25
     start_epoch: 0
