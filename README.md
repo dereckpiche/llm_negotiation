@@ -9,28 +9,29 @@
 
 
 
-
-
 ## Installation
 
-It is recommended to use python version `3.10.11` and `CUDA 12.6`.
+It is recommended to use python version `3.11` and `CUDA 12.4`.
 
 ```bash
-pip install --upgrade pip
-pip install uv
-uv pip install torch==2.6
-uv pip install flashinfer-python -i https://flashinfer.ai/whl/cu126/torch2.6/
-uv pip install -r requirements.txt
-uv pip install "sglang[all]>=0.4.9.post2"
+module unload python
+module load anaconda/3
+conda create -n venv python=3.11
+conda activate venv
+module load cudatoolkit/12.4
+pip install torch==2.7.1
+pip install psutil
+pip install flash_attn --no-build-isolation
+pip install "sglang[all]>=0.4.10.post2"
+pip install -r requirements.txt
 cd path/to/repo
 pip install -e .
 ```
 
 
-
 ## Development
 
 ```bash
-uv pip install pre-commit
+pip install pre-commit
 pre-commit install
 ```

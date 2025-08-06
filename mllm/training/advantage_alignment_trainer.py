@@ -22,6 +22,7 @@ from mllm.training.training_data_utils import (
     get_main_chat_list_and_rewards,
     get_tokenwise_credits,
 )
+from mllm.utils.ressource_context import ressource_logger_context
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -247,66 +248,75 @@ class AdAlignTrainer(BaseTrainer):
         # Here, `A` is the number of alternative actions / trajectories taken at each time step.
         # For each of the `B` rollout perspectives, at each of its jT (`j` is for jagged, since each main rollout may be of a different length) steps, we take A alternate trajectories (from different actions).
         # Therefore, we have ∑jT * A trajectories to process. If each of the main trajectories have T steps, we will have `B*T*A` to process.
-        sum_jT = int(torch.sum(jT_list).item())
-        jT_list = (
-            jT_list.int().tolist()
-        )  # (jT,) # (we only want the advantages where we branched out)
-        alternative_trajectory_batch = TrajectoryBatch(
-            rollout_ids=torch.zeros(
-                A * sum_jT, dtype=torch.int32
-            ),  # (B*A,) we don't have ids here
-            batch_input_ids=torch.nested.nested_tensor(
-                alternative_batch_input_ids, layout=torch.jagged
-            ),  # (∑jT * A, jS')
-            batch_action_mask=torch.nested.nested_tensor(
-                alternative_batch_action_mask, layout=torch.jagged
-            ),  # (∑jT * A, jS')
-            batch_timesteps=torch.nested.nested_tensor(
-                alternative_batch_timesteps, layout=torch.jagged
-            ),  # (∑jT * A, jS')
-            batch_state_ends_mask=torch.nested.nested_tensor(
-                alternative_batch_state_ends_mask, layout=torch.jagged
-            ),  # (∑jT * A, jS')
-            batch_rewards=torch.nested.nested_tensor(
-                alternative_batch_rewards, layout=torch.jagged
-            ),  # (∑jT * A, jT')
-        )
-        batch_branching_time_steps = torch.Tensor(batch_branching_time_steps).to(
-            dtype=torch.int64, device=self.device
-        )  # (∑jT * A, 1)
+        with ressource_logger_context(logger, "Create alternative trajectory batch"):
+            sum_jT = int(torch.sum(jT_list).item())
+            jT_list = (
+                jT_list.int().tolist()
+            )  # (jT,) # (we only want the advantages where we branched out)
+            alternative_trajectory_batch = TrajectoryBatch(
+                rollout_ids=torch.zeros(
+                    A * sum_jT, dtype=torch.int32
+                ),  # (B*A,) we don't have ids here
+                batch_input_ids=torch.nested.nested_tensor(
+                    alternative_batch_input_ids, layout=torch.jagged
+                ),  # (∑jT * A, jS')
+                batch_action_mask=torch.nested.nested_tensor(
+                    alternative_batch_action_mask, layout=torch.jagged
+                ),  # (∑jT * A, jS')
+                batch_timesteps=torch.nested.nested_tensor(
+                    alternative_batch_timesteps, layout=torch.jagged
+                ),  # (∑jT * A, jS')
+                batch_state_ends_mask=torch.nested.nested_tensor(
+                    alternative_batch_state_ends_mask, layout=torch.jagged
+                ),  # (∑jT * A, jS')
+                batch_rewards=torch.nested.nested_tensor(
+                    alternative_batch_rewards, layout=torch.jagged
+                ),  # (∑jT * A, jT')
+            )
+            batch_branching_time_steps = torch.Tensor(batch_branching_time_steps).to(
+                dtype=torch.int64, device=self.device
+            )  # (∑jT * A, 1)
 
         # Get Advantages & Train Critic
-        self.batch_advantages: torch.FloatTensor = (
-            self.get_advantages_with_critic_gradient_accumulation(trajectory_batch)
-        )  # (B, jT)
-        logger.info(
-            f"Batch advantages shape (B, jT): {self.batch_advantages.shape[0]}, jT=  {self.batch_advantages.offsets().diff()}"
-        )
-        logger.info(f"JT list: {jT_list}")
+        with ressource_logger_context(
+            logger, "Get advantages with critic gradient accumulation"
+        ):
+            self.batch_advantages: torch.FloatTensor = (
+                self.get_advantages_with_critic_gradient_accumulation(trajectory_batch)
+            )  # (B, jT)
 
         # Get alternative advantages
         # BAAs stands for batch alternative advantages
         # (torch nested tensors have very little api support, so we have to do some odd manual work here)
-        BAAs: torch.FloatTensor = self.get_advantages_with_critic_gradient_accumulation(
-            alternative_trajectory_batch
-        )  # (∑jT * A, jT')
-        BAAs = torch.nested.to_padded_tensor(
-            BAAs, padding=0.0
-        )  # (∑jT * A, P) # necessary for slice operations
-        BAAs = torch.gather(
-            BAAs, dim=1, index=batch_branching_time_steps.unsqueeze(1)
-        )  # (∑jT * A,) # (we only want the advantages where we branched out)
-        BAAs = torch.nested.nested_tensor(
-            [chunk for block in BAAs.view(A, sum_jT) for chunk in block.split(jT_list)],
-            layout=torch.jagged,
-        )  # (B*A, jT)
-        BAAs = torch.nested.to_padded_tensor(
-            BAAs, padding=0.0
-        )  # (B*A, P) # necessary for reshape operation
-        BAAs = BAAs.reshape(B, -1, A)  # (B, P, A)
-        BAAs = torch.nested.nested_tensor(
-            [block[:max] for max, block in zip(jT_list, BAAs)], layout=torch.jagged
-        )  # (B, jT, A)
+        with ressource_logger_context(
+            logger, "Compute alternative advantage estimates"
+        ):
+            BAAs: torch.FloatTensor = (
+                self.get_advantages_with_critic_gradient_accumulation(
+                    alternative_trajectory_batch
+                )
+            )  # (∑jT * A, jT')
+            BAAs = torch.nested.to_padded_tensor(
+                BAAs, padding=0.0
+            )  # (∑jT * A, P) # necessary for slice operations
+            BAAs = torch.gather(
+                BAAs, dim=1, index=batch_branching_time_steps.unsqueeze(1)
+            )  # (∑jT * A,) # (we only want the advantages where we branched out)
+            BAAs = torch.nested.nested_tensor(
+                [
+                    chunk
+                    for block in BAAs.view(A, sum_jT)
+                    for chunk in block.split(jT_list)
+                ],
+                layout=torch.jagged,
+            )  # (B*A, jT)
+            BAAs = torch.nested.to_padded_tensor(
+                BAAs, padding=0.0
+            )  # (B*A, P) # necessary for reshape operation
+            BAAs = BAAs.reshape(B, -1, A)  # (B, P, A)
+            BAAs = torch.nested.nested_tensor(
+                [block[:max] for max, block in zip(jT_list, BAAs)], layout=torch.jagged
+            )  # (B, jT, A)
 
         self.training_data[agent_id] = AdAlignTrainingData(
             agent_id=agent_id,
@@ -321,6 +331,7 @@ class AdAlignTrainer(BaseTrainer):
         Returns:
             AdvantagePacket: The advantage packet containing the agent's advantages.
         """
+        logger.info(f"Sharing advantage alignment data for {self.agent_id}")
         advantage_packets = []
         for _, agent_data in self.training_data.items():
             advantage_packets.append(
@@ -337,6 +348,7 @@ class AdAlignTrainer(BaseTrainer):
         Receive advantage packets from other players.
         These contain the advantages of the other players' rollouts estimated by them.
         """
+        logger.info(f"Getting advantage alignment data for {self.agent_id}")
         assert (
             2 >= len(advantage_packets) > 0
         ), "At least one advantage packet must be provided."

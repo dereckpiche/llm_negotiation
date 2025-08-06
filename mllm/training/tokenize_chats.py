@@ -4,9 +4,9 @@ TODO: Use the return_assistant_tokens_mask feature from  https://huggingface.co/
 """
 
 
-from transformers import AutoTokenizer
 import numpy as np
 import torch
+from transformers import AutoTokenizer
 
 from mllm.markov_games.rollout_tree import ChatTurn
 from mllm.training.training_data_utils import TrajectoryBatch
@@ -14,26 +14,28 @@ from mllm.training.training_data_utils import TrajectoryBatch
 
 def get_sentencepieced_example(tokenizer: AutoTokenizer):
     conv_example = [
-    {"role": "user", "content": "..."},
-    {"role": "assistant", "content": "..."},
-    {"role": "user", "content": "..."},
-    {"role": "assistant", "content": "..."},
+        {"role": "user", "content": "..."},
+        {"role": "assistant", "content": "..."},
+        {"role": "user", "content": "..."},
+        {"role": "assistant", "content": "..."},
     ]
     token_ids = tokenizer.apply_chat_template(
         conv_example,
         add_generation_prompt=False,
         use_system_prompt=False,
-        return_tensors="pt").tolist()[0]
+        return_tensors="pt",
+    ).tolist()[0]
     sentencepieces = tokenizer.convert_ids_to_tokens(token_ids)
     sps = []
     for tid, sp in zip(token_ids, sentencepieces):
         sps.append((tid, sp))
     return sps
 
+
 def get_qwen_assistant_user_mask(
     tokenizer: AutoTokenizer,
     token_ids: torch.Tensor,
-    ):
+):
     """
     Returns:
         assistant_user_mask:
@@ -67,12 +69,18 @@ def get_qwen_assistant_user_mask(
     pointer = system_prompt_end + 1
     while pointer < nb_tokens:
         # new user turn
-        if token_ids[pointer] == bos_token_id and token_ids[pointer+1] == user_token_id:
+        if (
+            token_ids[pointer] == bos_token_id
+            and token_ids[pointer + 1] == user_token_id
+        ):
             assistant_turn = False
             user_count += 1
         # new assistant turn
-        if token_ids[pointer] == bos_token_id and token_ids[pointer+1] == assistant_token_id:
-            assistant_user_mask[pointer:pointer+3] = -user_count
+        if (
+            token_ids[pointer] == bos_token_id
+            and token_ids[pointer + 1] == assistant_token_id
+        ):
+            assistant_user_mask[pointer : pointer + 3] = -user_count
             pointer += 3
             assistant_turn = True
             assistant_count += 1
@@ -83,6 +91,7 @@ def get_qwen_assistant_user_mask(
         pointer += 1
     return assistant_user_mask
 
+
 def get_chat_dicts(chat: list[ChatTurn]) -> list[dict]:
     chat_dicts = [chat_turn.dict() for chat_turn in chat]
     return chat_dicts
@@ -91,8 +100,8 @@ def get_chat_dicts(chat: list[ChatTurn]) -> list[dict]:
 def process_training_chat(
     tokenizer: AutoTokenizer,
     chat_history: list[ChatTurn],
-    end_at_last_state_flag: bool = False
-    ):
+    end_at_last_state_flag: bool = False,
+):
     """
     TODO: docstring
     Args:
@@ -109,7 +118,6 @@ def process_training_chat(
 
     chat_history = get_chat_dicts(chat_history)
 
-
     # End chat on the last state introduction
     if end_at_last_state_flag:
         count = 0
@@ -117,7 +125,7 @@ def process_training_chat(
             if message["is_state_end"]:
                 last_state_flag_index = count
             count += 1
-        chat_history = chat_history[:last_state_flag_index+1]
+        chat_history = chat_history[: last_state_flag_index + 1]
 
     # Get token ids
     formatted_conversation = tokenizer.apply_chat_template(
@@ -126,22 +134,28 @@ def process_training_chat(
         tokenize=False,
         use_system_prompt=True,
     )
-    token_ids = tokenizer.encode(
-        formatted_conversation,
-        return_tensors="pt",
-        add_special_tokens=True
-    ).squeeze(0).long()
+    token_ids = (
+        tokenizer.encode(
+            formatted_conversation, return_tensors="pt", add_special_tokens=True
+        )
+        .squeeze(0)
+        .long()
+    )
     token_ids = token_ids.squeeze()
 
     # Get assistant_user_mask
     tokenizer_name = tokenizer.name_or_path
-    if tokenizer_name in ["Qwen/Qwen2.5-7B-Instruct", "Qwen/Qwen2.5-0.5B-Instruct"]:
+    if tokenizer_name in [
+        "Qwen/Qwen2.5-7B-Instruct",
+        "Qwen/Qwen2.5-0.5B-Instruct",
+        "Qwen/Qwen3-4B-Instruct-2507",
+        "Qwen/Qwen3-0.6B",
+    ]:
         assistant_user_mask = get_qwen_assistant_user_mask(
-            tokenizer=tokenizer,
-            token_ids=token_ids
+            tokenizer=tokenizer, token_ids=token_ids
         )
     else:
-       raise TypeError("Tokenizer not supported. Must be implemented here.")
+        raise TypeError("Tokenizer not supported. Must be implemented here.")
 
     # Create masks and flags
     action_mask = torch.zeros(size=token_ids.shape)
@@ -151,7 +165,6 @@ def process_training_chat(
     assistant_count = 1
     user_count = -1
     current_time_step = -1
-
 
     for message in chat_history:
         if message["role"] == "assistant":
@@ -171,18 +184,14 @@ def process_training_chat(
 
     action_mask[credit_mask > -1] = 1.0
 
-
     # TODO: clean up original code
 
     # Adapt old code outputs to new outputs
     # import pdb; pdb.set_trace()
     input_ids = token_ids
     timesteps = credit_mask
-    state_ends_idx = state_end_flags # torch.where(torch.BoolTensor(state_end_flags) == True)[0]
-
-    return (
-        input_ids,
-        action_mask,
-        timesteps,
-        state_ends_idx
+    state_ends_idx = (
+        state_end_flags  # torch.where(torch.BoolTensor(state_end_flags) == True)[0]
     )
+
+    return (input_ids, action_mask, timesteps, state_ends_idx)
