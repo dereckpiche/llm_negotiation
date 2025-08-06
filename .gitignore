@@ -1,11 +1,7 @@
 # macOS generated files
 .DS_Store
-.sgvenv
-.mllmvenv
-.rebuttal
+.venv
 home/
-.mllmvenv
-test_venv/
 home
 *.svg
 output/

@@ -45,8 +45,6 @@ class IPD(Simulation):
     The game is played for a specified number of rounds.
     """
 
-    d = 5
-
     def __init__(
         self,
         agent_ids: List[str],
@@ -68,7 +66,6 @@ class IPD(Simulation):
         self.sucker = sucker
         self.cooperate_actions = cooperate_actions
         self.defect_actions = defect_actions
-        self.gibberish_action = "GIBBERISH"
         self.state = IPDState()
 
     def step(self, actions: Dict[str, str]) -> Tuple[bool, SimulationStepLog]:
@@ -85,44 +82,33 @@ class IPD(Simulation):
             info (dict): Additional information about the environment.
         """
 
-        # Calculate rewards based on the prisoner's dilemma payoff matrix
-        round_rewards = {}
+        # Calculate rewards using payoff matrix
         agent0_action = actions[self.agent_ids[0]]
         agent1_action = actions[self.agent_ids[1]]
 
-        if (
-            agent0_action in self.cooperate_actions
-            and agent1_action in self.cooperate_actions
-        ):
-            # Both cooperate
-            round_rewards[self.agent_ids[0]] = self.reward
-            round_rewards[self.agent_ids[1]] = self.reward
-        elif (
-            agent0_action in self.defect_actions
-            and agent1_action in self.defect_actions
-        ):
-            # Both defect
-            round_rewards[self.agent_ids[0]] = self.punishment
-            round_rewards[self.agent_ids[1]] = self.punishment
-        elif (
-            agent0_action in self.cooperate_actions
-            and agent1_action in self.defect_actions
-        ):
-            # Alice cooperates, Bob defects
-            round_rewards[self.agent_ids[0]] = self.sucker
-            round_rewards[self.agent_ids[1]] = self.temptation
-        elif (
-            agent0_action in self.defect_actions
-            and agent1_action in self.cooperate_actions
-        ):
-            # Alice defects, Bob cooperates
-            round_rewards[self.agent_ids[0]] = self.temptation
-            round_rewards[self.agent_ids[1]] = self.sucker
-        else:
-            # TODO: find clean solution for this
-            # If any of the agents outputs Gibberish set rewards to 0
-            round_rewards[self.agent_ids[0]] = 0
-            round_rewards[self.agent_ids[1]] = 0
+        # Normalize actions to standard cooperate/defect/gibberish format
+        def normalize_action(action):
+            if action in self.cooperate_actions:
+                return "C"
+            elif action in self.defect_actions:
+                return "D"
+            else:
+                return "D"
+
+        norm_action0 = normalize_action(agent0_action)
+        norm_action1 = normalize_action(agent1_action)
+
+        payoffs = {
+            ("C", "C"): [self.reward, self.reward],
+            ("C", "D"): [self.sucker, self.temptation],
+            ("D", "C"): [self.temptation, self.sucker],
+            ("D", "D"): [self.punishment, self.punishment],
+        }
+
+        round_rewards = {
+            self.agent_ids[0]: payoffs[(norm_action0, norm_action1)][0],
+            self.agent_ids[1]: payoffs[(norm_action0, norm_action1)][1],
+        }
 
         # Update game state
         self.state.round_nb += 1
@@ -179,7 +165,7 @@ class IPD(Simulation):
         """Returns initial observations and states"""
         self.state = IPDState()
         return self.get_obs()
-    
+
     def get_safe_copy(self):
         """
         Return a safe copy of the simulation.

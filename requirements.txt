@@ -1,20 +1,19 @@
 hydra-core
-torch
 datasets
 transformers
 trl
 peft
 matplotlib
-tensorboard
+tensorboard # TODO: remove this dependency in mllm
 diplomacy
 optimum
 auto-gptq
 backoff
-sglang
 pybase64
 pydantic
 httpx
 openai
 jsonschema
 ipykernel
-# flash-attn install with 
+wheel
+setuptools

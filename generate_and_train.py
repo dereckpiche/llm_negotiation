@@ -246,7 +246,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
                 ]  # ids of the agents on which the trainer takes steps
                 for agent_id in agent_ids:
                     trainer.set_pre_advantage_alignment_data(
-                        agent_id=agent_id, roots=rollout_roots
+                        agent_id=agent_id, roots=rollout_trees
                     )
                 advantage_packets = trainer.share_advantage_alignment_data()
                 all_advantage_packets.extend(advantage_packets)

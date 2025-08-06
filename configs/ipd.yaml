@@ -1,6 +1,7 @@
 hydra:
     run:
-        dir: "${oc.env:SCRATCH}/llm_negotiation/${experiment.name}"
+        dir: "${oc.env:SCRATCH}/llm_negotiation/${now:%Y_%m}/${experiment.name}"
+
     job:
         chdir: false
 
@@ -8,8 +9,8 @@ experiment:
     name: "ipd"
     method: generate_and_train
     description: "no description"
-    nb_epochs: 500
-    nb_matches_per_iteration: 64
+    nb_epochs: 10
+    nb_matches_per_iteration: 2
     reinit_matches_each_it: true
     checkpoint_every_n_iterations: 25
     start_epoch: 0
@@ -24,7 +25,9 @@ common_agent_kwargs: &common_agent_kwargs
     max_errors: 0
     allow_reasoning: false
     max_reasoning_chars: 0
-
+    cooperate_string: <A>
+    defect_string: <B>
+    strategy_prompt: ""
     intro_prompt: |
         Welcome to an iterated game. You are playing against another agent.
 
@@ -47,152 +50,109 @@ common_agent_kwargs: &common_agent_kwargs
     goal_prompt: |
         Your goal is to maximize your utility.
 
-matches:
-    env_class: "IPDEnv"
-    agent_class: "IPDAgent"
+agent_0_id: Alice
+agent_1_id: Bob
+agent_ids: ["Alice", "Bob"]
 
-    max_length: 30
-    continuation_prob: 0.85
-    same_length_batch: True
-
-    # If set to 0, existing setup will run where utilities are randomly sampled at the beginning of each round.
-    # If set to 1, all utilities will be calculated beforehand but rloo rewards will also be only calculated per game.
-    nb_matches_with_same_roundwise_utilities: null
-
-    log_func: log_ipd_match
-
-    stop_condition: game_over_condition
-    stop_condition_kwargs: {}
-
-    run_batched_matches_args:
-        nb_parallel_matches: -1
-
-    env_kwargs:
-        agents: ["Alice", "Bob"]
+markov_games:
+    runner_method_name: LinearRunner
+    simulation_class_name: IPD
+    simulation_init_args:
+        rounds_per_game: 10
+        cooperate_actions: ["<A>"]
+        defect_actions: ["<B>"]
+        agent_ids: ${agent_ids}
         reward: 3
         punishment: 1
         temptation: 5
         sucker: 0
-
     agents:
-        Alice:
-            kwargs:
+        0:
+            agent_id: ${agent_0_id}
+            agent_class_name: IPDAgent
+            policy_id: base_llm/agent_adapter
+            init_kwargs:
                 <<: *common_agent_kwargs
-                agent_id: "Alice"
-                policy_id: "qwen/self_play_agent"
-        Bob:
-            kwargs:
+
+        1:
+            agent_id: ${agent_1_id}
+            agent_class_name: IPDAgent
+            policy_id: base_llm/agent_adapter
+            init_kwargs:
                 <<: *common_agent_kwargs
-                agent_id: "Bob"
-                policy_id: "qwen/self_play_agent"
+
+    log_func: log_ipd_match
+
+    run_batched_matches_args:
+        nb_parallel_matches: -1
 
 temperature: 1.0
 
 models:
-    qwen:
+    base_llm:
         class: LeanLocalLLM
         init_args:
-            max_model_length: 1e4
-            device: "cuda"
-            restrict_tokens: None
-            model_name: "Qwen/Qwen2.5-7B-Instruct"
-            generation_args:
-                max_new_tokens: 1
-                do_sample: True
-                temperature: ${temperature}
-                top_k: 0
-                top_p: 1.0
-                repetition_penalty: 1
-            vllm_params:
-                max_model_len: 1.3e4
-                gpu_memory_utilization: 0.45
-                enable_lora: True
-                enable_prefix_caching: True
-                enable_sleep_mode: True
-                max_lora_rank: 64
-                dtype: "bfloat16"
-            shared_hf_llm_init_kwargs:
-                torch_dtype: "bfloat16"
-                device_map: "auto"
-                attn_implementation: "flash_attention_2"
+            name: base_llm
+            model_name: qwen/Qwen2.5-7B-Instruct
             adapter_configs:
-                self_play_agent:
-                    task_type: "CAUSAL_LM"
-                    r: 64
+                agent_adapter:
+                    task_type: CAUSAL_LM
+                    r: 32
                     lora_alpha: 128
                     lora_dropout: 0.0
-                    target_modules: "all-linear"
-                self_play_critic:
-                    task_type: "CAUSAL_LM"
-                    r: 64
+                    target_modules: all-linear
+                critic_adapter:
+                    task_type: CAUSAL_LM
+                    r: 32
                     lora_alpha: 128
                     lora_dropout: 0.0
-                    target_modules: "all-linear"
+                    target_modules: all-linear
+
+
 
 critics:
-    self_play_agent_critic:
-        pointer: ["qwen", "self_play_critic"]
+    agent_critic:
+        module_pointer: ["base_llm", "critic_adapter"]
 
 optimizers:
-    self_play_agent_optimizer:
-        pointer: ["qwen", "self_play_agent"]
-        optimizer_class: torch.optim.Adam
+    agent_optimizer:
+        module_pointer: ["base_llm", "agent_adapter"]
+        optimizer_class_name: torch.optim.Adam
         init_args:
             lr: 1e-6
             weight_decay: 0.0
 
-    self_play_agent_critic_optimizer:
-        pointer: self_play_agent_critic
-        optimizer_class: torch.optim.Adam
+    critic_optimizer:
+        module_pointer: agent_critic
+        optimizer_class_name: torch.optim.Adam
         init_args:
             lr: 1e-6
             weight_decay: 0.0
 
 trainers:
-    qwen_trainer:
-        class: AdAlignTrainer
-        pointers:
-            model: ["qwen", "self_play_agent"]
-            optimizer: "self_play_agent_optimizer"
-            critic: "self_play_agent_critic"
-            critic_optimizer: "self_play_agent_critic_optimizer"
-
-        init_args:
+    agent_trainer:
+        class: BaseTrainer
+        module_pointers:
+            policy: ["base_llm", "agent_adapter"]
+            policy_optimizer: agent_optimizer
+            critic: agent_critic
+            critic_optimizer: critic_optimizer
+        kwargs:
             entropy_coeff: 0.0
             kl_coeff: 0.0
             gradient_clipping: 1.0
             restrict_tokens: null
-            mini_batch_size: 1
+            mini_batch_size: 4
             use_gradient_checkpointing: True
             temperature: ${temperature}
             device: "cuda:0"
-            discount_factor: 1.0
-            use_gae: False
+            use_gae: True
             gae_lambda_for_credits: 0.92
             gae_lambda_for_targets: 0.92
+            discount_factor: 1.0
+            use_rloo: True
             debug_mode: False
-            use_sum_credits: False
-            use_advantage_alignment: False
-            ad_align_normalize_advantages: False
-            ad_align_force_coop_first_step: False
-            use_sign_in_ad_align: False
-            ad_align_clipping: null
-            use_time_regularization_in_ad_align: False
-            use_variance_regularization_in_ad_align: False
-            ad_align_beta: 1.0
 
-            
 
-training:
-    agents:
-        Alice:
-            training_data_func: ipd_generate_training_data_from_raw
-            training_data_func_args:
-                exclude_errors: False
-                normalize_round_points: True
-
-        Bob:
-            training_data_func: ipd_generate_training_data_from_raw
-            training_data_func_args:
-                exclude_errors: False
-                normalize_round_points: True
+train_on_which_data:
+    agent_trainer: ${agent_ids} # take gradient steps on the reinforce data of both agents at once

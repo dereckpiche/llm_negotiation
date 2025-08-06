@@ -26,7 +26,9 @@ async def LinearRunner(
 
     # Export the tree & its schema
     os.makedirs(output_folder, exist_ok=True)
-    export_path = os.path.join(output_folder, markov_game.id + ".json")
+    export_path = os.path.join(
+        output_folder, "mgid:" + str(root.id) + "_rollout_tree" + ".json"
+    )
     with open(export_path, "w") as f:
         f.write(root.model_dump_json(indent=4))
 

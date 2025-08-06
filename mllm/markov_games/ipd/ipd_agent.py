@@ -1,3 +1,4 @@
+import copy
 import json
 import random
 import re
@@ -8,7 +9,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from mllm.markov_games.agent import Agent
 from mllm.markov_games.rollout_tree import AgentActLog, ChatTurn
-import copy
 
 
 @dataclass
@@ -34,8 +34,8 @@ class IPDAgent(Agent):
     max_errors: int  # Maximum number of errors allowed before default action
     allow_reasoning: bool  # Whether to allow reasoning in the response
     max_reasoning_chars: int  # Maximum number of characters for reasoning
-    cooperate_strings: List[str]  # strings parsed as playing cooperate by simulation
-    defect_strings: List[str]  # strings parsed as playing defect by simulation
+    cooperate_string: str  # string parsed as playing cooperate by simulation
+    defect_string: str  # string parsed as playing defect by simulation
 
     def __post_init__(self):
         self.state = IPDAgentState(
@@ -77,9 +77,9 @@ class IPDAgent(Agent):
 
             # If not new round, try to get valid action from policy
             prompt = [chat_item.dict() for chat_item in self.state.chat_history]
-            # TODO: regex should be optionnal and change with respect to class parameters
-            # policy_output = await self.policy(prompt=prompt, regex="(C|D)")
-            policy_output = await self.policy(prompt=prompt)
+            policy_output = await self.policy(
+                prompt=prompt, regex=f"({self.cooperate_string}|{self.defect_string})"
+            )
             self.state.chat_history.append(
                 ChatTurn(
                     agent_id=self.agent_id,
@@ -89,29 +89,12 @@ class IPDAgent(Agent):
                 )
             )
 
-            if policy_output in self.cooperate_strings + self.defect_strings:
-                action = policy_output
-                action_is_ready = True
-
-            elif self.state.nb_retries < self.max_errors:
-                self.state.chat_history.append(
-                    ChatTurn(
-                        agent_id=self.agent_id,
-                        role="user",
-                        content="You have made a formatting error. Try again.",
-                        is_state_end=False,
-                    )
-                )
-                self.state.nb_retries += 1
-
-            else:
-                action = "ERROR"
-                action_is_ready = False
+            action = policy_output
+            action_is_ready = True
 
         self.state.nb_retries = 0  # reset retry counter
         agent_step_log = AgentActLog(
-            chat_turns = self.state.chat_history[self.state.chat_counter:],
-            info = None
+            chat_turns=self.state.chat_history[self.state.chat_counter :], info=None
         )
         self.state.chat_counter = len(self.state.chat_history)
         return action, agent_step_log

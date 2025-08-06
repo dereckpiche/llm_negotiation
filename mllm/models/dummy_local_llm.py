@@ -2,10 +2,11 @@
 To debug the code without loading LLM engines.
 """
 
+from collections.abc import Callable
 from typing import List
 
 from mllm.models.lean_local_llm import LeanLocalLLM
-from collections.abc import Callable
+
 
 class DummyLocalLLM(LeanLocalLLM):
     # def __init__(self, *args, **kwargs):
@@ -37,6 +38,8 @@ class DummyLocalLLM(LeanLocalLLM):
 
     async def generate(self, prompt, regex=None):
         import random
+
         n: float = random.random()
-        if n < 0.5: return "C"
-        return "D"
+        if n < 0.5:
+            return "<A>"
+        return "<B>"
