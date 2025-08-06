@@ -10,7 +10,7 @@ experiment:
     method: generate_and_train
     description: "no description"
     nb_epochs: 10
-    nb_matches_per_iteration: 2
+    nb_matches_per_iteration: 32
     reinit_matches_each_it: true
     checkpoint_every_n_iterations: 25
     start_epoch: 0
@@ -56,6 +56,7 @@ agent_ids: ["Alice", "Bob"]
 
 markov_games:
     runner_method_name: LinearRunner
+    runner_kwargs: {}
     simulation_class_name: IPD
     simulation_init_args:
         rounds_per_game: 10
@@ -92,8 +93,26 @@ models:
     base_llm:
         class: LeanLocalLLM
         init_args:
-            name: base_llm
-            model_name: qwen/Qwen2.5-7B-Instruct
+            llm_id: base_llm
+            model_name: Qwen/Qwen3-4B-Instruct-2507
+            inference_backend: vllm
+            hf_kwargs:
+                device_map: "auto"
+                torch_dtype: "bfloat16"
+                max_memory: {0: "15GiB"}
+                attn_implementation: "flash_attention_2"
+            inference_backend_init_kwargs:
+                max_model_len: 1e4
+                max_num_seqs: 64 # 64 is the max number of sequences that can be generated in parallel
+                gpu_memory_utilization: 0.5
+                dtype: "bfloat16"
+                trust_remote_code: True
+                max_lora_rank: 32
+            inference_backend_sampling_params:
+                temperature: 1.0
+                top_p: 1.0
+                max_tokens: 400
+                top_k: 0
             adapter_configs:
                 agent_adapter:
                     task_type: CAUSAL_LM
@@ -146,7 +165,7 @@ trainers:
             use_gradient_checkpointing: True
             temperature: ${temperature}
             device: "cuda:0"
-            use_gae: True
+            use_gae: False
             gae_lambda_for_credits: 0.92
             gae_lambda_for_targets: 0.92
             discount_factor: 1.0

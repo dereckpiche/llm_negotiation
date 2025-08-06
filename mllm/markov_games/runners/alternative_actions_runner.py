@@ -60,8 +60,8 @@ async def run_with_unilateral_alt_action(
 async def AlternativeActionsRunner(
     markov_game: MarkovGame,
     output_folder: str,
-    nb_alternative_actions: int = 1,
-    max_depth: int = 1,
+    nb_alternative_actions: int,
+    max_depth: int,
 ):
     """
     This method generates a trajectory with partially completed branches,
