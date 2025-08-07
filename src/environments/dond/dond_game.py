@@ -46,6 +46,7 @@ class DondEnv:
         """
 
         # A game can be uniquely identified by the combination of match_id and group_id
+        # ASK: are game_id and match_id the same thing?
         self.match_id = game_id
         self.game_id = game_id
         # Minibatch / group id for which roundwise utilities are same
@@ -54,6 +55,7 @@ class DondEnv:
         self.game_rng = rng
         self.agents = agents
         self.roles = ["starting_negotiator", "responding_negotiator"]
+        self.default_role_points = -1
         self.mode = mode
         self.max_messages = max_messages
         self.min_messages = min_messages
@@ -84,9 +86,15 @@ class DondEnv:
         )
         self.role_assignator_func_kwargs = role_assignator_func_kwargs or {}
         self.role_assignator_func_kwargs["rng"] = self.game_rng
-        self.role_assignator_func_kwargs["first_agent"] = (
-            agents[0] if self.group_id % 2 == 0 else agents[1]
-        )  # TODO: make this flexible -- this is a hack, will cause problems later
+        random_number = self.game_rng.random()
+        if random_number > 0.5:
+            first_agent = agents[0]
+        else:
+            first_agent = agents[1]
+        self.role_assignator_func_kwargs["first_agent"] = first_agent
+        # self.role_assignator_func_kwargs["first_agent"] = (
+        #     agents[0] if self.group_id % 2 == 0 else agents[1]
+        # )  # TODO: make this flexible -- this is a hack, will cause problems later
         self.other_values_visibility = other_values_visibility
 
         # Store the points_attribution_method
@@ -189,7 +197,7 @@ class DondEnv:
             if self.has_finalized:
                 # We are in the second finalization phase.
                 if not is_finalization:
-                    self.points = {role: 0 for role in self.roles}
+                    self.points = {role: -1 for role in self.roles}
                     self.agreement_reached = False
                 else:
                     self.finalize(processed_response)
@@ -279,7 +287,11 @@ class DondEnv:
         current_agent = self.get_current_agent()
 
         # Handle explicit rejection
-        if finalization == "reject_flag":
+        if (
+            finalization == "reject_flag"
+            or finalization is None
+            or finalization == "[ERROR]"
+        ):
             # Mark the agreement as explicitly rejected
             self.agreement_reached = False
             self.role_props[current_role] = {"reject_flag": True}
@@ -363,7 +375,7 @@ class DondEnv:
         """
         # Ensure points are initialized for all roles
         if not all(role in self.points for role in self.roles):
-            self.points = {role: 0 for role in self.roles}
+            self.points = {role: self.default_role_points for role in self.roles}
 
         self.round_agent_roles.append(self.agent_to_role.copy())
         self.round_quantities.append(self.quantities)
@@ -381,7 +393,9 @@ class DondEnv:
         self.archive_agent_states()
         self.has_finalized = False
         self.role_props = {role: {} for role in self.roles}
-        self.points = {role: 0 for role in self.roles}  # Ensure points are reset
+        self.points = {
+            role: self.default_role_points for role in self.roles
+        }  # Ensure points are reset
         self.agreement_reached = False
         self.last_raw_response = None
         self.last_processed_response = None
@@ -420,7 +434,7 @@ class DondEnv:
             self.has_finalized = False
             self.role_props = {role: {} for role in self.roles}
             self.points = {
-                role: 0 for role in self.roles
+                role: self.default_role_points for role in self.roles
             }  # Ensure points are initialized
             self.agreement_reached = False
             self.last_raw_response = None
@@ -543,7 +557,9 @@ def dond_random_setup(items, min_quant, max_quant, min_val, max_val, rng):
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
 
-def independent_random_vals(items, min_quant, max_quant, min_val, max_val, rng):
+def independent_random_vals(
+    items, min_quant, max_quant, min_val, max_val, rng, round_normalize=False
+):
     quantities = {item: int(rng.integers(min_quant, max_quant + 1)) for item in items}
     val_starting_negotiator = {
         item: int(rng.integers(min_val, max_val + 1)) for item in items
@@ -551,6 +567,19 @@ def independent_random_vals(items, min_quant, max_quant, min_val, max_val, rng):
     val_responding_negotiator = {
         item: int(rng.integers(min_val, max_val + 1)) for item in items
     }
+    if round_normalize:
+        sum_vals = {
+            item: val_starting_negotiator[item] + val_responding_negotiator[item]
+            for item in items
+        }
+        val_starting_negotiator = {
+            item: int(val_starting_negotiator[item] * max_quant / sum_vals[item])
+            for item in items
+        }
+        val_responding_negotiator = {
+            item: int(val_responding_negotiator[item] * max_quant / sum_vals[item])
+            for item in items
+        }
     return items, quantities, (val_starting_negotiator, val_responding_negotiator)
 
 
@@ -625,18 +654,9 @@ def alternating_role_assignator(state, **kwargs):
     rng = kwargs["rng"]
     first_agent = kwargs["first_agent"]
 
-    if first_agent == None:
-        random_number = rng.random()
-        if random_number > 0.5:
-            first_agent = agents[0]
-            second_agent = agents[1]
-        else:
-            first_agent = agents[1]
-            second_agent = agents[0]
-    else:
-        for agent in agents:
-            if agent != first_agent:
-                second_agent = agent
+    for agent in agents:
+        if agent != first_agent:
+            second_agent = agent
 
     if round_number % 2 == 0:
         # Even rounds: agent_0 is "starting_negotiator"
@@ -691,7 +711,7 @@ def regular_set_points(state, **kwargs):
     for role in roles:
         if role_props.get(role, {}).get("reject_flag", False):
             # Agreement rejected, everyone gets 0 points
-            return {role: 0 for role in roles}, False
+            return {role: -1 for role in roles}, False
 
     # Verify if finalizations match the total quantities
     valid_agreement = True
@@ -724,7 +744,7 @@ def regular_set_points(state, **kwargs):
         return {role: utilities[role] for role in roles}, valid_agreement
 
 
-def negotiation_payoff(state, use_max_divisor=True):
+def negotiation_payoff(state, use_max_divisor=True, value_dict=None):
     """
     Implements the payoff formula r_a = ∑ (p_a * q_a * v_a) / max(q, p_a + p_o) from https://arxiv.org/pdf/2406.14662
 
@@ -756,7 +776,7 @@ def negotiation_payoff(state, use_max_divisor=True):
     for role in roles:
         if role_props.get(role, {}).get("reject_flag", False):
             # Agreement rejected, everyone gets 0 points
-            return {role: 0 for role in roles}, False
+            return {role: -1 for role in roles}, False
 
     # Verify if finalizations match the total quantities
     valid_agreement = True
@@ -774,7 +794,15 @@ def negotiation_payoff(state, use_max_divisor=True):
 
         for item in items:
             p_a = role_props[role].get(item, 0)
-            v_a = role_values[role].get(item, 0)
+            if value_dict is not None:
+                v_a = role_values[role].get(item, 0)
+                v_b = role_values[opponent_role].get(item, 0)
+                if v_a < v_b:
+                    v_a = 1
+                else:
+                    v_a = value_dict[item]
+            else:
+                v_a = role_values[role].get(item, 0)
             q_a = quantities.get(item, 0)
 
             p_o = role_props[opponent_role].get(item, 0)

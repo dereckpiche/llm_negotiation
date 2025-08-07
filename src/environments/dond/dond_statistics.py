@@ -32,8 +32,8 @@ Usage:
 
 import re
 
-from utils.common_imports import *
-from utils.leafstats import *
+from src.utils.common_imports import *
+from src.utils.leafstats import *
 
 ############################################################
 # Helper functions
@@ -546,6 +546,85 @@ def calc_items_given_to_self(data, format_options=None):
     return "items_given_to_self_percentage", percentage
 
 
+def calc_payoff_scores(data, format_options=None):
+    agent_payoff = 0
+    coagent_payoff = 0
+    agent_value = 0
+    coagent_value = 0
+    agent_value_high = 0
+    coagent_value_high = 0
+    for game_data in data:
+        game_info = game_data[-1].get("game_info", {})
+        agent_name = game_data[-1].get("agent_name")
+
+        if not agent_name or not game_info:
+            continue
+
+        # Process each round
+        for i, state in enumerate(game_info["round_agent_roles"]):
+            agent_role = state.get(agent_name)
+            if not agent_role:
+                continue
+
+            # Find co-agent
+            coagent_name = next(
+                (name for name in state.keys() if name != agent_name), None
+            )
+            coagent_role = state.get(coagent_name)
+
+            if (
+                i < len(game_info["round_values"])
+                and i < len(game_info["round_quantities"])
+                and i < len(game_info["round_points"])
+            ):
+                values = game_info["round_values"][i][agent_role]
+                coagent_values = game_info["round_values"][i][coagent_role]
+                quantities = game_info["round_quantities"][i]
+                round_points = game_info["round_points"][i]
+                if round_points[agent_role] < 0 or round_points[coagent_role] < 0:
+                    # game error, skip
+                    continue
+                agent_value += values["coins"]
+                coagent_value += coagent_values["coins"]
+                # print(f"agent_value: {agent_value}, coagent_value: {coagent_value}")
+                if values["coins"] > coagent_values["coins"]:
+                    agent_value_high += values["coins"]
+                elif values["coins"] < coagent_values["coins"]:
+                    coagent_value_high += coagent_values["coins"]
+                else:
+                    agent_value_high += 0.5 * values["coins"]
+                    coagent_value_high += 0.5 * coagent_values["coins"]
+
+                agent_payoff += round_points[agent_role]
+                coagent_payoff += round_points[coagent_role]
+
+    agent_payoff_per_value = agent_payoff / (agent_value)
+    coagent_payoff_per_value = coagent_payoff / (coagent_value)
+    print(f"Agent Value: {agent_value}, Coagent Value: {coagent_value}")
+    print(
+        f"Agent Value High: {agent_value_high}, Coagent Value High: {coagent_value_high}"
+    )
+    print(f"Agent Payoff: {agent_payoff}, Coagent Payoff: {coagent_payoff}")
+    print(
+        f"Agent payoff per value {agent_payoff_per_value} Coagent payoff per value {coagent_payoff_per_value}"
+    )
+    agent_coop_payoff_per_value = (agent_value_high) * 10 / (agent_value)
+    coagent_coop_payoff_per_value = (coagent_value_high) * 10 / (coagent_value)
+    print(
+        f"Agent coop payoff per value {agent_coop_payoff_per_value} Coagent coop payoff per value {coagent_coop_payoff_per_value}"
+    )
+    exit()
+
+    return "payoff_scores", {
+        "agent_value": agent_value,
+        "coagent_value": coagent_value,
+        "agent_value_high": agent_value_high,
+        "coagent_value_high": coagent_value_high,
+        "agent_payoff": agent_payoff,
+        "coagent_payoff": coagent_payoff,
+    }
+
+
 def calc_rounds_count(data, format_options=None):
     """
     Counts the total number of rounds across all games.
@@ -913,6 +992,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     stat_functions = [
+        calc_payoff_scores,
         calc_sum_points_percentage_of_max,
         calc_items_given_to_self,
         get_coins_allocation_efficiency,

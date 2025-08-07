@@ -2,11 +2,11 @@ defaults:
   - negotiation_game.yaml
 
 experiment:
-  name: "negotiation_game_faceoff_${now:%Y-%m-%d___%H-%M-%S}"
+  name: "negotiation_game_faceoff_o4mini_vs_lying_qwen"
   # name: "${now:%Y-%m-%d___%H-%M-%S}_no_name" (having timestamp is good for debugging, but it is difficult to restart with preemption)
   description: "Agents facing off."
   nb_epochs: 1
-  nb_matches_per_iteration: 256
+  nb_matches_per_iteration: 10
   checkpoint_every_n_iterations: -1 # don't save checkpoint
   base_seed: 344
 
@@ -31,7 +31,7 @@ matches:
     Alice:
       kwargs:
         agent_name: "Alice"
-        policy_id: "qwen/adapter_alice"
+        policy_id: "o4-mini/adapter_alice"
     Bob:
       kwargs:
         agent_name: "Bob"
@@ -47,12 +47,45 @@ models:
       vllm_params:
         gpu_memory_utilization: 0.9
       adapter_configs:
-        adapter_alice:
+        # adapter_alice:
+          # type: "lora"
+          # hf_server_import_kwargs:
+          #   repo_id: LLMnegotiation/sum_of_rewards
+          #   repo_type: model
+          #   allow_patterns: ["seed_344/sp_adapter/model/*"]
+          # optimizer_method: "SGD"
+          # optimizer_kwargs: {}
+          # lora_kwargs:
+          #   task_type: "CAUSAL_LM"
+          #   r: 64
+          #   lora_alpha: 128
+          #   lora_dropout: 0.0
+          #   target_modules: "all-linear"
+          # local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/gpt4o_vs_qwen/seed_3/checkpoints/ad_bob-iter_125-2025-05-09_17-10-49
+          # optimizer_method: "SGD"
+          # optimizer_kwargs: {}
+          # lora_kwargs:
+          #   task_type: "CAUSAL_LM"
+          #   r: 64
+          #   lora_alpha: 128
+          #   lora_dropout: 0.0
+          #   target_modules: "all-linear"
+
+        adapter_bob:
           type: "lora"
-          hf_server_import_kwargs:
-            repo_id: LLMnegotiation/sum_of_rewards
-            repo_type: model
-            allow_patterns: ["seed_344/sp_adapter/model/*"]
+          # hf_server_import_kwargs:
+          #   repo_id: LLMnegotiation/greedy_rl
+          #   repo_type: model
+          #   allow_patterns: ["seed_645/sp_adapter/model/*"]
+          # optimizer_method: "SGD"
+          # optimizer_kwargs: {}
+          # lora_kwargs:
+          #   task_type: "CAUSAL_LM"
+          #   r: 64
+          #   lora_alpha: 128
+          #   lora_dropout: 0.0
+          #   target_modules: "all-linear"
+          local_import_adapter_path: /home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/gpt4o_vs_qwen/seed_3/checkpoints/ad_bob-iter_125-2025-05-09_17-10-49
           optimizer_method: "SGD"
           optimizer_kwargs: {}
           lora_kwargs:
@@ -62,22 +95,8 @@ models:
             lora_dropout: 0.0
             target_modules: "all-linear"
 
-        adapter_bob:
-          type: "lora"
-          hf_server_import_kwargs:
-            repo_id: LLMnegotiation/greedy_rl
-            repo_type: model
-            allow_patterns: ["seed_645/sp_adapter/model/*"]
-          optimizer_method: "SGD"
-          optimizer_kwargs: {}
-          lora_kwargs:
-            task_type: "CAUSAL_LM"
-            r: 64
-            lora_alpha: 128
-            lora_dropout: 0.0
-            target_modules: "all-linear"
-  # 4o:
-  #   class: server_llm
-  #   init_args:
-  #     model_name: "gpt-4o"
-  #     api_key: None
+  o4-mini:
+    class: server_llm
+    init_args:
+      model: "o4-mini"
+      api_key: ${oc.env:OPENAI_API_KEY}

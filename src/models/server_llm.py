@@ -39,7 +39,7 @@ class ServerLLM:
     @backoff.on_exception(backoff.expo, RateLimitError)
     def _sync_fetch(self, prompt: dict) -> str:
         response = self.client.chat.completions.create(
-            model=self.model, messages=prompt, max_tokens=150
+            model=self.model, messages=prompt
         )
         return response.choices[0].message.content.strip()
 
