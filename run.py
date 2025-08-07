@@ -32,15 +32,13 @@ from mllm.markov_games.runners.alternative_actions_runner import (
     AlternativeActionsRunner,
 )
 from mllm.markov_games.runners.linear_runner import LinearRunner
-from mllm.models.dummy_local_llm import DummyLocalLLM
-from mllm.models.lean_local_llm import LeanLocalLLM
+from mllm.models.large_language_model_local import LeanLocalLLM
+
+# from mllm.models.large_language_model_server import ServerLLM
 from mllm.models.scalar_critic import ScalarCritic
-from mllm.models.server_llm import ServerLLM
 from mllm.training.advantage_alignment_trainer import AdAlignTrainer
 from mllm.training.reinforce_trainer import BaseTrainer
-from mllm.training.tallies import Tally
 from mllm.utils.dict_get_path import get_from_nested_dict
-from mllm.utils.get_stochastic_game_lengths import get_stochastic_game_lengths
 from mllm.utils.kill_sglang import kill_sglang
 from mllm.utils.update_start_epoch import update_start_epoch
 
@@ -100,7 +98,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
     # Init llms + llm adapters
     llms_dict = {}
     for llm_id, model_config in cfg["models"].items():
-        model_class: LeanLocalLLM | DummyLocalLLM | ServerLLM = globals()[
+        model_class: LeanLocalLLM = globals()[  # TODO: Add server llm
             model_config["class"]
         ]
         llms_dict[llm_id] = model_class(
@@ -225,7 +223,6 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
             markov_games=markov_games,
         )
         generation_end_time = time.time()
-        print("Done generating rollouts")
 
         # Process raw data into training data using the specified functions for each agent
 
@@ -276,13 +273,16 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
                 )
                 trainer.train()
 
+        # Export trainer stuff
+        for trainer in trainers.values():
+            trainer.export_optimizer_states()
+            trainer.export_training_metrics(
+                path=os.path.join(it_folder, trainer_id + "_log")
+            )
+
         # Export all HF adapters weights (needed for vLLM inference)
         for llm in llms_dict.values():
             llm.export_adapters()
-
-        # Export optimizer states
-        for trainer in trainers.values():
-            trainer.export_optimizer_states()
 
         training_end_time = time.time()
 

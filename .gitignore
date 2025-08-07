@@ -1,10 +1,12 @@
 # macOS generated files
 .DS_Store
+.analyse_venv
 .venv
 home/
 home
 *.svg
 output/
+tests/inputs_for_tests
 tests/outputs_for_tests
 *.pdf
 outputs/

@@ -35,3 +35,14 @@ pip install -e .
 pip install pre-commit
 pre-commit install
 ```
+
+## Running Experiments
+
+```bash
+python run.py --config-name your-config
+```
+
+To render
+```bash
+python scripts/basic_render.py --global_folder your-experiment-seed-xxx
+```
