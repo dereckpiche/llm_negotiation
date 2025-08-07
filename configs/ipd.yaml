@@ -103,7 +103,7 @@ models:
                 attn_implementation: "flash_attention_2"
             inference_backend_init_kwargs:
                 max_model_len: 1e4
-                max_num_seqs: 64 # 64 is the max number of sequences that can be generated in parallel
+                # max_num_seqs: 64 # the max number of sequences that can be generated in parallel
                 gpu_memory_utilization: 0.5
                 dtype: "bfloat16"
                 trust_remote_code: True
@@ -168,9 +168,10 @@ trainers:
             use_gae: False
             gae_lambda_for_credits: 0.92
             gae_lambda_for_targets: 0.92
-            discount_factor: 1.0
+            discount_factor: 0.8
             use_rloo: True
             enable_tokenwise_logging: False
+            pg_loss_normalization: "batch"
 
 
 train_on_which_data:

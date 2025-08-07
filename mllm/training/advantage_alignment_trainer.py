@@ -292,7 +292,7 @@ class AdAlignTrainer(BaseTrainer):
                 )
             )  # (∑jT * A, jT')
             BAAs = torch.nested.to_padded_tensor(
-                BAAs, padding=0.0
+                BAAs.contiguous(), padding=0.0
             )  # (∑jT * A, P) # necessary for slice operations
             batch_branching_time_steps = torch.Tensor(batch_branching_time_steps).to(
                 dtype=torch.int64, device=BAAs.device
