@@ -64,6 +64,7 @@ class BaseTrainer:
         temperature: float,
         device: str,
         use_gae: bool,
+        pg_loss_normalization: Literal["batch", "nb_tokens"],
         use_rloo: bool,
         gae_lambda_for_credits: float,
         gae_lambda_for_targets: float,
@@ -149,6 +150,7 @@ class BaseTrainer:
         self.discount_factor = discount_factor
         self.enable_tokenwise_logging = enable_tokenwise_logging
         self.reward_normalizing_constant = reward_normalizing_constant
+        self.pg_loss_normalization = pg_loss_normalization
 
     def mask_non_restricted_token_logits(self, logits: torch.Tensor) -> torch.Tensor:
         """
@@ -227,8 +229,23 @@ class BaseTrainer:
             mb_size = self.mini_batch_size
             nb_rollouts = len(training_batch)
             self.tally.add_metric(path=["nb_rollouts"], metric=nb_rollouts)
-            gradient_accumulation_steps = np.ceil(nb_rollouts / mb_size).astype(int)
 
+            # Get total number of tokens generated
+            total_tokens_generated = 0
+            for att_mask in training_batch.batch_action_mask.unbind():
+                total_tokens_generated += att_mask.sum()
+
+            # Obtain loss normalization
+            if self.pg_loss_normalization == "nb_tokens":
+                normalization_factor = total_tokens_generated
+            elif self.pg_loss_normalization == "batch":
+                normalization_factor = nb_rollouts
+            else:
+                raise ValueError(
+                    f"Invalid pg_loss_normalization: {self.pg_loss_normalization}"
+                )
+
+            # Gradient accumulation for each mini-batch
             for mb in range(0, nb_rollouts, mb_size):
                 loss = 0.0
                 training_mb = training_batch[mb : mb + mb_size]
@@ -413,8 +430,12 @@ class BaseTrainer:
 
                     loss += mb_kl
 
+                logger.info(
+                    f"Accumulated the policy gradient loss for {total_tokens_generated} tokens."
+                )
+
                 # Accumulate gradient
-                loss /= gradient_accumulation_steps
+                loss /= normalization_factor
                 self.accelerator.backward(loss)
 
                 # ensure gpu memory is freed

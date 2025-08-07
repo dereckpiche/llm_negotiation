@@ -1,7 +1,7 @@
 # To quickly check if code still runs
 
 defaults:
-    - ipd.yaml
+    - ipd_ad_align.yaml
 
 experiment:
     name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
@@ -19,7 +19,7 @@ agent_ids: ["Alice", "Bob"]
 
 markov_games:
     simulation_init_args:
-        rounds_per_game: 5
+        rounds_per_game: 10
 
 temperature: 1.0
 
