@@ -1,6 +1,6 @@
 import torch
 
-from mllm.training.tallies import Tally
+from mllm.training.tally_basic import Tally
 
 NestedTensor = torch.Tensor
 
@@ -50,8 +50,8 @@ def get_discounted_returns(
     return discounted_returns
 
 
-def get_rloo_credits(credits):
-    credits = torch.nested.to_padded_tensor(credits, padding=0.0)
+def get_rloo_credits(credits: torch.Tensor):  # (B, S)
+    assert credits.dim() == 2, "Wrong dimensions."
     n = credits.shape[0]
     if n == 1:
         return credits

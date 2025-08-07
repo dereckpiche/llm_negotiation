@@ -14,6 +14,8 @@ from mllm.markov_games.rollout_tree import (
 )
 from mllm.training.credit_methods import get_advantage_alignment_credits
 from mllm.training.reinforce_trainer import BaseTrainer
+from mllm.training.tally_basic import Tally
+from mllm.training.tally_tokenwise import ContextualizedTokenwiseTally
 from mllm.training.tokenize_chats import process_training_chat
 from mllm.training.training_data_utils import (
     TrainingBatch,
@@ -136,6 +138,7 @@ class AdAlignTrainer(BaseTrainer):
         self.ad_align_clipping = ad_align_clipping
         self.ad_align_force_coop_first_step = ad_align_force_coop_first_step
         self.training_data: dict[AgentId, AdAlignTrainingData] = {}
+        self.debug_path_list: list[str] = []
 
     def set_pre_advantage_alignment_data(
         self, agent_id: str, roots: list[RolloutTreeRootNode]
@@ -167,12 +170,12 @@ class AdAlignTrainer(BaseTrainer):
         A = len(roots[0].child.branches[agent_id])  # Number of alternative actions
 
         for root in roots:
-            logger.info(
-                f"Processing main trajectory of root {root.id} for agent {agent_id}"
+            rollout_id = root.id
+            self.debug_path_list.append(
+                "mgid:" + str(rollout_id) + "_agent_id:" + agent_id
             )
-
             # Get main trajectory
-            batch_rollout_ids.append(root.id)
+            batch_rollout_ids.append(rollout_id)
             main_chat, main_rewards = get_main_chat_list_and_rewards(
                 agent_id=agent_id, root=root
             )
@@ -188,7 +191,6 @@ class AdAlignTrainer(BaseTrainer):
             batch_state_ends_mask.append(state_ends_mask)
             batch_rewards.append(main_rewards)
             jT = main_rewards.numel()  # TODO: better than this
-            logger.info(f"Main trajectory length (jT): {jT}")
             jT_list.append(jT)
 
             # We get the branching time steps for each of the `jT` time steps in the main trajectory.
@@ -196,9 +198,6 @@ class AdAlignTrainer(BaseTrainer):
 
             # Get all of the (jT*A) alternative trajectories in the tree
             # (jT is the number of time steps in the main trajectory, A is the number of alternative actions)
-            logger.info(
-                f"Processing alternative trajectory of root {root.id} for agent {agent_id}"
-            )
             alternative_chats, alternative_rewards = get_alternative_chat_histories(
                 agent_id=agent_id, root=root
             )
@@ -224,7 +223,6 @@ class AdAlignTrainer(BaseTrainer):
         # Assert that number of alternative actions is constant
         # assert len(set(nb_alternative_actions)) == 1, "Number of alternative actions must be constant"
         # A = nb_alternative_actions[0]
-        logger.info(f"Number of alternative actions: {A}")
 
         trajectory_batch = TrajectoryBatch(
             rollout_ids=torch.Tensor(batch_rollout_ids),  # (B,)
@@ -273,9 +271,6 @@ class AdAlignTrainer(BaseTrainer):
                     alternative_batch_rewards, layout=torch.jagged
                 ),  # (∑jT * A, jT')
             )
-            batch_branching_time_steps = torch.Tensor(batch_branching_time_steps).to(
-                dtype=torch.int64, device=self.device
-            )  # (∑jT * A, 1)
 
         # Get Advantages & Train Critic
         with ressource_logger_context(
@@ -299,6 +294,9 @@ class AdAlignTrainer(BaseTrainer):
             BAAs = torch.nested.to_padded_tensor(
                 BAAs, padding=0.0
             )  # (∑jT * A, P) # necessary for slice operations
+            batch_branching_time_steps = torch.Tensor(batch_branching_time_steps).to(
+                dtype=torch.int64, device=BAAs.device
+            )  # (∑jT * A, 1)
             BAAs = torch.gather(
                 BAAs, dim=1, index=batch_branching_time_steps.unsqueeze(1)
             )  # (∑jT * A,) # (we only want the advantages where we branched out)
@@ -331,7 +329,7 @@ class AdAlignTrainer(BaseTrainer):
         Returns:
             AdvantagePacket: The advantage packet containing the agent's advantages.
         """
-        logger.info(f"Sharing advantage alignment data for {self.agent_id}")
+        logger.info(f"Sharing advantage alignment data.")
         advantage_packets = []
         for _, agent_data in self.training_data.items():
             advantage_packets.append(
@@ -348,7 +346,8 @@ class AdAlignTrainer(BaseTrainer):
         Receive advantage packets from other players.
         These contain the advantages of the other players' rollouts estimated by them.
         """
-        logger.info(f"Getting advantage alignment data for {self.agent_id}")
+        logger.info(f"Receiving advantage packets.")
+
         assert (
             2 >= len(advantage_packets) > 0
         ), "At least one advantage packet must be provided."
@@ -368,15 +367,17 @@ class AdAlignTrainer(BaseTrainer):
                     agent_advantages.shape[0] == agent_advantages.shape[0]
                 ), "Batch dimensions must match for advantage alignment."
                 # Get co-agent advantages in the right order
-                if B > 1:
-                    permutation = []
-                    for id in agent_rollout_ids:
-                        permutation.append(
-                            torch.where(id == co_agent_rollout_ids)[0].item()
-                        )
-                    co_agent_advantages = torch.permute(
-                        co_agent_advantages, permutation
+                permutation = []
+                for id in agent_rollout_ids:
+                    permutation.append(
+                        torch.where(id == co_agent_rollout_ids)[0].item()
                     )
+                co_agent_advantages = [
+                    co_agent_advantages.unbind()[i] for i in permutation
+                ]  # permute
+                co_agent_advantages = torch.nested.nested_tensor(
+                    co_agent_advantages, layout=torch.jagged
+                )
                 assert torch.all(
                     co_agent_advantages.offsets().diff()
                     == agent_advantages.offsets().diff()
@@ -420,6 +421,13 @@ class AdAlignTrainer(BaseTrainer):
 
     def set_policy_gradient_data(self):
         # Concatenate all agents' data
+        logger.info(f"Setting policy gradient data.")
+
+        self.tokenwise_tally = ContextualizedTokenwiseTally(
+            tokenizer=self.tokenizer,
+            paths=self.debug_path_list,
+        )
+
         self.policy_gradient_data = TrainingBatch(
             rollout_ids=torch.cat(
                 [data.main_data.rollout_ids for data in self.training_data.values()]

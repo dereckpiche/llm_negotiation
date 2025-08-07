@@ -76,5 +76,4 @@ class VLLMAsyncBackend(LLMInferenceBackend):
 
         async for out in results:  # with FINAL_ONLY this runs once
             res = out.outputs[0].text
-        print(res)
         return res

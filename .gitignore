@@ -6,6 +6,7 @@ home/
 home
 *.svg
 output/
+tests/inputs_for_tests
 tests/outputs_for_tests
 *.pdf
 outputs/

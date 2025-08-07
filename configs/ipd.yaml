@@ -170,7 +170,7 @@ trainers:
             gae_lambda_for_targets: 0.92
             discount_factor: 1.0
             use_rloo: True
-            debug_mode: False
+            enable_tokenwise_logging: False
 
 
 train_on_which_data:

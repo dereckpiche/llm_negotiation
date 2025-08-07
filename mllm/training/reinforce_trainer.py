@@ -24,7 +24,8 @@ from mllm.training.credit_methods import (
     get_generalized_advantage_estimates,
     get_rloo_credits,
 )
-from mllm.training.tallies import Tally
+from mllm.training.tally_basic import Tally
+from mllm.training.tally_tokenwise import ContextualizedTokenwiseTally
 from mllm.training.tokenize_chats import *
 from mllm.training.tokenize_chats import process_training_chat
 from mllm.training.training_data_utils import *
@@ -67,7 +68,7 @@ class BaseTrainer:
         gae_lambda_for_credits: float,
         gae_lambda_for_targets: float,
         discount_factor: float,
-        debug_mode: bool,
+        enable_tokenwise_logging: bool,
         save_path: str,
         reward_normalizing_constant: float = 1.0,
     ):
@@ -146,7 +147,7 @@ class BaseTrainer:
         self.gae_lambda_for_credits = gae_lambda_for_credits
         self.gae_lambda_for_targets = gae_lambda_for_targets
         self.discount_factor = discount_factor
-        self.debug_mode = debug_mode
+        self.enable_tokenwise_logging = enable_tokenwise_logging
         self.reward_normalizing_constant = reward_normalizing_constant
 
     def mask_non_restricted_token_logits(self, logits: torch.Tensor) -> torch.Tensor:
@@ -226,18 +227,8 @@ class BaseTrainer:
             mb_size = self.mini_batch_size
             nb_rollouts = len(training_batch)
             self.tally.add_metric(path=["nb_rollouts"], metric=nb_rollouts)
-
-            # Count total number of tokens trained on
-            # total_nb_action_tokens = 0
-            # for am in action_masks:
-            #     nb_tokens = am.shape[0]
-            #     self.tally.add_metric(path=["nb_tokens", "action_tokens"], metric=nb_tokens)
-            #     total_nb_action_tokens += nb_tokens
-
-            # self.tally.add_metric(
-            #     path=["nb_tokens", "batch_action_tokens"], metric=total_nb_action_tokens
-            # )
             gradient_accumulation_steps = np.ceil(nb_rollouts / mb_size).astype(int)
+
             for mb in range(0, nb_rollouts, mb_size):
                 loss = 0.0
                 training_mb = training_batch[mb : mb + mb_size]
@@ -255,13 +246,19 @@ class BaseTrainer:
                 action_mask_mb = action_mask_mb[:, 1:]
                 credits_mb = credits_mb[:, 1:]
 
-                if self.debug_mode:
-                    self.tally.add_contextualized_token_metrics(
-                        paths=paths_mb,
-                        metric_id="next_token_credit",
-                        contexts=shifted_contexts_mb,
-                        metrics=credits_mb,
-                        action_mask=action_mask_mb,
+                if self.enable_tokenwise_logging:
+                    self.tokenwise_tally.set_action_mask(action_mask=action_mask_mb)
+                    self.tokenwise_tally.set_range(range=(mb, mb + mb_size))
+                    self.tokenwise_tally.add_contexts(contexts=contexts_mb)
+                    self.tokenwise_tally.add_data(
+                        metric_id="next_token",
+                        metrics=shifted_contexts_mb,
+                        to_tids=True,
+                    )
+
+                if self.enable_tokenwise_logging:
+                    self.tokenwise_tally.add_data(
+                        metric_id="next_token_credit", metrics=credits_mb
                     )
 
                 # Forward pass + cast to FP-32 for higher prec.
@@ -284,40 +281,26 @@ class BaseTrainer:
                     -1
                 )  # (B, S)
 
-                if self.debug_mode:
-                    self.tally.add_contextualized_token_metrics(
-                        paths=paths_mb,
+                if self.enable_tokenwise_logging:
+                    self.tokenwise_tally.add_data(
                         metric_id="next_token_log_prob",
-                        contexts=shifted_contexts_mb,
                         metrics=action_log_probs,
-                        action_mask=action_mask_mb,
                     )
-                    self.tally.add_contextualized_token_metrics(
-                        paths=paths_mb,
+                    self.tokenwise_tally.add_data(
                         metric_id="next_token_prob",
-                        contexts=shifted_contexts_mb,
                         metrics=torch.exp(action_log_probs),
-                        action_mask=action_mask_mb,
                     )
                     top_k_indices = torch.topk(logits, k=5, dim=-1).indices
-                    self.tally.add_contextualized_token_metrics(
-                        paths=paths_mb,
+                    self.tokenwise_tally.add_data(
                         metric_id=f"top_{5}_tids",
-                        contexts=shifted_contexts_mb,
                         metrics=top_k_indices,
-                        action_mask=action_mask_mb,
                         to_tids=True,
                     )
-                    self.tally.add_contextualized_token_metrics(
-                        paths=paths_mb,
+                    self.tokenwise_tally.add_data(
+                        metric_id=f"top_{5}_probs",
                         metrics=torch.exp(log_probs).gather(
                             dim=-1, index=top_k_indices
                         ),
-                        action_mask=action_mask_mb,
-                    )
-
-                    logger.info(
-                        f"\n After Logging Top K \n  {ram_usage()} \n {vram_usage()}"
                     )
 
                 rewarded_action_log_probs = (
@@ -325,20 +308,17 @@ class BaseTrainer:
                 )
                 # (B, S)
 
-                if self.debug_mode:
-                    self.tally.add_contextualized_token_metrics(
-                        paths=paths_mb,
+                if self.enable_tokenwise_logging:
+                    self.tokenwise_tally.add_data(
                         metric_id="next_token_clogπ",
-                        contexts=shifted_contexts_mb,
                         metrics=rewarded_action_log_probs,
-                        action_mask=action_mask_mb,
                     )
 
                 # Add value term to loss
                 nb_act_tokens = action_mask_mb.sum()
                 mb_value = -rewarded_action_log_probs.sum() / nb_act_tokens
 
-                # if self.debug_mode:
+                # if self.enable_tokenwise_logging:
                 #     self.tally.add_metric(
                 #         path=["gradient_term_magnitudes", "value"],
                 #         metric=self.get_gradient_magnitude(loss_term=mb_value),
@@ -357,14 +337,11 @@ class BaseTrainer:
                     # (B, S, T)
                     # We only take the entropy of actions
                     token_entropy_terms *= action_mask_mb[:, :, None]
-                    # if self.debug_mode:
-                    #     self.tally.add_contextualized_token_metrics(
-                    #         game_ids=paths,
-                    #         metric_id="entropy",
-                    #         contexts=shifted_contexts,
-                    #         metrics=token_entropy_terms.sum(dim=-1),
-                    #         action_mask=action_mask,
-                    #     )
+                    if self.enable_tokenwise_logging:
+                        self.tally.add_contextualized_token_metrics(
+                            metric_id="entropy",
+                            metrics=token_entropy_terms.sum(dim=-1),
+                        )
 
                     mb_entropy = token_entropy_terms.sum()
                     del token_entropy_terms
@@ -374,7 +351,7 @@ class BaseTrainer:
                         metric=mb_entropy.item(),
                     )
 
-                    if self.debug_mode:
+                    if self.enable_tokenwise_logging:
                         self.tally.add_metric(
                             path=["gradient_term_magnitudes", "entropy"],
                             metric=self.get_gradient_magnitude(loss_term=mb_entropy),
@@ -412,14 +389,11 @@ class BaseTrainer:
                         - 1
                     )
 
-                    # if self.debug_mode:
-                    #     self.tally.add_contextualized_token_metrics(
-                    #         game_ids=game_ids,
-                    #         metric_id="kl",
-                    #         contexts=shifted_contexts,
-                    #         metrics=kl_div,
-                    #         action_mask=action_mask,
-                    #     )
+                    if self.enable_tokenwise_logging:
+                        self.tally.add_contextualized_token_metrics(
+                            metric_id="kl",
+                            metrics=kl_div,
+                        )
 
                     # We only care about KLD of action tokens
                     kl_div *= action_mask_mb
@@ -431,7 +405,7 @@ class BaseTrainer:
                         path=["mb_kl_loss_terms"], metric=mb_kl.item()
                     )
 
-                    if self.debug_mode:
+                    if self.enable_tokenwise_logging:
                         self.tally.add_metric(
                             path=["gradient_term_magnitudes", "kl"],
                             metric=self.get_gradient_magnitude(loss_term=mb_kl),
@@ -602,8 +576,17 @@ class BaseTrainer:
                 credits, dtype=torch.float32, layout=torch.jagged
             )
             if self.use_rloo:
+                jagged_lengths = credits.offsets().diff()
+                credits = torch.nested.to_padded_tensor(credits, padding=0.0)
                 credits = get_rloo_credits(credits=credits)
-
+                credits = torch.nested.narrow(
+                    credits,
+                    dim=1,
+                    start=0,
+                    length=jagged_lengths,
+                    layout=torch.jagged,
+                )
+        assert credits.is_nested, "Credits are not nested."
         return credits
 
     def set_policy_gradient_data(
@@ -614,6 +597,7 @@ class BaseTrainer:
         """
         # TODO: append to current batch data instead, else we will only train for one agent!
         self.policy_gradient_data = None
+        self.debug_path_list = []
         for agent_id in agent_ids:
             # Tensorize Chats
             rollout_ids = []
@@ -623,7 +607,11 @@ class BaseTrainer:
             batch_state_ends_mask = []
             batch_rewards = []
             for root in rollout_trees:
-                rollout_ids.append(root.id)
+                rollout_id = root.id
+                self.debug_path_list.append(
+                    "mgid:" + str(rollout_id) + "_agent_id:" + agent_id
+                )
+                rollout_ids.append(rollout_id)
                 chat, rewards = get_main_chat_list_and_rewards(
                     agent_id=agent_id, root=root
                 )
@@ -681,6 +669,11 @@ class BaseTrainer:
             else:
                 self.policy_gradient_data = policy_gradient_data
 
+        self.tokenwise_tally = ContextualizedTokenwiseTally(
+            tokenizer=self.tokenizer,
+            paths=self.debug_path_list,
+        )
+
     def train(self) -> None:
         """
         TOWRITE
@@ -697,13 +690,16 @@ class BaseTrainer:
         Stores the result in self.token_credits.
         """
 
-    def export_training_metrics(self) -> None:
+    def export_training_metrics(self, path: str) -> None:
         """
         Saves and resets the collected training metrics using the tally object.
         """
-
-        self.tally.save(path=self.logging_path)
+        os.makedirs(path, exist_ok=True)
+        self.tally.save(path=path)
+        self.tokenwise_tally.save(path=path)
         self.tally.reset()
+        self.tokenwise_tally = None
+        self.debug_path_list = []
 
     def export_optimizer_states(self) -> None:
         """

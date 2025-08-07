@@ -5,7 +5,7 @@ markov_games:
     runner_method_name: AlternativeActionsRunner
     runner_kwargs:
         nb_alternative_actions: 1
-        max_depth: 2
+        max_depth: 5
 
 trainers:
     agent_trainer:
