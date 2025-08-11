@@ -138,29 +138,6 @@ class IPD(Simulation):
         obs = IPDObs(round_nb=self.state.round_nb, last_coagent_move=last_coagent_move)
         return obs
 
-    def get_obs_size(self):
-        """Returns the shape of the observation"""
-        pass
-
-    def get_state(self):
-        return self.state
-
-    def get_state_size(self):
-        """Returns the shape of the state"""
-        pass
-
-    def get_avail_actions(self):
-        pass
-
-    def get_avail_agent_actions(self, agent_id):
-        """Returns the available actions for agent_id"""
-        pass
-
-    def get_total_actions(self):
-        """Returns the total number of actions an agent could ever take"""
-        # TODO: This is only suitable for a discrete 1 dimensional action space for each agent
-        pass
-
     def reset(self):
         """Returns initial observations and states"""
         self.state = IPDState()
@@ -173,18 +150,3 @@ class IPD(Simulation):
         simulation_copy = copy.copy(self)
         simulation_copy.state = copy.deepcopy(self.state)
         return simulation_copy
-
-    def render(self):
-        pass
-
-    def close(self):
-        pass
-
-    # def seed(self):
-    #     pass
-
-    def save_replay(self):
-        pass
-
-    def get_env_info(self):
-        pass

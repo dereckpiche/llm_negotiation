@@ -4,7 +4,6 @@ TODO: Use the return_assistant_tokens_mask feature from  https://huggingface.co/
 """
 
 
-import numpy as np
 import torch
 from transformers import AutoTokenizer
 
@@ -159,8 +158,8 @@ def process_training_chat(
 
     # Create masks and flags
     action_mask = torch.zeros(size=token_ids.shape)
-    credit_mask = np.full(shape=token_ids.shape, fill_value=-1.0)
-    state_end_flags = np.full(shape=token_ids.shape, fill_value=False)
+    credit_mask = torch.full(size=token_ids.shape, fill_value=-1.0)
+    state_end_flags = torch.full(size=token_ids.shape, fill_value=False)
 
     assistant_count = 1
     user_count = -1
