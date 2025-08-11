@@ -1,196 +1,90 @@
-"""
-TODO: this code is terrible and needs to be improved.
-TODO: Use the return_assistant_tokens_mask feature from  https://huggingface.co/docs/transformers/main_classes/tokenizer#transformers.PreTrainedTokenizer.apply_chat_template
-"""
-
-
 import torch
 from transformers import AutoTokenizer
 
-from mllm.markov_games.rollout_tree import ChatTurn
-from mllm.training.training_data_utils import TrajectoryBatch
+from mllm.training.training_data_utils import TrainingChatTurn, TrajectoryBatch
 
 
-def get_sentencepieced_example(tokenizer: AutoTokenizer):
-    conv_example = [
-        {"role": "user", "content": "..."},
-        {"role": "assistant", "content": "..."},
-        {"role": "user", "content": "..."},
-        {"role": "assistant", "content": "..."},
-    ]
-    token_ids = tokenizer.apply_chat_template(
-        conv_example,
-        add_generation_prompt=False,
-        use_system_prompt=False,
-        return_tensors="pt",
-    ).tolist()[0]
-    sentencepieces = tokenizer.convert_ids_to_tokens(token_ids)
-    sps = []
-    for tid, sp in zip(token_ids, sentencepieces):
-        sps.append((tid, sp))
-    return sps
-
-
-def get_qwen_assistant_user_mask(
-    tokenizer: AutoTokenizer,
-    token_ids: torch.Tensor,
-):
-    """
-    Returns:
-        assistant_user_mask:
-            assistant_user_mask[i] = -k means that the i'th token id belongs to the
-            (k+1)'th user message
-            assistant_user_mask[i] = k means that the i'th token id belongs to the
-            (k-1)'th assistant message
-            assistant_user_mask[i] = 0 means that the i'th token id belongs to the
-            system prompt.
-    For this tokenizer, eos_token_id is 151645 and get_sentencepieced_example(qwen_tokenizer) returns
-
-        [(151644, '<|im_start|>'), (8948, 'system'), (198, 'Ċ'), (2610, 'You'), (525, 'Ġare'), (1207, 'ĠQ'), (16948, 'wen'), (11, ','), (3465, 'Ġcreated'), (553, 'Ġby'), (54364, 'ĠAlibaba'), (14817, 'ĠCloud'), (13, '.'), (1446, 'ĠYou'), (525, 'Ġare'), (264, 'Ġa'), (10950, 'Ġhelpful'), (17847, 'Ġassistant'), (13, '.'), (151645, '<|im_end|>'), (198, 'Ċ'), (151644, '<|im_start|>'), (872, 'user'), (198, 'Ċ'), (1112, '...'), (151645, '<|im_end|>'), (198, 'Ċ'), (151644, '<|im_start|>'), (77091, 'assistant'), (198, 'Ċ'), (1112, '...'), (151645, '<|im_end|>'), (198, 'Ċ'), (151644, '<|im_start|>'), (872, 'user'), (198, 'Ċ'), (1112, '...'), (151645, '<|im_end|>'), (198, 'Ċ'), (151644, '<|im_start|>'), (77091, 'assistant'), (198, 'Ċ'), (1112, '...'), (151645, '<|im_end|>'), (198, 'Ċ')]
-
-    """
-    eos_token_id = 151645
-    bos_token_id = 151644
-    assistant_token_id = 77091
-    user_token_id = 872
-
-    nb_tokens = token_ids.shape[0]
-    assistant_count = 0
-    user_count = 0
-    assistant_turn = False
-    pointer = 0
-    assistant_user_mask = torch.full(token_ids.shape, 0)
-
-    # skip and put inf for system prompt
-    system_prompt_end = torch.where(token_ids == eos_token_id)[0][0].item()
-    assistant_user_mask[0:system_prompt_end] = 0
-
-    pointer = system_prompt_end + 1
-    while pointer < nb_tokens:
-        # new user turn
-        if (
-            token_ids[pointer] == bos_token_id
-            and token_ids[pointer + 1] == user_token_id
-        ):
-            assistant_turn = False
-            user_count += 1
-        # new assistant turn
-        if (
-            token_ids[pointer] == bos_token_id
-            and token_ids[pointer + 1] == assistant_token_id
-        ):
-            assistant_user_mask[pointer : pointer + 3] = -user_count
-            pointer += 3
-            assistant_turn = True
-            assistant_count += 1
-        if assistant_turn == True:
-            assistant_user_mask[pointer] = assistant_count
-        else:
-            assistant_user_mask[pointer] = -user_count
-        pointer += 1
-    return assistant_user_mask
-
-
-def get_chat_dicts(chat: list[ChatTurn]) -> list[dict]:
+def get_chat_dicts(chat: list[TrainingChatTurn]) -> list[dict]:
     chat_dicts = [chat_turn.dict() for chat_turn in chat]
     return chat_dicts
 
 
 def process_training_chat(
     tokenizer: AutoTokenizer,
-    chat_history: list[ChatTurn],
-    end_at_last_state_flag: bool = False,
-):
-    """
-    TODO: docstring
+    chat_history: list[TrainingChatTurn],
+) -> tuple[torch.IntTensor, torch.BoolTensor, torch.IntTensor, torch.BoolTensor]:
+    """Tokenize a single training chat and build aligned per-token masks.
+
+    Given an ordered list of `TrainingChatTurn`, this function tokenizes each
+    turn independently using the tokenizer's chat template, then concatenates
+    all resulting token sequences. It also constructs three parallel 1D masks
+    that align with the concatenated tokens:
+
+    - input_ids: token ids for the entire chat, turn by turn
+    - action_mask: True for tokens that belong to assistant turns (i.e., model
+      actions), False for tokens from other roles
+    - timesteps: per-token time step copied from the originating turn's
+      `time_step`
+    - state_ends_mask: True for the last token of any turn where
+      `is_state_end` is True, otherwise False
+
+    Important details:
+    - Each turn is passed as a single-message list to
+      `tokenizer.apply_chat_template` and flattened; the per-turn outputs are
+      then concatenated in the original order.
+    - Turn boundaries are not explicitly encoded beyond what the chat template
+      inserts; masks provide alignment for learning signals and state endings.
+    - No truncation or padding is performed here; downstream code should handle
+      batching/padding as needed.
+    - Note on dtypes: `input_ids` will be a LongTensor (int64). `action_mask`
+      and `state_ends_mask` are BoolTensors. `timesteps` is currently created
+      as a float tensor; adjust the implementation if integer dtype is
+      required downstream.
+
     Args:
-        assistant_msg_scores:
-            Score attributed to each assistant messages. Length is same
-            as number of assistant messages in conversation.
+        tokenizer: A Hugging Face tokenizer supporting `apply_chat_template`.
+        chat_history: Ordered list of `TrainingChatTurn` forming one dialogue.
+
     Returns:
-         action_timestamps:
-           action_timestamps[i] = t means that token_ids[i] belongs to the t'th action.
-           (Each response of the model is considered an action.)
-           action_timestamps[i] = -1 means that it was not part of an action. (Part of user message.)
+        A tuple of four 1D tensors, all of equal length N (the total number of
+        tokens across all turns), in the following order:
+        - input_ids (LongTensor)
+        - action_mask (BoolTensor)
+        - timesteps (FloatTensor as implemented; see note above)
+        - state_ends_mask (BoolTensor)
     """
-    # TODO: clean up!
+    state_ends_mask = []
+    input_ids = []
+    action_mask = []
+    timesteps = []
+    include_system_prompt = True
+    for train_chat_turn in chat_history:
+        is_state_end = train_chat_turn.is_state_end
+        time_step = train_chat_turn.time_step
+        is_action = train_chat_turn.role == "assistant"
+        chat_turn = {
+            "role": train_chat_turn.role,
+            "content": train_chat_turn.content,
+        }
+        chat_turn_ids = tokenizer.apply_chat_template(
+            [chat_turn],
+            return_tensors="pt",
+            include_system_prompt=include_system_prompt,
+        ).flatten()
+        nb_chat_turns_ids = chat_turn_ids.numel()
+        state_ends_mask.append(torch.zeros(nb_chat_turns_ids, dtype=torch.bool))
+        if is_state_end:
+            state_ends_mask[-1][-1] = True  # last token is state end
+        input_ids.append(chat_turn_ids)
+        action_mask.append(torch.ones(nb_chat_turns_ids, dtype=torch.bool))
+        if not is_action:
+            action_mask[-1] = action_mask[-1] * False
+        timesteps.append(torch.ones(nb_chat_turns_ids) * time_step)
+        include_system_prompt = False
 
-    chat_history = get_chat_dicts(chat_history)
+    input_ids = torch.cat(input_ids)
+    action_mask = torch.cat(action_mask)
+    timesteps = torch.cat(timesteps)
+    state_ends_mask = torch.cat(state_ends_mask)
 
-    # End chat on the last state introduction
-    if end_at_last_state_flag:
-        count = 0
-        for message in chat_history:
-            if message["is_state_end"]:
-                last_state_flag_index = count
-            count += 1
-        chat_history = chat_history[: last_state_flag_index + 1]
-
-    # Get token ids
-    formatted_conversation = tokenizer.apply_chat_template(
-        chat_history,
-        add_generation_prompt=False,
-        tokenize=False,
-        use_system_prompt=True,
-    )
-    token_ids = (
-        tokenizer.encode(
-            formatted_conversation, return_tensors="pt", add_special_tokens=True
-        )
-        .squeeze(0)
-        .long()
-    )
-    token_ids = token_ids.squeeze()
-
-    # Get assistant_user_mask
-    tokenizer_name = tokenizer.name_or_path
-    if tokenizer_name in [
-        "Qwen/Qwen2.5-7B-Instruct",
-        "Qwen/Qwen2.5-0.5B-Instruct",
-        "Qwen/Qwen3-4B-Instruct-2507",
-        "Qwen/Qwen3-0.6B",
-    ]:
-        assistant_user_mask = get_qwen_assistant_user_mask(
-            tokenizer=tokenizer, token_ids=token_ids
-        )
-    else:
-        raise TypeError("Tokenizer not supported. Must be implemented here.")
-
-    # Create masks and flags
-    action_mask = torch.zeros(size=token_ids.shape)
-    credit_mask = torch.full(size=token_ids.shape, fill_value=-1.0)
-    state_end_flags = torch.full(size=token_ids.shape, fill_value=False)
-
-    assistant_count = 1
-    user_count = -1
-    current_time_step = -1
-
-    for message in chat_history:
-        if message["role"] == "assistant":
-            time_step = message["time_step"]
-            if current_time_step < time_step:
-                current_time_step = time_step
-            credit_mask[assistant_user_mask == assistant_count] = current_time_step
-            assistant_count += 1
-        if message["role"] == "user":
-            if message["is_state_end"]:
-                # Get index of first token with value = user_count
-                state_end_flag = torch.argmax(
-                    (assistant_user_mask == -user_count).int()
-                ).item()
-                state_end_flags[state_end_flag] = True
-            user_count -= 1
-
-    action_mask[credit_mask > -1] = 1.0
-
-    # TODO: clean up original code
-
-    # Adapt old code outputs to new outputs
-    # import pdb; pdb.set_trace()
-    input_ids = token_ids
-    timesteps = credit_mask
-    state_ends_idx = (
-        state_end_flags  # torch.where(torch.BoolTensor(state_end_flags) == True)[0]
-    )
-
-    return (input_ids, action_mask, timesteps, state_ends_idx)
+    return (input_ids, action_mask, timesteps, state_ends_mask)
