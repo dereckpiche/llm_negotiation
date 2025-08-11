@@ -1,6 +1,9 @@
 """
 TODO: this code is terrible and needs to be improved.
 TODO: Use the return_assistant_tokens_mask feature from  https://huggingface.co/docs/transformers/main_classes/tokenizer#transformers.PreTrainedTokenizer.apply_chat_template
+TODO: why are we keepign trakc of current_time_step?
+Hack :Qwen2.5 has system prompt even when its explicitly set to False
+Hack : <think>\n\n</think>\n\n is present in Qwen3-4B-Instruct-2507 without thinking mode
 """
 
 
@@ -35,14 +38,15 @@ def get_sentencepieced_example(tokenizer: AutoTokenizer):
 def get_qwen_assistant_user_mask(
     tokenizer: AutoTokenizer,
     token_ids: torch.Tensor,
+    has_system_prompt: bool = False,
 ):
     """
     Returns:
         assistant_user_mask:
             assistant_user_mask[i] = -k means that the i'th token id belongs to the
-            (k+1)'th user message
+            (k)'th user message
             assistant_user_mask[i] = k means that the i'th token id belongs to the
-            (k-1)'th assistant message
+            (k)'th assistant message
             assistant_user_mask[i] = 0 means that the i'th token id belongs to the
             system prompt.
     For this tokenizer, eos_token_id is 151645 and get_sentencepieced_example(qwen_tokenizer) returns
@@ -62,9 +66,11 @@ def get_qwen_assistant_user_mask(
     pointer = 0
     assistant_user_mask = torch.full(token_ids.shape, 0)
 
-    # skip and put inf for system prompt
-    system_prompt_end = torch.where(token_ids == eos_token_id)[0][0].item()
-    assistant_user_mask[0:system_prompt_end] = 0
+    system_prompt_end = -1
+    if has_system_prompt:
+        # skip and put inf for system prompt
+        system_prompt_end = torch.where(token_ids == eos_token_id)[0][0].item()
+        assistant_user_mask[0:system_prompt_end] = 0
 
     pointer = system_prompt_end + 1
     while pointer < nb_tokens:
@@ -117,7 +123,6 @@ def process_training_chat(
     # TODO: clean up!
 
     chat_history = get_chat_dicts(chat_history)
-
     # End chat on the last state introduction
     if end_at_last_state_flag:
         count = 0
@@ -132,19 +137,18 @@ def process_training_chat(
         chat_history,
         add_generation_prompt=False,
         tokenize=False,
-        use_system_prompt=True,
     )
-    token_ids = (
-        tokenizer.encode(
-            formatted_conversation, return_tensors="pt", add_special_tokens=True
-        )
-        .squeeze(0)
-        .long()
-    )
-    token_ids = token_ids.squeeze()
-
-    # Get assistant_user_mask
     tokenizer_name = tokenizer.name_or_path
+    if "Qwen/Qwen3-4B-Instruct-2507" in tokenizer_name:
+        formatted_conversation = formatted_conversation.replace(
+            "<think>\n\n</think>\n\n", ""
+        )
+    token_ids = torch.tensor(tokenizer.encode(formatted_conversation), dtype=torch.long)
+
+    has_system_prompt = False
+    if "Qwen2.5" in tokenizer_name:
+        has_system_prompt = True
+    # Get assistant_user_mask
     if tokenizer_name in [
         "Qwen/Qwen2.5-7B-Instruct",
         "Qwen/Qwen2.5-0.5B-Instruct",
@@ -152,7 +156,9 @@ def process_training_chat(
         "Qwen/Qwen3-0.6B",
     ]:
         assistant_user_mask = get_qwen_assistant_user_mask(
-            tokenizer=tokenizer, token_ids=token_ids
+            tokenizer=tokenizer,
+            token_ids=token_ids,
+            has_system_prompt=has_system_prompt,
         )
     else:
         raise TypeError("Tokenizer not supported. Must be implemented here.")
@@ -167,12 +173,6 @@ def process_training_chat(
     current_time_step = -1
 
     for message in chat_history:
-        if message["role"] == "assistant":
-            time_step = message["time_step"]
-            if current_time_step < time_step:
-                current_time_step = time_step
-            credit_mask[assistant_user_mask == assistant_count] = current_time_step
-            assistant_count += 1
         if message["role"] == "user":
             if message["is_state_end"]:
                 # Get index of first token with value = user_count
@@ -181,13 +181,15 @@ def process_training_chat(
                 ).item()
                 state_end_flags[state_end_flag] = True
             user_count -= 1
+        if message["role"] == "assistant":
+            time_step = message["time_step"]
+            if current_time_step < time_step:
+                current_time_step = time_step
+            credit_mask[assistant_user_mask == assistant_count] = current_time_step
+            assistant_count += 1
 
     action_mask[credit_mask > -1] = 1.0
 
-    # TODO: clean up original code
-
-    # Adapt old code outputs to new outputs
-    # import pdb; pdb.set_trace()
     input_ids = token_ids
     timesteps = credit_mask
     state_ends_idx = (

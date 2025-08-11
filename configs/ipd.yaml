@@ -117,13 +117,13 @@ models:
                 agent_adapter:
                     task_type: CAUSAL_LM
                     r: 32
-                    lora_alpha: 128
+                    lora_alpha: 64
                     lora_dropout: 0.0
                     target_modules: all-linear
                 critic_adapter:
                     task_type: CAUSAL_LM
                     r: 32
-                    lora_alpha: 128
+                    lora_alpha: 64
                     lora_dropout: 0.0
                     target_modules: all-linear
 
@@ -168,7 +168,7 @@ trainers:
             use_gae: False
             gae_lambda_for_credits: 0.92
             gae_lambda_for_targets: 0.92
-            discount_factor: 0.8
+            discount_factor: 0.9
             use_rloo: True
             enable_tokenwise_logging: False
             pg_loss_normalization: "batch"
