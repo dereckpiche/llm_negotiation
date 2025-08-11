@@ -54,7 +54,7 @@ class TrustAndSplitState:
     previous_values: Dict[AgentId, float] | None
     splits: Dict[AgentId, Split | None]
     messages_sent: Dict[AgentId, int]
-    first_split_done: bool = False
+    split_phase: bool = False
 
 
 @dataclass
@@ -65,7 +65,7 @@ class TrustAndSplitObs:
     last_value_coagent: float | None
     value: float
     other_agent_split: int | None
-    first_split_done: bool = False
+    split_phase: bool = False
 
 
 class TrustAndSplitSimulation(Simulation):
@@ -111,70 +111,86 @@ class TrustAndSplitSimulation(Simulation):
         """
         assert self.state is not None
         current_agent = self.state.current_agent
-        action = actions[current_agent]
+        a0, a1 = self.agent_ids[0], self.agent_ids[1]
+        action = actions.get(current_agent)
+
+        # Split phase: require both splits in the same timestep
+        if self.state.split_phase:
+            action_a0 = actions.get(a0)
+            action_a1 = actions.get(a1)
+            have_both_splits = isinstance(action_a0, Split) and isinstance(
+                action_a1, Split
+            )
+            if not have_both_splits:
+                rewards = {agent_id: 0.0 for agent_id in self.agent_ids}
+                return False, SimulationStepLog(
+                    rewards=rewards, info={"type": "waiting_for_splits"}
+                )
+
+            # Record splits
+            self.state.splits[a0] = action_a0
+            self.state.splits[a1] = action_a1
+
+            # Compute rewards and end round
+            items_to_self_0 = int(
+                self.state.splits[a0].coins_given_to_self
+                if self.state.splits[a0] is not None
+                else 0
+            )
+            items_to_self_1 = int(
+                self.state.splits[a1].coins_given_to_self
+                if self.state.splits[a1] is not None
+                else 0
+            )
+            val_0 = float(self.state.values[a0])
+            val_1 = float(self.state.values[a1])
+            sums_to_max = (items_to_self_0 + items_to_self_1) == self.max_coins
+            r0, r1 = get_rewards(
+                items_to_self_0, val_0, items_to_self_1, val_1, self.max_coins
+            )
+            rewards = {a0: r0, a1: r1}
+
+            # Prepare next round
+            self.state.previous_values = copy.deepcopy(self.state.values)
+            self.state.values = self._sample_values()
+            self.state.round_nb += 1
+            self.state.last_message = ""
+            self.state.split_phase = False
+            self.state.splits = {aid: None for aid in self.agent_ids}
+            self.state.messages_sent = {aid: 0 for aid in self.agent_ids}
+            # Alternate starting agent
+            self._starting_agent_index = 1 - self._starting_agent_index
+            self.state.current_agent = self.agent_ids[self._starting_agent_index]
+
+            done = self.state.round_nb >= self.rounds_per_game
+            return done, SimulationStepLog(
+                rewards=rewards,
+                info={"type": "round_end", "sums_to_max_coins": sums_to_max},
+            )
 
         # Message phase
         if isinstance(action, Message):
-            if self.state.first_split_done:
-                raise Exception("First split not done. Invalid.")
             self.state.last_message = action.message
             self.state.messages_sent[current_agent] += 1
 
             # Move turn to other agent
             self.state.current_agent = self._other(current_agent)
 
+            # If both agents have reached their message quota, enter split phase
+            if all(
+                self.state.messages_sent[aid] >= self.nb_messages_per_agent
+                for aid in self.agent_ids
+            ):
+                self.state.split_phase = True
+
             rewards = {agent_id: 0.0 for agent_id in self.agent_ids}
             return False, SimulationStepLog(rewards=rewards, info={"type": "message"})
 
-        # Split phase
+        # Splits are only valid during split_phase; otherwise invalid action
         if isinstance(action, Split):
-            self.state.splits[current_agent] = action
-            if self.state.first_split_done:
-                # Second split completes the round
-                a0, a1 = self.agent_ids[0], self.agent_ids[1]
-                items_to_self_0 = int(
-                    self.state.splits[a0].coins_given_to_self
-                    if self.state.splits[a0] is not None
-                    else 0
-                )
-                items_to_self_1 = int(
-                    self.state.splits[a1].coins_given_to_self
-                    if self.state.splits[a1] is not None
-                    else 0
-                )
-                val_0 = float(self.state.values[a0])
-                val_1 = float(self.state.values[a1])
-                sums_to_max = (items_to_self_0 + items_to_self_1) == self.max_coins
-                r0, r1 = get_rewards(
-                    items_to_self_0, val_0, items_to_self_1, val_1, self.max_coins
-                )
-                rewards = {a0: r0, a1: r1}
-
-                # Prepare next round
-                self.state.previous_values = copy.deepcopy(self.state.values)
-                self.state.values = self._sample_values()
-                self.state.round_nb += 1
-                self.state.last_message = ""
-                self.state.first_split_done = False
-                self.state.splits = {aid: None for aid in self.agent_ids}
-                self.state.messages_sent = {aid: 0 for aid in self.agent_ids}
-                # Alternate starting agent
-                self._starting_agent_index = 1 - self._starting_agent_index
-                self.state.current_agent = self.agent_ids[self._starting_agent_index]
-
-                done = self.state.round_nb >= self.rounds_per_game
-                return done, SimulationStepLog(
-                    rewards=rewards,
-                    info={"type": "round_end", "sums_to_max_coins": sums_to_max},
-                )
-            else:
-                # First split is done; other agent must now split
-                self.state.first_split_done = True
-                self.state.current_agent = self._other(current_agent)
-                rewards = {agent_id: 0.0 for agent_id in self.agent_ids}
-                return False, SimulationStepLog(
-                    rewards=rewards, info={"type": "first_split"}
-                )
+            raise Exception(
+                "Split received outside of split_phase. Agents must message until split_phase begins."
+            )
 
         raise Exception("Invalid action type for TrustAndSplitSimulation.")
 
@@ -200,7 +216,7 @@ class TrustAndSplitSimulation(Simulation):
             last_value_coagent=last_value,
             value=self.state.values[agent_id],
             other_agent_split=other_split_val,
-            first_split_done=self.state.first_split_done,
+            split_phase=self.state.split_phase,
         )
         return obs
 
@@ -225,6 +241,6 @@ class TrustAndSplitSimulation(Simulation):
             previous_values=None,
             splits={aid: None for aid in self.agent_ids},
             messages_sent={aid: 0 for aid in self.agent_ids},
-            first_split_done=False,
+            split_phase=False,
         )
         return self.get_obs()

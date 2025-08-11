@@ -50,11 +50,15 @@ class TrustAndSplitAgent(Agent):
         )
 
     async def act(self, observation: TrustAndSplitObs) -> Tuple[Any, AgentActLog]:
+        is_our_turn = observation.current_agent == self.agent_id
         action: Any = None
         round_nb = observation.round_nb
 
-        # Build a single user prompt per call to satisfy logging constraint
         prompt_parts: List[str] = []
+
+        #######################################
+        # build user prompt
+        #######################################
 
         # First-ever call
         if round_nb == 0 and self.state.chat_counter == 0:
@@ -63,7 +67,8 @@ class TrustAndSplitAgent(Agent):
             )
 
         # New round
-        if round_nb > self.state.round_nb:
+        is_new_round = round_nb > self.state.round_nb
+        if is_new_round:
             self.state.nb_messages_sent_this_round = 0
             round_intro = (
                 f"New round {round_nb}. Your value per coin: {observation.value}. "
@@ -72,27 +77,30 @@ class TrustAndSplitAgent(Agent):
             prompt_parts.append(round_intro)
             self.state.round_nb = round_nb
 
-        # Turn-dependent instruction
-        is_our_turn = observation.current_agent == self.agent_id
-        if is_our_turn:
-            if (
-                not observation.first_split_done
-                and self.state.nb_messages_sent_this_round < self.nb_messages_per_round
-            ):
-                instr = (
-                    f"Other agent said: {observation.last_message}\n"
-                    f"Send your message now in <message>...</message> (<=400 chars)."
-                )
-                prompt_parts.append(instr)
-            else:
-                instr = (
-                    f"Other agent said: {observation.last_message}\n"
-                    f"Finalize: respond as <coins_to_self>x</coins_to_self> where x is an integer in [0, 10]."
-                )
-                prompt_parts.append(instr)
-        else:
+        # Wait for message
+        if not is_our_turn and not observation.split_phase:
+            prompt_parts.append("Wait for other agent to send a message...")
+
+        # Get last message
+        if is_our_turn and not observation.split_phase and not is_new_round:
+            prompt_parts.append(f"Other agent said: {observation.last_message}")
+
+        # Prompt to send message
+        must_send_message = (
+            not observation.split_phase
+            and self.state.nb_messages_sent_this_round < self.nb_messages_per_round
+            and is_our_turn
+        )
+        if must_send_message:
             prompt_parts.append(
-                f"Waiting; it's {observation.current_agent}'s turn. Last message: {observation.last_message}"
+                "Send your message now in <message>...</message> (<=400 chars)."
+            )
+
+        # Prompt to give split
+        must_send_split = not must_send_message and observation.split_phase
+        if must_send_split:
+            prompt_parts.append(
+                "Respond with <coins_to_self>x</coins_to_self> where x is an integer in [0, 10]."
             )
 
         # Append one ChatTurn with is_state_end=True
@@ -106,48 +114,48 @@ class TrustAndSplitAgent(Agent):
             )
         )
 
-        # If it's our turn, query policy for the appropriate format
-        if is_our_turn:
-            if (
-                not observation.first_split_done
-                and self.state.nb_messages_sent_this_round < self.nb_messages_per_round
-            ):
-                return_regex = r"<message>[\s\S]{0,400}</message>"
-                policy_output = await self.policy(
-                    prompt=[c.dict() for c in self.state.chat_history],
-                    regex=return_regex,
-                )
-                self.state.chat_history.append(
-                    ChatTurn(
-                        agent_id=self.agent_id,
-                        role="assistant",
-                        content=policy_output,
-                        is_state_end=False,
-                    )
-                )
-                action = Message(message=policy_output)
-                self.state.nb_messages_sent_this_round += 1
-            else:
-                return_regex = r"<coins_to_self>([0-9]+)</coins_to_self>"
-                policy_output = await self.policy(
-                    prompt=[c.dict() for c in self.state.chat_history],
-                    regex=return_regex,
-                )
-                self.state.chat_history.append(
-                    ChatTurn(
-                        agent_id=self.agent_id,
-                        role="assistant",
-                        content=policy_output,
-                        is_state_end=False,
-                    )
-                )
-                import re as _re
+        #######################################
+        # Get policy action
+        #######################################
 
-                m = _re.search(
-                    r"<coins_to_self>([0-9]+)</coins_to_self>", policy_output
+        # Query policy for the appropriate format
+        if must_send_message:
+            return_regex = r"<message>[\s\S]{0,400}</message>"
+            policy_output = await self.policy(
+                prompt=[c.dict() for c in self.state.chat_history],
+                regex=return_regex,
+            )
+            self.state.chat_history.append(
+                ChatTurn(
+                    agent_id=self.agent_id,
+                    role="assistant",
+                    content=policy_output,
+                    is_state_end=False,
                 )
-                coins_int = int(m.group(1)) if m else int(policy_output)
-                action = Split(coins_given_to_self=coins_int)
+            )
+            action = Message(message=policy_output)
+            self.state.nb_messages_sent_this_round += 1
+        elif must_send_split:
+            return_regex = r"<coins_to_self>([0-9]+)</coins_to_self>"
+            policy_output = await self.policy(
+                prompt=[c.dict() for c in self.state.chat_history],
+                regex=return_regex,
+            )
+            self.state.chat_history.append(
+                ChatTurn(
+                    agent_id=self.agent_id,
+                    role="assistant",
+                    content=policy_output,
+                    is_state_end=False,
+                )
+            )
+            import re as _re
+
+            m = _re.search(r"<coins_to_self>([0-9]+)</coins_to_self>", policy_output)
+            coins_int = int(m.group(1)) if m else int(policy_output)
+            action = Split(coins_given_to_self=coins_int)
+        else:
+            action = None
 
         agent_step_log = AgentActLog(
             chat_turns=self.state.chat_history[self.state.chat_counter :], info=None
