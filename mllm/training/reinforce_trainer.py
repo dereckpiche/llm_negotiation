@@ -8,7 +8,6 @@ import os
 import sys
 from typing import Union
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 from accelerate import Accelerator
@@ -232,7 +231,7 @@ class BaseTrainer:
 
             # Get total number of tokens generated
             total_tokens_generated = 0
-            for att_mask in training_batch.batch_action_mask.unbind():
+            for att_mask in training_batch.batch_action_mask:
                 total_tokens_generated += att_mask.sum()
 
             # Obtain loss normalization
@@ -499,41 +498,40 @@ class BaseTrainer:
                 (
                     tokens_mb,
                     state_ends_mask_mb,
-                    _,
+                    timestep_counts,
                 ) = trajectory_mb.get_padded_tensors_for_critic()
 
                 # critic causal attention up to end flags
-                vals_estimate_mb = self.critic(tokens_mb)
-                vals_estimate_mb = torch.nested.masked_select(
-                    vals_estimate_mb, state_ends_mask_mb
-                )  # Get value estimates only where states end
-                if vals_estimate_mb.dim() == 1:
-                    vals_estimate_mb = vals_estimate_mb.unsqueeze(0)
-
-                # Get padded tensors
-                jagged_lengths = vals_estimate_mb.offsets().diff()
-                padded_shape = (vals_estimate_mb.shape[0], torch.max(jagged_lengths))
-                vals_estimate_mb = torch.nested.to_padded_tensor(
-                    vals_estimate_mb, padding=0.0, output_size=padded_shape
+                vals_estimate_full = self.critic(tokens_mb)
+                if vals_estimate_full.dim() == 3:
+                    vals_estimate_full = vals_estimate_full.squeeze(-1)
+                # Select only positions where states end, per sample → list of (jT,)
+                B = tokens_mb.shape[0]
+                vals_list = [
+                    vals_estimate_full[b][state_ends_mask_mb[b]] for b in range(B)
+                ]
+                # Pad to (B, max_jT)
+                vals_estimate_mb = pad_sequence(
+                    vals_list, batch_first=True, padding_value=0.0
                 )
                 dtype = vals_estimate_mb.dtype
-                # Ensure rewards have the same dtype as value estimates
-                rewards_mb = torch.nested.to_padded_tensor(
-                    rewards_mb, padding=0.0, output_size=padded_shape
+                # Ensure rewards have the same dtype as value estimates; pad to same (B, max_jT)
+                rewards_mb = pad_sequence(
+                    rewards_mb, batch_first=True, padding_value=0.0
                 ).to(dtype=dtype)
 
                 det_vals_estimate_mb = vals_estimate_mb.detach()
 
                 # If no infinite trajectory bootstrap, append V(Terminal State) = 0
                 # TODO: use alternative approach!
-                if det_vals_estimate_mb.numel() == rewards_mb.numel():
-                    B = det_vals_estimate_mb.shape[0]
+                if det_vals_estimate_mb.shape[1] == rewards_mb.shape[1]:
+                    Bsize = det_vals_estimate_mb.shape[0]
                     device = det_vals_estimate_mb.device
                     dtype = det_vals_estimate_mb.dtype
                     det_vals_estimate_mb = torch.cat(
                         [
                             det_vals_estimate_mb,
-                            torch.zeros((B, 1), device=device, dtype=dtype),
+                            torch.zeros((Bsize, 1), device=device, dtype=dtype),
                         ],
                         dim=1,
                     )
@@ -562,29 +560,21 @@ class BaseTrainer:
                 # self.tally.add_metric(path=["critic_loss"], metric=loss.item())
 
                 # Get GAE Credit
-                credits_mb = get_generalized_advantage_estimates(
+                credits_padded = get_generalized_advantage_estimates(
                     rewards=rewards_mb,
                     value_estimates=det_vals_estimate_mb,
                     discount_factor=self.discount_factor,
                     lambda_coef=self.gae_lambda_for_credits,
                 )
                 # Ensure dtype consistency for credits
-                credits_mb = credits_mb.to(dtype=dtype)
+                credits_padded = credits_padded.to(dtype=dtype)
 
-                # Get jagged back
-                # import pdb; pdb.set_trace()
-                credits_mb = torch.nested.narrow(
-                    credits_mb,
-                    dim=1,
-                    start=0,
-                    length=jagged_lengths,
-                    layout=torch.jagged,
+                # Get jagged back using timestep_counts from get_padded_tensors_for_critic()
+                credits.extend(
+                    [credits_padded[i, : timestep_counts[i]] for i in range(B)]
                 )
-                credits.extend(credits_mb.unbind())
 
-            credits = torch.nested.nested_tensor(
-                credits, dtype=det_vals_estimate_mb.dtype, layout=torch.jagged
-            )
+            # return list-of-tensors
 
         else:
             batch_rewards = trajectories.batch_rewards
@@ -596,21 +586,11 @@ class BaseTrainer:
                 )
                 for rewards in batch_rewards
             ]
-            credits = torch.nested.nested_tensor(
-                credits, dtype=torch.float32, layout=torch.jagged
-            )
             if self.use_rloo:
-                jagged_lengths = credits.offsets().diff()
-                credits = torch.nested.to_padded_tensor(credits, padding=0.0)
-                credits = get_rloo_credits(credits=credits)
-                credits = torch.nested.narrow(
-                    credits,
-                    dim=1,
-                    start=0,
-                    length=jagged_lengths,
-                    layout=torch.jagged,
-                )
-        assert credits.is_nested, "Credits are not nested."
+                lengths = [len(c) for c in credits]
+                padded = pad_sequence(credits, batch_first=True, padding_value=0.0)
+                padded = get_rloo_credits(credits=padded)
+                credits = [padded[i, : lengths[i]] for i in range(padded.shape[0])]
         return credits
 
     def set_policy_gradient_data(
@@ -653,21 +633,11 @@ class BaseTrainer:
 
             trajectory_batch = TrajectoryBatch(
                 rollout_ids=torch.tensor(rollout_ids, dtype=torch.float32),
-                batch_input_ids=torch.nested.nested_tensor(
-                    batch_input_ids, layout=torch.jagged
-                ),
-                batch_action_mask=torch.nested.nested_tensor(
-                    batch_action_mask, layout=torch.jagged
-                ),
-                batch_timesteps=torch.nested.nested_tensor(
-                    batch_timesteps, layout=torch.jagged
-                ),
-                batch_state_ends_mask=torch.nested.nested_tensor(
-                    batch_state_ends_mask, layout=torch.jagged
-                ),
-                batch_rewards=torch.nested.nested_tensor(
-                    batch_rewards, layout=torch.jagged
-                ),
+                batch_input_ids=batch_input_ids,
+                batch_action_mask=batch_action_mask,
+                batch_timesteps=batch_timesteps,
+                batch_state_ends_mask=batch_state_ends_mask,
+                batch_rewards=batch_rewards,
             )
 
             # Get Advantages

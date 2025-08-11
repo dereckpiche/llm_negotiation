@@ -2,21 +2,6 @@ import torch
 
 from mllm.training.tally_basic import Tally
 
-NestedTensor = torch.Tensor
-
-
-def apply_method_on_nested(
-    method, nested_tensor_inputs: list[torch.Tensor]
-) -> NestedTensor:
-    """
-    Applies in for loop. When possible, this should be replaced with a padded version.
-    """
-    B = nested_tensor_inputs[0].shape[0]
-    res = []
-    for b in range(B):
-        res.append(method(*[t.unbind()[b].unsqueeze(0) for t in nested_tensor_inputs]))
-    return torch.nested.nested_tensor(res, layout=torch.jagged)
-
 
 def get_discounted_returns(
     rewards: torch.Tensor,  # (T)
@@ -33,13 +18,7 @@ def get_discounted_returns(
         torch.Tensor: Array of discounted returns.
     """
     rewards = rewards / reward_normalizing_constant
-    # TODO: verify, some changes were made here
     assert rewards.dim() == 1, "Wrong dimensions."
-
-    # # Apply method in for loop instead
-    # if rewards.is_nested:
-    #     f = lambda rewards : get_discounted_returns(rewards, discount_factor)
-    #     return apply_method_on_nested(f, [rewards])
 
     T = rewards.shape[0]
     discounted_returns = torch.zeros_like(rewards)
@@ -76,11 +55,6 @@ def get_generalized_advantage_estimates(
         torch.Tensor: Array of GAE values.
     """
     assert rewards.dim() == value_estimates.dim() == 2, "Wrong dimensions."
-
-    # # Apply method in for loop instead
-    # if rewards.is_nested:
-    #     f = lambda rewards, value_estimates : get_generalized_advantage_estimates(rewards, value_estimates, discount_factor, lambda_coef)
-    #     return apply_method_on_nested(f, [rewards, value_estimates])
 
     assert (
         rewards.shape[0] == value_estimates.shape[0]
