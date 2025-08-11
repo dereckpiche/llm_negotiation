@@ -9,6 +9,16 @@ def get_chat_dicts(chat: list[TrainingChatTurn]) -> list[dict]:
     return chat_dicts
 
 
+# TODO: expand / test for different model classes
+custom_qwen_template = """{% for m in messages -%}
+<|im_start|>{{ m['role'] }}
+{{ m['content'] }}<|im_end|>
+{% endfor -%}
+{% if add_generation_prompt -%}
+<|im_start|>assistant
+{%- endif %}"""
+
+
 def process_training_chat(
     tokenizer: AutoTokenizer,
     chat_history: list[TrainingChatTurn],
@@ -67,9 +77,7 @@ def process_training_chat(
             "content": train_chat_turn.content,
         }
         chat_turn_ids = tokenizer.apply_chat_template(
-            [chat_turn],
-            return_tensors="pt",
-            include_system_prompt=include_system_prompt,
+            [chat_turn], return_tensors="pt", chat_template=custom_qwen_template
         ).flatten()
         nb_chat_turns_ids = chat_turn_ids.numel()
         state_ends_mask.append(torch.zeros(nb_chat_turns_ids, dtype=torch.bool))
