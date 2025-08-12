@@ -82,38 +82,38 @@ def main():
         "--folders", nargs="+", help="List of specific folders to process"
     )
     parser.add_argument(
-        "--global_folder", help="Global folder containing iteration_* subdirectories"
+        "--global-folder", help="Global folder containing iteration_* subdirectories"
     )
     parser.add_argument(
-        "--output_dir",
+        "--output-dir",
         help="Output directory (if not specified, files are created in input folders)",
     )
     parser.add_argument(
-        "--per_agent",
+        "--per-agent",
         action="store_true",
         default=True,
         help="Also write per-agent transcripts (default: True)",
     )
     parser.add_argument(
-        "--no_per_agent",
+        "--no-per-agent",
         action="store_false",
         dest="per_agent",
         help="Don't write per-agent transcripts",
     )
     parser.add_argument(
-        "--include_state_end",
+        "--include-state-end",
         action="store_true",
         default=False,
         help="Annotate <STATE_END> on lines (default: False)",
     )
     parser.add_argument(
-        "--sim_csv",
+        "--sim-csv",
         action="store_true",
         default=True,
         help="Export simulation infos to CSV (default: True)",
     )
     parser.add_argument(
-        "--no_sim_csv",
+        "--no-sim-csv",
         action="store_false",
         dest="sim_csv",
         help="Don't export simulation infos to CSV",

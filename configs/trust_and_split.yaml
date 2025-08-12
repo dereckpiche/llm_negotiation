@@ -36,7 +36,7 @@ markov_games:
     simulation_class_name: TrustAndSplitSimulation
     simulation_init_args:
         agent_ids: ${agent_ids}
-        rounds_per_game: 10
+        rounds_per_game: 3
         nb_messages_per_agent: 1
         max_coins: 10
 
