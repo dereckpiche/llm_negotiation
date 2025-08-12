@@ -166,6 +166,7 @@ trainers:
             temperature: ${temperature}
             device: "cuda:0"
             use_gae: False
+            skip_discounted_state_visitation: True
             gae_lambda_for_credits: 0.92
             gae_lambda_for_targets: 0.92
             discount_factor: 0.8
