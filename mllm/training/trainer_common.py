@@ -247,7 +247,7 @@ class BaseTrainer(ABC):
             if self.pg_loss_normalization == "nb_tokens":
                 normalization_factor = total_tokens_generated
             elif self.pg_loss_normalization == "batch":
-                normalization_factor = nb_rollouts
+                normalization_factor = np.ceil(nb_rollouts / mb_size).astype(int)
             else:
                 raise ValueError(
                     f"Invalid pg_loss_normalization: {self.pg_loss_normalization}"
@@ -340,8 +340,11 @@ class BaseTrainer(ABC):
                     )
 
                 # Add value term to loss
-                nb_act_tokens = action_mask_mb.sum()
-                mb_value = -rewarded_action_log_probs.sum() / nb_act_tokens
+                if self.pg_loss_normalization == "batch":
+                    nb_act_tokens = action_mask_mb.sum()
+                    mb_value = -rewarded_action_log_probs.sum() / nb_act_tokens
+                else:
+                    mb_value = -rewarded_action_log_probs.sum()
 
                 # if self.enable_tokenwise_logging:
                 #     self.tally.add_metric(
