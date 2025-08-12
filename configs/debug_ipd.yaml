@@ -6,7 +6,7 @@ defaults:
 experiment:
     name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
     nb_epochs: 200
-    nb_matches_per_iteration: 32
+    nb_matches_per_iteration: 4
     reinit_matches_each_it: true
     checkpoint_every_n_iterations: 1e5
     start_epoch: 0
@@ -38,7 +38,7 @@ models:
                 torch_dtype: "bfloat16"
                 max_memory: {0: "15GiB"}
                 attn_implementation: "flash_attention_2"
-            inference_backend: vllm
+            inference_backend: dummy
             inference_backend_init_kwargs:
                 max_model_len: 1e4
                 # max_num_seqs: 128
@@ -69,7 +69,7 @@ models:
 
 trainers:
     agent_trainer:
-        class: AdAlignTrainer
+        class: TrainerAdAlign
         kwargs:
-            ad_align_use_old_ad_align: False
+            use_old_ad_align: False
             enable_tokenwise_logging: True

@@ -5,18 +5,23 @@ from dataclasses import dataclass
 from typing import Tuple
 
 import torch
+from torch.nn.utils.rnn import pad_sequence
 
 from mllm.markov_games.rollout_tree import (
     ChatTurn,
     RolloutTreeBranchNode,
     RolloutTreeRootNode,
 )
-from mllm.training.credit_methods import get_advantage_alignment_credits
-from mllm.training.reinforce_trainer import BaseTrainer
+from mllm.training.credit_methods import (
+    get_advantage_alignment_credits,
+    get_discounted_state_visitation_credits,
+)
 from mllm.training.tally_basic import Tally
 from mllm.training.tally_tokenwise import ContextualizedTokenwiseTally
 from mllm.training.tokenize_chats import process_training_chat
+from mllm.training.trainer_common import BaseTrainer
 from mllm.training.training_data_utils import (
+    AdvantagePacket,
     TrainingBatch,
     TrainingChatTurn,
     TrajectoryBatch,
@@ -41,14 +46,6 @@ class AdAlignTrainingData:
     # list-of-tensors: per rollout matrix (jT, A)
     alternative_advantages: list[torch.FloatTensor] | None = None
     advantage_alignment_credits: list[torch.FloatTensor] | None = None
-
-
-@dataclass
-class AdvantagePacket:
-    agent_id: str
-    rollout_ids: torch.IntTensor  # (B,)
-    # list-of-tensors
-    main_advantages: list[torch.FloatTensor]
 
 
 def get_alternative_chat_histories(
@@ -102,7 +99,7 @@ def get_alternative_chat_histories(
     return alternative_chats, alternative_rewards
 
 
-class AdAlignTrainer(BaseTrainer):
+class TrainerAdAlign(BaseTrainer):
     """
     Extends the reinforce trainer to support Advantage Alignment.
     """
@@ -115,7 +112,7 @@ class AdAlignTrainer(BaseTrainer):
         ad_align_use_sign: bool,
         ad_align_clipping: float,
         ad_align_force_coop_first_step: bool,
-        ad_align_use_old_ad_align: bool,
+        use_old_ad_align: bool,
         *args,
         **kwargs,
     ):
@@ -136,11 +133,11 @@ class AdAlignTrainer(BaseTrainer):
         self.ad_align_use_sign = ad_align_use_sign
         self.ad_align_clipping = ad_align_clipping
         self.ad_align_force_coop_first_step = ad_align_force_coop_first_step
-        self.ad_align_use_old_ad_align = ad_align_use_old_ad_align
+        self.use_old_ad_align = use_old_ad_align
         self.training_data: dict[AgentId, AdAlignTrainingData] = {}
         self.debug_path_list: list[str] = []
 
-    def set_pre_advantage_alignment_data(
+    def set_agent_trajectory_data(
         self, agent_id: str, roots: list[RolloutTreeRootNode]
     ):
         """
@@ -226,7 +223,7 @@ class AdAlignTrainer(BaseTrainer):
         # A = nb_alternative_actions[0]
 
         trajectory_batch = TrajectoryBatch(
-            rollout_ids=torch.Tensor(batch_rollout_ids),  # (B,)
+            rollout_ids=torch.tensor(batch_rollout_ids, dtype=torch.int32),  # (B,)
             batch_input_ids=batch_input_ids,
             batch_action_mask=batch_action_mask,
             batch_timesteps=batch_timesteps,
@@ -269,7 +266,6 @@ class AdAlignTrainer(BaseTrainer):
                 alternative_trajectory_batch
             )  # list length (∑jT * A), each (jT',)
             # Pad alternative advantages to (∑jT*A, P)
-            from torch.nn.utils.rnn import pad_sequence
 
             BAAs_padded = pad_sequence(BAAs_list, batch_first=True, padding_value=0.0)
             branch_idx = torch.tensor(
@@ -294,7 +290,7 @@ class AdAlignTrainer(BaseTrainer):
             alternative_advantages=BAAs,
         )
 
-    def share_advantage_alignment_data(self) -> AdvantagePacket:
+    def share_advantage_data(self) -> list[AdvantagePacket]:
         """
         Share the advantage alignment data with other agents.
         Returns:
@@ -312,7 +308,7 @@ class AdAlignTrainer(BaseTrainer):
             )
         return advantage_packets
 
-    def set_advantage_alignment_data(self, advantage_packets: list[AdvantagePacket]):
+    def receive_advantage_data(self, advantage_packets: list[AdvantagePacket]):
         """
         Receive advantage packets from other players.
         These contain the advantages of the other players' rollouts estimated by them.
@@ -323,9 +319,8 @@ class AdAlignTrainer(BaseTrainer):
             2 >= len(advantage_packets) > 0
         ), "At least one advantage packet must be provided."
 
-        for agent_data in self.training_data.values():
+        for agent_id, agent_data in self.training_data.items():
             for co_agent_packet in advantage_packets:
-                agent_id = agent_data.agent_id
                 co_agent_id = co_agent_packet.agent_id
                 if agent_id == co_agent_id:
                     continue
@@ -347,8 +342,6 @@ class AdAlignTrainer(BaseTrainer):
                 ), "Number of advantages must match for advantage alignment."
 
                 # Get padded tensors (advantage alignment is invariant to padding)
-                from torch.nn.utils.rnn import pad_sequence
-
                 lengths = torch.tensor(
                     [len(t) for t in agent_advantages],
                     device=self.device,
@@ -377,47 +370,21 @@ class AdAlignTrainer(BaseTrainer):
                     use_sign=self.ad_align_use_sign,
                     clipping=self.ad_align_clipping,
                     force_coop_first_step=self.ad_align_force_coop_first_step,
-                    use_old_ad_align=self.ad_align_use_old_ad_align,
+                    use_old_ad_align=self.use_old_ad_align,
                     tally=self.tally,
                 )
-                # Slice back to jagged and convert to tokenwise credits
+
+                if not self.skip_discounted_state_visitation:
+                    credits = get_discounted_state_visitation_credits(
+                        credits,
+                        self.discount_factor,
+                    )
+
+                # Slice back to jagged
                 advantage_alignment_credits = [
                     credits[i, : lengths[i]] for i in range(B)
                 ]
-                advantage_alignment_credits = get_tokenwise_credits(
-                    batch_timesteps=agent_data.main_data.batch_timesteps,
-                    batch_credits=advantage_alignment_credits,
-                )
-
-                # Set training batch
-                agent_data.advantage_alignment_credits = advantage_alignment_credits
-
-    def set_policy_gradient_data(self):
-        # Concatenate all agents' data
-        logger.info(f"Setting policy gradient data.")
-
-        self.tokenwise_tally = ContextualizedTokenwiseTally(
-            tokenizer=self.tokenizer,
-            paths=self.debug_path_list,
-        )
-
-        self.policy_gradient_data = TrainingBatch(
-            rollout_ids=torch.cat(
-                [data.main_data.rollout_ids for data in self.training_data.values()]
-            ),
-            batch_input_ids=[
-                t
-                for data in self.training_data.values()
-                for t in data.main_data.batch_input_ids
-            ],
-            batch_action_mask=[
-                t
-                for data in self.training_data.values()
-                for t in data.main_data.batch_action_mask
-            ],
-            batch_credits=[
-                t
-                for data in self.training_data.values()
-                for t in data.advantage_alignment_credits
-            ],
-        )
+                # Replace stored training data for this agent by the concrete trajectory batch
+                # and attach the computed credits for policy gradient.
+                self.training_data[agent_id] = agent_data.main_data
+                self.training_data[agent_id].batch_credits = advantage_alignment_credits

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal, Tuple
+from typing import Literal, Optional, Tuple
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
@@ -10,6 +10,14 @@ from mllm.markov_games.rollout_tree import (
     RolloutTreeNode,
     RolloutTreeRootNode,
 )
+
+
+@dataclass
+class AdvantagePacket:
+    agent_id: str
+    rollout_ids: torch.IntTensor  # (B,)
+    # list-of-tensors
+    main_advantages: list[torch.FloatTensor]
 
 
 class TrainingChatTurn:
@@ -105,6 +113,7 @@ class TrajectoryBatch:
     batch_timesteps: list[torch.IntTensor]  # List[(jS,)]
     batch_state_ends_mask: list[torch.BoolTensor]  # List[(jS,)]
     batch_rewards: list[torch.FloatTensor]  # List[(jT,)]
+    batch_credits: Optional[list[torch.FloatTensor]] = None  # List[(jS,)]
 
     def __post_init__(self):
         """

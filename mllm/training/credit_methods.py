@@ -3,10 +3,21 @@ import torch
 from mllm.training.tally_basic import Tally
 
 
-def get_discounted_returns(
-    rewards: torch.Tensor,  # (T)
+def get_discounted_state_visitation_credits(
+    credits: torch.Tensor,  # (B, T)
     discount_factor: float,
-    reward_normalizing_constant: float = 1.0,
+) -> torch.Tensor:
+    """
+    Computes discounted state visitation credits for a sequence of credits.
+    """
+    return credits * (
+        discount_factor ** torch.arange(credits.shape[1], device=credits.device)
+    )
+
+
+def get_discounted_returns(
+    rewards: torch.Tensor,  # (B, T)
+    discount_factor: float,
 ) -> torch.Tensor:
     """
     Computes Monte Carlo discounted returns for a sequence of rewards.
@@ -17,15 +28,14 @@ def get_discounted_returns(
     Returns:
         torch.Tensor: Array of discounted returns.
     """
-    rewards = rewards / reward_normalizing_constant
-    assert rewards.dim() == 1, "Wrong dimensions."
+    assert rewards.dim() == 2, "Wrong dimensions."
 
-    T = rewards.shape[0]
+    B, T = rewards.shape
     discounted_returns = torch.zeros_like(rewards)
-    accumulator = 0.0
+    accumulator = torch.zeros(B, device=rewards.device, dtype=rewards.dtype)
     for t in reversed(range(T)):
-        accumulator = rewards[t] + discount_factor * accumulator
-        discounted_returns[t] = accumulator
+        accumulator = rewards[:, t] + discount_factor * accumulator
+        discounted_returns[:, t] = accumulator
     return discounted_returns
 
 
@@ -251,10 +261,7 @@ def get_advantage_alignment_credits(
     #     path=["ad_align_opp_shaping_terms"], metric=opp_shaping_terms
     # )
 
-    t_discounts = (gamma * torch.ones(size=(1, T), device=a1.device)) ** (
-        torch.arange(0, T, 1, device=a1.device)
-    )
-    credits = t_discounts * (a1 + opp_shaping_terms)
+    credits = a1 + opp_shaping_terms
 
     # tally.add_metric(
     #     path=["final_advantage_alignment_credits"], metric=credits

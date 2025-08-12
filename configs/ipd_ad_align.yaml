@@ -9,7 +9,7 @@ markov_games:
 
 trainers:
     agent_trainer:
-        class: AdAlignTrainer
+        class: TrainerAdAlign
         kwargs:
             ad_align_force_coop_first_step: False
             ad_align_clipping: null

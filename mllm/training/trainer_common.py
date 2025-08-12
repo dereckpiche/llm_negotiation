@@ -6,7 +6,8 @@ TODO: add lr schedulers support
 import logging
 import os
 import sys
-from typing import Union
+from abc import ABC, abstractmethod
+from typing import Literal, Union
 
 import torch
 import torch.nn.functional as F
@@ -39,7 +40,7 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
 
-class BaseTrainer:
+class BaseTrainer(ABC):
     """
     Trainer
     """
@@ -65,6 +66,7 @@ class BaseTrainer:
         use_gae: bool,
         pg_loss_normalization: Literal["batch", "nb_tokens"],
         use_rloo: bool,
+        skip_discounted_state_visitation: bool,
         gae_lambda_for_credits: float,
         gae_lambda_for_targets: float,
         discount_factor: float,
@@ -144,12 +146,19 @@ class BaseTrainer:
         self.temperature = temperature
         self.use_gae = use_gae
         self.use_rloo = use_rloo
+        self.skip_discounted_state_visitation = skip_discounted_state_visitation
         self.gae_lambda_for_credits = gae_lambda_for_credits
         self.gae_lambda_for_targets = gae_lambda_for_targets
         self.discount_factor = discount_factor
         self.enable_tokenwise_logging = enable_tokenwise_logging
         self.reward_normalizing_constant = reward_normalizing_constant
         self.pg_loss_normalization = pg_loss_normalization
+
+        # Common containers used by all trainers
+        self.training_data: dict = {}
+        self.debug_path_list: list[str] = []
+        self.policy_gradient_data = None
+        self.tokenwise_tally = None
 
     def mask_non_restricted_token_logits(self, logits: torch.Tensor) -> torch.Tensor:
         """
@@ -578,90 +587,67 @@ class BaseTrainer:
 
         else:
             batch_rewards = trajectories.batch_rewards
-            credits = [
-                get_discounted_returns(
-                    rewards=rewards,
-                    discount_factor=self.discount_factor,
-                    reward_normalizing_constant=self.reward_normalizing_constant,
-                )
-                for rewards in batch_rewards
-            ]
+            lengths = [len(c) for c in batch_rewards]
+            padded_rewards = pad_sequence(
+                batch_rewards, batch_first=True, padding_value=0.0
+            )
+            padded_credits = get_discounted_returns(
+                rewards=padded_rewards,
+                discount_factor=self.discount_factor,
+            )
             if self.use_rloo:
-                lengths = [len(c) for c in credits]
-                padded = pad_sequence(credits, batch_first=True, padding_value=0.0)
-                padded = get_rloo_credits(credits=padded)
-                credits = [padded[i, : lengths[i]] for i in range(padded.shape[0])]
+                padded_credits = get_rloo_credits(credits=padded_credits)
+            credits = [
+                padded_credits[i, : lengths[i]] for i in range(padded_credits.shape[0])
+            ]
         return credits
 
-    def set_policy_gradient_data(
+    @abstractmethod
+    def set_agent_trajectory_data(
+        self, agent_id: str, roots: list[RolloutTreeRootNode]
+    ) -> None:
+        """
+        TOWRITE
+        """
+        pass
+
+    def set_trajectory_data(
         self, rollout_trees: list[RolloutTreeRootNode], agent_ids: list[str]
     ) -> None:
         """
         TOWRITE
         """
-        # TODO: append to current batch data instead, else we will only train for one agent!
-        self.policy_gradient_data = None
-        self.debug_path_list = []
         for agent_id in agent_ids:
-            # Tensorize Chats
-            rollout_ids = []
-            batch_input_ids = []
-            batch_action_mask = []
-            batch_timesteps = []
-            batch_state_ends_mask = []
-            batch_rewards = []
-            for root in rollout_trees:
-                rollout_id = root.id
-                self.debug_path_list.append(
-                    "mgid:" + str(rollout_id) + "_agent_id:" + agent_id
-                )
-                rollout_ids.append(rollout_id)
-                chat, rewards = get_main_chat_list_and_rewards(
-                    agent_id=agent_id, root=root
-                )
-                (
-                    input_ids,
-                    action_mask,
-                    timesteps,
-                    state_ends_mask,
-                ) = process_training_chat(tokenizer=self.tokenizer, chat_history=chat)
-                batch_input_ids.append(input_ids)
-                batch_action_mask.append(action_mask)
-                batch_timesteps.append(timesteps)
-                batch_state_ends_mask.append(state_ends_mask)
-                batch_rewards.append(rewards)
+            self.set_agent_trajectory_data(agent_id, rollout_trees)
 
-            trajectory_batch = TrajectoryBatch(
-                rollout_ids=torch.tensor(rollout_ids, dtype=torch.float32),
-                batch_input_ids=batch_input_ids,
-                batch_action_mask=batch_action_mask,
-                batch_timesteps=batch_timesteps,
-                batch_state_ends_mask=batch_state_ends_mask,
-                batch_rewards=batch_rewards,
-            )
+    @abstractmethod
+    def share_advantage_data(self) -> list[AdvantagePacket]:
+        pass
 
-            # Get Advantages
-            batch_advantages: torch.FloatTensor = (
-                self.get_advantages_with_critic_gradient_accumulation(trajectory_batch)
-            )
-            if self.critic_optimizer is not None:
-                self.critic_optimizer.step()
-                self.critic_optimizer.zero_grad()
+    @abstractmethod
+    def receive_advantage_data(self, advantage_packets: list[AdvantagePacket]) -> None:
+        pass
 
-            batch_advantages = get_tokenwise_credits(
+    def set_policy_gradient_data(self) -> None:
+        """
+        Already set earlier # TODO: make it separate and clean
+        """
+        self.policy_gradient_data = None
+        for agent_id, trajectory_batch in self.training_data.items():
+            tokenwise_batch_credits = get_tokenwise_credits(
                 batch_timesteps=trajectory_batch.batch_timesteps,
-                batch_credits=batch_advantages,
+                batch_credits=trajectory_batch.batch_credits,
             )
             policy_gradient_data = TrainingBatch(
                 rollout_ids=trajectory_batch.rollout_ids,
                 batch_input_ids=trajectory_batch.batch_input_ids,
                 batch_action_mask=trajectory_batch.batch_action_mask,
-                batch_credits=batch_advantages,
+                batch_credits=tokenwise_batch_credits,
             )
-            if self.policy_gradient_data is not None:
-                self.policy_gradient_data.append(policy_gradient_data)
-            else:
+            if self.policy_gradient_data is None:
                 self.policy_gradient_data = policy_gradient_data
+            else:
+                self.policy_gradient_data.append(policy_gradient_data)
 
         self.tokenwise_tally = ContextualizedTokenwiseTally(
             tokenizer=self.tokenizer,
@@ -677,12 +663,6 @@ class BaseTrainer:
             self.critic.train()
             self.critic_optimizer.zero_grad()
         self.apply_reinforce_step(training_batch=self.policy_gradient_data)
-
-    def set_token_credits(self) -> None:
-        """
-        Converts per-step credits into per-token credits for each batch element, based on action timestamps.
-        Stores the result in self.token_credits.
-        """
 
     def export_training_metrics(self, path: str) -> None:
         """

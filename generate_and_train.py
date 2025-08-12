@@ -36,8 +36,9 @@ from mllm.models.large_language_model_local import LeanLocalLLM
 
 # from mllm.models.large_language_model_server import ServerLLM
 from mllm.models.scalar_critic import ScalarCritic
-from mllm.training.advantage_alignment_trainer import AdAlignTrainer
-from mllm.training.reinforce_trainer import BaseTrainer
+from mllm.training.trainer_ad_align import TrainerAdAlign
+from mllm.training.trainer_independant import TrainerNaive
+from mllm.training.trainer_sum_rewards import TrainerSumRewards
 from mllm.utils.dict_get_path import get_from_nested_dict
 from mllm.utils.kill_sglang import kill_sglang
 from mllm.utils.update_start_epoch import update_start_epoch
@@ -137,12 +138,9 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         optimizers[optimizer_id] = optimizer_class(module.parameters(), **init_args)
 
     # Init trainers
-    use_advantage_alignment = False
     trainers = {}
     for trainer_id, trainer_config in cfg["trainers"].items():
         trainer_class = eval(trainer_config["class"])
-        if trainer_class == AdAlignTrainer:
-            use_advantage_alignment = True
         module_pointers = trainer_config["module_pointers"]
         tokenizer = llms_dict[module_pointers["policy"][0]].tokenizer
         policy = get_from_nested_dict(adapter_modules, module_pointers["policy"])
@@ -159,7 +157,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
             )
         else:
             critic_optimizer = None
-        trainer: BaseTrainer | AdAlignTrainer = trainer_class(
+        trainer: TrainerAdAlign | TrainerNaive | TrainerSumRewards = trainer_class(
             policy=policy,
             policy_optimizer=policy_optimizer,
             critic=critic,
@@ -236,45 +234,25 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         for llm in llms_dict.values():
             llm.toggle_training_mode()
 
-        # ----------- Advantage Alignment Training
+        # ----------- Training (with advantage sharing between trainers)
+        # Send advantage packets to other trainers
+        all_advantage_packets = []
+        for trainer_id, trainer in trainers.items():
+            trainer.set_trajectory_data(
+                rollout_trees=rollout_trees,
+                agent_ids=cfg["train_on_which_data"][trainer_id],
+            )
+            advantage_packets = trainer.share_advantage_data()
+            all_advantage_packets.extend(advantage_packets)
 
-        if use_advantage_alignment:  # Trainers can share critic advantage estimations
-            # Send advantage packets to other players
-            all_advantage_packets = []
-            for trainer_id, trainer in trainers.items():
-                agent_ids = cfg["train_on_which_data"][
-                    trainer_id
-                ]  # ids of the agents on which the trainer takes steps
-                for agent_id in agent_ids:
-                    trainer.set_pre_advantage_alignment_data(
-                        agent_id=agent_id, roots=rollout_trees
-                    )
-                advantage_packets = trainer.share_advantage_alignment_data()
-                all_advantage_packets.extend(advantage_packets)
-
-            # Receive advantage packets from other players
-            for trainer_id, trainer in trainers.items():
-                trainer.set_advantage_alignment_data(all_advantage_packets)
-                trainer.set_policy_gradient_data()
-
-            # Train
-            for trainer_id, trainer in trainers.items():
-                trainer.train()
-
-        # ----------- Regular Training
-        else:  # Regular training
-            for trainer_id, trainer in trainers.items():
-                agent_ids = cfg["train_on_which_data"][
-                    trainer_id
-                ]  # ids of the agents on which the trainer takes steps
-                trainer.set_policy_gradient_data(
-                    rollout_trees=rollout_trees,
-                    agent_ids=agent_ids,
-                )
-                trainer.train()
+        # Receive advantage packets from other trainers and train
+        for trainer_id, trainer in trainers.items():
+            trainer.receive_advantage_data(all_advantage_packets)
+            trainer.set_policy_gradient_data()
+            trainer.train()
 
         # Export trainer stuff
-        for trainer in trainers.values():
+        for trainer_id, trainer in trainers.items():
             trainer.export_optimizer_states()
             trainer.export_training_metrics(
                 path=os.path.join(it_folder, trainer_id + "_log")
