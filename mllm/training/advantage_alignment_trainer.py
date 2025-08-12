@@ -4,7 +4,6 @@ import sys
 from dataclasses import dataclass
 from typing import Tuple
 
-import numpy as np
 import torch
 
 from mllm.markov_games.rollout_tree import (
@@ -37,20 +36,19 @@ AgentId = str
 class AdAlignTrainingData:
     agent_id: str
     main_data: TrajectoryBatch
-    main_advantages: torch.FloatTensor | None = None  # (B, jT) where B is the number of rollouts and jT is the number of time steps in the main trajectory
-    alternative_advantages: torch.FloatTensor | None = (
-        None  # (B, jT, A) where A is the number of alternative actions
-    )
-    advantage_alignment_credits: torch.FloatTensor | None = (
-        None  # (B, jS) where B is the number of rollouts and jS is the number of tokens
-    )
+    # list-of-tensors: per rollout advantages with length jT
+    main_advantages: list[torch.FloatTensor] | None = None
+    # list-of-tensors: per rollout matrix (jT, A)
+    alternative_advantages: list[torch.FloatTensor] | None = None
+    advantage_alignment_credits: list[torch.FloatTensor] | None = None
 
 
 @dataclass
 class AdvantagePacket:
     agent_id: str
     rollout_ids: torch.IntTensor  # (B,)
-    main_advantages: torch.FloatTensor  # (B, jT)
+    # list-of-tensors
+    main_advantages: list[torch.FloatTensor]
 
 
 def get_alternative_chat_histories(
@@ -229,21 +227,11 @@ class AdAlignTrainer(BaseTrainer):
 
         trajectory_batch = TrajectoryBatch(
             rollout_ids=torch.Tensor(batch_rollout_ids),  # (B,)
-            batch_input_ids=torch.nested.nested_tensor(
-                batch_input_ids, layout=torch.jagged
-            ),  # (B, jS)
-            batch_action_mask=torch.nested.nested_tensor(
-                batch_action_mask, layout=torch.jagged
-            ),  # (B, jS)
-            batch_timesteps=torch.nested.nested_tensor(
-                batch_timesteps, layout=torch.jagged
-            ),  # (B, jS)
-            batch_state_ends_mask=torch.nested.nested_tensor(
-                batch_state_ends_mask, layout=torch.jagged
-            ),  # (B, jS)
-            batch_rewards=torch.nested.nested_tensor(
-                batch_rewards, layout=torch.jagged
-            ),  # (B, jT)
+            batch_input_ids=batch_input_ids,
+            batch_action_mask=batch_action_mask,
+            batch_timesteps=batch_timesteps,
+            batch_state_ends_mask=batch_state_ends_mask,
+            batch_rewards=batch_rewards,
         )
 
         # Here, `A` is the number of alternative actions / trajectories taken at each time step.
@@ -255,24 +243,12 @@ class AdAlignTrainer(BaseTrainer):
                 jT_list.int().tolist()
             )  # (jT,) # (we only want the advantages where we branched out)
             alternative_trajectory_batch = TrajectoryBatch(
-                rollout_ids=torch.zeros(
-                    A * sum_jT, dtype=torch.int32
-                ),  # (B*A,) we don't have ids here
-                batch_input_ids=torch.nested.nested_tensor(
-                    alternative_batch_input_ids, layout=torch.jagged
-                ),  # (∑jT * A, jS')
-                batch_action_mask=torch.nested.nested_tensor(
-                    alternative_batch_action_mask, layout=torch.jagged
-                ),  # (∑jT * A, jS')
-                batch_timesteps=torch.nested.nested_tensor(
-                    alternative_batch_timesteps, layout=torch.jagged
-                ),  # (∑jT * A, jS')
-                batch_state_ends_mask=torch.nested.nested_tensor(
-                    alternative_batch_state_ends_mask, layout=torch.jagged
-                ),  # (∑jT * A, jS')
-                batch_rewards=torch.nested.nested_tensor(
-                    alternative_batch_rewards, layout=torch.jagged
-                ),  # (∑jT * A, jT')
+                rollout_ids=torch.zeros(A * sum_jT, dtype=torch.int32),
+                batch_input_ids=alternative_batch_input_ids,
+                batch_action_mask=alternative_batch_action_mask,
+                batch_timesteps=alternative_batch_timesteps,
+                batch_state_ends_mask=alternative_batch_state_ends_mask,
+                batch_rewards=alternative_batch_rewards,
             )
 
         # Get Advantages & Train Critic
@@ -286,36 +262,30 @@ class AdAlignTrainer(BaseTrainer):
         # Get alternative advantages
         # BAAs stands for batch alternative advantages
         # (torch nested tensors have very little api support, so we have to do some odd manual work here)
-        with resource_logger_context(logger, "Compute alternative advantage estimates"):
-            BAAs: torch.FloatTensor = (
-                self.get_advantages_with_critic_gradient_accumulation(
-                    alternative_trajectory_batch
-                )
-            )  # (∑jT * A, jT')
-            BAAs = torch.nested.to_padded_tensor(
-                BAAs.contiguous(), padding=0.0
-            )  # (∑jT * A, P) # necessary for slice operations
-            batch_branching_time_steps = torch.Tensor(batch_branching_time_steps).to(
-                dtype=torch.int64, device=BAAs.device
-            )  # (∑jT * A, 1)
-            BAAs = torch.gather(
-                BAAs, dim=1, index=batch_branching_time_steps.unsqueeze(1)
-            )  # (∑jT * A,) # (we only want the advantages where we branched out)
-            BAAs = torch.nested.nested_tensor(
-                [
-                    chunk
-                    for block in BAAs.view(A, sum_jT)
-                    for chunk in block.split(jT_list)
-                ],
-                layout=torch.jagged,
-            )  # (B*A, jT)
-            BAAs = torch.nested.to_padded_tensor(
-                BAAs, padding=0.0
-            )  # (B*A, P) # necessary for reshape operation
-            BAAs = BAAs.reshape(B, -1, A)  # (B, P, A)
-            BAAs = torch.nested.nested_tensor(
-                [block[:max] for max, block in zip(jT_list, BAAs)], layout=torch.jagged
-            )  # (B, jT, A)
+        with ressource_logger_context(
+            logger, "Compute alternative advantage estimates"
+        ):
+            BAAs_list = self.get_advantages_with_critic_gradient_accumulation(
+                alternative_trajectory_batch
+            )  # list length (∑jT * A), each (jT',)
+            # Pad alternative advantages to (∑jT*A, P)
+            from torch.nn.utils.rnn import pad_sequence
+
+            BAAs_padded = pad_sequence(BAAs_list, batch_first=True, padding_value=0.0)
+            branch_idx = torch.tensor(
+                batch_branching_time_steps, device=BAAs_padded.device, dtype=torch.long
+            )
+            gathered = BAAs_padded.gather(dim=1, index=branch_idx.unsqueeze(1)).squeeze(
+                1
+            )
+            # Reshape and split per rollout, then transpose to (jT_i, A)
+            gathered = gathered.view(A, sum_jT)  # (A, ∑jT)
+            blocks = list(
+                torch.split(gathered, jT_list, dim=1)
+            )  # len B, shapes (A, jT_i)
+            BAAs = [
+                blk.transpose(0, 1).contiguous() for blk in blocks
+            ]  # list of (jT_i, A)
 
         self.training_data[agent_id] = AdAlignTrainingData(
             agent_id=agent_id,
@@ -363,37 +333,37 @@ class AdAlignTrainer(BaseTrainer):
                 agent_advantages = agent_data.main_advantages
                 co_agent_advantages = co_agent_packet.main_advantages
                 co_agent_rollout_ids = co_agent_packet.rollout_ids
-                B = agent_advantages.shape[0]
-                assert (
-                    agent_advantages.shape[0] == agent_advantages.shape[0]
-                ), "Batch dimensions must match for advantage alignment."
+                B = len(agent_advantages)
                 # Get co-agent advantages in the right order
                 permutation = []
                 for id in agent_rollout_ids:
                     permutation.append(
                         torch.where(id == co_agent_rollout_ids)[0].item()
                     )
-                co_agent_advantages = [
-                    co_agent_advantages.unbind()[i] for i in permutation
-                ]  # permute
-                co_agent_advantages = torch.nested.nested_tensor(
-                    co_agent_advantages, layout=torch.jagged
-                )
-                assert torch.all(
-                    co_agent_advantages.offsets().diff()
-                    == agent_advantages.offsets().diff()
+                co_agent_advantages = [co_agent_advantages[i] for i in permutation]
+                assert all(
+                    a.shape[0] == b.shape[0]
+                    for a, b in zip(co_agent_advantages, agent_advantages)
                 ), "Number of advantages must match for advantage alignment."
 
                 # Get padded tensors (advantage alignment is invariant to padding)
-                jagged_lengths = self.batch_advantages.offsets().diff()
-                padded_main_advantages = torch.nested.to_padded_tensor(
-                    agent_data.main_advantages, padding=0.0
+                from torch.nn.utils.rnn import pad_sequence
+
+                lengths = torch.tensor(
+                    [len(t) for t in agent_advantages],
+                    device=self.device,
+                    dtype=torch.long,
                 )
-                padded_alternative_advantages = torch.nested.to_padded_tensor(
-                    agent_data.alternative_advantages, padding=0.0
+                padded_main_advantages = pad_sequence(
+                    agent_advantages, batch_first=True, padding_value=0.0
                 )
-                padded_co_agent_advantages = torch.nested.to_padded_tensor(
-                    co_agent_advantages, padding=0.0
+                padded_alternative_advantages = pad_sequence(
+                    agent_data.alternative_advantages,
+                    batch_first=True,
+                    padding_value=0.0,
+                )  # (B, P, A)
+                padded_co_agent_advantages = pad_sequence(
+                    co_agent_advantages, batch_first=True, padding_value=0.0
                 )
 
                 # Create training batch data
@@ -410,9 +380,10 @@ class AdAlignTrainer(BaseTrainer):
                     use_old_ad_align=self.ad_align_use_old_ad_align,
                     tally=self.tally,
                 )
-                advantage_alignment_credits = torch.nested.narrow(
-                    credits, dim=1, start=0, length=jagged_lengths, layout=torch.jagged
-                )
+                # Slice back to jagged and convert to tokenwise credits
+                advantage_alignment_credits = [
+                    credits[i, : lengths[i]] for i in range(B)
+                ]
                 advantage_alignment_credits = get_tokenwise_credits(
                     batch_timesteps=agent_data.main_data.batch_timesteps,
                     batch_credits=advantage_alignment_credits,
@@ -434,28 +405,19 @@ class AdAlignTrainer(BaseTrainer):
             rollout_ids=torch.cat(
                 [data.main_data.rollout_ids for data in self.training_data.values()]
             ),
-            batch_input_ids=torch.nested.nested_tensor(
-                [
-                    t
-                    for data in self.training_data.values()
-                    for t in data.main_data.batch_input_ids.unbind()
-                ],
-                layout=torch.jagged,
-            ),
-            batch_action_mask=torch.nested.nested_tensor(
-                [
-                    t
-                    for data in self.training_data.values()
-                    for t in data.main_data.batch_action_mask.unbind()
-                ],
-                layout=torch.jagged,
-            ),
-            batch_credits=torch.nested.nested_tensor(
-                [
-                    t
-                    for data in self.training_data.values()
-                    for t in data.advantage_alignment_credits.unbind()
-                ],
-                layout=torch.jagged,
-            ),
+            batch_input_ids=[
+                t
+                for data in self.training_data.values()
+                for t in data.main_data.batch_input_ids
+            ],
+            batch_action_mask=[
+                t
+                for data in self.training_data.values()
+                for t in data.main_data.batch_action_mask
+            ],
+            batch_credits=[
+                t
+                for data in self.training_data.values()
+                for t in data.advantage_alignment_credits
+            ],
         )

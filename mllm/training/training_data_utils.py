@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Literal, Tuple
 
 import torch
-import torch.nested as tn
+from torch.nn.utils.rnn import pad_sequence
 
 from mllm.markov_games.rollout_tree import (
     ChatTurn,
@@ -89,44 +89,40 @@ def get_tokenwise_credits(
         for idx, credit in enumerate(credits):
             token_credits[timesteps == idx] = credit
         batch_token_credits.append(token_credits)
-    batch_token_credits = tn.nested_tensor(batch_token_credits, layout=torch.jagged)
     return batch_token_credits
 
 
 @dataclass
 class TrajectoryBatch:
     """
-    Tensorized batch of trajectories.
+    Tensorized batch of trajectories using list-of-tensors for jagged dimensions.
     """
 
-    # B := batch size, S := number of tokens / seq. length, T := number of states. `j` stands for jagged (see pytorch nested tensors.)
+    # B := batch size, S := number of tokens / seq. length, T := number of states.
     rollout_ids: torch.IntTensor  # (B,)
-    batch_input_ids: torch.LongTensor | torch.Tensor  # (B, jS)
-    batch_action_mask: torch.BoolTensor | torch.Tensor  # (B, jS)
-    batch_timesteps: torch.IntTensor | torch.Tensor  # (B, jS)
-    batch_state_ends_mask: torch.IntTensor | torch.Tensor  # (B, jS)
-    batch_rewards: torch.FloatTensor | torch.Tensor  # (B, jT)
+    batch_input_ids: list[torch.LongTensor]  # List[(jS,)]
+    batch_action_mask: list[torch.BoolTensor]  # List[(jS,)]
+    batch_timesteps: list[torch.IntTensor]  # List[(jS,)]
+    batch_state_ends_mask: list[torch.BoolTensor]  # List[(jS,)]
+    batch_rewards: list[torch.FloatTensor]  # List[(jT,)]
 
     def __post_init__(self):
         """
-        This method is executed after initialization automatically.
-        It ensures that the tensors created match the requirements.
+        Validate per-sample consistency.
         """
         B = self.rollout_ids.shape[0]
-        if self.batch_input_ids.dim() == 1:
-            self.batch_input_ids = self.batch_input_ids.unsqueeze(0)
-        if self.batch_action_mask.dim() == 1:
-            self.batch_action_mask = self.batch_action_mask.unsqueeze(0)
-        if self.batch_timesteps.dim() == 1:
-            self.batch_timesteps = self.batch_timesteps.unsqueeze(0)
-        if self.batch_state_ends_mask.dim() == 1:
-            self.batch_state_ends_mask = self.batch_state_ends_mask.unsqueeze(0)
-        if self.batch_rewards.dim() == 1:
-            self.batch_rewards = self.batch_rewards.unsqueeze(0)
+        assert (
+            len(self.batch_input_ids)
+            == len(self.batch_action_mask)
+            == len(self.batch_timesteps)
+            == len(self.batch_state_ends_mask)
+            == len(self.batch_rewards)
+            == B
+        ), "Jagged lists must all have length equal to batch size."
+
         for b in range(B):
-            nb_rewards = self.batch_rewards[b].shape[0]
-            nb_timesteps = torch.max(self.batch_timesteps[b]).item() + 1
-            # print(nb_rewards, nb_timesteps)
+            nb_rewards = int(self.batch_rewards[b].shape[0])
+            nb_timesteps = int(torch.max(self.batch_timesteps[b]).item()) + 1
             assert (
                 nb_rewards == nb_timesteps
             ), "Number of rewards and timesteps mismatch."
@@ -136,7 +132,8 @@ class TrajectoryBatch:
                 == self.batch_timesteps[b].shape[0]
             ), "Tensors must have the same shape along the jagged dimension."
             assert (
-                self.batch_state_ends_mask[b].sum() == self.batch_rewards[b].shape[0]
+                int(self.batch_state_ends_mask[b].sum())
+                == self.batch_rewards[b].shape[0]
             ), "Number of rewards must match number of state ends."
 
     """
@@ -163,51 +160,46 @@ class TrajectoryBatch:
 
     def __getitem__(self, key) -> "TrajectoryBatch":
         if isinstance(key, slice):
-            ret = TrajectoryBatch(
+            return TrajectoryBatch(
                 rollout_ids=self.rollout_ids.__getitem__(key),
-                batch_input_ids=tn.nested_tensor(
-                    self.batch_input_ids.unbind().__getitem__(key), layout=torch.jagged
-                ),
-                batch_action_mask=tn.nested_tensor(
-                    self.batch_action_mask.unbind().__getitem__(key),
-                    layout=torch.jagged,
-                ),
-                batch_timesteps=tn.nested_tensor(
-                    self.batch_timesteps.unbind().__getitem__(key), layout=torch.jagged
-                ),
-                batch_state_ends_mask=tn.nested_tensor(
-                    self.batch_state_ends_mask.unbind().__getitem__(key),
-                    layout=torch.jagged,
-                ),
-                batch_rewards=tn.nested_tensor(
-                    self.batch_rewards.unbind().__getitem__(key), layout=torch.jagged
-                ),
+                batch_input_ids=self.batch_input_ids[key],
+                batch_action_mask=self.batch_action_mask[key],
+                batch_timesteps=self.batch_timesteps[key],
+                batch_state_ends_mask=self.batch_state_ends_mask[key],
+                batch_rewards=self.batch_rewards[key],
             )
-            return ret
 
     def __len__(self):
-        return self.batch_input_ids.shape[0]
+        return len(self.batch_input_ids)
 
     def to(self, device):
         self.rollout_ids = self.rollout_ids.to(device)
-        self.batch_input_ids = self.batch_input_ids.to(device)
-        self.batch_action_mask = self.batch_action_mask.to(device)
-        self.batch_timesteps = self.batch_timesteps.to(device)
-        self.batch_state_ends_mask = self.batch_state_ends_mask.to(device)
-        self.batch_rewards = self.batch_rewards.to(device)
+        self.batch_input_ids = [t.to(device) for t in self.batch_input_ids]
+        self.batch_action_mask = [t.to(device) for t in self.batch_action_mask]
+        self.batch_timesteps = [t.to(device) for t in self.batch_timesteps]
+        self.batch_state_ends_mask = [t.to(device) for t in self.batch_state_ends_mask]
+        self.batch_rewards = [t.to(device) for t in self.batch_rewards]
 
     def get_padded_tensors_for_critic(self):
         """
-        TOWRITE
+        Returns:
+            padded_batch_input_ids: (B, P)
+            padded_batch_state_ends_mask: (B, P)
+            timestep_counts: (B,) tensor of ints indicating number of states per sample
         """
-        padded_batch_input_ids = tn.to_padded_tensor(self.batch_input_ids, padding=0.0)
-        padded_batch_state_ends_mask = tn.to_padded_tensor(
-            self.batch_state_ends_mask, padding=False
+        padded_batch_input_ids = pad_sequence(
+            self.batch_input_ids, batch_first=True, padding_value=0
         )
-        jagged_lengths = self.batch_input_ids.offsets().clone()
-        jagged_lengths[1:] = jagged_lengths[1:] - jagged_lengths[:-1]  # TODO: verify
-        jagged_lengths = jagged_lengths[1:]
-        return padded_batch_input_ids, padded_batch_state_ends_mask, jagged_lengths
+        padded_batch_state_ends_mask = pad_sequence(
+            self.batch_state_ends_mask, batch_first=True, padding_value=0
+        ).bool()
+        # number of states equals number of True in state_ends_mask
+        timestep_counts = torch.tensor(
+            [int(mask.sum().item()) for mask in self.batch_state_ends_mask],
+            device=padded_batch_input_ids.device,
+            dtype=torch.long,
+        )
+        return padded_batch_input_ids, padded_batch_state_ends_mask, timestep_counts
 
 
 timestep = int
@@ -231,9 +223,9 @@ class PaddedTensorTrainingBatch:
 @dataclass
 class TrainingBatch:
     rollout_ids: torch.IntTensor | torch.Tensor  # (B,)
-    batch_input_ids: torch.LongTensor | torch.Tensor  # (B, jS)
-    batch_action_mask: torch.FloatTensor | torch.Tensor  # (B, jS)
-    batch_credits: torch.FloatTensor | torch.Tensor  # (B, jS)
+    batch_input_ids: list[torch.LongTensor]  # List[(jS,)]
+    batch_action_mask: list[torch.BoolTensor]  # List[(jS,)]
+    batch_credits: list[torch.FloatTensor]  # List[(jS,)]
 
     def __post_init__(self):
         # Put everything in the right device
@@ -243,62 +235,52 @@ class TrainingBatch:
         # self.batch_credits = self.batch_credits.to("cuda" if torch.cuda.is_available() else "cpu")
         # Ensure batch dimension is present
         assert (
-            self.batch_input_ids.dim()
-            == self.batch_action_mask.dim()
-            == self.batch_credits.dim()
-            == 2
-        ), "Tensors must be of shape (B,jS)"
-        assert (
-            self.batch_input_ids.shape[0]
-            == self.batch_action_mask.shape[0]
-            == self.batch_credits.shape[0]
-        ), "Tensors must have the same batch size."
-        input_diff = self.batch_input_ids.offsets().diff()
-        action_diff = self.batch_action_mask.offsets().diff()
-        credit_diff = self.batch_credits.offsets().diff()
-        assert (
-            torch.all(input_diff == action_diff).item()
-            and torch.all(action_diff == credit_diff).item()
-        ), "Tensors must have the same shapes along the jagged dimension."
+            len(self.batch_input_ids)
+            == len(self.batch_action_mask)
+            == len(self.batch_credits)
+            == self.rollout_ids.shape[0]
+        ), "Jagged lists must all have length equal to batch size."
+        for inp, mask, cred in zip(
+            self.batch_input_ids, self.batch_action_mask, self.batch_credits
+        ):
+            assert (
+                inp.shape[0] == mask.shape[0] == cred.shape[0]
+            ), "Tensors must have the same shapes along the jagged dimension."
 
     def __getitem__(self, key) -> "TrainingBatch":
         if isinstance(key, slice):
-            ret = TrainingBatch(
+            return TrainingBatch(
                 rollout_ids=self.rollout_ids.__getitem__(key),
-                batch_input_ids=tn.nested_tensor(
-                    self.batch_input_ids.unbind().__getitem__(key), layout=torch.jagged
-                ),
-                batch_action_mask=tn.nested_tensor(
-                    self.batch_action_mask.unbind().__getitem__(key),
-                    layout=torch.jagged,
-                ),
-                batch_credits=tn.nested_tensor(
-                    self.batch_credits.unbind().__getitem__(key), layout=torch.jagged
-                ),
+                batch_input_ids=self.batch_input_ids[key],
+                batch_action_mask=self.batch_action_mask[key],
+                batch_credits=self.batch_credits[key],
             )
-            return ret
 
     def __len__(self):
-        return self.batch_input_ids.shape[0]
+        return len(self.batch_input_ids)
 
     def to(self, device):
         self.rollout_ids = self.rollout_ids.to(device)
-        self.batch_input_ids = self.batch_input_ids.to(device)
-        self.batch_action_mask = self.batch_action_mask.to(device)
-        self.batch_credits = self.batch_credits.to(device)
+        self.batch_input_ids = [t.to(device) for t in self.batch_input_ids]
+        self.batch_action_mask = [t.to(device) for t in self.batch_action_mask]
+        self.batch_credits = [t.to(device) for t in self.batch_credits]
 
     def get_padded_tensors(self, padding: float = 0.0):
         """
         TOWRITE
         Always pad to the right.
         """
-        padded_batch_input_ids = tn.to_padded_tensor(
-            self.batch_input_ids, padding=padding
+        padded_batch_input_ids = pad_sequence(
+            self.batch_input_ids, batch_first=True, padding_value=int(padding)
         )
-        padded_batch_action_mask = tn.to_padded_tensor(
-            self.batch_action_mask, padding=padding
+        padded_batch_action_mask = pad_sequence(
+            [m.to(dtype=torch.bool) for m in self.batch_action_mask],
+            batch_first=True,
+            padding_value=False,
         )
-        padded_batch_credits = tn.to_padded_tensor(self.batch_credits, padding=padding)
+        padded_batch_credits = pad_sequence(
+            self.batch_credits, batch_first=True, padding_value=float(padding)
+        )
 
         return PaddedTensorTrainingBatch(
             padded_batch_input_ids, padded_batch_action_mask, padded_batch_credits
@@ -306,23 +288,9 @@ class TrainingBatch:
 
     def append(self, other: "TrainingBatch"):
         self.rollout_ids = torch.cat([self.rollout_ids, other.rollout_ids])
-
-        def concatenate_nested_tensors(x, y):
-            tensors_list = []
-            tensors_list.extend(x.unbind())
-            tensors_list.extend(y.unbind())
-            result = torch.nested.nested_tensor(tensors_list, layout=torch.jagged)
-            return result
-
-        self.batch_input_ids = concatenate_nested_tensors(
-            self.batch_input_ids, other.batch_input_ids
-        )
-        self.batch_action_mask = concatenate_nested_tensors(
-            self.batch_action_mask, other.batch_action_mask
-        )
-        self.batch_credits = concatenate_nested_tensors(
-            self.batch_credits, other.batch_credits
-        )
+        self.batch_input_ids.extend(other.batch_input_ids)
+        self.batch_action_mask.extend(other.batch_action_mask)
+        self.batch_credits.extend(other.batch_credits)
 
 
 timestep = int

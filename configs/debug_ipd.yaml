@@ -33,12 +33,12 @@ models:
         init_args:
             llm_id: base_llm
             model_name: "Qwen/Qwen2.5-0.5B-Instruct" # Qwen/Qwen3-4B-Instruct-2507
-            inference_backend: vllm
             hf_kwargs:
                 device_map: "cuda:0"
                 torch_dtype: "bfloat16"
                 max_memory: {0: "15GiB"}
                 attn_implementation: "flash_attention_2"
+            inference_backend: vllm
             inference_backend_init_kwargs:
                 max_model_len: 1e4
                 # max_num_seqs: 128

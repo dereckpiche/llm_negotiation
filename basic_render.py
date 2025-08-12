@@ -3,7 +3,7 @@ import glob
 import os
 from pathlib import Path
 
-from mllm.markov_games.render_utils import *
+from mllm.markov_games.gather_and_export_utils import *
 
 
 def process_single_folder(

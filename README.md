@@ -34,6 +34,8 @@ pip install -e .
 ```bash
 pip install pre-commit
 pre-commit install
+pip install nbstripout
+nbstripout --install
 ```
 
 ## Running Experiments
