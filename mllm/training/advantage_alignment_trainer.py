@@ -24,7 +24,7 @@ from mllm.training.training_data_utils import (
     get_main_chat_list_and_rewards,
     get_tokenwise_credits,
 )
-from mllm.utils.ressource_context import ressource_logger_context
+from mllm.utils.resource_context import resource_logger_context
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -246,7 +246,7 @@ class AdAlignTrainer(BaseTrainer):
         # Here, `A` is the number of alternative actions / trajectories taken at each time step.
         # For each of the `B` rollout perspectives, at each of its jT (`j` is for jagged, since each main rollout may be of a different length) steps, we take A alternate trajectories (from different actions).
         # Therefore, we have ∑jT * A trajectories to process. If each of the main trajectories have T steps, we will have `B*T*A` to process.
-        with ressource_logger_context(logger, "Create alternative trajectory batch"):
+        with resource_logger_context(logger, "Create alternative trajectory batch"):
             sum_jT = int(torch.sum(jT_list).item())
             jT_list = (
                 jT_list.int().tolist()
@@ -273,7 +273,7 @@ class AdAlignTrainer(BaseTrainer):
             )
 
         # Get Advantages & Train Critic
-        with ressource_logger_context(
+        with resource_logger_context(
             logger, "Get advantages with critic gradient accumulation"
         ):
             self.batch_advantages: torch.FloatTensor = (
@@ -283,9 +283,7 @@ class AdAlignTrainer(BaseTrainer):
         # Get alternative advantages
         # BAAs stands for batch alternative advantages
         # (torch nested tensors have very little api support, so we have to do some odd manual work here)
-        with ressource_logger_context(
-            logger, "Compute alternative advantage estimates"
-        ):
+        with resource_logger_context(logger, "Compute alternative advantage estimates"):
             BAAs: torch.FloatTensor = (
                 self.get_advantages_with_critic_gradient_accumulation(
                     alternative_trajectory_batch

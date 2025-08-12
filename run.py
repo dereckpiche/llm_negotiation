@@ -371,12 +371,19 @@ def main(cfg):
     )
 
     # Run the experiment specified in the configuration
-    asyncio.run(
-        generate_and_train(
-            OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict"),
-            base_seed=cfg.experiment.base_seed,
+    try:
+        asyncio.run(
+            generate_and_train(
+                OmegaConf.to_container(
+                    cfg, resolve=True, structured_config_mode="dict"
+                ),
+                base_seed=cfg.experiment.base_seed,
+            )
         )
-    )
+    finally:
+        # Clean up distributed process groups if they exist
+        if torch.distributed.is_initialized():
+            torch.distributed.destroy_process_group()
 
 
 if __name__ == "__main__":
@@ -384,4 +391,4 @@ if __name__ == "__main__":
 
     mp.set_start_method("spawn", force=True)
     kill_sglang()
-    asyncio.run(main())
+    main()
