@@ -4,7 +4,7 @@ defaults:
 markov_games:
     runner_method_name: AlternativeActionsRunner
     runner_kwargs:
-        nb_alternative_actions: 1
+        nb_alternative_actions: 5
         max_depth: 10
 
 trainers:
@@ -16,4 +16,4 @@ trainers:
             ad_align_gamma: 0.8
             ad_align_exclude_k_equals_t: False
             ad_align_use_sign: False
-            ad_align_beta: 3.0
+            ad_align_beta: 1.0

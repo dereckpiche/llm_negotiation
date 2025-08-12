@@ -133,11 +133,12 @@ def get_advantage_alignment_weights(
 
 def get_advantage_alignment_credits(
     a1: torch.Tensor,  # (B, S)
-    a1_alternative: torch.Tensor,  # (B, A, S)
+    a1_alternative: torch.Tensor,  # (B, S, A)
     a2: torch.Tensor,  # (B, S)
     exclude_k_equals_t: bool,
     beta: float,
     gamma: float,
+    use_old_ad_align: bool = False,
     use_sign: bool = False,
     clipping: float | None = None,
     use_time_regularization: bool = False,
@@ -181,12 +182,16 @@ def get_advantage_alignment_credits(
     assert a1.shape == a2.shape, "Not the same shape"
     B, T, A = a1_alternative.shape
 
-    a1_alternative = a1_alternative.mean(dim=2)
-    assert a1.shape == a1_alternative.shape, "Not the same shape"
-
-    adalign_weights = get_advantage_alignment_weights(
-        advantages=a1_alternative, exclude_k_equals_t=exclude_k_equals_t
-    )
+    if use_old_ad_align:
+        adalign_weights = get_advantage_alignment_weights(
+            advantages=a1, exclude_k_equals_t=exclude_k_equals_t
+        )
+    else:
+        a1_alternative = a1_alternative.mean(dim=2)
+        assert a1.shape == a1_alternative.shape, "Not the same shape"
+        adalign_weights = get_advantage_alignment_weights(
+            advantages=a1_alternative, exclude_k_equals_t=exclude_k_equals_t
+        )
 
     # tally.add_metric(
     #     path=["raw_advantage_alignment_weights"], metric=adalign_weights

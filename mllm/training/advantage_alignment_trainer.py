@@ -117,6 +117,7 @@ class AdAlignTrainer(BaseTrainer):
         ad_align_use_sign: bool,
         ad_align_clipping: float,
         ad_align_force_coop_first_step: bool,
+        ad_align_use_old_ad_align: bool,
         *args,
         **kwargs,
     ):
@@ -137,6 +138,7 @@ class AdAlignTrainer(BaseTrainer):
         self.ad_align_use_sign = ad_align_use_sign
         self.ad_align_clipping = ad_align_clipping
         self.ad_align_force_coop_first_step = ad_align_force_coop_first_step
+        self.ad_align_use_old_ad_align = ad_align_use_old_ad_align
         self.training_data: dict[AgentId, AdAlignTrainingData] = {}
         self.debug_path_list: list[str] = []
 
@@ -194,7 +196,8 @@ class AdAlignTrainer(BaseTrainer):
             jT_list.append(jT)
 
             # We get the branching time steps for each of the `jT` time steps in the main trajectory.
-            batch_branching_time_steps.extend(range(jT))
+            branching_time_steps = [bt for item in range(jT) for bt in A * [item]]
+            batch_branching_time_steps.extend(branching_time_steps)
 
             # Get all of the (jT*A) alternative trajectories in the tree
             # (jT is the number of time steps in the main trajectory, A is the number of alternative actions)
@@ -404,6 +407,7 @@ class AdAlignTrainer(BaseTrainer):
                     use_sign=self.ad_align_use_sign,
                     clipping=self.ad_align_clipping,
                     force_coop_first_step=self.ad_align_force_coop_first_step,
+                    use_old_ad_align=self.ad_align_use_old_ad_align,
                     tally=self.tally,
                 )
                 advantage_alignment_credits = torch.nested.narrow(
