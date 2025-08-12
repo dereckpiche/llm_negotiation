@@ -34,7 +34,7 @@ from mllm.training.training_data_utils import (
     TrajectoryBatch,
     get_tokenwise_credits,
 )
-from mllm.utils.ressource_context import ressource_logger_context
+from mllm.utils.resource_context import resource_logger_context
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -232,7 +232,7 @@ class BaseTrainer(ABC):
             credits (list[torch.Tensor]): List of credit tensors (rewards/advantages) for each rollout.
             action_masks (list[torch.Tensor]): List of action mask tensors for each rollout.
         """
-        with ressource_logger_context(logger, "Apply reinforce step"):
+        with resource_logger_context(logger, "Apply reinforce step"):
             self.policy.train()
             mb_size = self.mini_batch_size
             nb_rollouts = len(training_batch)

@@ -28,7 +28,7 @@ def ram_usage():
 
 
 @contextmanager
-def ressource_logger_context(logger: logging.Logger, task_description: str):
+def resource_logger_context(logger: logging.Logger, task_description: str):
     """
     Context manager to log the resource usage of the current task.
     Args:

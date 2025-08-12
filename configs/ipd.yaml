@@ -9,10 +9,10 @@ experiment:
     name: "ipd"
     method: generate_and_train
     description: "no description"
-    nb_epochs: 10
-    nb_matches_per_iteration: 32
+    nb_epochs: 1000
+    nb_matches_per_iteration: 64
     reinit_matches_each_it: true
-    checkpoint_every_n_iterations: 25
+    checkpoint_every_n_iterations: 50
     start_epoch: 0
     resume_experiment: true
     base_seed: 1000
@@ -173,6 +173,7 @@ trainers:
             use_rloo: True
             enable_tokenwise_logging: False
             pg_loss_normalization: "batch"
+            reward_normalizing_constant: 5.0
 
 
 train_on_which_data:
