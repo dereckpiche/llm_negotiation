@@ -116,13 +116,7 @@ class TrustAndSplitSimulation(Simulation):
         # Message phase
         if isinstance(action, Message):
             if self.state.first_split_done:
-                # After a first split, messages are ignored; keep zero rewards
-                rewards = {agent_id: 0.0 for agent_id in self.agent_ids}
-                return False, SimulationStepLog(
-                    rewards=rewards, info={"type": "ignored_message_after_first_split"}
-                )
-
-            # Record message
+                raise Exception("First split not done. Invalid.")
             self.state.last_message = action.message
             self.state.messages_sent[current_agent] += 1
 

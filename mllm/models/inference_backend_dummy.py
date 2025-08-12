@@ -1,6 +1,7 @@
 import asyncio
 from typing import Optional
 
+import rstr
 from transformers import AutoTokenizer
 
 from mllm.models.inference_backend import LLMInferenceBackend
@@ -30,9 +31,8 @@ class DummyInferenceBackend(LLMInferenceBackend):
         pass
 
     async def generate(self, prompt_text: str, regex: Optional[str] = None) -> str:
-        import random
-
-        n: float = random.random()
-        if n < 0.5:
-            return "<A>"
-        return "<B>"
+        if regex:
+            # Create random string that respects the regex
+            return rstr.xeger(regex)
+        else:
+            return "I am a dummy backend without a regex."
