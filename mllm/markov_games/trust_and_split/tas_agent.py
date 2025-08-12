@@ -82,7 +82,7 @@ class TrustAndSplitAgent(Agent):
             prompt_parts.append("Wait for other agent to send a message...")
 
         # Get last message
-        if is_our_turn and not observation.split_phase and not is_new_round:
+        if is_our_turn and not is_new_round:
             prompt_parts.append(f"Other agent said: {observation.last_message}")
 
         # Prompt to send message
@@ -136,7 +136,7 @@ class TrustAndSplitAgent(Agent):
             action = Message(message=policy_output)
             self.state.nb_messages_sent_this_round += 1
         elif must_send_split:
-            return_regex = r"<coins_to_self>([0-9]+)</coins_to_self>"
+            return_regex = r"<coins_to_self>(10|[0-9])</coins_to_self>"
             policy_output = await self.policy(
                 prompt=[c.dict() for c in self.state.chat_history],
                 regex=return_regex,
