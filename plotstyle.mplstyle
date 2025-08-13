@@ -13,26 +13,26 @@ ps.fonttype: 42
 
 # ===== CANVAS & BACKGROUND =====
 figure.facecolor: white
-axes.facecolor: #FAFAFA
+axes.facecolor: FAFAFA
 figure.edgecolor: none
 
 # ===== SOPHISTICATED TYPOGRAPHY =====
-font.size: 11
-text.color: #2C3E50
-axes.labelcolor: #34495E
-axes.titlecolor: #2C3E50
+font.size: 14
+text.color: 2C3E50
+axes.labelcolor: 34495E
+axes.titlecolor: 2C3E50
 
-# Font sizes for different elements
-axes.titlesize: 16
-axes.labelsize: 12
-xtick.labelsize: 10
-ytick.labelsize: 10
-legend.fontsize: 10
-figure.titlesize: 18
+# Font sizes for different elements - INCREASED FOR BETTER READABILITY
+axes.titlesize: 20
+axes.labelsize: 16
+xtick.labelsize: 14
+ytick.labelsize: 14
+legend.fontsize: 14
+figure.titlesize: 22
 
 # ===== AXES STYLING =====
 axes.linewidth: 1.2
-axes.edgecolor: #BDC3C7
+axes.edgecolor: BDC3C7
 axes.spines.top: False
 axes.spines.right: False
 axes.spines.left: True
@@ -53,8 +53,8 @@ xtick.major.width: 1.2
 ytick.major.width: 1.2
 xtick.minor.width: 0.8
 ytick.minor.width: 0.8
-xtick.color: #7F8C8D
-ytick.color: #7F8C8D
+xtick.color: 7F8C8D
+ytick.color: 7F8C8D
 xtick.minor.visible: True
 ytick.minor.visible: True
 
@@ -62,7 +62,7 @@ ytick.minor.visible: True
 axes.grid: True
 axes.axisbelow: True
 axes.grid.axis: both
-grid.color: #ECF0F1
+grid.color: ECF0F1
 grid.linewidth: 0.8
 grid.alpha: 0.7
 grid.linestyle: -
@@ -80,7 +80,7 @@ legend.fancybox: True
 legend.frameon: True
 legend.framealpha: 0.95
 legend.facecolor: white
-legend.edgecolor: #D5DBDB
+legend.edgecolor: D5DBDB
 legend.borderaxespad: 1.0
 legend.handlelength: 2.0
 legend.handletextpad: 0.6
@@ -98,24 +98,19 @@ mathtext.default: regular
 # ===== PATCHES & BARS =====
 patch.antialiased: True
 patch.linewidth: 0.5
-patch.edgecolor: #BDC3C7
+patch.edgecolor: BDC3C7
 
 # ===== ERROR BARS =====
 errorbar.capsize: 4
-errorbar.capthick: 1.5
-errorbar.elinewidth: 1.5
 
 # ===== IMAGES =====
 image.interpolation: bilinear
 image.cmap: viridis
 
 # ===== STUNNING COLOR PALETTE =====
-# A carefully curated palette with excellent contrast and visual harmony
-# Colors: Deep Ocean, Sunset Orange, Forest Green, Royal Purple, Crimson, 
-#         Golden Yellow, Steel Blue, Rose Pink, Charcoal, Turquoise
-axes.prop_cycle: cycler('color', ['#34495E', '#1ABC9C']) \
-               + cycler('linestyle', ['-', '-', '-', '-', '-', '-', '--', '-.', ':', '-']) \
-               + cycler('marker', ['o', 's', '^', 'D', 'v', 'p', '*', 'h', '+', 'x'])
+# Red and Green focused palette as requested
+# Colors: Forest Green, Crimson Red, Dark Green, Dark Red, Medium Green, Medium Red
+axes.prop_cycle: cycler('color', ['228B22', 'DC143C', '006400', '8B0000', '32CD32', 'B22222', '90EE90', 'FFB6C1', '2E8B57', 'CD5C5C'])
 
 # ===== SCATTER PLOT ENHANCEMENTS =====
 scatter.marker: o
@@ -148,14 +143,8 @@ animation.html: html5
 boxplot.flierprops.marker: o
 boxplot.flierprops.markersize: 6
 boxplot.flierprops.linestyle: none
-boxplot.flierprops.markerfacecolor: #E74C3C
-boxplot.flierprops.markeredgecolor: #C0392B
-boxplot.flierprops.alpha: 0.7
-
-# Violin plot styling
-violin.patch.facecolor: #3498DB
-violin.patch.edgecolor: #2980B9
-violin.patch.alpha: 0.7
+boxplot.flierprops.markerfacecolor: E74C3C
+boxplot.flierprops.markeredgecolor: C0392B
 
 # Contour plot styling
 contour.negative_linestyle: dashed
