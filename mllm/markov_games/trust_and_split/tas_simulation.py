@@ -31,15 +31,15 @@ class Message:
 
 
 def get_rewards(
-    items_to_self_0: int,
+    coins_to_self_0: int,
     val_0: float,
-    items_to_self_1: int,
+    coins_to_self_1: int,
     val_1: float,
     max_coins: int,
 ) -> tuple[float, float]:
-    denom = max(max_coins, items_to_self_0 + items_to_self_1)
-    q0 = float(max_coins) * float(items_to_self_0) / float(denom)
-    q1 = float(max_coins) * float(items_to_self_1) / float(denom)
+    denom = max(max_coins, coins_to_self_0 + coins_to_self_1)
+    q0 = float(max_coins) * float(coins_to_self_0) / float(denom)
+    q1 = float(max_coins) * float(coins_to_self_1) / float(denom)
     r0 = q0 * float(val_0)
     r1 = q1 * float(val_1)
     return r0, r1
@@ -66,6 +66,14 @@ class TrustAndSplitObs:
     value: float
     other_agent_split: int | None
     split_phase: bool = False
+
+@dataclass
+class SplitsLog:
+    sums_to_max_coins: bool
+    num_coins: int
+    values: Dict[AgentId, float]
+    coins_given_to_self: Dict[AgentId, int]
+    
 
 
 class TrustAndSplitSimulation(Simulation):
@@ -132,21 +140,21 @@ class TrustAndSplitSimulation(Simulation):
             self.state.splits[a1] = action_a1
 
             # Compute rewards and end round
-            items_to_self_0 = int(
+            coins_to_self_0 = int(
                 self.state.splits[a0].coins_given_to_self
                 if self.state.splits[a0] is not None
                 else 0
             )
-            items_to_self_1 = int(
+            coins_to_self_1 = int(
                 self.state.splits[a1].coins_given_to_self
                 if self.state.splits[a1] is not None
                 else 0
             )
             val_0 = float(self.state.values[a0])
             val_1 = float(self.state.values[a1])
-            sums_to_max = (items_to_self_0 + items_to_self_1) == self.max_coins
+            sums_to_max = (coins_to_self_0 + coins_to_self_1) == self.max_coins
             r0, r1 = get_rewards(
-                items_to_self_0, val_0, items_to_self_1, val_1, self.max_coins
+                coins_to_self_0, val_0, coins_to_self_1, val_1, self.max_coins
             )
             rewards = {a0: r0, a1: r1}
 
@@ -165,7 +173,12 @@ class TrustAndSplitSimulation(Simulation):
             done = self.state.round_nb >= self.rounds_per_game
             return done, SimulationStepLog(
                 rewards=rewards,
-                info={"type": "round_end", "sums_to_max_coins": sums_to_max},
+                info=SplitsLog(
+                    sums_to_max_coins=sums_to_max,
+                    num_coins=self.max_coins,
+                    values={a0: val_0, a1: val_1},
+                    coins_given_to_self={a0: coins_to_self_0, a1: coins_to_self_1},
+                ),
             )
 
         # Message phase

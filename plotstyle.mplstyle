@@ -1,0 +1,162 @@
+# ===== STUNNING PROFESSIONAL MATPLOTLIB STYLE =====
+# A beautiful, modern template inspired by data visualization best practices
+# Features: elegant typography, sophisticated colors, perfect spacing
+
+# ===== FIGURE SETTINGS =====
+figure.figsize: 10, 6
+figure.dpi: 100
+savefig.dpi: 300
+savefig.bbox: tight
+savefig.pad_inches: 0.1
+pdf.fonttype: 42
+ps.fonttype: 42
+
+# ===== CANVAS & BACKGROUND =====
+figure.facecolor: white
+axes.facecolor: #FAFAFA
+figure.edgecolor: none
+
+# ===== SOPHISTICATED TYPOGRAPHY =====
+font.size: 11
+text.color: #2C3E50
+axes.labelcolor: #34495E
+axes.titlecolor: #2C3E50
+
+# Font sizes for different elements
+axes.titlesize: 16
+axes.labelsize: 12
+xtick.labelsize: 10
+ytick.labelsize: 10
+legend.fontsize: 10
+figure.titlesize: 18
+
+# ===== AXES STYLING =====
+axes.linewidth: 1.2
+axes.edgecolor: #BDC3C7
+axes.spines.top: False
+axes.spines.right: False
+axes.spines.left: True
+axes.spines.bottom: True
+axes.titlelocation: left
+axes.titleweight: 600
+axes.titlepad: 20
+axes.labelpad: 8
+
+# ===== TICK STYLING =====
+xtick.direction: out
+ytick.direction: out
+xtick.major.size: 6
+ytick.major.size: 6
+xtick.minor.size: 3
+ytick.minor.size: 3
+xtick.major.width: 1.2
+ytick.major.width: 1.2
+xtick.minor.width: 0.8
+ytick.minor.width: 0.8
+xtick.color: #7F8C8D
+ytick.color: #7F8C8D
+xtick.minor.visible: True
+ytick.minor.visible: True
+
+# ===== ELEGANT GRID =====
+axes.grid: True
+axes.axisbelow: True
+axes.grid.axis: both
+grid.color: #ECF0F1
+grid.linewidth: 0.8
+grid.alpha: 0.7
+grid.linestyle: -
+
+# ===== LINE STYLING =====
+lines.linewidth: 2.5
+lines.solid_capstyle: round
+lines.solid_joinstyle: round
+lines.markeredgewidth: 0.5
+lines.markersize: 8
+lines.markeredgecolor: white
+
+# ===== BEAUTIFUL LEGEND =====
+legend.fancybox: True
+legend.frameon: True
+legend.framealpha: 0.95
+legend.facecolor: white
+legend.edgecolor: #D5DBDB
+legend.borderaxespad: 1.0
+legend.handlelength: 2.0
+legend.handletextpad: 0.6
+legend.labelspacing: 0.5
+legend.columnspacing: 1.2
+legend.loc: best
+legend.shadow: True
+
+# ===== MATHEMATICAL TEXT =====
+axes.formatter.use_mathtext: True
+axes.formatter.limits: -3, 4
+mathtext.fontset: stix
+mathtext.default: regular
+
+# ===== PATCHES & BARS =====
+patch.antialiased: True
+patch.linewidth: 0.5
+patch.edgecolor: #BDC3C7
+
+# ===== ERROR BARS =====
+errorbar.capsize: 4
+errorbar.capthick: 1.5
+errorbar.elinewidth: 1.5
+
+# ===== IMAGES =====
+image.interpolation: bilinear
+image.cmap: viridis
+
+# ===== STUNNING COLOR PALETTE =====
+# A carefully curated palette with excellent contrast and visual harmony
+# Colors: Deep Ocean, Sunset Orange, Forest Green, Royal Purple, Crimson, 
+#         Golden Yellow, Steel Blue, Rose Pink, Charcoal, Turquoise
+axes.prop_cycle: cycler('color', ['#34495E', '#1ABC9C']) \
+               + cycler('linestyle', ['-', '-', '-', '-', '-', '-', '--', '-.', ':', '-']) \
+               + cycler('marker', ['o', 's', '^', 'D', 'v', 'p', '*', 'h', '+', 'x'])
+
+# ===== SCATTER PLOT ENHANCEMENTS =====
+scatter.marker: o
+scatter.edgecolors: white
+
+# ===== HISTOGRAM STYLING =====
+hist.bins: 30
+
+# ===== DATE FORMATTING =====
+date.autoformatter.year: %Y
+date.autoformatter.month: %Y-%m
+date.autoformatter.day: %Y-%m-%d
+date.autoformatter.hour: %m-%d %H
+date.autoformatter.minute: %d %H:%M
+date.autoformatter.second: %H:%M:%S
+date.autoformatter.microsecond: %M:%S.%f
+
+# ===== SUBPLOT SPACING =====
+figure.subplot.left: 0.08
+figure.subplot.bottom: 0.08
+figure.subplot.top: 0.92
+figure.subplot.right: 0.95
+figure.subplot.wspace: 0.2
+figure.subplot.hspace: 0.2
+
+# ===== ANIMATION SETTINGS =====
+animation.html: html5
+
+# ===== ADDITIONAL STYLING =====
+boxplot.flierprops.marker: o
+boxplot.flierprops.markersize: 6
+boxplot.flierprops.linestyle: none
+boxplot.flierprops.markerfacecolor: #E74C3C
+boxplot.flierprops.markeredgecolor: #C0392B
+boxplot.flierprops.alpha: 0.7
+
+# Violin plot styling
+violin.patch.facecolor: #3498DB
+violin.patch.edgecolor: #2980B9
+violin.patch.alpha: 0.7
+
+# Contour plot styling
+contour.negative_linestyle: dashed
+contour.corner_mask: True

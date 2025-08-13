@@ -28,10 +28,8 @@ from mllm.markov_games.mg_utils import (
     init_markov_game_components,
 )
 from mllm.markov_games.run_markov_games import run_markov_games
-from mllm.markov_games.runners.alternative_actions_runner import (
-    AlternativeActionsRunner,
-)
-from mllm.markov_games.runners.linear_runner import LinearRunner
+from mllm.markov_games.alternative_actions_runner import AlternativeActionsRunner
+from mllm.markov_games.linear_runner import LinearRunner
 from mllm.models.large_language_model_local import LeanLocalLLM
 
 # from mllm.models.large_language_model_server import ServerLLM
