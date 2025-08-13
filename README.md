@@ -40,11 +40,17 @@ nbstripout --install
 
 ## Running Experiments
 
+In order to launch a policy gradient training loop, use
 ```bash
-python run.py --config-name your-config
+python generate_and_train.py --config-name your-config
 ```
 
-To render
+In order to simply pit multiple models against each other, use
 ```bash
-python scripts/basic_render.py --global_folder your-experiment-seed-xxx
+python faceoff.py --config-name your-config
+```
+
+To add render files to your output folder (next to the rollout files), use
+```bash
+python basic_render.py --global_folder path-to-your-experiment-output-folder
 ```

@@ -1,7 +1,5 @@
 """
-This file contains the code to generate and train the models.
-TODO: don't use any eval() (maybe switch to gin configs instead of hydra)
-TODO: use ModulePointer instead of nested dicts
+
 """
 import asyncio
 import copy
@@ -28,17 +26,11 @@ from mllm.markov_games.mg_utils import (
     init_markov_game_components,
 )
 from mllm.markov_games.run_markov_games import run_markov_games
-from mllm.markov_games.runners.alternative_actions_runner import (
-    AlternativeActionsRunner,
-)
+from mllm.markov_games.runners.alternative_actions_runner import AlternativeActionsRunner
 from mllm.markov_games.runners.linear_runner import LinearRunner
 from mllm.models.large_language_model_local import LeanLocalLLM
 
 # from mllm.models.large_language_model_server import ServerLLM
-from mllm.models.scalar_critic import ScalarCritic
-from mllm.training.advantage_alignment_trainer import AdAlignTrainer
-from mllm.training.reinforce_trainer import BaseTrainer
-from mllm.utils.dict_get_path import get_from_nested_dict
 from mllm.utils.kill_sglang import kill_sglang
 from mllm.utils.update_start_epoch import update_start_epoch
 
@@ -52,7 +44,7 @@ class ModulePointer:
     adapter_id: str
 
 
-async def generate_and_train(cfg: dict, base_seed: int) -> None:
+async def faceoff(cfg: dict, base_seed: int) -> None:
     """
     Main function to generate training data and train models.
 
@@ -92,7 +84,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         torch.cuda.set_rng_state_all(random_state_dict["torch_cuda"])
 
     # -----------------------------------------------------------------
-    # Initialize models, critics, optimizers, trainers
+    # Initialize models
     # -----------------------------------------------------------------
 
     # Init llms + llm adapters
@@ -136,16 +128,15 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
     )
     markov_games = []
     nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
-    for i in range(nb_matches):
+    for _ in range(nb_matches):
         markov_game_config.seed = int(env_rng.integers(0, 1e9))
         markov_game = init_markov_game_components(
             config=markov_game_config, policies=policies
         )
         markov_games.append(markov_game)
 
-    # Generate rollouts raw data (using asyncio)
+    # Faceoff models
     runner = eval(cfg["markov_games"]["runner_method_name"])
-    # TODO: throw error if error in asyncio call
     rollout_trees = await run_markov_games(
         runner=runner,
         runner_kwargs=cfg["markov_games"]["runner_kwargs"],
@@ -171,7 +162,7 @@ def main(cfg):
 
     # Run the experiment specified in the configuration
     asyncio.run(
-        generate_and_train(
+        faceoff(
             OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict"),
             base_seed=cfg.experiment.base_seed,
         )
