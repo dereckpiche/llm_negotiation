@@ -1,0 +1,42 @@
+defaults:
+  - ipd.yaml
+
+experiment:
+    name: "debug_faceoff${now:%Y-%m-%d___%H-%M-%S}"
+    description: "no description"
+    nb_matches: 64
+    base_seed: 1000
+
+
+
+markov_games:
+    agents:
+        0:
+            policy_id: base_llm/alice_adapter
+        1:
+            policy_id: base_llm/bob_adapter
+
+models:
+    base_llm:
+        class: LeanLocalLLM
+        init_args:
+            model_name: Qwen/Qwen3-4B-Instruct-2507 # "Qwen/Qwen2.5-0.5B-Instruct" # Qwen/Qwen3-4B-Instruct-2507
+            adapter_configs:
+                alice_adapter:
+                    task_type: CAUSAL_LM
+                    r: 32
+                    lora_alpha: 64
+                    lora_dropout: 0.0
+                    target_modules: all-linear
+                bob_adapter:
+                    task_type: CAUSAL_LM
+                    r: 32
+                    lora_alpha: 64
+                    lora_dropout: 0.0
+                    target_modules: all-linear
+            initial_adapter_paths:
+                alice_adapter: "your_path_to_alice_adapter"
+                bob_adapter: "your_path_to_bob_adapter"
+
+
+

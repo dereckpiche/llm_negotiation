@@ -1,15 +1,14 @@
 
 import torch.nn as nn
-import os
-from typing import Iterable, Tuple, Union
-import torch
+import logging
+from typing import Union
 from peft import (
     LoraConfig,
-    PeftConfig,
-    PeftModel,
     get_peft_model,
-    prepare_model_for_kbit_training,
 )
+
+logger = logging.getLogger(__name__)
+
 
 class AdapterWrapper(nn.Module):
     """
@@ -24,11 +23,10 @@ class AdapterWrapper(nn.Module):
         shared_llm: nn.Module,
         adapter_id: str,
         lora_config: dict,
-        path: Union[str, None]
+        path: Union[str, None] = None,
         ):
         super().__init__()
         self.shared_llm = shared_llm
-        self.shared_llm.train()
         self.adapter_id = adapter_id
         lora_config = LoraConfig(**lora_config)
         # this modifies the shared llm in place, adding a lora adapter inside
@@ -38,12 +36,30 @@ class AdapterWrapper(nn.Module):
             adapter_name=adapter_id,
         )
         self.shared_llm.train()
-        # Load external adapter weights if already exists
-        if os.path.exists(path):
-            self.shared_llm.load_adapter(
-                is_trainable=True,
-                model_id=path,
-                adapter_name=adapter_id)
+        # Load external adapter weights if provided
+        loaded_from: str | None = None
+        if path:
+            try:
+                # Supports both local filesystem paths and HF Hub repo IDs
+                self.shared_llm.load_adapter(
+                    is_trainable=True,
+                    model_id=path,
+                    adapter_name=adapter_id,
+                )
+                loaded_from = path
+            except Exception as exc:  # noqa: BLE001 - want to log any load failure context
+                logger.warning(
+                    f"Adapter '{adapter_id}': failed to load from '{path}': {exc}"
+                )
+
+        if loaded_from:
+            logger.info(
+                f"Adapter '{adapter_id}': loaded initial weights from '{loaded_from}'."
+            )
+        else:
+            logger.info(
+                f"Adapter '{adapter_id}': initialized with fresh weights (no initial weights found)."
+            )
 
     def parameters(self, recurse: bool = True):
         """

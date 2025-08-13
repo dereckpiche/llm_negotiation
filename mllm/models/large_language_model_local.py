@@ -53,6 +53,7 @@ class LeanLocalLLM:
         inference_backend: Literal["vllm", "sglang", "dummy"] = "vllm",
         inference_backend_sampling_params: dict = {},
         inference_backend_init_kwargs: dict = {},
+        initial_adapter_paths: dict[str, str] | None = None,
     ):
         self.inference_backend_name = inference_backend
         self.output_directory = output_directory
@@ -62,7 +63,9 @@ class LeanLocalLLM:
         self.adapter_configs = adapter_configs
         self.adapter_ids = list(adapter_configs.keys())
 
-        # TODO: load from external if exists!
+        # Optional user-specified initial adapter weight locations (local or HF Hub)
+        # Format: {adapter_id: path_or_repo_id}
+        self.initial_adapter_paths: dict[str, str] | None = initial_adapter_paths
 
         # Path management / imports
         self.save_path = str(os.path.join(output_directory, model_name, "adapters"))
@@ -96,13 +99,32 @@ class LeanLocalLLM:
         self.hf_adapters = {}
         self.optimizers = {}
         for adapter_id in self.adapter_ids:
+            # Prefer output-folder path if it exists; else fall back to user-specified initial path if provided
+            output_path = os.path.join(self.save_path, adapter_id)
+            chosen_path: str | None = None
+            if os.path.isdir(output_path) and os.listdir(output_path):
+                chosen_path = output_path
+                logger.info(
+                    f"Initializing adapter '{adapter_id}': using existing weights from output folder '{chosen_path}'."
+                )
+            elif self.initial_adapter_paths and adapter_id in self.initial_adapter_paths:
+                chosen_path = self.initial_adapter_paths[adapter_id]
+                logger.info(
+                    f"Initializing adapter '{adapter_id}': using provided initial path '{chosen_path}'."
+                )
+            else:
+                logger.info(
+                    f"Initializing adapter '{adapter_id}': no initial weights provided or found; starting from scratch."
+                )
+
             hf_adapter = AdapterWrapper(
                 shared_llm=self.shared_hf_llm,
                 adapter_id=adapter_id,
                 lora_config=adapter_configs[adapter_id],
-                path=os.path.join(self.save_path, adapter_id),
+                path=chosen_path,
             ).to(device)
             self.hf_adapters[adapter_id] = hf_adapter
+        # Persist current state of all adapters (ensures remote loads are cached to disk)
         self.export_adapters()
 
         # ---------------------------------------------------------
