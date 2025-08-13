@@ -10,13 +10,45 @@ def get_chat_dicts(chat: list[TrainingChatTurn]) -> list[dict]:
 
 
 # TODO: expand / test for different model classes
-custom_qwen_template = """{% for m in messages -%}
-<|im_start|>{{ m['role'] }}
-{{ m['content'] }}<|im_end|>
-{% endfor -%}
-{% if add_generation_prompt -%}
-<|im_start|>assistant
-{%- endif %}"""
+custom_qwen_template = """
+{%- set ns = namespace(multi_step_tool=true, last_query_index=messages|length - 1) %}
+{%- for message in messages %}
+    {%- if message.content is string %}
+        {%- set content = message.content %}
+    {%- else %}
+        {%- set content = '' %}
+    {%- endif %}
+    {%- if (message.role == "user") %}
+        {{- '<|im_start|>' + message.role + '\n' + content + '<|im_end|>' + '\n' }}
+    {%- elif message.role == "assistant" %}
+        {%- set reasoning_content = '' %}
+        {%- if message.reasoning_content is string %}
+            {%- set reasoning_content = message.reasoning_content %}
+        {%- else %}
+            {%- if '</think>' in content %}
+                {%- set reasoning_content = content.split('</think>')[0].rstrip('\n').split('<think>')[-1].lstrip('\n') %}
+                {%- set content = content.split('</think>')[-1].lstrip('\n') %}
+            {%- endif %}
+        {%- endif %}
+        {%- if loop.index0 > ns.last_query_index %}
+            {%- if reasoning_content %}
+                {{- '<|im_start|>' + message.role + '\n<think>\n' + reasoning_content.strip('\n') + '\n</think>\n\n' + content.lstrip('\n') }}
+            {%- else %}
+                {{- '<|im_start|>' + message.role + '\n' + content }}
+            {%- endif %}
+        {%- else %}
+            {{- '<|im_start|>' + message.role + '\n' + content }}
+        {%- endif %}
+        {{- '<|im_end|>\n' }}
+    {%- endif %}
+{%- endfor %}
+{%- if add_generation_prompt %}
+    {{- '<|im_start|>assistant\n' }}
+    {%- if enable_thinking is defined and enable_thinking is false %}
+        {{- '<think>\n\n</think>\n\n' }}
+    {%- endif %}
+{%- endif %}
+"""
 
 
 def process_training_chat(
@@ -67,7 +99,6 @@ def process_training_chat(
     input_ids = []
     action_mask = []
     timesteps = []
-    include_system_prompt = True
     for train_chat_turn in chat_history:
         is_state_end = train_chat_turn.is_state_end
         time_step = train_chat_turn.time_step
@@ -88,7 +119,6 @@ def process_training_chat(
         if not is_action:
             action_mask[-1] = action_mask[-1] * False
         timesteps.append(torch.ones(nb_chat_turns_ids) * time_step)
-        include_system_prompt = False
 
     input_ids = torch.cat(input_ids)
     action_mask = torch.cat(action_mask)

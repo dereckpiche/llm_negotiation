@@ -37,7 +37,7 @@ from mllm.models.large_language_model_local import LeanLocalLLM
 # from mllm.models.large_language_model_server import ServerLLM
 from mllm.models.scalar_critic import ScalarCritic
 from mllm.training.trainer_ad_align import TrainerAdAlign
-from mllm.training.trainer_independant import TrainerNaive
+from mllm.training.trainer_independent import TrainerNaive
 from mllm.training.trainer_sum_rewards import TrainerSumRewards
 from mllm.utils.dict_get_path import get_from_nested_dict
 from mllm.utils.kill_sglang import kill_sglang

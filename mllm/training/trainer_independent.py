@@ -33,7 +33,7 @@ from mllm.training.training_data_utils import (
     TrajectoryBatch,
     get_tokenwise_credits,
 )
-from mllm.utils.ressource_context import ressource_logger_context
+from mllm.utils.resource_context import resource_logger_context
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))

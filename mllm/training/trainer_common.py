@@ -9,6 +9,7 @@ import sys
 from abc import ABC, abstractmethod
 from typing import Literal, Union
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from accelerate import Accelerator

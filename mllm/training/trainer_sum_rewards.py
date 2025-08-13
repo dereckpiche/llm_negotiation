@@ -27,7 +27,7 @@ from mllm.training.tally_tokenwise import ContextualizedTokenwiseTally
 from mllm.training.tokenize_chats import *
 from mllm.training.tokenize_chats import process_training_chat
 from mllm.training.trainer_common import BaseTrainer
-from mllm.training.trainer_independant import TrainerNaive
+from mllm.training.trainer_independent import TrainerNaive
 from mllm.training.training_data_utils import *
 from mllm.training.training_data_utils import (
     AdvantagePacket,
@@ -35,7 +35,7 @@ from mllm.training.training_data_utils import (
     TrajectoryBatch,
     get_tokenwise_credits,
 )
-from mllm.utils.ressource_context import ressource_logger_context
+from mllm.utils.resource_context import resource_logger_context
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
