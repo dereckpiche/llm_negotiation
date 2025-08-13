@@ -259,9 +259,7 @@ class TrainerAdAlign(BaseTrainer):
         # Get alternative advantages
         # BAAs stands for batch alternative advantages
         # (torch nested tensors have very little api support, so we have to do some odd manual work here)
-        with ressource_logger_context(
-            logger, "Compute alternative advantage estimates"
-        ):
+        with resource_logger_context(logger, "Compute alternative advantage estimates"):
             BAAs_list = self.get_advantages_with_critic_gradient_accumulation(
                 alternative_trajectory_batch
             )  # list length (∑jT * A), each (jT',)

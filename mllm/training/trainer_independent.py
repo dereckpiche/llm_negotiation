@@ -112,11 +112,11 @@ class TrainerNaive(BaseTrainer):
 
     def share_advantage_data(self) -> list[AdvantagePacket]:
         """
-        Share the advantage alignment data with other agents.
+        Share the advantage data with other agents.
         Returns:
             AdvantagePacket: The advantage packet containing the agent's advantages.
         """
-        logger.info(f"Sharing advantage alignment data.")
+        logger.info(f"Sharing advantage data.")
         advantage_packets = []
         for agent_id, agent_data in self.training_data.items():
             advantage_packets.append(

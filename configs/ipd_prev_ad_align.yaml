@@ -2,7 +2,7 @@ defaults:
     - ipd.yaml
 
 experiment:
-    name: "ipd_ad_align"
+    name: "ipd_prev_ad_align"
 
 markov_games:
     runner_method_name: AlternativeActionsRunner
@@ -20,4 +20,4 @@ trainers:
             ad_align_exclude_k_equals_t: False
             ad_align_use_sign: False
             ad_align_beta: 0.1
-            use_old_ad_align: False
+            use_old_ad_align: True

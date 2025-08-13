@@ -2,7 +2,7 @@ defaults:
   - ipd.yaml
 
 experiment:
-    name: "debug_faceoff${now:%Y-%m-%d___%H-%M-%S}"
+    name: "ipd_faceoff_prev_ad_align_coop"
     description: "no description"
     nb_matches: 64
     base_seed: 1000
@@ -35,8 +35,5 @@ models:
                     lora_dropout: 0.0
                     target_modules: all-linear
             initial_adapter_paths:
-                alice_adapter: "your_path_to_alice_adapter"
-                bob_adapter: "your_path_to_bob_adapter"
-
-
-
+                alice_adapter: "/home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/2025_08/ipd_prev_ad_align/seed_1000/Qwen/Qwen3-4B-Instruct-2507/adapters/agent_adapter"
+                bob_adapter: "/home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/2025_08/ipd_sum_rewards/seed_1000/Qwen/Qwen3-4B-Instruct-2507/adapters/agent_adapter"
