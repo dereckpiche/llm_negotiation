@@ -10,7 +10,7 @@ experiment:
     method: generate_and_train
     description: "no description"
     nb_epochs: 1000
-    nb_matches_per_iteration: 2
+    nb_matches_per_iteration: 64
     reinit_matches_each_it: true
     checkpoint_every_n_iterations: 50
     start_epoch: 0
@@ -108,7 +108,6 @@ models:
                 dtype: "bfloat16"
                 trust_remote_code: True
                 max_lora_rank: 32
-                enforce_eager: True
             inference_backend_sampling_params:
                 temperature: 1.0
                 top_p: 1.0
