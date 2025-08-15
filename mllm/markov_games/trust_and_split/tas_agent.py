@@ -10,7 +10,7 @@ from mllm.markov_games.trust_and_split.tas_simulation import (
     Split,
     TrustAndSplitObs,
 )
-
+from mllm.models.inference_backend import PolicyOutput
 
 @dataclass
 class TrustAndSplitAgentState:
@@ -121,15 +121,17 @@ class TrustAndSplitAgent(Agent):
         # Query policy for the appropriate format
         if must_send_message:
             return_regex = r"<message>[\s\S]{0,400}</message>"
-            policy_output = await self.policy(
+            policy_output: PolicyOutput = await self.policy(
                 prompt=[c.dict() for c in self.state.chat_history],
                 regex=return_regex,
             )
+            assert isinstance(policy_output, PolicyOutput), f"Policy output is not a PolicyOutput: {policy_output}"
             self.state.chat_history.append(
                 ChatTurn(
                     agent_id=self.agent_id,
                     role="assistant",
-                    content=policy_output,
+                    content=policy_output.content,
+                    reasoning_content=policy_output.reasoning_content,
                     is_state_end=False,
                 )
             )
@@ -137,15 +139,17 @@ class TrustAndSplitAgent(Agent):
             self.state.nb_messages_sent_this_round += 1
         elif must_send_split:
             return_regex = r"<coins_to_self>(10|[0-9])</coins_to_self>"
-            policy_output = await self.policy(
+            policy_output: PolicyOutput = await self.policy(
                 prompt=[c.dict() for c in self.state.chat_history],
                 regex=return_regex,
             )
+            assert isinstance(policy_output, PolicyOutput), f"Policy output is not a PolicyOutput: {policy_output}"
             self.state.chat_history.append(
                 ChatTurn(
                     agent_id=self.agent_id,
                     role="assistant",
-                    content=policy_output,
+                    content=policy_output.content,
+                    reasoning_content=policy_output.reasoning_content,
                     is_state_end=False,
                 )
             )

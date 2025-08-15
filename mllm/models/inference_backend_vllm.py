@@ -6,7 +6,7 @@ from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
 from vllm.lora.request import LoRARequest
 from vllm.sampling_params import GuidedDecodingParams, RequestOutputKind
 
-from mllm.models.inference_backend import LLMInferenceBackend
+from mllm.models.inference_backend import LLMInferenceBackend, PolicyOutput
 from mllm.utils.short_id_gen import generate_short_id
 
 
@@ -56,7 +56,7 @@ class VLLMAsyncBackend(LLMInferenceBackend):
         # No explicit close call; engine stops when process exits.
         pass
 
-    async def generate(self, prompt_text: str, regex: Optional[str] = None) -> str:
+    async def generate(self, prompt_text: str, regex: Optional[str] = None) -> PolicyOutput:
         # Build SamplingParams correctly
 
         guided = GuidedDecodingParams(regex=regex) if regex else None
@@ -66,6 +66,7 @@ class VLLMAsyncBackend(LLMInferenceBackend):
             output_kind=RequestOutputKind.FINAL_ONLY,
         )
 
+
         request_id = f"req-{asyncio.get_running_loop().time()}"
         results = self.engine.generate(
             prompt_text,
@@ -74,6 +75,8 @@ class VLLMAsyncBackend(LLMInferenceBackend):
             lora_request=self.current_lora_request,
         )
 
-        async for out in results:  # with FINAL_ONLY this runs once
-            res = out.outputs[0].text
-        return res
+        res = await results.outputs[0]
+        content = res.text
+        reasoning_content = res.reasoning_content if res.reasoning_content else None
+        
+        return PolicyOutput(content=content, reasoning_content=reasoning_content)

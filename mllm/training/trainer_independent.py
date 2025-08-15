@@ -55,6 +55,7 @@ class TrainerNaive(BaseTrainer):
         batch_action_mask = []
         batch_timesteps = []
         batch_state_ends_mask = []
+        batch_reasoning_limit_tuples = []
         batch_rewards = []
         for root in roots:
             rollout_id = root.id
@@ -68,13 +69,14 @@ class TrainerNaive(BaseTrainer):
                 action_mask,
                 timesteps,
                 state_ends_mask,
+                reasoning_limit_tuples,
             ) = process_training_chat(tokenizer=self.tokenizer, chat_history=chat)
             batch_input_ids.append(input_ids)
             batch_action_mask.append(action_mask)
             batch_timesteps.append(timesteps)
             batch_state_ends_mask.append(state_ends_mask)
             batch_rewards.append(rewards)
-
+            batch_reasoning_limit_tuples.append(reasoning_limit_tuples)
         trajectory_batch = TrajectoryBatch(
             rollout_ids=torch.tensor(rollout_ids, dtype=torch.int32),
             batch_input_ids=batch_input_ids,
@@ -82,6 +84,7 @@ class TrainerNaive(BaseTrainer):
             batch_timesteps=batch_timesteps,
             batch_state_ends_mask=batch_state_ends_mask,
             batch_rewards=batch_rewards,
+            batch_reasoning_limit_tuples=batch_reasoning_limit_tuples,
         )
 
         # Get Advantages

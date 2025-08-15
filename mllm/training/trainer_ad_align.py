@@ -154,7 +154,7 @@ class TrainerAdAlign(BaseTrainer):
         batch_timesteps = []
         batch_state_ends_mask = []
         batch_rewards = []
-
+        batch_reasoning_limit_tuples = []
         # For alternative actions rollouts
         batch_branching_time_steps = []
         alternative_batch_input_ids = []
@@ -162,6 +162,7 @@ class TrainerAdAlign(BaseTrainer):
         alternative_batch_timesteps = []
         alternative_batch_state_ends_mask = []
         alternative_batch_rewards = []
+        alternative_batch_reasoning_limit_tuples = []
         jT_list = []
 
         A = len(roots[0].child.branches[agent_id])  # Number of alternative actions
@@ -181,12 +182,14 @@ class TrainerAdAlign(BaseTrainer):
                 action_mask,
                 timesteps,
                 state_ends_mask,
+                reasoning_limit_tuples,
             ) = process_training_chat(tokenizer=self.tokenizer, chat_history=main_chat)
             batch_input_ids.append(input_ids)
             batch_action_mask.append(action_mask)
             batch_timesteps.append(timesteps)
             batch_state_ends_mask.append(state_ends_mask)
             batch_rewards.append(main_rewards)
+            batch_reasoning_limit_tuples.append(reasoning_limit_tuples)
             jT = main_rewards.numel()  # TODO: better than this
             jT_list.append(jT)
 
@@ -209,13 +212,14 @@ class TrainerAdAlign(BaseTrainer):
                     action_mask,
                     timesteps,
                     state_ends_mask,
+                    reasoning_limit_tuples,
                 ) = process_training_chat(tokenizer=self.tokenizer, chat_history=chat)
                 alternative_batch_input_ids.append(input_ids)
                 alternative_batch_action_mask.append(action_mask)
                 alternative_batch_timesteps.append(timesteps)
                 alternative_batch_state_ends_mask.append(state_ends_mask)
                 alternative_batch_rewards.append(rewards)
-
+                alternative_batch_reasoning_limit_tuples.append(reasoning_limit_tuples)
         jT_list = torch.Tensor(jT_list)
 
         # Assert that number of alternative actions is constant
@@ -229,6 +233,7 @@ class TrainerAdAlign(BaseTrainer):
             batch_timesteps=batch_timesteps,
             batch_state_ends_mask=batch_state_ends_mask,
             batch_rewards=batch_rewards,
+            batch_reasoning_limit_tuples=batch_reasoning_limit_tuples,
         )
 
         # Here, `A` is the number of alternative actions / trajectories taken at each time step.
@@ -246,6 +251,7 @@ class TrainerAdAlign(BaseTrainer):
                 batch_timesteps=alternative_batch_timesteps,
                 batch_state_ends_mask=alternative_batch_state_ends_mask,
                 batch_rewards=alternative_batch_rewards,
+                batch_reasoning_limit_tuples=alternative_batch_reasoning_limit_tuples,
             )
 
         # Get Advantages & Train Critic

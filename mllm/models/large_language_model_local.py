@@ -198,7 +198,7 @@ class LeanLocalLLM:
     async def generate(self, prompt: list[dict], regex: str | None = None) -> str:
         # Chat templating
         prompt_text = self.tokenizer.apply_chat_template(
-            prompt, tokenize=False, add_generation_prompt=True
+            prompt, tokenize=False
         )
         return await self.inference_backend.generate(
             prompt_text=prompt_text, regex=regex
@@ -212,11 +212,6 @@ class LeanLocalLLM:
         # New version of the adapters available
         for adapter_id in self.adapter_ids:
             self.weights_got_updated[adapter_id] = True
-
-        # import random
-        # self.save_path = self.save_path + str(random.randint(1,500))
-        # print(f"Save path: {self.save_path}")
-        # self.adapter_paths = {adapter_id:os.path.join(self.save_path, adapter_id) for adapter_id in self.adapter_ids}
 
         adapter_id = self.adapter_ids[0]
         self.hf_adapters[adapter_id].save_pretrained(self.save_path)

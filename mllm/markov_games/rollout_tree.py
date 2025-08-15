@@ -19,6 +19,7 @@ class ChatTurn(BaseModel):
     role: str = Field(pattern="^(user|assistant)$")
     agent_id: AgentId  # ID of the agent with which the chat occured
     content: str
+    reasoning_content: str | None = None
     is_state_end: bool  # indicates whether this chatturn marks the end of a state in the trajectory
 
 

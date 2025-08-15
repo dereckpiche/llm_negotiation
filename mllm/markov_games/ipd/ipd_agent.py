@@ -6,7 +6,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
-
+from mllm.models.inference_backend import PolicyOutput
 from mllm.markov_games.agent import Agent
 from mllm.markov_games.rollout_tree import AgentActLog, ChatTurn
 
@@ -77,14 +77,16 @@ class IPDAgent(Agent):
 
             # If not new round, try to get valid action from policy
             prompt = [chat_item.dict() for chat_item in self.state.chat_history]
-            policy_output = await self.policy(
+            policy_output: PolicyOutput = await self.policy(
                 prompt=prompt, regex=f"({self.cooperate_string}|{self.defect_string})"
             )
+            assert isinstance(policy_output, PolicyOutput), f"Policy output is not a PolicyOutput: {policy_output}"
             self.state.chat_history.append(
                 ChatTurn(
                     agent_id=self.agent_id,
                     role="assistant",
-                    content=policy_output,
+                    content=policy_output.content,
+                    reasoning_content=policy_output.reasoning_content,
                     is_state_end=False,
                 )
             )

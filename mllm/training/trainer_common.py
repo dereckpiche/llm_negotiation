@@ -260,18 +260,20 @@ class BaseTrainer(ABC):
                 training_mb = training_batch[mb : mb + mb_size]
                 training_mb = training_mb.get_padded_tensors()
                 training_mb.to(self.device)
-                tokens_mb, action_mask_mb, credits_mb = (
+                tokens_mb, action_mask_mb, credits_mb, causal_reasoning_mask_mb = (
                     training_mb.batch_input_ids,
                     training_mb.batch_action_mask,
                     training_mb.batch_credits,
+                    training_mb.batch_causal_reasoning_mask,
                 )
 
                 # Next token prediction
                 contexts_mb = tokens_mb[:, :-1]
+                causal_reasoning_mask_mb = causal_reasoning_mask_mb[:, :-1]
                 shifted_contexts_mb = tokens_mb[:, 1:]
                 action_mask_mb = action_mask_mb[:, 1:]
                 credits_mb = credits_mb[:, 1:]
-
+                
                 if self.enable_tokenwise_logging:
                     self.tokenwise_tally.set_action_mask(action_mask=action_mask_mb)
                     self.tokenwise_tally.set_range(range=(mb, mb + mb_size))
@@ -289,7 +291,7 @@ class BaseTrainer(ABC):
 
                 # Forward pass + cast to FP-32 for higher prec.
                 # TODO: create attention mask if not relying on default (assume causal llm)
-                logits = self.policy(input_ids=contexts_mb)[0]  # (B, S, V)
+                logits = self.policy(input_ids=contexts_mb, attention_mask=causal_reasoning_mask_mb)[0]  # (B, S, V)
 
                 # Mask non-restricted tokens
                 if self.restrict_tokens is not None:
@@ -509,10 +511,11 @@ class BaseTrainer(ABC):
                     tokens_mb,
                     state_ends_mask_mb,
                     timestep_counts,
+                    causal_reasoning_mask_mb,
                 ) = trajectory_mb.get_padded_tensors_for_critic()
 
                 # critic causal attention up to end flags
-                vals_estimate_full = self.critic(tokens_mb)
+                vals_estimate_full = self.critic(input_ids=tokens_mb, attention_mask=causal_reasoning_mask_mb)
                 if vals_estimate_full.dim() == 3:
                     vals_estimate_full = vals_estimate_full.squeeze(-1)
                 # Select only positions where states end, per sample → list of (jT,)
@@ -644,6 +647,7 @@ class BaseTrainer(ABC):
                 batch_input_ids=trajectory_batch.batch_input_ids,
                 batch_action_mask=trajectory_batch.batch_action_mask,
                 batch_credits=tokenwise_batch_credits,
+                batch_causal_reasoning_mask=trajectory_batch.batch_causal_reasoning_mask,
             )
             if self.policy_gradient_data is None:
                 self.policy_gradient_data = policy_gradient_data
