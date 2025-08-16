@@ -24,7 +24,7 @@ class ReasoningLimits:
     reasoning_end: int
     content_end: int
 
-def get_causal_reasoning_mask(shape: Tuple[int, int], reasoning_limits:  list[ReasoningLimits]) -> list[tuple[int, int]]:
+def get_causal_reasoning_mask(shape: Tuple[int, int], reasoning_limits:  list[ReasoningLimits]) -> ReasoningLimits:
     """
     TOWRITE
     """
@@ -35,10 +35,8 @@ def get_causal_reasoning_mask(shape: Tuple[int, int], reasoning_limits:  list[Re
     for b in range(B):
         limits = reasoning_limits[b]
         for l in limits:
-            for l_ in limits: 
-                causal_reasoning_mask[b, l.reasoning_start:l.reasoning_end, l_.reasoning_start:l_.reasoning_end] = False
-            causal_reasoning_mask[b, l.reasoning_start:l.content_end, l.reasoning_start:l.reasoning_end] = True
-            
+            causal_reasoning_mask[b, :, l.reasoning_start:l.reasoning_end] = False # hide reasoning tokens for every token
+            causal_reasoning_mask[b, l.reasoning_start:l.content_end, l.reasoning_start:l.reasoning_end] = True # allow reasoning tokens whithin a block (plus associated content) to attend each other
     causal_reasoning_mask = torch.tril(causal_reasoning_mask, diagonal=0) # add causality
     return causal_reasoning_mask
 
@@ -145,7 +143,7 @@ class TrajectoryBatch:
     # B := batch size, S := number of tokens / seq. length, T := number of states.
     rollout_ids: torch.IntTensor  # (B,)
     batch_input_ids: list[torch.LongTensor]  # List[(jS,)]
-    batch_reasoning_limit_tuples: list[tuple[int, int]]  # List[(jS,)]
+    batch_reasoning_limits: ReasoningLimits  # List[(jS,)]
     batch_action_mask: list[torch.BoolTensor]  # List[(jS,)]
     batch_timesteps: list[torch.IntTensor]  # List[(jS,)]
     batch_state_ends_mask: list[torch.BoolTensor]  # List[(jS,)]
@@ -159,7 +157,7 @@ class TrajectoryBatch:
         B = self.rollout_ids.shape[0]
         assert (
             len(self.batch_input_ids)
-            == len(self.batch_reasoning_limit_tuples)
+            == len(self.batch_reasoning_limits)
             == len(self.batch_action_mask)
             == len(self.batch_timesteps)
             == len(self.batch_state_ends_mask)
@@ -210,7 +208,7 @@ class TrajectoryBatch:
             return TrajectoryBatch(
                 rollout_ids=self.rollout_ids.__getitem__(key),
                 batch_input_ids=self.batch_input_ids[key],
-                batch_reasoning_limit_tuples=self.batch_reasoning_limit_tuples[key],
+                batch_reasoning_limits=self.batch_reasoning_limits[key],
                 batch_action_mask=self.batch_action_mask[key],
                 batch_timesteps=self.batch_timesteps[key],
                 batch_state_ends_mask=self.batch_state_ends_mask[key],
@@ -248,7 +246,7 @@ class TrajectoryBatch:
             device=padded_batch_input_ids.device,
             dtype=torch.long,
         )
-        causal_reasoning_mask = get_causal_reasoning_mask(padded_batch_input_ids.shape, self.batch_reasoning_limit_tuples)
+        causal_reasoning_mask = get_causal_reasoning_mask(padded_batch_input_ids.shape, self.batch_reasoning_limits)
         return padded_batch_input_ids, padded_batch_state_ends_mask, timestep_counts, causal_reasoning_mask 
 
 
@@ -275,7 +273,7 @@ class TrainingBatch:
     rollout_ids: torch.IntTensor   # (B,)
     batch_input_ids: list[torch.LongTensor]  # List[(jS,)]
     batch_action_mask: list[torch.BoolTensor]  # List[(jS,)]
-    batch_reasoning_limit_tuples: list[tuple[int, int]]  # List[(jTb,)] (Tb is number of thinking blocks)
+    batch_reasoning_limits: ReasoningLimits  # List[(jTb,)] (Tb is number of thinking blocks)
     batch_credits: list[torch.FloatTensor]  # List[(jS,)]
 
     def __post_init__(self):
@@ -304,7 +302,7 @@ class TrainingBatch:
                 rollout_ids=self.rollout_ids.__getitem__(key),
                 batch_input_ids=self.batch_input_ids[key],
                 batch_action_mask=self.batch_action_mask[key],
-                batch_reasoning_limit_tuples=self.batch_reasoning_limit_tuples[key],
+                batch_reasoning_limits=self.batch_reasoning_limits[key],
                 batch_credits=self.batch_credits[key],
             )
 
@@ -337,7 +335,7 @@ class TrainingBatch:
 
 
         # indices are unchanged since we pad to the right
-        causal_reasoning_mask = get_causal_reasoning_mask(padded_batch_input_ids.shape, self.batch_reasoning_limit_tuples)
+        causal_reasoning_mask = get_causal_reasoning_mask(padded_batch_input_ids.shape, self.batch_reasoning_limits)
 
         return PaddedTensorTrainingBatch(
             padded_batch_input_ids, padded_batch_action_mask, padded_batch_credits, causal_reasoning_mask
@@ -347,7 +345,7 @@ class TrainingBatch:
         self.rollout_ids = torch.cat([self.rollout_ids, other.rollout_ids])
         self.batch_input_ids.extend(other.batch_input_ids)
         self.batch_action_mask.extend(other.batch_action_mask)
-        self.batch_reasoning_limit_tuples.extend(other.batch_reasoning_limit_tuples)
+        self.batch_reasoning_limits.extend(other.batch_reasoning_limits)
         self.batch_credits.extend(other.batch_credits)
 
 

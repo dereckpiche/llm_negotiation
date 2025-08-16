@@ -55,7 +55,7 @@ def get_qwen_reasoning_limit_tuple(tokenizer: AutoTokenizer, chat_turn: Training
     """
     """
     encoded = tokenizer.apply_chat_template(
-        [chat_turn], return_tensors=None, chat_template=custom_qwen_template, add_special_tokens=True
+        [chat_turn], return_tensors=None, chat_template=custom_qwen_template
     )
     if chat_turn.role != "assistant" or chat_turn.reasoning_content is None: return None
     open_reasoning_ids = tokenizer.encode("\n<think>\n", add_special_tokens=False)
@@ -63,7 +63,7 @@ def get_qwen_reasoning_limit_tuple(tokenizer: AutoTokenizer, chat_turn: Training
     reasoning_start = find_subsequence(encoded, open_reasoning_ids)
     reasoning_end = find_subsequence(encoded, close_reasoning_ids) + len(close_reasoning_ids)
     assert reasoning_start != -1 and reasoning_end != -1 and reasoning_end > reasoning_start, f"Expected to find reasoning content in the assistant turn {tokenizer.decode(encoded)}"
-    content_end = len(tokenizer.encode(chat_turn.content, add_special_tokens=False))
+    content_end = len(encoded)
     return ReasoningLimits(reasoning_start, reasoning_end, content_end)
 
 

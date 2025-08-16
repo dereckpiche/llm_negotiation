@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
     reasoning_token_mask = torch.zeros(input_ids.numel(), dtype=torch.bool)# TODO (S,)
     print(reasoning_limit_tuples)
-    for l in reasoning_limit_tuples: reasoning_token_mask[l[0]:l[1]] = True
+    for l in reasoning_limit_tuples: reasoning_token_mask[l.reasoning_start:l.reasoning_end] = True
 
     reasoning_token_attention_mask = get_causal_reasoning_mask((1, input_ids.numel()), [reasoning_limit_tuples])[0] # TODO (S,S)
     attends_to = [tokenizer.decode(input_ids[tmask==True]) for tmask in reasoning_token_attention_mask]
