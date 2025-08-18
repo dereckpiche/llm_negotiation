@@ -78,6 +78,12 @@ def main():
     parser = argparse.ArgumentParser(
         description="Process negotiation game rollout files for analysis"
     )
+    # Positional path acts as --global-folder for convenience
+    parser.add_argument(
+        "positional_global_folder",
+        nargs="?",
+        help="Global folder containing iteration_* subdirectories (positional; same as --global-folder)",
+    )
     parser.add_argument(
         "--folders", nargs="+", help="List of specific folders to process"
     )
@@ -126,6 +132,10 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # If a positional path is provided, treat it as --global-folder unless the flag is explicitly set
+    if not args.global_folder and args.positional_global_folder:
+        args.global_folder = args.positional_global_folder
 
     # Require at least one input method
     if not args.folders and not args.global_folder:

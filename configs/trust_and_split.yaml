@@ -1,5 +1,5 @@
 defaults:
-    - config.yaml
+    - defaults.yaml
 
 experiment:
     name: "trust_and_split"

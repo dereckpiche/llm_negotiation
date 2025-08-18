@@ -155,7 +155,7 @@ class TrustAndSplitAgent(Agent):
             )
             import re as _re
 
-            m = _re.search(r"<coins_to_self>([0-9]+)</coins_to_self>", policy_output)
+            m = _re.search(r"<coins_to_self>([0-9]+)</coins_to_self>", policy_output.content)
             coins_int = int(m.group(1)) if m else int(policy_output)
             action = Split(coins_given_to_self=coins_int)
         else:

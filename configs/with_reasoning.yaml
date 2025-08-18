@@ -1,13 +1,14 @@
+defaults:
+    - trust_and_split.yaml
 
 
 models:
     base_llm:
         init_args:
-            max_thinking_characters: 200
+            max_thinking_characters: 500
             hf_kwargs:
                 attn_implementation: "eager"
             
-
 trainers:
     agent_trainer:
         kwargs:
