@@ -102,6 +102,7 @@ models:
                 max_memory: {0: "15GiB"}
                 attn_implementation: "flash_attention_2"
             inference_backend_init_kwargs:
+                enable_prefix_caching: True
                 max_model_len: 1e4
                 # max_num_seqs: 64 # the max number of sequences that can be generated in parallel
                 gpu_memory_utilization: 0.5

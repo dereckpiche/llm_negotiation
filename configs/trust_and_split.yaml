@@ -76,6 +76,7 @@ models:
                 max_memory: {0: "15GiB"}
                 attn_implementation: "flash_attention_2"
             inference_backend_init_kwargs:
+                enable_prefix_caching: True
                 max_model_len: 1e4
                 gpu_memory_utilization: 0.5
                 dtype: "bfloat16"

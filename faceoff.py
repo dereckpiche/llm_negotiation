@@ -26,7 +26,9 @@ from mllm.markov_games.mg_utils import (
     init_markov_game_components,
 )
 from mllm.markov_games.run_markov_games import run_markov_games
-from mllm.markov_games.runners.alternative_actions_runner import AlternativeActionsRunner
+from mllm.markov_games.runners.alternative_actions_runner import (
+    AlternativeActionsRunner,
+)
 from mllm.markov_games.runners.linear_runner import LinearRunner
 from mllm.models.large_language_model_local import LeanLocalLLM
 
@@ -160,13 +162,20 @@ def main(cfg):
         dirs_exist_ok=True,
     )
 
-    # Run the experiment specified in the configuration
-    asyncio.run(
-        faceoff(
-            OmegaConf.to_container(cfg, resolve=True, structured_config_mode="dict"),
-            base_seed=cfg.experiment.base_seed,
+    try:
+        # Run the experiment specified in the configuration
+        asyncio.run(
+            faceoff(
+                OmegaConf.to_container(
+                    cfg, resolve=True, structured_config_mode="dict"
+                ),
+                base_seed=cfg.experiment.base_seed,
+            )
         )
-    )
+    finally:
+        # Clean up distributed process groups if they exist
+        if torch.distributed.is_initialized():
+            torch.distributed.destroy_process_group()
 
 
 if __name__ == "__main__":
@@ -174,4 +183,4 @@ if __name__ == "__main__":
 
     mp.set_start_method("spawn", force=True)
     kill_sglang()
-    asyncio.run(main())
+    main()

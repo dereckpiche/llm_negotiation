@@ -86,6 +86,7 @@ def get_generalized_advantage_estimates(
 def get_advantage_alignment_weights(
     advantages: torch.Tensor,  # (B, T)
     exclude_k_equals_t: bool,
+    gamma: float,
 ) -> torch.Tensor:
     """
     The advantage alignment credit is calculated as
@@ -100,18 +101,22 @@ def get_advantage_alignment_weights(
         \left( \sum_{k < t} \gamma^{t-k} A^1(s_k, a_k, b_k) \)
     """
     T = advantages.shape[1]
-
+    discounted_advantages = advantages * (
+        gamma * torch.ones((1, T), device=advantages.device)
+    ) ** (-torch.arange(0, T, 1, device=advantages.device))
     if exclude_k_equals_t:
         sub = torch.eye(T, device=advantages.device)
     else:
         sub = torch.zeros((T, T), device=advantages.device)
 
     # Identity is for \( k < t \), remove for \( k \leq t \)
-    ad_align_weights = advantages @ (
+    ad_align_weights = discounted_advantages @ (
         torch.triu(torch.ones((T, T), device=advantages.device)) - sub
     )
-    # t_discounts = (gamma * torch.ones(shape=(1, T))) ** (torch.arange(0, T, 1))
-    # adalign_weights = beta * t_discounts * discounted_sums_advantages
+    t_discounts = (gamma * torch.ones((1, T), device=advantages.device)) ** (
+        torch.arange(0, T, 1, device=advantages.device)
+    )
+    ad_align_weights = t_discounts * ad_align_weights
     return ad_align_weights
 
 
@@ -121,13 +126,14 @@ def get_advantage_alignment_credits(
     a2: torch.Tensor,  # (B, S)
     exclude_k_equals_t: bool,
     beta: float,
-    gamma: float,
+    gamma: float = 1.0,
     use_old_ad_align: bool = False,
     use_sign: bool = False,
     clipping: float | None = None,
     use_time_regularization: bool = False,
     force_coop_first_step: bool = False,
     use_variance_regularization: bool = False,
+    rloo_branch: bool = False,
     tally: Tally = Tally(),
 ) -> torch.Tensor:
     """
@@ -162,44 +168,51 @@ def get_advantage_alignment_credits(
     assert a1.dim() == a2.dim() == 2, "Advantages must be of shape (B, S)"
     assert (
         a1_alternative.dim() == 3
-    ), "Alternative advantages must be of shape (B, A, S)"
+    ), "Alternative advantages must be of shape (B, S, A)"
     assert a1.shape == a2.shape, "Not the same shape"
     B, T, A = a1_alternative.shape
 
     if use_old_ad_align:
-        adalign_weights = get_advantage_alignment_weights(
-            advantages=a1, exclude_k_equals_t=exclude_k_equals_t
+        ad_align_weights = get_advantage_alignment_weights(
+            advantages=a1, exclude_k_equals_t=exclude_k_equals_t, gamma=gamma
         )
+        if exclude_k_equals_t:
+            ad_align_weights = gamma * ad_align_weights
     else:
         a1_alternative = a1_alternative.mean(dim=2)
+        if rloo_branch:
+            a1 = get_rloo_credits(a1)
+            a1_alternative = get_rloo_credits(a1_alternative)
         assert a1.shape == a1_alternative.shape, "Not the same shape"
-        adalign_weights = get_advantage_alignment_weights(
-            advantages=a1_alternative, exclude_k_equals_t=exclude_k_equals_t
+        ad_align_weights = get_advantage_alignment_weights(
+            advantages=a1_alternative,
+            exclude_k_equals_t=exclude_k_equals_t,
+            gamma=gamma,
         )
 
     # tally.add_metric(
-    #     path=["raw_advantage_alignment_weights"], metric=adalign_weights
+    #     path=["raw_advantage_alignment_weights"], metric=ad_align_weights
     # )
 
     # Use sign
     if use_sign:
         assert beta == 1.0, "beta should be 1.0 when using sign"
-        positive_signs = adalign_weights > 0
-        negative_signs = adalign_weights < 0
-        adalign_weights[positive_signs] = 1
-        adalign_weights[negative_signs] = -1
+        positive_signs = ad_align_weights > 0
+        negative_signs = ad_align_weights < 0
+        ad_align_weights[positive_signs] = 1
+        ad_align_weights[negative_signs] = -1
         tally.add_metric(
-            path=["adalign_weights_ratio_positive_signs"],
-            metric=positive_signs.sum() / adalign_weights.size,
+            path=["ad_align_weights_ratio_positive_signs"],
+            metric=positive_signs.sum() / ad_align_weights.size,
         )
         tally.add_metric(
-            path=["adalign_weights_ratio_negative_signs"],
-            metric=negative_signs.sum() / adalign_weights.size,
+            path=["ad_align_weights_ratio_negative_signs"],
+            metric=negative_signs.sum() / ad_align_weights.size,
         )
         # (rest are 0)
 
         tally.add_metric(
-            path=["ad_align_weights_after_using_sign"], metric=adalign_weights
+            path=["ad_align_weights_after_using_sign"], metric=ad_align_weights
         )
 
     ###################
@@ -208,11 +221,11 @@ def get_advantage_alignment_credits(
 
     # Use clipping
     if clipping not in [0.0, None]:
-        upper_mask = adalign_weights > 1
-        lower_mask = adalign_weights < -1
+        upper_mask = ad_align_weights > 1
+        lower_mask = ad_align_weights < -1
 
-        adalign_weights = torch.clip(
-            adalign_weights,
+        ad_align_weights = torch.clip(
+            ad_align_weights,
             -clipping,
             clipping,
         )
@@ -223,23 +236,26 @@ def get_advantage_alignment_credits(
         tally.add_metric(path=["ad_align_clipping_ratio"], metric=clipping_ratio)
 
         tally.add_metric(
-            path=["ad_align_weights_after_clipping"], metric=adalign_weights
+            path=["ad_align_weights_after_clipping"], metric=ad_align_weights
         )
 
     # 1/1+t Regularization
     if use_time_regularization:
         t_values = torch.arange(1, T + 1)
-        adalign_weights = adalign_weights / t_values
+        ad_align_weights = ad_align_weights / t_values
+        import ipdb
+
+        ipdb.set_trace()
         tally.add_metric(
-            path=["adalign_weights_after_1_over_t_reg"], metric=adalign_weights
+            path=["ad_align_weights_after_1_over_t_reg"], metric=ad_align_weights
         )
 
     # Use coop on t=0
     if force_coop_first_step:
-        adalign_weights[:, 0] = 1
+        ad_align_weights[:, 0] = 1
         tally.add_metric(
-            path=["adalign_weights_after_force_coop_first_step"],
-            metric=adalign_weights,
+            path=["ad_align_weights_after_force_coop_first_step"],
+            metric=ad_align_weights,
         )
 
     # # Normalize alignment terms (across same time step)
@@ -255,7 +271,7 @@ def get_advantage_alignment_credits(
     # Compose elements together
     ####################################
 
-    opp_shaping_terms = beta * adalign_weights * a2
+    opp_shaping_terms = beta * ad_align_weights * a2
 
     # tally.add_metric(
     #     path=["ad_align_opp_shaping_terms"], metric=opp_shaping_terms
