@@ -28,10 +28,8 @@ from mllm.markov_games.mg_utils import (
     init_markov_game_components,
 )
 from mllm.markov_games.run_markov_games import run_markov_games
-from mllm.markov_games.runners.alternative_actions_runner import (
-    AlternativeActionsRunner,
-)
-from mllm.markov_games.runners.linear_runner import LinearRunner
+from mllm.markov_games.alternative_actions_runner import AlternativeActionsRunner
+from mllm.markov_games.linear_runner import LinearRunner
 from mllm.models.large_language_model_local import LeanLocalLLM
 
 # from mllm.models.large_language_model_server import ServerLLM
@@ -341,12 +339,12 @@ def main(cfg):
     logging.basicConfig(filename=filename, level=logging.INFO)
 
     # Output source code in runtime directory for certain reproducibility
-    os.makedirs(hydra_run_dir, exist_ok=True)
-    shutil.copytree(
-        "mllm",
-        os.path.join(hydra_run_dir, "src_code_for_reproducibility"),
-        dirs_exist_ok=True,
-    )
+    # os.makedirs(hydra_run_dir, exist_ok=True)
+    # shutil.copytree(
+    #     "mllm",
+    #     os.path.join(hydra_run_dir, "src_code_for_reproducibility"),
+    #     dirs_exist_ok=True,
+    # )
 
     # Run the experiment specified in the configuration
     try:

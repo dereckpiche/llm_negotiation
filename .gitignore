@@ -1,6 +1,7 @@
 # macOS generated files
 .DS_Store
 .analyse_venv
+*.png
 .venv
 home/
 home
@@ -157,3 +158,4 @@ important_outputs/
 **/**/__pycache__/
 .venv/
 *.code-workspace
+style_test.png

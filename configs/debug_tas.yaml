@@ -25,7 +25,7 @@ models:
                 torch_dtype: "bfloat16"
                 max_memory: {0: "15GiB"}
                 attn_implementation: "flash_attention_2"
-            inference_backend: dummy
+            inference_backend: vllm
             inference_backend_init_kwargs:
                 max_model_len: 1e4
                 # max_num_seqs: 128
@@ -55,5 +55,6 @@ models:
                     target_modules: all-linear
 trainers:
     agent_trainer:
+        class: TrainerSumRewards
         kwargs:
             enable_tokenwise_logging: True

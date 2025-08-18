@@ -28,6 +28,13 @@ cd path/to/repo
 pip install -e .
 ```
 
+and run 
+
+```python
+import sys
+sys.path.append('your-path-to-the-repo')
+```
+in order to add the repository to your system path. 
 
 ## Development
 

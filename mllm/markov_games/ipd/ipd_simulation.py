@@ -114,7 +114,15 @@ class IPD(Simulation):
         self.state.round_nb += 1
         self.state.last_moves = copy.deepcopy(actions)
         done = self.state.round_nb >= self.rounds_per_game
-        step_log = SimulationStepLog(rewards=round_rewards)
+        step_log = SimulationStepLog(
+            rewards=round_rewards,
+            info={
+                "actions": {
+                    self.agent_ids[0]: norm_action0,
+                    self.agent_ids[1]: norm_action1,
+                }
+            },
+        )
 
         return done, step_log
 

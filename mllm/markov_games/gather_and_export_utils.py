@@ -5,7 +5,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from mllm.markov_games.rollout_tree import *
 
@@ -260,6 +260,18 @@ def gather_all_rewards(path: RolloutNodeList) -> List[Dict[AgentId, float]]:
         rewards.append(node.step_log.simulation_step_log.rewards.copy())
     return rewards
 
+def gather_simulation_stats(
+    path: RolloutNodeList,
+    filter: Callable[[SimulationStepLog], bool],
+    stat_func: Callable[[SimulationStepLog], Any],
+) -> List[Any]:
+    """Gather stats from main trajectory in a path."""
+    stats = []
+    for node in path.nodes:
+        sl = node.step_log.simulation_step_log
+        if filter(sl):
+            stats.append(stat_func(sl))
+    return stats
 
 def gather_simulation_infos(path: RolloutNodeList) -> List[Dict[str, Any]]:
     """Gather simulation information from main trajectory in a path."""
