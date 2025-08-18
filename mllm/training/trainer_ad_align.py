@@ -113,6 +113,8 @@ class TrainerAdAlign(BaseTrainer):
         ad_align_clipping: float,
         ad_align_force_coop_first_step: bool,
         use_old_ad_align: bool,
+        use_time_regularization: bool,
+        rloo_branch: bool,
         *args,
         **kwargs,
     ):
@@ -134,6 +136,8 @@ class TrainerAdAlign(BaseTrainer):
         self.ad_align_clipping = ad_align_clipping
         self.ad_align_force_coop_first_step = ad_align_force_coop_first_step
         self.use_old_ad_align = use_old_ad_align
+        self.use_time_regularization = use_time_regularization
+        self.rloo_branch = rloo_branch
         self.training_data: dict[AgentId, AdAlignTrainingData] = {}
         self.debug_path_list: list[str] = []
 
@@ -369,6 +373,8 @@ class TrainerAdAlign(BaseTrainer):
                     clipping=self.ad_align_clipping,
                     force_coop_first_step=self.ad_align_force_coop_first_step,
                     use_old_ad_align=self.use_old_ad_align,
+                    use_time_regularization=self.use_time_regularization,
+                    rloo_branch=self.rloo_branch,
                     tally=self.tally,
                 )
 

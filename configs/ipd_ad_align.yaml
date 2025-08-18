@@ -2,7 +2,7 @@ defaults:
     - ipd.yaml
 
 experiment:
-    name: "ipd_ad_align"
+    name: "ipd_ad_align_rloo_branch"
 
 markov_games:
     runner_method_name: AlternativeActionsRunner
@@ -21,3 +21,6 @@ trainers:
             ad_align_use_sign: False
             ad_align_beta: 0.1
             use_old_ad_align: False
+            use_time_regularization: False
+            use_rloo: False
+            rloo_branch: True

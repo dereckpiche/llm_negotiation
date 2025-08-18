@@ -133,6 +133,7 @@ def get_advantage_alignment_credits(
     use_time_regularization: bool = False,
     force_coop_first_step: bool = False,
     use_variance_regularization: bool = False,
+    rloo_branch: bool = False,
     tally: Tally = Tally(),
 ) -> torch.Tensor:
     """
@@ -179,6 +180,9 @@ def get_advantage_alignment_credits(
             ad_align_weights = gamma * ad_align_weights
     else:
         a1_alternative = a1_alternative.mean(dim=2)
+        if rloo_branch:
+            a1 = get_rloo_credits(a1)
+            a1_alternative = get_rloo_credits(a1_alternative)
         assert a1.shape == a1_alternative.shape, "Not the same shape"
         ad_align_weights = get_advantage_alignment_weights(
             advantages=a1_alternative,
@@ -239,6 +243,9 @@ def get_advantage_alignment_credits(
     if use_time_regularization:
         t_values = torch.arange(1, T + 1)
         ad_align_weights = ad_align_weights / t_values
+        import ipdb
+
+        ipdb.set_trace()
         tally.add_metric(
             path=["ad_align_weights_after_1_over_t_reg"], metric=ad_align_weights
         )
