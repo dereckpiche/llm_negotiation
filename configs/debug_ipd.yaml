@@ -1,7 +1,7 @@
 # To quickly check if code still runs
 
 defaults:
-    - ipd_ad_align.yaml
+    - ipd.yaml
 
 experiment:
     name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
@@ -18,13 +18,9 @@ agent_1_id: Bob
 agent_ids: ["Alice", "Bob"]
 
 markov_games:
-    runner_method_name: AlternativeActionsRunner
+    runner_method_name: LinearRunner
     simulation_init_args:
-        rounds_per_game: 10
-    runner_kwargs:
-        nb_alternative_actions: 5
-        max_depth: 7
-
+        rounds_per_game: 2
 temperature: 1.0
 
 models:
@@ -32,13 +28,14 @@ models:
         class: LeanLocalLLM
         init_args:
             llm_id: base_llm
-            model_name: "Qwen/Qwen2.5-0.5B-Instruct" # Qwen/Qwen3-4B-Instruct-2507
+            model_name: "Qwen/Qwen3-4B-Instruct-2507" # Qwen/Qwen3-4B-Instruct-2507
+            max_thinking_characters: 10
             hf_kwargs:
                 device_map: "cuda:0"
                 torch_dtype: "bfloat16"
-                max_memory: {0: "15GiB"}
-                attn_implementation: "flash_attention_2"
-            inference_backend: dummy
+                max_memory: {0: "10GiB"}
+                attn_implementation: "eager"
+            inference_backend: vllm
             inference_backend_init_kwargs:
                 max_model_len: 1e4
                 # max_num_seqs: 128
@@ -49,9 +46,9 @@ models:
                 enforce_eager: True
                 max_lora_rank: 32
             inference_backend_sampling_params:
+                # max_tokens: 40
                 temperature: 1.0
                 top_p: 1.0
-                max_tokens: 400
                 top_k: 0
             adapter_configs:
                 agent_adapter:
@@ -69,7 +66,8 @@ models:
 
 trainers:
     agent_trainer:
-        class: TrainerAdAlign
+        class: TrainerNaive
         kwargs:
-            use_old_ad_align: False
+            use_reasoning_mask: True
+            # use_old_ad_align: False
             enable_tokenwise_logging: True
