@@ -1,0 +1,16 @@
+
+
+models:
+    base_llm:
+        init_args:
+            max_thinking_characters: 200
+            hf_kwargs:
+                attn_implementation: "eager"
+            
+
+trainers:
+    agent_trainer:
+        kwargs:
+            use_reasoning_mask: true
+
+

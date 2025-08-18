@@ -1,0 +1,65 @@
+"""
+In simple RL paradise, where the action dimensions are constant and well defined,
+Agent classes are not necessary. But in MARL, with LLM's, there isn't always
+a direct path from policy to action. For instance, from the observation of the environment,
+a prompt must be created. Then, the outputs of the policy might be incorrect, so a second
+request to the LLM must be sent before the action is well defined. This is why this Agent class exists.
+It acts as a mini environment, bridging the gap between the core simulation and
+the LLM policies.
+"""
+
+from abc import ABC, abstractmethod
+from numpy.random import default_rng
+from collections.abc import Callable
+from mllm.markov_games.rollout_tree import AgentActLog
+from typing import Any, Tuple
+
+class Agent(ABC):
+
+    @abstractmethod
+    def __init__(self, seed: int, agent_id:str, policy: Callable[[list[dict]], str], *args, **kwargs):
+        """
+        Initialize the agent state.
+        """
+        self.seed = seed
+        self.agent_id = agent_id
+        self.policy = policy
+        self.rng = default_rng(self.seed)
+        raise NotImplementedError
+
+    async def act(self, observation) ->  Tuple[Any, AgentActLog]:
+        """
+        Query (possibly multiple times) a policy (or possibly a pool of policies) to
+        obtain the action of the agent.
+
+        Example:
+        action = None
+        prompt = self.observation_to_prompt(observation)
+        while not self.valid(action):
+            output = await self.policy.generate(prompt)
+            action = self.policy_output_to_action(output)
+        return action
+
+        Returns:
+            action
+            step_info
+        """
+        raise NotImplementedError
+    
+    def get_safe_copy(self):    
+        """
+        Return copy of the agent object that is decorrelated from the original object.
+        """
+        raise NotImplementedError
+
+    def reset(self):
+        raise NotImplementedError
+
+    def render(self):
+        raise NotImplementedError
+
+    def close(self):
+        raise NotImplementedError
+
+    def get_agent_info(self):
+        raise NotImplementedError
