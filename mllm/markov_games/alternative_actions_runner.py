@@ -80,7 +80,7 @@ async def AlternativeActionsRunner(
     while not terminated:
         mg_before_action = markov_game.get_safe_copy()
         actions: dict[
-            AgentId, Tuple[Any, AgentActLog]
+            AgentId, Tuple[Any, AgentActLog, type[Agent]]
         ] = await markov_game.get_actions_of_agents_without_side_effects()
         markov_game.set_actions_of_agents_manually(actions)
         terminated = markov_game.take_simulation_step()
@@ -98,8 +98,12 @@ async def AlternativeActionsRunner(
                 other_agent_id = [id for id in mg_branch.agent_ids if id != agent_id][0]
                 other_action: Any = actions[other_agent_id][0]
                 other_action_info: AgentActLog = actions[other_agent_id][1]
+                other_agent_after_action: type[Agent] = actions[other_agent_id][2]
                 mg_branch.set_action_of_agent_manually(
-                    other_agent_id, other_action, other_action_info
+                    other_agent_id,
+                    other_action,
+                    other_action_info,
+                    other_agent_after_action,
                 )
                 branch_id = int(str(uuid.uuid4().int)[:8])
                 task = asyncio.create_task(

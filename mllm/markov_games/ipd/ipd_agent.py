@@ -88,6 +88,7 @@ class IPDAgent(Agent):
                     is_state_end=False,
                 )
             )
+            print(f"state is {self.state}")
 
             action = policy_output
             action_is_ready = True
