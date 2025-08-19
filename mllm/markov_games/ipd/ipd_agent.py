@@ -46,58 +46,67 @@ class IPDAgent(Agent):
         """
         TOWRITE
         """
+        print(observation)
+        
         action = None
         action_is_ready = False
         round_nb = observation.round_nb
-        while not action_is_ready:
-            # If it's the first round, we need to send the intro prompt
-            if round_nb == 0 and self.state.chat_counter == 0:
-                self.state.chat_history.append(
-                    ChatTurn(
-                        agent_id=self.agent_id,
-                        role="user",
-                        content=self.intro_prompt,
-                        is_state_end=True,
-                    )
-                )
 
-            # If new round
-            if round_nb > self.state.round_nb:
-                coagent_action = observation.last_coagent_move
-                user_message = f"Last round, the other agent played {coagent_action}."
-                self.state.chat_history.append(
-                    ChatTurn(
-                        agent_id=self.agent_id,
-                        role="user",
-                        content=user_message,
-                        is_state_end=True,
-                    )
-                )
-                self.round_nb = round_nb
 
-            # If not new round, try to get valid action from policy
-            prompt = [chat_item.dict() for chat_item in self.state.chat_history]
-            policy_output = await self.policy(
-                prompt=prompt, regex=f"({self.cooperate_string}|{self.defect_string})"
-            )
+        # If it's the first round, we need to send the intro prompt
+        if round_nb == 0 and self.state.chat_counter == 0:
             self.state.chat_history.append(
                 ChatTurn(
                     agent_id=self.agent_id,
-                    role="assistant",
-                    content=policy_output,
-                    is_state_end=False,
+                    role="user",
+                    content=self.intro_prompt,
+                    is_state_end=True,
                 )
             )
-            print(f"state is {self.state}")
 
-            action = policy_output
-            action_is_ready = True
+        # If new round
+        if round_nb > self.state.round_nb:
+            coagent_action = observation.last_coagent_move
+            user_message = f"Last round, the other agent played {coagent_action}."
+            self.state.chat_history.append(
+                ChatTurn(
+                    agent_id=self.agent_id,
+                    role="user",
+                    content=user_message,
+                    is_state_end=True,
+                )
+            )
 
-        self.state.nb_retries = 0  # reset retry counter
+        
+
+        # If not new round, try to get valid action from policy
+        prompt = [chat_item.dict() for chat_item in self.state.chat_history]
+        policy_output = await self.policy(
+            prompt=prompt, regex=f"({self.cooperate_string}|{self.defect_string})"
+        )
+        self.state.chat_history.append(
+            ChatTurn(
+                agent_id=self.agent_id,
+                role="assistant",
+                content=policy_output,
+                is_state_end=False,
+            )
+        )
+        if self.state.chat_counter == len(self.state.chat_history)-1:
+            print(observation)
+            print(f"self.state.round_nb is {self.state.round_nb}")
+            print("""""debug""""")
+            print(f"self.state.chat_history is {self.state.chat_history}")
+
+        action = policy_output
+        print(f"self.state.chat_history_length is {len(self.state.chat_history)}")
+        print(f"self.state.chat_counter is {self.state.chat_counter}")
         agent_step_log = AgentActLog(
-            chat_turns=self.state.chat_history[self.state.chat_counter :], info=None
+            chat_turns=self.state.chat_history[self.state.chat_counter:], info=None
         )
         self.state.chat_counter = len(self.state.chat_history)
+        self.state.round_nb = round_nb
+        
         return action, agent_step_log
 
     def get_safe_copy(self):
