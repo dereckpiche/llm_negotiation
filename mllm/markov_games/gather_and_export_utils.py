@@ -351,18 +351,28 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             padding: 4px 0 8px 0;
             border-top: 2px solid #ECF0F1; /* grid.color */
             display: flex;
+            flex-wrap: wrap; /* allow footer to wrap to next line */
             align-items: stretch;
             gap: 8px;
         }
+        /* Alternating background for time steps (applied via class) */
+        .time-step.alt {
+            background: #FAFBFC;
+        }
         .time-step-index {
-            width: 40px;
-            flex: 0 0 40px;
+            width: 120px;
+            flex: 0 0 120px;
             display: flex;
+            flex-direction: column;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
             color: #2C3E50;
             font-weight: 600;
+            gap: 6px;
+            padding-top: 2px;
         }
+        .index-rewards { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+        .index-rewards-row { display: flex; flex-direction: column; gap: 4px; align-items: center; }
         .agents-container-left,
         .agents-container-right {
             display: flex;
@@ -392,13 +402,20 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             margin-left: 6px;
             border: 2px solid #BDC3C7; /* neutral by default */
             border-radius: 14px; /* iMessage-like rounded */
+            position: relative; /* for bubble tails */
             vertical-align: top;
             max-width: calc(100% - 140px);
             background: #ffffff; /* keep minimal and readable */
         }
-        /* Asymmetric corners to hint direction (all point left) */
-        .agents-container-left .message-box { border-radius: 14px 14px 14px 6px; }
-        .agents-container-right .message-box { border-radius: 14px 14px 14px 6px; }
+        /* Rectangular corner by role (user: top-left square, assistant: top-right square) */
+        .chat-turn.role-user .message-box { border-radius: 0 14px 14px 14px; }
+        .chat-turn.role-assistant .message-box { border-radius: 14px 0 14px 14px; }
+
+        /* No pseudo-element tails; rectangular corner is the cue */
+        .chat-turn.role-user .message-box::before,
+        .chat-turn.role-user .message-box::after,
+        .chat-turn.role-assistant .message-box::before,
+        .chat-turn.role-assistant .message-box::after { content: none; }
         /* Color only assistant messages per agent (dedestyle palette: green/orange) */
         .agent-alice .chat-turn.role-assistant .message-box { border-color: #0eb224; }
         .agent-bob .chat-turn.role-assistant .message-box { border-color: #ef8323; }
@@ -412,18 +429,31 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             line-height: 1.35; /* dense yet readable */
             color: #1c0b00;
             font-size: 14px;
+            display: flex;
+            align-items: flex-start;
         }
+        /* Role-based alignment inside each agent column */
+        .chat-turn.role-user .turn-content { justify-content: flex-start; flex-direction: row; }
+        .chat-turn.role-assistant .turn-content { justify-content: flex-end; flex-direction: row; }
+        .chat-turn.role-assistant .turn-content::before { content: ""; flex: 1 1 auto; }
+        .chat-turn.role-user .message-box { margin-left: 6px; margin-right: 0; }
+        .chat-turn.role-assistant .message-box { margin-right: 6px; margin-left: 0; }
+        .chat-turn.role-assistant .agent-badge { margin-left: 0; margin-right: 0; }
+        .chat-turn.role-user .agent-badge { margin-right: 6px; }
         .agent-name { font-weight: 700; color: #2C3E50; }
         .agent-badge {
             display: inline-block;
             border: 1px solid #BDC3C7;
-            border-radius: 2px;
-            padding: 0 4px;
-            font-size: 11px;
+            border-radius: 999px; /* pill */
+            padding: 2px 8px;
+            font-size: 12px;
             line-height: 1.4;
             margin-right: 6px;
             color: #2C3E50;
+            background: #F8FAFC;
+            box-shadow: 0 1px 0 rgba(0,0,0,0.03) inset;
         }
+        .emoji-bw { filter: grayscale(100%); opacity: 0.95; font-size: 14px; vertical-align: text-bottom; margin: 0 2px; }
         .inline-sep {
             display: inline-block;
             vertical-align: baseline;
@@ -442,13 +472,26 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             font-size: 11px;
             font-weight: 600;
         }
-        .reward {
-            color: #2C3E50; /* neutral label */
-            font-size: 11px;
-            margin-left: 6px;
-            font-weight: 600;
+        /* Time step footer for rewards */
+        .time-step-meta {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 8px 0 8px;
+            margin: 6px 0 0 0;
+            border-top: 1px dashed #ECF0F1;
+            flex-basis: 100%;
         }
-        .reward-value { color: #f235df; }
+        .reward-label { color: #2C3E50; font-size: 12px; font-weight: 700; }
+        .reward-pill {
+            border: 1px solid #BDC3C7;
+            border-radius: 12px;
+            padding: 1px 6px;
+            font-size: 11px;
+            background: #ffffff;
+        }
+        .reward-value { color: #B8860B; font-weight: 700; }
     </style>
     """
 
@@ -474,12 +517,41 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             turns_by_agent[turn.agent_id].append(turn)
 
         # Time step container with centered index
-        html_parts.append('<div class="time-step">')
+        time_step_class = "time-step alt" if (time_step % 2 == 1) else "time-step"
+        html_parts.append(f'<div class="{time_step_class}">')
         html_parts.append('<div class="agents-container-left">')
         html_parts_left = []
         html_parts_right = []
-        # Prepare middle index to be inserted later
-        middle_index_html = f'<div class="time-step-index">⏱ {time_step}</div>'
+        # Prepare middle index to be inserted later (with rewards underneath)
+        # Per-time-step rewards
+        rewards_by_agent = {}
+        for turn in turns:
+            if turn.agent_id not in rewards_by_agent:
+                rewards_by_agent[turn.agent_id] = turn.reward
+        reward_pills = []
+        for aid in sorted(rewards_by_agent.keys()):
+            raw_val = rewards_by_agent[aid]
+            # Format reward: cap long decimals with ellipsis
+            formatted = (
+                f"{raw_val:.4f}" if isinstance(raw_val, (int, float)) else str(raw_val)
+            )
+            if isinstance(raw_val, float):
+                # Remove trailing zeros and dot
+                formatted = formatted.rstrip('0').rstrip('.')
+                if len(formatted) > 8:
+                    formatted = formatted[:8] + '…'
+            reward_pills.append(
+                f'<span class="reward-pill">{html.escape(aid)}: <span class="reward-value">{formatted}</span></span>'
+            )
+        middle_index_html = (
+            f'<div class="time-step-index">'
+            f'<div>⏱ {time_step}</div>'
+            f'<div class="index-rewards">'
+            f'  <div class="reward-label">Rewards</div>'
+            f'  <div class="index-rewards-row">' + "".join(reward_pills) + '</div>'
+            f'</div>'
+            f'</div>'
+        )
 
         # Process each agent; split left/right (alice left, bob right; others alternate)
         side_toggle = True
@@ -498,26 +570,30 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
                 agent_html.append(f'<div class="chat-turn {role_class}">')
 
                 # Turn metadata inline with content: minimal separators
-                # Uniform badge for user and assistant names (user shows 'user')
+                # Role-based badges with emojis (user: gear; assistant: robot)
                 if turn.role == "assistant":
-                    name_badge = f'<span class="agent-badge agent-name">{html.escape(agent_id)}</span>'
+                    name_badge = (
+                        f'<span class="agent-badge agent-name">'
+                        f'<span class="emoji-bw">🤖</span>{html.escape(agent_id)}'
+                        f'</span>'
+                    )
                 else:
-                    name_badge = f'<span class="agent-badge agent-name">user</span>'
-                trailing_badges = []
-                if turn.role == "assistant":
-                    trailing_badges.append(f'<span class="reward">Reward: <span class="reward-value">{turn.reward}</span></span>')
+                    name_badge = f'<span class="agent-badge agent-name"><span class="emoji-bw">⚙️</span>user</span>'
 
                 # Turn content (collapse all whitespace/newlines)
                 escaped_content = html.escape(turn.content)
                 collapsed = re.sub(r"\s+", " ", escaped_content).strip()
-                # Render: name badge, message box, divider, trailing badges (if any)
-                if trailing_badges:
-                    trailing = "".join(["<span class=\"inline-sep\"></span>"] + trailing_badges)
+                # Render: role-based order inside the row
+                if turn.role == "assistant":
+                    # Assistant on the right: bubble then badge
+                    agent_html.append(
+                        f'<div class="turn-content"><span class="message-box">{collapsed}</span>{name_badge}</div>'
+                    )
                 else:
-                    trailing = ""
-                agent_html.append(
-                    f'<div class="turn-content">{name_badge}<span class="message-box">{collapsed}</span>{trailing}</div>'
-                )
+                    # User on the left: badge then bubble
+                    agent_html.append(
+                        f'<div class="turn-content">{name_badge}<span class="message-box">{collapsed}</span></div>'
+                    )
 
                 agent_html.append("</div>")  # Close chat-turn
 
@@ -543,6 +619,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         html_parts.append('<div class="agents-container-right">')
         html_parts.append("".join(html_parts_right))
         html_parts.append("</div>")  # Close agents-container-right
+
         html_parts.append("</div>")  # Close time-step
 
     # Close HTML
