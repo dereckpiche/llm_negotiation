@@ -19,7 +19,6 @@ import uuid
 async def run_with_unilateral_alt_action(
     markov_game: MarkovGame,
     agent_id: AgentId,
-    branch_id: int,
     time_step: int,
     branch_node: RolloutTreeBranchNode,
     max_depth: int,
@@ -113,13 +112,11 @@ async def AlternativeActionsRunner(
                     agent_id=other_agent_id,
                     agent_action_safe_copy=branch_agent_action_safe_copies[other_agent_id],
                 )
-                branch_id = int(str(uuid.uuid4().int)[:8])
                 task = asyncio.create_task(
                     run_with_unilateral_alt_action(
                         markov_game=mg_branch,
                         time_step=time_step,
                         agent_id=agent_id,
-                        branch_id=branch_id,
                         branch_node=branch_node,
                         max_depth=max_depth,
                     )
