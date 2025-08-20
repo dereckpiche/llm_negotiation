@@ -8,6 +8,7 @@ import sys
 import uuid
 from collections.abc import Callable
 from copy import deepcopy
+from datetime import datetime
 from typing import Literal
 
 import httpx
@@ -106,7 +107,9 @@ class LeanLocalLLM:
                 logger.info(
                     f"Initializing adapter '{adapter_id}': using existing weights from output folder '{chosen_path}'."
                 )
-            elif self.initial_adapter_paths and adapter_id in self.initial_adapter_paths:
+            elif (
+                self.initial_adapter_paths and adapter_id in self.initial_adapter_paths
+            ):
                 chosen_path = self.initial_adapter_paths[adapter_id]
                 logger.info(
                     f"Initializing adapter '{adapter_id}': using provided initial path '{chosen_path}'."

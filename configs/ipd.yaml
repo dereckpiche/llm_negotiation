@@ -15,7 +15,7 @@ experiment:
     checkpoint_every_n_iterations: 50
     start_epoch: 0
     resume_experiment: true
-    base_seed: 1000
+    base_seed: 0
 
 ####################################################################################################
 #                                           GENERATION
@@ -109,6 +109,7 @@ models:
                 dtype: "bfloat16"
                 trust_remote_code: True
                 max_lora_rank: 32
+                seed: ${experiment.base_seed}
             inference_backend_sampling_params:
                 temperature: 1.0
                 top_p: 1.0
