@@ -113,7 +113,7 @@ class IPD(Simulation):
         # Update game state
         self.state.round_nb += 1
         self.state.last_moves = copy.deepcopy(actions)
-        done = self.state.round_nb >= self.rounds_per_game
+        done = self.state.round_nb > self.rounds_per_game
         step_log = SimulationStepLog(
             rewards=round_rewards,
             info={

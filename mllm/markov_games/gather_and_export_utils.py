@@ -107,7 +107,7 @@ def get_rollout_tree_paths(
         current,
         main_path_prefix: List[RolloutTreeNode],
         path_id: str,
-        current_time_step: Optional[int] = None,
+        current_time_step: Optional[int] = 0,
     ):
         """Traverse tree to collect all branch paths."""
         if current is None:

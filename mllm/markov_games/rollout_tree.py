@@ -40,7 +40,7 @@ class AgentActLog(BaseModel):
             n = sum(1 for t in self.chat_turns if t.is_state_end)
             if n != 1:
                 raise ValueError(
-                    f"AgentActLog must have exactly one ChatTurn with is_state_end=True; got {n}."
+                    f"AgentActLog must have exactly one ChatTurn with is_state_end=True; got {self.chat_turns}."
                 )
             return self
         else:
