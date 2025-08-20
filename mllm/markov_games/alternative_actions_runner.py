@@ -94,7 +94,7 @@ async def AlternativeActionsRunner(
             for agent_id, agent_action_safe_copy in agent_action_safe_copies.items()
         }
 
-        markov_game.set_actions_of_agents_manually(agent_action_safe_copies) # MAYBE BUG HERE
+        markov_game.set_actions_of_agents_manually(agent_action_safe_copies) 
         terminated = markov_game.take_simulation_step()
         main_node = RolloutTreeNode(
             step_log=markov_game.get_step_log(), time_step=time_step
@@ -108,7 +108,7 @@ async def AlternativeActionsRunner(
             for _ in range(nb_alternative_actions):
                 mg_branch: MarkovGame = mg_before_action.get_safe_copy()
                 other_agent_id = [id for id in mg_branch.agent_ids if id != agent_id][0]
-                mg_branch.set_action_and_agent_after_action_manually( # MAYBE BUG HERE
+                mg_branch.set_action_and_agent_after_action_manually( 
                     agent_id=other_agent_id,
                     agent_action_safe_copy=branch_agent_action_safe_copies[other_agent_id],
                 )

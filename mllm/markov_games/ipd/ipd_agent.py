@@ -46,7 +46,6 @@ class IPDAgent(Agent):
         """
         TOWRITE
         """
-        print(observation)
         
         action = None
         action_is_ready = False
@@ -92,15 +91,10 @@ class IPDAgent(Agent):
                 is_state_end=False,
             )
         )
-        if self.state.chat_counter == len(self.state.chat_history)-1:
-            print(observation)
-            print(f"self.state.round_nb is {self.state.round_nb}")
-            print("""""debug""""")
-            print(f"self.state.chat_history is {self.state.chat_history}")
+       
 
         action = policy_output
-        print(f"self.state.chat_history_length is {len(self.state.chat_history)}")
-        print(f"self.state.chat_counter is {self.state.chat_counter}")
+
         agent_step_log = AgentActLog(
             chat_turns=self.state.chat_history[self.state.chat_counter:], info=None
         )
