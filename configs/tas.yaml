@@ -1,0 +1,71 @@
+defaults:
+    - base.yaml
+
+
+experiment:
+    name: "tas"
+    method: generate_and_train
+    description: "Trust-and-Split negotiation game"
+    nb_epochs: 10
+    nb_matches_per_iteration: 32
+    reinit_matches_each_it: true
+    checkpoint_every_n_iterations: 25
+    start_epoch: 0
+    resume_experiment: true
+    base_seed: 1001
+
+
+
+
+common_agent_kwargs: &common_agent_kwargs
+    goal: "Maximize your total points over the whole game."
+
+markov_games:
+
+    simulation_class_name: TrustAndSplitSimulation
+    simulation_init_args:
+        agent_ids: ${agent_ids}
+        rounds_per_game: 10
+        quota_messages_per_agent_per_round: 1
+        max_coins: 10
+
+    agents:
+        0:
+            agent_id: ${agent_0_id}
+            agent_class_name: TrustAndSplitAgent
+            policy_id: base_llm/agent_adapter
+            init_kwargs:
+                <<: *common_agent_kwargs
+
+        1:
+            agent_id: ${agent_1_id}
+            agent_class_name: TrustAndSplitAgent
+            policy_id: base_llm/agent_adapter
+            init_kwargs:
+                <<: *common_agent_kwargs
+
+    run_batched_matches_args:
+        nb_parallel_matches: -1
+
+temperature: 1.0
+
+models:
+    base_llm:
+        init_args:
+            model_name: Qwen/Qwen3-4B-Instruct-2507
+            # hf_kwargs:
+            #     max_memory: {0: "15GiB"}
+            # inference_backend_init_kwargs:
+            #     gpu_memory_utilization: 0.5
+            inference_backend_sampling_params:
+                temperature: ${temperature}
+                max_tokens: 400
+            
+trainers:
+    agent_trainer:
+        kwargs:
+            mini_batch_size: 1
+           
+
+
+

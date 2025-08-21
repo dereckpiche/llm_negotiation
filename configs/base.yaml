@@ -5,10 +5,8 @@ hydra:
         chdir: false
 
 experiment:
-    name: "trust_and_split"
     method: generate_and_train
-    description: "Trust-and-Split negotiation game"
-    nb_epochs: 10
+    nb_epochs: 1e4
     nb_matches_per_iteration: 32
     reinit_matches_each_it: true
     checkpoint_every_n_iterations: 25
@@ -21,9 +19,6 @@ agent_0_id: Alice
 agent_1_id: Bob
 agent_ids: ["Alice", "Bob"]
 
-####################################################################################################
-#                                           GENERATION
-####################################################################################################
 
 common_agent_kwargs: &common_agent_kwargs
     goal: "Maximize your total points over the whole game."
@@ -32,30 +27,20 @@ markov_games:
     runner_method_name: LinearRunner
     runner_kwargs: {}
 
-    simulation_class_name: TrustAndSplitSimulation
-    simulation_init_args:
-        agent_ids: ${agent_ids}
-        rounds_per_game: 10
-        quota_messages_per_agent_per_round: 1
-        max_coins: 10
 
     agents:
         0:
             agent_id: ${agent_0_id}
-            agent_class_name: TrustAndSplitAgent
             policy_id: base_llm/agent_adapter
             init_kwargs:
                 <<: *common_agent_kwargs
 
         1:
             agent_id: ${agent_1_id}
-            agent_class_name: TrustAndSplitAgent
             policy_id: base_llm/agent_adapter
             init_kwargs:
                 <<: *common_agent_kwargs
 
-    run_batched_matches_args:
-        nb_parallel_matches: -1
 
 temperature: 1.0
 
@@ -64,14 +49,15 @@ models:
         class: LeanLocalLLM
         init_args:
             llm_id: base_llm
-            model_name: Qwen/Qwen3-4B-Instruct-2507
-            inference_backend: vllm
+            model_name: Qwen/Qwen3-4B-Instruct-2507 #  Qwen/Qwen3-4B-Instruct-2507, Qwen/Qwen2.5-7B-Instruct
+            inference_backend: vllm # vllm, dummy
             hf_kwargs:
                 device_map: "auto"
                 torch_dtype: "bfloat16"
                 max_memory: {0: "15GiB"}
                 attn_implementation: "flash_attention_2"
             inference_backend_init_kwargs:
+                seed: ${experiment.base_seed}
                 enable_prefix_caching: True
                 max_model_len: 1e4
                 gpu_memory_utilization: 0.5
