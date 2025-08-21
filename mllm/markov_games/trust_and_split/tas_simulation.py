@@ -2,9 +2,10 @@
 Trust-and-Split simulation.
 
 This environment models a simple bargaining game over 10 coins with messaging.
-Agents alternate sending messages for a fixed number of turns per round and then
-each submits a split proposal indicating how many coins they keep for themselves.
-Rewards are proportional if the proposed totals exceed 10.
+Agents are assigned rock/paper/scissors hands, with the winner getting value 10 per coin
+and the loser getting value 1 per coin. Agents alternate sending messages for a fixed 
+number of turns per round and then each submits a split proposal indicating how many 
+coins they keep for themselves. Rewards are proportional if the proposed totals exceed 10.
 """
 
 import copy
@@ -45,6 +46,19 @@ def get_rewards(
     return r0, r1
 
 
+def _get_rps_winner(hand1: str, hand2: str) -> str:
+    """Determine winner of rock-paper-scissors between two hands."""
+    if hand1 == hand2:
+        raise ValueError("Hands should be different")
+    
+    if (hand1 == "rock" and hand2 == "scissors") or \
+       (hand1 == "paper" and hand2 == "rock") or \
+       (hand1 == "scissors" and hand2 == "paper"):
+        return hand1
+    else:
+        return hand2
+
+
 @dataclass
 class TrustAndSplitState:
     round_nb: int
@@ -52,6 +66,8 @@ class TrustAndSplitState:
     current_agent: AgentId
     values: Dict[AgentId, float]
     previous_values: Dict[AgentId, float] | None
+    hands: Dict[AgentId, str]  # rock, paper, or scissors
+    previous_hands: Dict[AgentId, str] | None
     splits: Dict[AgentId, Split | None]
     messages_sent: Dict[AgentId, int]
     split_phase: bool = False
@@ -65,6 +81,8 @@ class TrustAndSplitObs:
     last_value_coagent: float | None
     value: float
     other_agent_split: int | None
+    hand: str  # rock, paper, or scissors
+    last_hand_coagent: str | None
     split_phase: bool = False
 
 @dataclass
@@ -72,6 +90,7 @@ class SplitsLog:
     sums_to_max_coins: bool
     num_coins: int
     values: Dict[AgentId, float]
+    hands: Dict[AgentId, str]
     coins_given_to_self: Dict[AgentId, int]
     
 
@@ -104,11 +123,26 @@ class TrustAndSplitSimulation(Simulation):
         self._starting_agent_index = 0
         self.reset()
 
-    def _sample_values(self) -> Dict[AgentId, float]:
-        # Values per coin for this round, sampled uniformly in [1, 20]
-        return {
-            agent_id: float(self.rng.integers(1, 21)) for agent_id in self.agent_ids
+    def _sample_hands_and_values(self) -> Tuple[Dict[AgentId, str], Dict[AgentId, float]]:
+        # Assign different hands to each agent
+        hands = ["rock", "paper", "scissors"]
+        hand1, hand2 = self.rng.choice(hands, size=2, replace=False)
+        
+        agent_hands = {
+            self.agent_ids[0]: hand1,
+            self.agent_ids[1]: hand2
         }
+        
+        # Determine winner and assign values
+        winner = _get_rps_winner(hand1, hand2)
+        values = {}
+        for agent_id in self.agent_ids:
+            if agent_hands[agent_id] == winner:
+                values[agent_id] = 10.0  # Winner gets value 10
+            else:
+                values[agent_id] = 1.0   # Loser gets value 1
+                
+        return agent_hands, values
 
     def _other(self, agent_id: AgentId) -> AgentId:
         return get_coagent_id(self.agent_ids, agent_id)
@@ -160,7 +194,10 @@ class TrustAndSplitSimulation(Simulation):
 
             # Prepare next round
             self.state.previous_values = copy.deepcopy(self.state.values)
-            self.state.values = self._sample_values()
+            self.state.previous_hands = copy.deepcopy(self.state.hands)
+            new_hands, new_values = self._sample_hands_and_values()
+            self.state.hands = new_hands
+            self.state.values = new_values
             self.state.round_nb += 1
             self.state.last_message = ""
             self.state.split_phase = False
@@ -177,6 +214,7 @@ class TrustAndSplitSimulation(Simulation):
                     sums_to_max_coins=sums_to_max,
                     num_coins=self.max_coins,
                     values={a0: val_0, a1: val_1},
+                    hands={a0: self.state.previous_hands[a0], a1: self.state.previous_hands[a1]},
                     coins_given_to_self={a0: coins_to_self_0, a1: coins_to_self_1},
                 ),
             )
@@ -219,6 +257,11 @@ class TrustAndSplitSimulation(Simulation):
             if self.state.previous_values is None
             else self.state.previous_values.get(other_id)
         )
+        last_hand = (
+            None
+            if self.state.previous_hands is None
+            else self.state.previous_hands.get(other_id)
+        )
         other_split_val = None
         if self.state.splits.get(other_id) is not None:
             other_split_val = self.state.splits[other_id].coins_given_to_self
@@ -229,6 +272,8 @@ class TrustAndSplitSimulation(Simulation):
             last_value_coagent=last_value,
             value=self.state.values[agent_id],
             other_agent_split=other_split_val,
+            hand=self.state.hands[agent_id],
+            last_hand_coagent=last_hand,
             split_phase=self.state.split_phase,
         )
         return obs
@@ -246,12 +291,15 @@ class TrustAndSplitSimulation(Simulation):
         """Initialize and return initial observations"""
         # Decide starting agent alternating across resets for determinism
         start_agent = self.agent_ids[self._starting_agent_index]
+        hands, values = self._sample_hands_and_values()
         self.state = TrustAndSplitState(
             round_nb=0,
             last_message="",
             current_agent=start_agent,
-            values=self._sample_values(),
+            values=values,
             previous_values=None,
+            hands=hands,
+            previous_hands=None,
             splits={aid: None for aid in self.agent_ids},
             messages_sent={aid: 0 for aid in self.agent_ids},
             split_phase=False,
