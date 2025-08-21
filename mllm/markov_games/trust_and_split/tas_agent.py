@@ -21,16 +21,26 @@ class TrustAndSplitAgentState:
 
 
 INTRO_PROMPT = (
-    "Welcome to an iterated game. You are {agent_name}. "
-    "Each round, you and the other agent are randomly assigned different rock/paper/scissors hands. "
-    "The agent with the winning hand gets a value of 10 per coin, while the losing agent gets 1 per coin. "
-    "You only know your own hand - you must decide whether to trust the other agent and share your hand honestly. "
-    "There are 10 coins to split each round. "
-    "Agents can exchange short messages and then each proposes how many coins they keep for themselves. "
-    "If totals exceed 10, coins are allocated proportionally. "
-    "Message format: <message>...</message> (<=400 chars). "
-    "Split format: <coins_to_self>x</coins_to_self>."
-    "Your goal is: {goal}"
+    "Welcome to an iterated game. You are {agent_name}.\n"
+    "\n"
+    "Setup:\n"
+    "1. Each round, both agents receive random rock/paper/scissors hands.\n"
+    "2. You see only your own hand. The winning order is rock > scissors, scissors > paper, paper > rock.\n"
+    "3. These hands are not meant to be played, but to know the value assigned to you for each coin.\n"
+    "3. The agent with the winning hand has a value of 10 per coin, while the agent with the losing hand has a value of 1 per coin.\n"
+    "4. There are 10 coins to split.\n"
+    "\n"
+    "Protocol:\n"
+    "1. Short chat ({quota_messages} messages per round per agent), then both propose how many coins they keep.\n"
+    "2. You are strongly encouraged to use your messages to discuss hands. \n"
+    "3. The points you get are the number of coins you keep times your value (either 10 or 1). \n"
+    "4. If the sum of the proposals exceeds 10, the allocation is proportional.\n"
+    "\n"
+    "Reply formats:\n"
+    "Message: <message>...</message> (<=400 chars).\n"
+    "Split: <coins_to_self>x</coins_to_self> (x is an integer in [0, 10]).\n"
+    "\n"
+    "Your goal: {goal}"
 )
 
 
@@ -40,13 +50,11 @@ class TrustAndSplitAgent(Agent):
         seed: int,
         agent_id: str,
         policy: Callable[[List[Dict]], str],
-        nb_messages_per_round: int,
         goal: str,
     ):
         self.seed = seed
         self.agent_id = agent_id
         self.policy = policy
-        self.nb_messages_per_round = int(nb_messages_per_round)
         self.goal = goal
         self.state = TrustAndSplitAgentState(
             round_nb=0, nb_messages_sent_this_round=0, chat_counter=0, chat_history=[]
@@ -64,14 +72,15 @@ class TrustAndSplitAgent(Agent):
         #######################################
 
         # First-ever call
-        if round_nb == 0 and self.state.chat_counter == 0:
+        is_intro = round_nb == 0 and self.state.chat_counter == 0
+        if is_intro:
             prompt_parts.append(
-                INTRO_PROMPT.format(agent_name=self.agent_id, goal=self.goal)
+                INTRO_PROMPT.format(agent_name=self.agent_id, goal=self.goal, quota_messages=observation.quota_messages_per_agent_per_round)
             )
 
         # New round
-        is_new_round = (round_nb > self.state.round_nb) or (self.state.round_nb == 0)
-        if is_new_round:
+        is_new_round = round_nb > self.state.round_nb
+        if is_new_round or is_intro:
             self.state.nb_messages_sent_this_round = 0
             round_intro = (
                 f"New round {round_nb}. Your hand: {observation.hand}. "
@@ -92,13 +101,11 @@ class TrustAndSplitAgent(Agent):
         # Prompt to send message
         must_send_message = (
             not observation.split_phase
-            and self.state.nb_messages_sent_this_round < self.nb_messages_per_round
             and is_our_turn
         )
         if must_send_message:
             prompt_parts.append(
                 "Send your message now in <message>...</message> (<=400 chars). "
-                "You can choose to reveal your hand or keep it secret."
             )
 
         # Prompt to give split

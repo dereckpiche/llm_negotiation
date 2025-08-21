@@ -77,6 +77,7 @@ class TrustAndSplitState:
 class TrustAndSplitObs:
     round_nb: int
     last_message: str
+    quota_messages_per_agent_per_round: int
     current_agent: AgentId
     last_value_coagent: float | None
     value: float
@@ -101,6 +102,7 @@ class TrustAndSplitSimulation(Simulation):
         agent_ids: List[AgentId],
         seed: int,
         rounds_per_game: int,
+        quota_messages_per_agent_per_round: int,
         nb_messages_per_agent: int = 1,
         max_coins: int = 10,
         no_smooth_split: bool | None = None,
@@ -112,6 +114,7 @@ class TrustAndSplitSimulation(Simulation):
         self.rng = default_rng(self.seed)
         self.agent_ids = list(agent_ids)
         self.rounds_per_game = int(rounds_per_game)
+        self.quota_messages_per_agent_per_round = int(quota_messages_per_agent_per_round)
         self.nb_messages_per_agent = int(nb_messages_per_agent)
         self.max_coins = int(max_coins)
         # Unused but kept for compatibility with earlier drafts
@@ -120,7 +123,7 @@ class TrustAndSplitSimulation(Simulation):
         )
         self.item_types = item_types or ["coins"]
         self.state: TrustAndSplitState | None = None
-        self._starting_agent_index = 0
+        self._starting_agent_index = self.rng.choice([0, 1])
         self.reset()
 
     def _sample_hands_and_values(self) -> Tuple[Dict[AgentId, str], Dict[AgentId, float]]:
@@ -229,7 +232,7 @@ class TrustAndSplitSimulation(Simulation):
 
             # If both agents have reached their message quota, enter split phase
             if all(
-                self.state.messages_sent[aid] >= self.nb_messages_per_agent
+                self.state.messages_sent[aid] >= self.quota_messages_per_agent_per_round
                 for aid in self.agent_ids
             ):
                 self.state.split_phase = True
@@ -272,6 +275,7 @@ class TrustAndSplitSimulation(Simulation):
             last_value_coagent=last_value,
             value=self.state.values[agent_id],
             other_agent_split=other_split_val,
+            quota_messages_per_agent_per_round=self.quota_messages_per_agent_per_round,
             hand=self.state.hands[agent_id],
             last_hand_coagent=last_hand,
             split_phase=self.state.split_phase,

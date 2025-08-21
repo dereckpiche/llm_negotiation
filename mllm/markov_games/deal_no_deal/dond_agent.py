@@ -41,7 +41,6 @@ class DealNoDealAgent(Agent):
         seed: int,
         agent_id: str,
         policy: Callable[[List[Dict]], str],
-        nb_messages_per_round: int,
         goal: str,
     ):
         self.seed = seed
@@ -127,7 +126,7 @@ class DealNoDealAgent(Agent):
                 )
             )
             action = Message(message=policy_output)
-            self.state.nb_messages_sent_this_round += 1
+            self.state.messages_sent[self.agent_id] += 1
             
         elif must_send_proposal:
             return_regex = proposal_regex(observation.item_types, observation.stock)

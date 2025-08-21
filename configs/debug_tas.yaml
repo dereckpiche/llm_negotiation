@@ -13,19 +13,27 @@ experiment:
     resume_experiment: true
     base_seed: 1000
 
+markov_games:
+    runner_method_name: LinearRunner
+    runner_kwargs: {}
+    simulation_class_name: TrustAndSplitSimulation
+    simulation_init_args:
+        agent_ids: ${agent_ids}
+        rounds_per_game: 10
+        quota_messages_per_agent_per_round: 2
 
 models:
     base_llm:
         class: LeanLocalLLM
         init_args:
             llm_id: base_llm
-            model_name: "Qwen/Qwen2.5-0.5B-Instruct" # Qwen/Qwen3-4B-Instruct-2507
-            hf_kwargs:
+            model_name: "Qwen/Qwen2.5-7B-Instruct" # Qwen/Qwen3-4B-Instruct-2507
+            hf_kwargs: 
                 device_map: "cuda:0"
                 torch_dtype: "bfloat16"
                 max_memory: {0: "15GiB"}
                 attn_implementation: "flash_attention_2"
-            inference_backend: dummy
+            inference_backend: vllm
             inference_backend_init_kwargs:
                 max_model_len: 1e4
                 # max_num_seqs: 128

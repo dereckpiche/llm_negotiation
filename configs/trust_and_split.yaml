@@ -26,7 +26,6 @@ agent_ids: ["Alice", "Bob"]
 ####################################################################################################
 
 common_agent_kwargs: &common_agent_kwargs
-    nb_messages_per_round: 1
     goal: "Maximize your total points over the whole game."
 
 markov_games:
@@ -36,8 +35,8 @@ markov_games:
     simulation_class_name: TrustAndSplitSimulation
     simulation_init_args:
         agent_ids: ${agent_ids}
-        rounds_per_game: 3
-        nb_messages_per_agent: 1
+        rounds_per_game: 10
+        quota_messages_per_agent_per_round: 1
         max_coins: 10
 
     agents:
@@ -54,9 +53,6 @@ markov_games:
             policy_id: base_llm/agent_adapter
             init_kwargs:
                 <<: *common_agent_kwargs
-
-    # Optional: a log function name if you add one later
-    # log_func: log_tas_match
 
     run_batched_matches_args:
         nb_parallel_matches: -1
@@ -91,13 +87,13 @@ models:
                 agent_adapter:
                     task_type: CAUSAL_LM
                     r: 32
-                    lora_alpha: 128
+                    lora_alpha: 64
                     lora_dropout: 0.0
                     target_modules: all-linear
                 critic_adapter:
                     task_type: CAUSAL_LM
                     r: 32
-                    lora_alpha: 128
+                    lora_alpha: 64
                     lora_dropout: 0.0
                     target_modules: all-linear
 
@@ -133,7 +129,7 @@ trainers:
             kl_coeff: 0.0
             gradient_clipping: 1.0
             restrict_tokens: null
-            mini_batch_size: 4
+            mini_batch_size: 1
             use_gradient_checkpointing: True
             temperature: ${temperature}
             device: "cuda:0"

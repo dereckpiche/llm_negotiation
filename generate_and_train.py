@@ -339,12 +339,12 @@ def main(cfg):
     logging.basicConfig(filename=filename, level=logging.INFO)
 
     # Output source code in runtime directory for certain reproducibility
-    # os.makedirs(hydra_run_dir, exist_ok=True)
-    # shutil.copytree(
-    #     "mllm",
-    #     os.path.join(hydra_run_dir, "src_code_for_reproducibility"),
-    #     dirs_exist_ok=True,
-    # )
+    os.makedirs(hydra_run_dir, exist_ok=True)
+    shutil.copytree(
+        "mllm",
+        os.path.join(hydra_run_dir, "src_code_for_reproducibility"),
+        dirs_exist_ok=True,
+     )
 
     # Run the experiment specified in the configuration
     try:
