@@ -176,7 +176,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         # Create and run Markov Games
         # -----------------------------------------------------------------
         for llm in llms_dict.values():
-            llm.toggle_eval_mode()
+            await llm.toggle_eval_mode()
 
         # Create a new RNG instance by splitting the current one (simulates RNG splitting)
         env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
@@ -230,7 +230,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
 
         # Prepare base models for training
         for llm in llms_dict.values():
-            llm.toggle_training_mode()
+            await llm.toggle_training_mode()
 
         # ----------- Training (with advantage sharing between trainers)
         # Send advantage packets to other trainers

@@ -182,12 +182,12 @@ class LeanLocalLLM:
         trainable_objects = {an: self.hf_adapters[an] for an in self.adapter_ids}
         return trainable_objects
 
-    def toggle_training_mode(self) -> None:
+    async def toggle_training_mode(self) -> None:
         for adn in self.adapter_ids:
             self.adapter_train_ids[adn] = self.short_id_generator()
         self.inference_backend.toggle_training_mode()
 
-    def toggle_eval_mode(self) -> None:
+    async def toggle_eval_mode(self) -> None:
         self.inference_backend.toggle_eval_mode()
 
     def prepare_adapter_for_inference(self, adapter_id: AdapterID) -> None:

@@ -6,7 +6,7 @@ defaults:
 experiment:
     name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
     nb_epochs: 200
-    nb_matches_per_iteration: 4
+    nb_matches_per_iteration: 32
     reinit_matches_each_it: true
     checkpoint_every_n_iterations: 1e5
     start_epoch: 0
@@ -20,23 +20,22 @@ markov_games:
     simulation_init_args:
         agent_ids: ${agent_ids}
         rounds_per_game: 10
-        quota_messages_per_agent_per_round: 2
+        quota_messages_per_agent_per_round: 1
 
 models:
     base_llm:
         class: LeanLocalLLM
         init_args:
             llm_id: base_llm
-            model_name: "Qwen/Qwen2.5-7B-Instruct" # Qwen/Qwen3-4B-Instruct-2507
+            model_name: "Qwen/Qwen3-4B-Instruct-2507" # Qwen/Qwen3-4B-Instruct-2507
             hf_kwargs: 
                 device_map: "cuda:0"
                 torch_dtype: "bfloat16"
-                max_memory: {0: "15GiB"}
+                max_memory: {0: "35GiB"}
                 attn_implementation: "flash_attention_2"
             inference_backend: vllm
             inference_backend_init_kwargs:
                 max_model_len: 1e4
-                # max_num_seqs: 128
                 gpu_memory_utilization: 0.5
                 dtype: "bfloat16"
                 trust_remote_code: True
