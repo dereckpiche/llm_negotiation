@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import re
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
@@ -260,6 +261,7 @@ def gather_all_rewards(path: RolloutNodeList) -> List[Dict[AgentId, float]]:
         rewards.append(node.step_log.simulation_step_log.rewards.copy())
     return rewards
 
+
 def gather_simulation_stats(
     path: RolloutNodeList,
     filter: Callable[[SimulationStepLog], bool],
@@ -272,6 +274,7 @@ def gather_simulation_stats(
         if filter(sl):
             stats.append(stat_func(sl))
     return stats
+
 
 def gather_simulation_infos(path: RolloutNodeList) -> List[Dict[str, Any]]:
     """Gather simulation information from main trajectory in a path."""
@@ -313,6 +316,31 @@ def export_chat_logs(path: Path, outdir: Path):
 
             # Write as JSON line
             f.write(json.dumps(output_obj, indent=2) + "\n")
+
+
+def export_rewards_to_csv(path: Path, outdir: Path, first_file: bool):
+    # Load the rollout tree
+    root = load_rollout_tree(path)
+    mgid = root.id
+
+    # Get all paths
+    main_path, branch_paths = get_rollout_tree_paths(root)
+    outdir.mkdir(parents=True, exist_ok=True)
+    rewards_dict_list = gather_all_rewards(main_path)
+    agent_ids = rewards_dict_list[0].keys()
+    rewards_list = defaultdict(list)
+    for rewards_dict in rewards_dict_list:
+        for agent_id in agent_ids:
+            rewards_list[agent_id].append(rewards_dict[agent_id])
+    for agent_id in agent_ids:
+        output_file = outdir / f"agent:{agent_id}_rewards.csv"
+        if first_file:
+            mode = "w"
+        else:
+            mode = "a"
+        with open(output_file, mode, newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([int(x) for x in rewards_list[agent_id]])
 
 
 # --------------------------------------------------------------------------------------
@@ -505,14 +533,18 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
                     name_badge = f'<span class="agent-badge agent-name">user</span>'
                 trailing_badges = []
                 if turn.role == "assistant":
-                    trailing_badges.append(f'<span class="reward">Reward: <span class="reward-value">{turn.reward}</span></span>')
+                    trailing_badges.append(
+                        f'<span class="reward">Reward: <span class="reward-value">{turn.reward}</span></span>'
+                    )
 
                 # Turn content (collapse all whitespace/newlines)
                 escaped_content = html.escape(turn.content)
                 collapsed = re.sub(r"\s+", " ", escaped_content).strip()
                 # Render: name badge, message box, divider, trailing badges (if any)
                 if trailing_badges:
-                    trailing = "".join(["<span class=\"inline-sep\"></span>"] + trailing_badges)
+                    trailing = "".join(
+                        ['<span class="inline-sep"></span>'] + trailing_badges
+                    )
                 else:
                     trailing = ""
                 agent_html.append(

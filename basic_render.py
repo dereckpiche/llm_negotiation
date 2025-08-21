@@ -36,18 +36,20 @@ def process_single_folder(
 
     for i, f in enumerate(files, 1):
         print(f"  [{i}/{len(files)}] {f.name}")
-        try:
-            export_chat_logs(
-                path=f,
-                outdir=output_path,
-            )
-            export_html_from_rollout_tree(
-                path=f,
-                outdir=output_path,
-                main_only=False,
-            )
-        except Exception as e:
-            print(f"  !! Error in {f}: {e}")
+        export_rewards_to_csv(
+            path=f,
+            outdir=output_path,
+            first_file=True if i == 1 else False,
+        )
+        export_chat_logs(
+            path=f,
+            outdir=output_path,
+        )
+        export_html_from_rollout_tree(
+            path=f,
+            outdir=output_path,
+            main_only=False,
+        )
 
     return True
 

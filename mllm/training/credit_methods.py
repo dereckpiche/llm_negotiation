@@ -166,11 +166,12 @@ def get_advantage_alignment_credits(
         torch.Tensor: The advantage alignment credits.
     """
     assert a1.dim() == a2.dim() == 2, "Advantages must be of shape (B, S)"
-    assert (
-        a1_alternative.dim() == 3
-    ), "Alternative advantages must be of shape (B, S, A)"
+    if a1_alternative is not None:
+        assert (
+            a1_alternative.dim() == 3
+        ), "Alternative advantages must be of shape (B, S, A)"
+        B, T, A = a1_alternative.shape
     assert a1.shape == a2.shape, "Not the same shape"
-    B, T, A = a1_alternative.shape
 
     if use_old_ad_align:
         ad_align_weights = get_advantage_alignment_weights(
@@ -179,6 +180,7 @@ def get_advantage_alignment_credits(
         if exclude_k_equals_t:
             ad_align_weights = gamma * ad_align_weights
     else:
+        assert a1_alternative is not None, "Alternative advantages must be provided"
         a1_alternative = a1_alternative.mean(dim=2)
         if rloo_branch:
             a1 = get_rloo_credits(a1)
@@ -243,9 +245,6 @@ def get_advantage_alignment_credits(
     if use_time_regularization:
         t_values = torch.arange(1, T + 1)
         ad_align_weights = ad_align_weights / t_values
-        import ipdb
-
-        ipdb.set_trace()
         tally.add_metric(
             path=["ad_align_weights_after_1_over_t_reg"], metric=ad_align_weights
         )
