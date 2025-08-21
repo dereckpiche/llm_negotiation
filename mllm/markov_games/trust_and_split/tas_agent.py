@@ -22,7 +22,10 @@ class TrustAndSplitAgentState:
 
 INTRO_PROMPT = (
     "Welcome to an iterated game. You are {agent_name}. "
-    "Each round there are 10 coins. Your per-coin value for the current round will be provided. "
+    "Each round, you and the other agent are randomly assigned different rock/paper/scissors hands. "
+    "The agent with the winning hand gets a value of 10 per coin, while the losing agent gets 1 per coin. "
+    "You only know your own hand - you must decide whether to trust the other agent and share your hand honestly. "
+    "There are 10 coins to split each round. "
     "Agents can exchange short messages and then each proposes how many coins they keep for themselves. "
     "If totals exceed 10, coins are allocated proportionally. "
     "Message format: <message>...</message> (<=400 chars). "
@@ -67,13 +70,14 @@ class TrustAndSplitAgent(Agent):
             )
 
         # New round
-        is_new_round = round_nb > self.state.round_nb
+        is_new_round = (round_nb > self.state.round_nb) or (self.state.round_nb == 0)
         if is_new_round:
             self.state.nb_messages_sent_this_round = 0
             round_intro = (
-                f"New round {round_nb}. Your value per coin: {observation.value}. "
-                f"Last round, other agent value per coin: {observation.last_value_coagent}."
+                f"New round {round_nb}. Your hand: {observation.hand}. "
             )
+            if observation.last_hand_coagent is not None:
+                round_intro += f"Last round, other agent's hand: {observation.last_hand_coagent}. "
             prompt_parts.append(round_intro)
             self.state.round_nb = round_nb
 
@@ -93,7 +97,8 @@ class TrustAndSplitAgent(Agent):
         )
         if must_send_message:
             prompt_parts.append(
-                "Send your message now in <message>...</message> (<=400 chars)."
+                "Send your message now in <message>...</message> (<=400 chars). "
+                "You can choose to reveal your hand or keep it secret."
             )
 
         # Prompt to give split
