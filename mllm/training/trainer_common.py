@@ -602,7 +602,7 @@ class BaseTrainer(ABC):
                 discount_factor=self.discount_factor,
             )
             if self.use_rloo:
-                padded_credits = get_rloo_credits(credits=padded_credits)
+                padded_credits, _ = get_rloo_credits(credits=padded_credits)
             credits = [
                 padded_credits[i, : lengths[i]] for i in range(padded_credits.shape[0])
             ]

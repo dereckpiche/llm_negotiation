@@ -115,6 +115,7 @@ class TrainerAdAlign(BaseTrainer):
         use_old_ad_align: bool,
         use_time_regularization: bool,
         rloo_branch: bool,
+        reuse_baseline: bool,
         *args,
         **kwargs,
     ):
@@ -138,6 +139,7 @@ class TrainerAdAlign(BaseTrainer):
         self.use_old_ad_align = use_old_ad_align
         self.use_time_regularization = use_time_regularization
         self.rloo_branch = rloo_branch
+        self.reuse_baseline = reuse_baseline
         self.training_data: dict[AgentId, AdAlignTrainingData] = {}
         self.debug_path_list: list[str] = []
 
@@ -389,6 +391,7 @@ class TrainerAdAlign(BaseTrainer):
                     use_old_ad_align=self.use_old_ad_align,
                     use_time_regularization=self.use_time_regularization,
                     rloo_branch=self.rloo_branch,
+                    reuse_baseline=self.reuse_baseline,
                     tally=self.tally,
                 )
 
