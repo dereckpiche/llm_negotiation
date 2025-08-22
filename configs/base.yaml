@@ -68,7 +68,7 @@ models:
                 temperature: ${temperature}
                 top_p: 1.0
                 max_tokens: 400
-                top_k: 0
+                top_k: -1
             adapter_configs:
                 agent_adapter:
                     task_type: CAUSAL_LM
