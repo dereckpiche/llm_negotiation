@@ -87,3 +87,8 @@ models:
                 max_memory: {0: "15GiB"}
             inference_backend_init_kwargs:
                 gpu_memory_utilization: 0.5
+
+trainers:
+    agent_trainer:
+        kwargs:
+            reward_normalizing_constant: 5.0

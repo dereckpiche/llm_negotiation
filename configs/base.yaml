@@ -16,6 +16,10 @@ experiment:
 
 temperature: 1.0
 
+markov_games:
+    runner_method_name: LinearRunner
+    runner_kwargs: {}
+
 models:
     base_llm:
         class: LeanLocalLLM
