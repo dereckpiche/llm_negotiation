@@ -6,7 +6,7 @@ hydra:
 
 experiment:
     method: generate_and_train
-    nb_epochs: 1e4
+    nb_epochs: 1000
     nb_matches_per_iteration: 32
     reinit_matches_each_it: true
     checkpoint_every_n_iterations: 25
