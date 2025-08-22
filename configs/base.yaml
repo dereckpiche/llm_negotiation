@@ -7,40 +7,12 @@ hydra:
 experiment:
     method: generate_and_train
     nb_epochs: 1000
-    nb_matches_per_iteration: 32
+    nb_matches_per_iteration: 64
     reinit_matches_each_it: true
-    checkpoint_every_n_iterations: 25
+    checkpoint_every_n_iterations: 50
     start_epoch: 0
     resume_experiment: true
-    base_seed: 1001
-
-# Top-level agent ids for convenience
-agent_0_id: Alice
-agent_1_id: Bob
-agent_ids: ["Alice", "Bob"]
-
-
-common_agent_kwargs: &common_agent_kwargs
-    goal: "Maximize your total points over the whole game."
-
-markov_games:
-    runner_method_name: LinearRunner
-    runner_kwargs: {}
-
-
-    agents:
-        0:
-            agent_id: ${agent_0_id}
-            policy_id: base_llm/agent_adapter
-            init_kwargs:
-                <<: *common_agent_kwargs
-
-        1:
-            agent_id: ${agent_1_id}
-            policy_id: base_llm/agent_adapter
-            init_kwargs:
-                <<: *common_agent_kwargs
-
+    base_seed: 0
 
 temperature: 1.0
 
@@ -115,7 +87,7 @@ trainers:
             kl_coeff: 0.0
             gradient_clipping: 1.0
             restrict_tokens: null
-            mini_batch_size: 1
+            mini_batch_size: 4
             use_gradient_checkpointing: True
             temperature: ${temperature}
             device: "cuda:0"

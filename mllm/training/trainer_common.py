@@ -366,25 +366,30 @@ class BaseTrainer(ABC):
                     # (B, S, T)
                     # We only take the entropy of actions
                     token_entropy_terms *= action_mask_mb[:, :, None]
+                    mb_entropy = token_entropy_terms.sum(dim=-1)
                     if self.enable_tokenwise_logging:
                         self.tally.add_contextualized_token_metrics(
                             metric_id="entropy",
-                            metrics=token_entropy_terms.sum(dim=-1),
+                            metrics=mb_entropy,
                         )
 
-                    mb_entropy = token_entropy_terms.sum()
-                    del token_entropy_terms
+                    if self.pg_loss_normalization == "batch":
+                        nb_act_tokens = action_mask_mb.sum()
+                        mb_entropy = -mb_entropy.sum() / nb_act_tokens
+                    else:
+                        mb_entropy = -mb_entropy.sum()
+
                     mb_entropy *= self.entropy_coeff
                     self.tally.add_metric(
                         path=["loss_mb_total", "entropy_mb_total"],
                         metric=mb_entropy.item(),
                     )
 
-                    if self.enable_tokenwise_logging:
-                        self.tally.add_metric(
-                            path=["gradient_term_magnitudes", "entropy"],
-                            metric=self.get_gradient_magnitude(loss_term=mb_entropy),
-                        )
+                    # if self.enable_tokenwise_logging:
+                    #     self.tally.add_metric(
+                    #         path=["gradient_term_magnitudes", "entropy"],
+                    #         metric=self.get_gradient_magnitude(loss_term=mb_entropy),
+                    #     )
                     loss += mb_entropy
 
                 # -------------------------------------------------

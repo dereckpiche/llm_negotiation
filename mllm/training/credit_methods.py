@@ -181,8 +181,10 @@ def get_advantage_alignment_credits(
             ad_align_weights = gamma * ad_align_weights
     else:
         assert a1_alternative is not None, "Alternative advantages must be provided"
-        a1_alternative = a1_alternative.mean(dim=2)
         if rloo_branch:
+            a1_alternative = torch.cat([a1.unsqueeze(2), a1_alternative], dim=2)
+            a1_alternative = a1_alternative.mean(dim=2)
+            # print(f"a1_alternative: {a1_alternative}, a1: {a1}\n")
             a1 = get_rloo_credits(a1)
             a1_alternative = get_rloo_credits(a1_alternative)
         assert a1.shape == a1_alternative.shape, "Not the same shape"

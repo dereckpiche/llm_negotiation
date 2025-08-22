@@ -77,13 +77,6 @@ markov_games:
             init_kwargs:
                 <<: *common_agent_kwargs
 
-    log_func: log_ipd_match
-
-    run_batched_matches_args:
-        nb_parallel_matches: -1
-
-temperature: 1.0
-
 models:
     base_llm:
         class: LeanLocalLLM
@@ -94,8 +87,3 @@ models:
                 max_memory: {0: "15GiB"}
             inference_backend_init_kwargs:
                 gpu_memory_utilization: 0.5
-                
-
-
-
-
