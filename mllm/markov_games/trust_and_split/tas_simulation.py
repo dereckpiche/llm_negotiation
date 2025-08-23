@@ -215,7 +215,7 @@ class TrustAndSplitSimulation(Simulation):
             self.state.hands = new_hands
             self.state.values = new_values
             self.state.round_nb += 1
-            self.state.last_message = ""
+            self.state.last_message = None
             self.state.split_phase = False
             self.state.splits = {aid: None for aid in self.agent_ids}
             self.state.messages_sent = {aid: 0 for aid in self.agent_ids}
@@ -344,7 +344,7 @@ class TrustAndSplitSimulation(Simulation):
         hands, values = self._sample_hands_and_values()
         self.state = TrustAndSplitState(
             round_nb=0,
-            last_message="",
+            last_message=None,
             current_agent=start_agent,
             values=values,
             hands=hands,

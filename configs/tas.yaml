@@ -47,3 +47,4 @@ trainers:
     agent_trainer:
         kwargs:
             mini_batch_size: 1
+            reward_normalizing_constant: 100.0
