@@ -350,176 +350,193 @@ def export_rewards_to_csv(path: Path, outdir: Path, first_file: bool):
 
 def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
     """
-    Render a list of chat turns as an HTML file.
-    Each time step is in a separate div.
-    The chat turns of each each agents of the same time step are side by side.
-    A visual separator is added between each time step.
-    Visual style helps distinguish between roles of each time step.
+    Render chat turns as a single, wrapping sequence of messages in time order.
+    Keep badge and message bubble styles, include time on every badge and
+    include rewards on assistant badges. Each message is individually
+    hide/show by click; when hidden, only the badge remains and "(...)" is
+    shown inline (not inside a bubble).
     """
     import html
-    from collections import defaultdict
 
-    # Group chat turns by time step
-    turns_by_time_step = defaultdict(list)
-    for turn in chat_turns:
-        turns_by_time_step[turn.time_step].append(turn)
+    # Prepare ordering: sort by (time_step, original_index) to keep stable order within same step
+    indexed_turns = list(enumerate(chat_turns))
+    indexed_turns.sort(key=lambda t: (t[1].time_step, t[0]))
 
-    # CSS styles - minimal, dense, dedestyle-inspired
+    # CSS styles (simplified layout; no time-step or agent-column backgrounds)
     css = """
     <style>
+        :root {
+            --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            --bg: #ffffff;
+            --text: #1c0b00;
+            --muted-text: #2C3E50;
+            --accent-muted: #BDC3C7;
+            --accent-muted-2: #D0D7DE;
+            --panel-bg: #F8FAFC;
+            --reward-color: #a89206;
+            --font-size: 15px;
+            --small-font-size: 13px;
+            --group-label-font-size: 12px;
+            --border-width: 2px;
+            --corner-radius: 6px;
+            --pill-radius-left: 999px 0 0 999px;
+            --pill-radius-right: 0 999px 999px 0;
+            --inset-shadow: 0 1px 0 rgba(0,0,0,0.03) inset;
+        }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: var(--font-family);
             margin: 16px;
-            background-color: #ffffff; /* figure.facecolor */
-            color: #1c0b00; /* text.color */
-            font-size: 14px; /* font.size */
+            background-color: var(--bg);
+            color: var(--text);
+            font-size: var(--font-size);
+            line-height: 1.6;
         }
-        .time-step {
-            margin: 8px 0;
-            padding: 4px 0 8px 0;
-            border-top: 2px solid #ECF0F1; /* grid.color */
+        .messages-flow {
+            display: block; /* behave like a text container */
+        }
+        .toolbar {
             display: flex;
-            flex-wrap: wrap; /* allow footer to wrap to next line */
-            align-items: stretch;
-            gap: 8px;
-        }
-        /* Alternating background for time steps (applied via class) */
-        .time-step.alt {
-            background: #FAFBFC;
-        }
-        .time-step-index {
-            width: 120px;
-            flex: 0 0 120px;
-            display: flex;
-            flex-direction: column;
             align-items: center;
-            justify-content: flex-start;
-            color: #2C3E50;
-            font-weight: 600;
-            gap: 6px;
-            padding-top: 2px;
-        }
-        .index-rewards { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-        .index-rewards-row { display: flex; flex-direction: column; gap: 4px; align-items: center; }
-        .agents-container-left,
-        .agents-container-right {
-            display: flex;
             gap: 8px;
-            flex-wrap: wrap;
-            flex: 1 1 0;
-            min-width: 0;
+            margin-bottom: 12px;
+            font-size: var(--small-font-size);
         }
-        .agent-column {
-            flex: 1;
-            min-width: 260px;
-            border: 1px solid #BDC3C7; /* axes.edgecolor */
-            border-radius: 4px;
-            background: #ffffff; /* axes.facecolor */
+        .toolbar input[type="number"] {
+            width: 72px;
+            padding: 2px 6px;
+            border: 1px solid var(--accent-muted);
+            border-radius: var(--corner-radius);
+            background: var(--bg);
+        }
+        .toolbar button {
+            padding: 4px 8px;
+            border: 1px solid var(--accent-muted);
+            background: var(--panel-bg);
+            border-radius: var(--corner-radius);
+            cursor: pointer;
         }
         .chat-turn {
-            padding: 6px 8px;
-            margin: 4px;
-            border-radius: 3px;
-            border: 1px solid #ECF0F1; /* subtle outer separator */
-            background: #ffffff;
-        }
-        /* Message box that contains the content */
-        .message-box {
-            display: inline-block;
-            padding: 4px 8px;
-            margin-left: 6px;
-            border: 2px solid #BDC3C7; /* neutral by default */
-            border-radius: 14px; /* iMessage-like rounded */
-            position: relative; /* for bubble tails */
-            vertical-align: top;
-            max-width: calc(100% - 140px);
-            background: #ffffff; /* keep minimal and readable */
-        }
-        /* Rectangular corner by role (user: top-left square, assistant: top-right square) */
-        .chat-turn.role-user .message-box { border-radius: 0 14px 14px 14px; }
-        .chat-turn.role-assistant .message-box { border-radius: 14px 0 14px 14px; }
-
-        /* No pseudo-element tails; rectangular corner is the cue */
-        .chat-turn.role-user .message-box::before,
-        .chat-turn.role-user .message-box::after,
-        .chat-turn.role-assistant .message-box::before,
-        .chat-turn.role-assistant .message-box::after { content: none; }
-        /* Color only assistant messages per agent (dedestyle palette: green/orange) */
-        .agent-alice .chat-turn.role-assistant .message-box { border-color: #0eb224; }
-        .agent-bob .chat-turn.role-assistant .message-box { border-color: #ef8323; }
-        .turn-meta {
-            font-size: 12px; /* compact meta */
-            color: #2C3E50; /* readable meta */
-            margin-bottom: 4px;
-        }
-        .turn-content {
-            white-space: normal; /* collapse newlines */
-            line-height: 1.35; /* dense yet readable */
-            color: #1c0b00;
-            font-size: 14px;
-            display: flex;
-            align-items: flex-start;
-        }
-        /* Role-based alignment inside each agent column */
-        .chat-turn.role-user .turn-content { justify-content: flex-start; flex-direction: row; }
-        .chat-turn.role-assistant .turn-content { justify-content: flex-end; flex-direction: row; }
-        .chat-turn.role-assistant .turn-content::before { content: ""; flex: 1 1 auto; }
-        .chat-turn.role-user .message-box { margin-left: 6px; margin-right: 0; }
-        .chat-turn.role-assistant .message-box { margin-right: 6px; margin-left: 0; }
-        .chat-turn.role-assistant .agent-badge { margin-left: 0; margin-right: 0; }
-        .chat-turn.role-user .agent-badge { margin-right: 6px; }
-        .agent-name { font-weight: 700; color: #2C3E50; }
-        .agent-badge {
-            display: inline-block;
-            border: 1px solid #BDC3C7;
-            border-radius: 999px; /* pill */
-            padding: 2px 8px;
-            font-size: 12px;
-            line-height: 1.4;
-            margin-right: 6px;
-            color: #2C3E50;
-            background: #F8FAFC;
-            box-shadow: 0 1px 0 rgba(0,0,0,0.03) inset;
-        }
-        .emoji-bw { filter: grayscale(100%); opacity: 0.95; font-size: 14px; vertical-align: text-bottom; margin: 0 2px; }
-        .inline-sep {
-            display: inline-block;
-            vertical-align: baseline;
-            margin: 0 6px;
-            width: 1px;
-            height: 0.9em;
-            background: #ECF0F1; /* subtle divider using grid color */
-        }
-        /* no message emoji */
-        .state-end-marker {
-            border: 1px solid #BDC3C7;
-            color: #2C3E50;
+            display: inline; /* inline like text */
             background: transparent;
-            padding: 1px 4px;
+            position: relative;
+            cursor: pointer;
+        }
+        /* No agent-specific background distinctions */
+        .turn-content {
+            white-space: normal;
+            color: var(--text);
+            font-size: var(--font-size);
+            display: inline; /* inline flow */
+        }
+        .chat-turn .agent-badge { margin-right: 0; vertical-align: baseline; }
+        .agent-badge {
+            display: inline;
+            position: relative;
+            border: var(--border-width) solid var(--accent-muted); /* slightly thicker */
+            border-radius: var(--pill-radius-left); /* round left and bottom-right */
+            font-size: var(--font-size);
+            color: var(--muted-text);
+            background: var(--panel-bg);
+            box-shadow: var(--inset-shadow);
+            line-height: 1.2;
+            border-right: 0;
+        }
+        .agent-badge::after {
+            content: none;
+        }
+        /* removed external separator; emoji is rendered inside message bubble */
+        .agent-name { font-weight: 700; }
+        .emoji-bw { filter: grayscale(100%); opacity: 0.95; font-size: var(--font-size); vertical-align: baseline; margin: 0; position: relative; top: -1px; line-height: 1; display: inline-block; }
+        .ts-badge {
+            position: relative;
+            display: inline;
+            border: var(--border-width) solid var(--accent-muted-2); /* slightly thicker */
+            border-radius: var(--corner-radius); /* not a pill */
+            font-size: var(--font-size);
+            font-weight: 700;
+            color: var(--muted-text);
+            background: #F4F8FB; /* subtle tint */
+            padding: 1px 6px; /* slight padding for visibility */
+            margin-right: 8px; /* small gap from following content */
+            pointer-events: auto; /* allow events so we can ignore them in JS */
+        }
+        .ts-badge::before {
+            content: "";
+            position: relative;
+            background: var(--accent-muted-2);
             border-radius: 2px;
-            font-size: 11px;
-            font-weight: 600;
         }
-        /* Time step footer for rewards */
-        .time-step-meta {
+        .agent-badge { margin-left: 6px;  }
+        .message-box {
+            display: inline; /* inline bubble behaving like text */
+            font-size: var(--font-size);
+            border: var(--border-width) solid var(--accent-muted);
+            border-radius: var(--pill-radius-right); /* round left and bottom-right */
+            position: relative;
+            background: var(--bg);
+            vertical-align: baseline;
+            line-height: 1.2;
+            padding-left: 6px;
+            border-left: 0;
+        }
+        .message-box::before { content: ""; display: inline-block; margin-right: 6px; line-height: 1; }
+        .chat-turn.agent-alice.role-assistant .message-box::before { color: #0eb224; }
+        .chat-turn.agent-bob.role-assistant .message-box::before { color: #ef8323; }
+        .chat-turn.collapsed .message-box::before { display: none; }
+        /* Assistant bubble border colors by common agent names */
+        .chat-turn.agent-alice.role-assistant .message-box { border-color: #0eb224; }
+        .chat-turn.agent-bob.role-assistant .message-box { border-color: #ef8323; }
+        /* Tie badge and seam to agent color for a cohesive capsule, assistants only */
+        .chat-turn.agent-alice.role-assistant .agent-badge { border-color: #0eb224; }
+        .chat-turn.agent-alice.role-assistant .agent-badge::after { border-right-color: #0eb224; }
+        .chat-turn.agent-alice.role-assistant .turn-content::before { border-left-color: #0eb224; border-top-color: #0eb224; }
+        .chat-turn.agent-alice.role-assistant .message-box { border-color: #0eb224; }
+
+        .chat-turn.agent-bob.role-assistant .agent-badge { border-color: #ef8323; }
+        .chat-turn.agent-bob.role-assistant .agent-badge::after { border-right-color: #ef8323; }
+        .chat-turn.agent-bob.role-assistant .turn-content::before { border-left-color: #ef8323; border-top-color: #ef8323; }
+        .chat-turn.agent-bob.role-assistant .message-box { border-color: #ef8323; }
+        /* No colored agent-name; keep neutral */
+        .reward { color: var(--reward-color); font-weight: 600; } /* dark gold */
+        .message-placeholder { display: none; color: #7f8c8d; font-style: italic; }
+        .chat-turn.collapsed .message-box { color: transparent; font-size: 0; display: inline-block; }
+        .chat-turn.collapsed .message-box::after { content: "(...)"; color: #7f8c8d; font-style: italic; font-size: var(--font-size); line-height: 1.2; }
+        .chat-turn.collapsed .agent-badge,
+        .chat-turn.collapsed .message-box { opacity: 0.3; }
+        /* Group divider - clearer and pretty */
+        .group-divider {
             display: flex;
-            justify-content: flex-end;
             align-items: center;
-            gap: 8px;
-            padding: 4px 8px 0 8px;
-            margin: 6px 0 0 0;
-            border-top: 1px dashed #ECF0F1;
-            flex-basis: 100%;
+            gap: 12px;
+            width: 100%;
+            margin: 18px 0 10px 0;
         }
-        .reward-label { color: #2C3E50; font-size: 12px; font-weight: 700; }
-        .reward-pill {
-            border: 1px solid #BDC3C7;
-            border-radius: 12px;
-            padding: 1px 6px;
-            font-size: 11px;
-            background: #ffffff;
+        .group-divider::before,
+        .group-divider::after {
+            content: "";
+            flex: 1 1 auto;
+            height: 2px;
+            background: linear-gradient(90deg, rgba(224,230,235,0), var(--accent-muted-2) 30%, var(--accent-muted-2) 70%, rgba(224,230,235,0));
         }
-        .reward-value { color: #B8860B; font-weight: 700; }
+        .group-divider .group-label {
+            display: inline-block;
+            border: 1px solid var(--accent-muted);
+            border-radius: 999px;
+            padding: 2px 10px;
+            font-size: var(--group-label-font-size);
+            font-weight: 700;
+            color: var(--muted-text);
+            background: var(--bg);
+            box-shadow: var(--inset-shadow);
+        }
+        .chat-turn .turn-content { position: relative; }
+        .chat-turn .turn-content::before {
+            content: none;
+        }
+        .chat-turn .agent-badge {
+            position: relative;
+        }
+        /* removed absolute-positioned emoji to prevent overlap */
     </style>
     """
 
@@ -531,127 +548,116 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "<meta charset='UTF-8'>",
         "<title>Chat Turns</title>",
         css,
+        "<script>\n"
+        "document.addEventListener('DOMContentLoaded', function() {\n"
+        "  const flow = document.querySelector('.messages-flow');\n"
+        "  // Toggle collapse per message\n"
+        "  document.body.addEventListener('click', function(e){\n"
+        "    if (e.target.closest('.ts-badge')) { return; }\n"
+        "    const turn = e.target.closest('.chat-turn');\n"
+        "    if (turn) { e.stopPropagation(); turn.classList.toggle('collapsed'); }\n"
+        "  });\n"
+        "  // Grouping logic\n"
+        "  function applyGrouping(n) {\n"
+        "    // Remove existing group dividers\n"
+        "    Array.from(flow.querySelectorAll('.group-divider')).forEach(el => el.remove());\n"
+        "    if (!n || n <= 0) { return; }\n"
+        "    const turns = Array.from(flow.querySelectorAll('.chat-turn'));\n"
+        "    if (turns.length === 0) return;\n"
+        "    // Re-append in order with dividers\n"
+        "    const items = Array.from(flow.children).filter(el => !el.classList.contains('group-divider'));\n"
+        "    const frag = document.createDocumentFragment();\n"
+        "    let lastGroup = -1;\n"
+        "    for (const el of items) {\n"
+        "      if (!el.classList.contains('chat-turn')) { frag.appendChild(el); continue; }\n"
+        "      const t = parseInt(el.getAttribute('data-time-step') || '0', 10);\n"
+        "      const g = Math.floor(t / n);\n"
+        "      if (g !== lastGroup) {\n"
+        "        const div = document.createElement('div');\n"
+        "        div.className = 'group-divider';\n"
+        "        const label = document.createElement('span');\n"
+        "        label.className = 'group-label';\n"
+        "        const start = g * n;\n"
+        "        const end = start + n - 1;\n"
+        "        const roundIndex = g + 1;\n"
+        "        label.textContent = `Round ${roundIndex}`;\n"
+        "        div.appendChild(label);\n"
+        "        frag.appendChild(div);\n"
+        "        lastGroup = g;\n"
+        "      }\n"
+        "      frag.appendChild(el);\n"
+        "    }\n"
+        "    flow.innerHTML = '';\n"
+        "    flow.appendChild(frag);\n"
+        "  }\n"
+        "  const input = document.getElementById('group-size');\n"
+        "  const btn = document.getElementById('apply-grouping');\n"
+        "  if (btn && input) {\n"
+        "    btn.addEventListener('click', () => { const n = parseInt(input.value || '0', 10); applyGrouping(n); });\n"
+        "    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const n = parseInt(input.value || '0', 10); applyGrouping(n); } });\n"
+        "  }\n"
+        "});\n"
+        "</script>",
         "</head>",
         "<body>",
+        '<div class="toolbar">',
+        '<label for="group-size">Group every</label>',
+        '<input id="group-size" type="number" min="0" step="1" value="0" />',
+        '<span>timesteps</span>',
+        '<button id="apply-grouping">Apply</button>',
+        '</div>',
+        '<div class="messages-flow">',
     ]
 
-    # Process each time step
-    for time_step in sorted(turns_by_time_step.keys()):
-        turns = turns_by_time_step[time_step]
+    last_time_step = None
+    for original_index, turn in indexed_turns:
+        # Build classes
+        agent_class = f"agent-{re.sub('[^a-z0-9_-]', '-', turn.agent_id.lower())}"
+        role_class = f"role-{turn.role}"
+        collapsed_class = " collapsed" if turn.role == "user" else ""
 
-        # Group turns by agent for this time step
-        turns_by_agent = defaultdict(list)
-        for turn in turns:
-            turns_by_agent[turn.agent_id].append(turn)
+        # Badge content
+        if turn.role == "assistant":
+            name = html.escape(turn.agent_id)
+            emoji = '<span class="emoji-bw">🤖</span>'
+            raw_val = turn.reward
+            if isinstance(raw_val, (int, float)):
+                reward_val = f"{raw_val:.4f}".rstrip("0").rstrip(".")
+                if len(reward_val) > 8:
+                    reward_val = reward_val[:8] + "…"
+            else:
+                reward_val = str(raw_val)
+            reward_part = f'<span class="sep"> • </span><span class="reward">Reward: {reward_val}</span>'
+        else:
+            # For user messages, show "User of {Agent ID}" in the badge
+            name = 'User of ' + html.escape(turn.agent_id)
+            emoji = '<span class="emoji-bw">⚙️</span>'
+            reward_part = ""
 
-        # Time step container with centered index
-        time_step_class = "time-step alt" if (time_step % 2 == 1) else "time-step"
-        html_parts.append(f'<div class="{time_step_class}">')
-        html_parts.append('<div class="agents-container-left">')
-        html_parts_left = []
-        html_parts_right = []
-        # Prepare middle index to be inserted later (with rewards underneath)
-        # Per-time-step rewards
-        rewards_by_agent = {}
-        for turn in turns:
-            if turn.agent_id not in rewards_by_agent:
-                rewards_by_agent[turn.agent_id] = turn.reward
-        reward_pills = []
-        for aid in sorted(rewards_by_agent.keys()):
-            raw_val = rewards_by_agent[aid]
-            # Format reward: cap long decimals with ellipsis
-            formatted = (
-                f"{raw_val:.4f}" if isinstance(raw_val, (int, float)) else str(raw_val)
-            )
-            if isinstance(raw_val, float):
-                # Remove trailing zeros and dot
-                formatted = formatted.rstrip("0").rstrip(".")
-                if len(formatted) > 8:
-                    formatted = formatted[:8] + "…"
-            reward_pills.append(
-                f'<span class="reward-pill">{html.escape(aid)}: <span class="reward-value">{formatted}</span></span>'
-            )
-        middle_index_html = (
-            f'<div class="time-step-index">'
-            f"<div>⏱ {time_step}</div>"
-            f'<div class="index-rewards">'
-            f'  <div class="reward-label">Rewards</div>'
-            f'  <div class="index-rewards-row">' + "".join(reward_pills) + "</div>"
-            f"</div>"
-            f"</div>"
+        badge = (
+            f'<span class="agent-badge">{emoji}:<span class="agent-name"> {name}</span>'
+            f'{reward_part}<span class="sep"> • 💬: </span></span>'
         )
 
-        # Process each agent; split left/right (alice left, bob right; others alternate)
-        side_toggle = True
-        for agent_id in sorted(turns_by_agent.keys()):
-            agent_turns = turns_by_agent[agent_id]
+        # Inline timestep distinction badge at step boundaries (render before first message)
+        ts_badge_html = ""
+        if last_time_step is None or turn.time_step != last_time_step:
+            ts_badge_html = f'<span class="ts-badge">⏱ {turn.time_step}</span>'
+            last_time_step = turn.time_step
 
-            # Agent-specific class for styling
-            agent_class = f"agent-{re.sub('[^a-z0-9_-]', '-', agent_id.lower())}"
-            agent_html = []
-            agent_html.append(f'<div class="agent-column {agent_class}">')
+        escaped_content = html.escape(turn.content)
+        collapsed_text = re.sub(r"\s+", " ", escaped_content).strip()
 
-            # Process each turn for this agent
-            for turn in agent_turns:
-                # Add role class to enable assistant-only coloring
-                role_class = f"role-{turn.role}"
-                agent_html.append(f'<div class="chat-turn {role_class}">')
+        html_parts.append(
+            f'<div class="chat-turn {agent_class} {role_class}{collapsed_class}" data-time-step="{turn.time_step}">'
+            f'<div class="turn-content {agent_class} {role_class}">{ts_badge_html}{badge}'
+            f'<span class="message-box">{collapsed_text}</span>'
+            f'<span class="message-placeholder">(...)</span>'
+            f'</div>'
+            f'</div>'
+        )
 
-                # Turn metadata inline with content: minimal separators
-                # Role-based badges with emojis (user: gear; assistant: robot)
-                if turn.role == "assistant":
-                    name_badge = (
-                        f'<span class="agent-badge agent-name">'
-                        f'<span class="emoji-bw">🤖</span>{html.escape(agent_id)}'
-                        f"</span>"
-                    )
-                else:
-                    name_badge = f'<span class="agent-badge agent-name"><span class="emoji-bw">⚙️</span>user</span>'
-
-                # Turn content (collapse all whitespace/newlines)
-                escaped_content = html.escape(turn.content)
-                collapsed = re.sub(r"\s+", " ", escaped_content).strip()
-                # Render: role-based order inside the row
-                if turn.role == "assistant":
-                    # Assistant on the right: bubble then badge
-                    agent_html.append(
-                        f'<div class="turn-content"><span class="message-box">{collapsed}</span>{name_badge}</div>'
-                    )
-                else:
-                    # User on the left: badge then bubble
-                    agent_html.append(
-                        f'<div class="turn-content">{name_badge}<span class="message-box">{collapsed}</span></div>'
-                    )
-
-                agent_html.append("</div>")  # Close chat-turn
-
-            agent_html.append("</div>")  # Close agent-column
-
-            agent_block = "".join(agent_html)
-            agent_id_lower = agent_id.lower()
-            if agent_id_lower == "alice":
-                html_parts_left.append(agent_block)
-            elif agent_id_lower == "bob":
-                html_parts_right.append(agent_block)
-            else:
-                if side_toggle:
-                    html_parts_left.append(agent_block)
-                else:
-                    html_parts_right.append(agent_block)
-                side_toggle = not side_toggle
-
-        # Render left, middle index, right
-        html_parts.append("".join(html_parts_left))
-        html_parts.append("</div>")  # Close agents-container-left
-        html_parts.append(middle_index_html)
-        html_parts.append('<div class="agents-container-right">')
-        html_parts.append("".join(html_parts_right))
-        html_parts.append("</div>")  # Close agents-container-right
-
-        html_parts.append("</div>")  # Close time-step
-
-    # Close HTML
-    html_parts.extend(["</body>", "</html>"])
+    html_parts.extend(['</div>', "</body>", "</html>"])
 
     return "\n".join(html_parts)
 
