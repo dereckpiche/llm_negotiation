@@ -36,6 +36,7 @@ class IPDAgent(Agent):
     max_reasoning_chars: int  # Maximum number of characters for reasoning
     cooperate_string: str  # string parsed as playing cooperate by simulation
     defect_string: str  # string parsed as playing defect by simulation
+    skip_regex: bool  # Skip regex conditioned policy outputs
 
     def __post_init__(self):
         self.state = IPDAgentState(
@@ -46,11 +47,10 @@ class IPDAgent(Agent):
         """
         TOWRITE
         """
-        
+
         action = None
         action_is_ready = False
         round_nb = observation.round_nb
-
 
         # If it's the first round, we need to send the intro prompt
         if round_nb == 0 and self.state.chat_counter == 0:
@@ -76,13 +76,14 @@ class IPDAgent(Agent):
                 )
             )
 
-        
-
         # If not new round, try to get valid action from policy
         prompt = [chat_item.dict() for chat_item in self.state.chat_history]
-        policy_output = await self.policy(
-            prompt=prompt, regex=f"({self.cooperate_string}|{self.defect_string})"
-        )
+        if self.skip_regex:
+            policy_output = await self.policy(prompt=prompt)
+        else:
+            policy_output = await self.policy(
+                prompt=prompt, regex=f"({self.cooperate_string}|{self.defect_string})"
+            )
         self.state.chat_history.append(
             ChatTurn(
                 agent_id=self.agent_id,
@@ -91,16 +92,15 @@ class IPDAgent(Agent):
                 is_state_end=False,
             )
         )
-       
 
         action = policy_output
 
         agent_step_log = AgentActLog(
-            chat_turns=self.state.chat_history[self.state.chat_counter:], info=None
+            chat_turns=self.state.chat_history[self.state.chat_counter :], info=None
         )
         self.state.chat_counter = len(self.state.chat_history)
         self.state.round_nb = round_nb
-        
+
         return action, agent_step_log
 
     def get_safe_copy(self):

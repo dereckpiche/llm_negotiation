@@ -7,7 +7,7 @@ experiment:
     name: "ipd"
     method: generate_and_train
     description: "no description"
-    nb_epochs: 1000
+    nb_epochs: 2000
     nb_matches_per_iteration: 64
     reinit_matches_each_it: true
     checkpoint_every_n_iterations: 50
@@ -44,6 +44,7 @@ common_agent_kwargs: &common_agent_kwargs
 
     goal_prompt: |
         Your goal is to maximize your utility.
+    skip_regex: True
 
 agent_0_id: Alice
 agent_1_id: Bob
