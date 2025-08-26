@@ -19,24 +19,24 @@ class AgentConfig:
 
 @dataclass
 class MarkovGameConfig:
+    seed: int
     simulation_class: str
     simulation_init_args: dict
     agent_configs: list[AgentConfig]
     output_path: str
 
-def hydra_conf_to_mg_config(conf:dict):
-    simulation_class: ClassType
-    simulation_init_args: dict
-    agent_configs: list[AgentConfig]
 
 def init_markov_game_components(
     config: MarkovGameConfig,
     policies: dict[str, Callable[[list[dict]], str]]
-    )
+    ):
     """
     TOWRITE
     """
-    simulation = eval(config.simulation_class)(**config.simulation_init_args)
+    simulation = eval(config.simulation_class)(
+        **config.simulation_init_args,
+        seed=config.seed
+    )
     agents = {}
     for agent_config in config.agent_configs:
         agent_id = agent_config.agent_id

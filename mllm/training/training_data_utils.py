@@ -108,6 +108,7 @@ class TrajectoryBatch:
 
     # B := batch size, S := number of tokens / seq. length, T := number of states.
     rollout_ids: torch.IntTensor  # (B,)
+    rng_seeds: torch.IntTensor  # (B,)
     batch_input_ids: list[torch.LongTensor]  # List[(jS,)]
     batch_action_mask: list[torch.BoolTensor]  # List[(jS,)]
     batch_timesteps: list[torch.IntTensor]  # List[(jS,)]
@@ -120,6 +121,9 @@ class TrajectoryBatch:
         Validate per-sample consistency.
         """
         B = self.rollout_ids.shape[0]
+        assert (
+            self.rng_seeds.shape[0] == B
+        ), "RNG IDs must have length equal to batch size."
         assert (
             len(self.batch_input_ids)
             == len(self.batch_action_mask)
@@ -171,6 +175,7 @@ class TrajectoryBatch:
         if isinstance(key, slice):
             return TrajectoryBatch(
                 rollout_ids=self.rollout_ids.__getitem__(key),
+                rng_seeds=self.rng_seeds.__getitem__(key),
                 batch_input_ids=self.batch_input_ids[key],
                 batch_action_mask=self.batch_action_mask[key],
                 batch_timesteps=self.batch_timesteps[key],
@@ -183,6 +188,7 @@ class TrajectoryBatch:
 
     def to(self, device):
         self.rollout_ids = self.rollout_ids.to(device)
+        self.rng_seeds = self.rng_seeds.to(device)
         self.batch_input_ids = [t.to(device) for t in self.batch_input_ids]
         self.batch_action_mask = [t.to(device) for t in self.batch_action_mask]
         self.batch_timesteps = [t.to(device) for t in self.batch_timesteps]

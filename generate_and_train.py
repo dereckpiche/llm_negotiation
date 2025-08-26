@@ -168,6 +168,15 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         )
         trainers[trainer_id] = trainer
 
+        # Stuff common across iterations
+        agent_configs = []
+        for agent_config_ in cfg["markov_games"]["agents"].values():
+            agent_config = AgentConfig(**agent_config_)
+            agent_configs.append(agent_config)
+        assert nb_matches % seed_ground_size == 0, "nb_matches must be divisible by seed_ground_size"
+        nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
+        seed_ground_size = cfg["experiment"]["seed_ground_size"]
+
     for iteration in range(
         cfg["experiment"]["start_epoch"], cfg["experiment"]["nb_epochs"]
     ):
@@ -178,40 +187,31 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         for llm in llms_dict.values():
             await llm.toggle_eval_mode()
 
-        # Create a new RNG instance by splitting the current one (simulates RNG splitting)
+        # Set folders and seeds
         env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
         iteration_start_time = time.time()
         it_folder = os.path.join(output_directory, f"iteration_{iteration:03}")
+        seeds = [env_rng.integers(0, 1e9, size=seed_ground_size) for _ in range(nb_matches//seed_ground_size)]
         os.makedirs(it_folder, exist_ok=True)
         generation_start_time = time.time()
 
-        # TODO: maybe only create these once and then use reset!
-        # Create markov games
-        agent_configs = []
-        for agent_config_ in cfg["markov_games"]["agents"].values():
-            agent_config = AgentConfig(**agent_config_)
-            agent_configs.append(agent_config)
-        markov_game_config = MarkovGameConfig(
-            id="",
-            seed=0,
-            simulation_class_name=cfg["markov_games"]["simulation_class_name"],
-            simulation_init_args=cfg["markov_games"]["simulation_init_args"],
-            agent_configs=agent_configs,
-        )
+        # Create new markov games
         markov_games = []
-        nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
         for i in range(nb_matches):
-            markov_game_config.seed = int(env_rng.integers(0, 1e9))
-            markov_game_id = "mgid_" + str(iteration * nb_matches + i)
-            markov_game_config.id = markov_game_id
+            markov_game_config = MarkovGameConfig(
+                id="mgid_" + str(iteration * nb_matches + i),
+                seed=int(seeds[i//seed_ground_size][i%seed_ground_size]),
+                simulation_class_name=cfg["markov_games"]["simulation_class_name"],
+                simulation_init_args=cfg["markov_games"]["simulation_init_args"],
+                agent_configs=agent_configs,
+            )
             markov_game = init_markov_game_components(
                 config=markov_game_config, policies=policies
             )
             markov_games.append(markov_game)
 
-        # Generate rollouts raw data (using asyncio)
+        # Generate rollouts raw data asynchronously 
         runner = eval(cfg["markov_games"]["runner_method_name"])
-        # TODO: throw error if error in asyncio call
         rollout_trees = await run_markov_games(
             runner=runner,
             runner_kwargs=cfg["markov_games"]["runner_kwargs"],

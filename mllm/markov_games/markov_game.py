@@ -41,6 +41,7 @@ class MarkovGame(object):
         id: str,
         simulation: type[Simulation],
         agents: dict[AgentId, type[Agent]],
+        rng_seed: int,
     ):
         """
         Args:
@@ -57,6 +58,10 @@ class MarkovGame(object):
         self.simulation_step_log = None
         self.agent_step_logs = {agent_id: None for agent_id in self.agent_ids}
         self.actions = {}
+        self.rng_seed = rng_seed
+
+    def get_rng_seed(self) -> int:
+        return self.rng_seed
 
     async def get_action_of_agent_without_side_effects(
         self, agent_id: AgentId

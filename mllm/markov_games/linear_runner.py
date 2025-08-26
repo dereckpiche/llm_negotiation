@@ -15,7 +15,9 @@ async def LinearRunner(
     """
     time_step = 0
     terminated = False
-    root = RolloutTreeRootNode(id=int(str(uuid.uuid4().int)[:8]))
+    root = RolloutTreeRootNode(
+        id=int(str(uuid.uuid4().int)[:8]), rng_seed=markov_game.get_rng_seed()
+    )
     previous_node = root
     while not terminated:
         terminated, step_log = await markov_game.step()
