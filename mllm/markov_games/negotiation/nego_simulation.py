@@ -37,6 +37,7 @@ class NegotiationState:
     current_agent: AgentId
     quantities: Dict[str, int]
     values: Dict[AgentId, float]
+    previous_values: Dict[AgentId, float] | None
     splits: Dict[AgentId, Split | None]
     nb_messages_sent: Dict[AgentId, int]
     split_phase: bool = False
@@ -54,13 +55,12 @@ class NegotiationObs:
     split_phase: bool = False
 
 
-
 class NegotiationSimulation(Simulation):
     def __init__(
         self,
         agent_ids: List[AgentId],
         seed: int,
-        rounds_per_game: int,
+        nb_of_rounds: int,
         quota_messages_per_agent_per_round: int,
         nb_messages_per_agent: int = 1,
         item_types: List[str] | None = None,
@@ -68,7 +68,7 @@ class NegotiationSimulation(Simulation):
         self.seed = seed
         self.rng = default_rng(self.seed)
         self.agent_ids = list(agent_ids)
-        self.rounds_per_game = int(rounds_per_game)
+        self.nb_of_rounds = int(nb_of_rounds)
         self.quota_messages_per_agent_per_round = int(quota_messages_per_agent_per_round)
         self.nb_messages_per_agent = int(nb_messages_per_agent)
         self.item_types = item_types or ["coins"]
@@ -82,6 +82,10 @@ class NegotiationSimulation(Simulation):
     
     @abstractmethod
     def set_new_round_of_variant(self):
+        pass
+
+    @abstractmethod
+    def get_info_of_variant(self, state: NegotiationState, actions: Dict[AgentId, Any]) -> Dict[str, Any]:
         pass
 
     def step(self, actions: Any) -> Tuple[bool, SimulationStepLog]:
@@ -113,6 +117,9 @@ class NegotiationSimulation(Simulation):
             # Compute rewards and end round
             rewards = self.get_rewards(self.state.splits)
 
+            # Info
+            info = self.get_info_of_variant(self.state, actions)
+
             # Prepare next round
             self.set_new_round_of_variant() # variant specific 
             self.state.round_nb += 1
@@ -124,10 +131,10 @@ class NegotiationSimulation(Simulation):
             self._starting_agent_index = 1 - self._starting_agent_index
             self.state.current_agent = self.agent_ids[self._starting_agent_index]
 
-            done = self.state.round_nb >= self.rounds_per_game
+            done = self.state.round_nb >= self.nb_of_rounds
             return done, SimulationStepLog(
                 rewards=rewards,
-                info=self.state.dict()
+                info=info
             )
 
         # Message phase

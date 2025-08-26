@@ -6,6 +6,7 @@ from numpy.random import default_rng
 
 from mllm.markov_games.rollout_tree import SimulationStepLog
 from mllm.markov_games.simulation import Simulation
+from mllm.markov_games.negotiation.nego_simulation import Split, NegotiationState, NegotiationObs, NegotiationSimulation
 from mllm.utils.get_coagent_id import get_coagent_id
 
 
@@ -13,52 +14,15 @@ AgentId = str
 
 
 @dataclass
-class Message:
-    message: str
-
-
-@dataclass
-class Proposal:
-    no_deal: bool
-    allocation_to_self: Dict[str, int] | None = None
-
-
-@dataclass
-class DealNoDealState:
-    round_nb: int
-    last_message: str
-    current_agent: AgentId
+class DealNoDealState(NegotiationState):
     item_types: List[str]
-    stock: Dict[str, int]
     values: Dict[AgentId, Dict[str, int]]
-    proposals: Dict[AgentId, Proposal | None]
-    quota_messages_per_agent_per_round: int
-    messages_sent: Dict[AgentId, int]
-    proposal_phase: bool = False
-
 
 @dataclass
-class DealNoDealObs:
-    round_nb: int
-    last_message: str
-    current_agent: AgentId
+class DealNoDealObs(NegotiationObs):
     my_values: Dict[str, int]
     item_types: List[str]
-    stock: Dict[str, int]
-    other_agent_proposal: Proposal | None
-    proposal_phase: bool
-    quota_messages_per_agent_per_round: int
     previous_values_coagent: Dict[str, int] | None
-
-@dataclass
-class DealLog:
-    accepted: bool
-    no_deal: bool
-    item_types: List[str]
-    stock: Dict[str, int]
-    values: Dict[AgentId, Dict[str, int]]
-    proposals: Dict[AgentId, Proposal]
-    final_allocation_to_self: Dict[AgentId, Dict[str, int]] | None
 
 
 def random_partition_integer(rng, total: int, parts: int) -> List[int]:
@@ -74,24 +38,15 @@ def random_partition_integer(rng, total: int, parts: int) -> List[int]:
         prev = c
     return vals
 
+class DealNoDealSimulation(NegotiationSimulation):
 
-class DealNoDealSimulation(Simulation):
     def __init__(
         self,
-        agent_ids: List[AgentId],
-        seed: int,
-        rounds_per_game: int,
-        quota_messages_per_agent_per_round: int = 1,
-        item_types: List[str] | None = None,
+        item_types: List[str] = ["books", "hats", "balls"],
+        *args,
+        **kwargs,
     ):
-        self.seed = seed
-        self.rng = default_rng(self.seed)
-        self.agent_ids = list(agent_ids)
-        self.rounds_per_game = int(rounds_per_game)
-        self.quota_messages_per_agent_per_round = int(quota_messages_per_agent_per_round)
-        self.item_types = item_types or ["books", "hats", "balls"]
-        self.state: DealNoDealState | None = None
-        self._starting_agent_index = 0
+        super().__init__(item_types=item_types, *args, **kwargs)
         self.reset()
 
     def _other(self, agent_id: AgentId) -> AgentId:
@@ -131,95 +86,31 @@ class DealNoDealSimulation(Simulation):
             if v < 0 or v > int(stock.get(t, 0)):
                 return False
         return True
+    
+    def set_new_round_of_variant(self):
+        self.state.quantities = {t: 0 for t in self.item_types}
 
-    def step(self, actions: Any) -> Tuple[bool, SimulationStepLog]:
-        assert self.state is not None
-        current_agent = self.state.current_agent
-        a0, a1 = self.agent_ids[0], self.agent_ids[1]
-        action = actions.get(current_agent)
+    def get_info_of_variant(self, state: NegotiationState, actions: Dict[AgentId, Any]) -> Dict[str, Any]:
+        return {
+            "quantities": copy.deepcopy(state.quantities),
+            "values": copy.deepcopy(state.values),
+            'splits': copy.deepcopy(state.splits),
+        }
 
-        if self.state.proposal_phase:
-            p0 = actions.get(a0)
-            p1 = actions.get(a1)
-            have_both = isinstance(p0, Proposal) and isinstance(p1, Proposal)
-            if not have_both:
-                rewards = {agent_id: 0.0 for agent_id in self.agent_ids}
-                return False, SimulationStepLog(
-                    rewards=rewards, info={"type": "waiting_for_proposals"}
-                )
-
-            self.state.proposals[a0] = p0
-            self.state.proposals[a1] = p1
-
-            accepted = False
-            no_deal = False
-            final_alloc_to_self: Dict[AgentId, Dict[str, int]] | None = None
-
-            if p0.no_deal or p1.no_deal:
-                no_deal = True
-            else:
-                alloc0 = p0.allocation_to_self or {}
-                alloc1 = p1.allocation_to_self or {}
-                v0_ok = self._is_valid_allocation(alloc0, self.state.stock)
-                v1_ok = self._is_valid_allocation(alloc1, self.state.stock)
-                if v0_ok and v1_ok:
-                    complement = all((alloc0.get(t, 0) + alloc1.get(t, 0)) == self.state.stock[t] for t in self.item_types)
-                    if complement:
-                        accepted = True
-                        final_alloc_to_self = {a0: alloc0, a1: alloc1}
-
-            if accepted:
-                r0 = sum(final_alloc_to_self[a0][t] * self.state.values[a0][t] for t in self.item_types)
-                r1 = sum(final_alloc_to_self[a1][t] * self.state.values[a1][t] for t in self.item_types)
-                rewards = {a0: float(r0), a1: float(r1)}
-            else:
-                rewards = {a0: 0.0, a1: 0.0}
-
-            # prepare info using current round's parameters
-            info_stock = copy.deepcopy(self.state.stock)
-            info_values = copy.deepcopy(self.state.values)
-
-            # next round
-            new_stock = self._sample_stock()
-            new_values = self._sample_values_pair()
-            self.state.round_nb += 1
-            self.state.last_message = ""
-            self.state.proposal_phase = False
-            self.state.proposals = {aid: None for aid in self.agent_ids}
-            self.state.messages_sent = {aid: 0 for aid in self.agent_ids}
-            self.state.quota_messages_per_agent_per_round = self.quota_messages_per_agent_per_round
-            self.state.stock = new_stock
-            self.state.values = new_values
-            self._starting_agent_index = 1 - self._starting_agent_index
-            self.state.current_agent = self.agent_ids[self._starting_agent_index]
-
-            done = self.state.round_nb >= self.rounds_per_game
-            return done, SimulationStepLog(
-                rewards=rewards,
-                info=DealLog(
-                    accepted=accepted,
-                    no_deal=no_deal,
-                    item_types=list(self.item_types),
-                    stock=info_stock,
-                    values=info_values,
-                    proposals={a0: p0, a1: p1},
-                    final_allocation_to_self=final_alloc_to_self,
-                ),
-            )
-
-        if isinstance(action, Message):
-            self.state.last_message = action.message
-            self.state.messages_sent[current_agent] += 1
-            self.state.current_agent = self._other(current_agent)
-            if all(self.state.messages_sent[aid] >= self.quota_messages_per_agent_per_round for aid in self.agent_ids):
-                self.state.proposal_phase = True
-            rewards = {agent_id: 0.0 for agent_id in self.agent_ids}
-            return False, SimulationStepLog(rewards=rewards, info={"type": "message"})
-
-        if isinstance(action, Proposal):
-            raise Exception("Proposal received outside of proposal_phase")
-
-        raise Exception("Invalid action type for DealNoDealSimulation")
+    def get_rewards(self, splits: Dict[AgentId, Split]) -> Dict[AgentId, float]:
+        """
+        Returns the rewards for each agent.
+        """
+        split_a = splits[self.agent_ids[0]].items_given_to_self
+        split_b = splits[self.agent_ids[1]].items_given_to_self
+        rewards = {self.agent_ids[0]: 0, self.agent_ids[1]: 0}
+        for t in self.item_types:
+            # If not complementary, return 0! 
+            if not split_a[t] + split_b[t] == self.state.quantities[t]:
+                return {self.agent_ids[0]: 0, self.agent_ids[1]: 0}
+            rewards[self.agent_ids[0]] += split_a[t] * self.state.values[self.agent_ids[0]][t]
+            rewards[self.agent_ids[1]] += split_b[t] * self.state.values[self.agent_ids[1]][t]
+        return rewards
 
     def get_obs(self):
         return {agent_id: self.get_obs_agent(agent_id) for agent_id in self.agent_ids}
@@ -233,21 +124,12 @@ class DealNoDealSimulation(Simulation):
             current_agent=self.state.current_agent,
             my_values=copy.deepcopy(self.state.values[agent_id]),
             item_types=list(self.item_types),
-            stock=copy.deepcopy(self.state.stock),
             other_agent_proposal=copy.deepcopy(other_prop),
             proposal_phase=self.state.proposal_phase,
             quota_messages_per_agent_per_round=self.quota_messages_per_agent_per_round,
             previous_values_coagent=copy.deepcopy(self.state.values.get(self._other(agent_id), {})),
         )
         return obs
-
-    def get_state(self):
-        return self.state
-
-    def get_safe_copy(self):
-        simulation_copy = copy.copy(self)
-        simulation_copy.state = copy.deepcopy(self.state)
-        return simulation_copy
 
     def reset(self):
         start_agent = self.agent_ids[self._starting_agent_index]
@@ -258,7 +140,6 @@ class DealNoDealSimulation(Simulation):
             last_message="",
             current_agent=start_agent,
             item_types=list(self.item_types),
-            stock=stock,
             values=values,
             proposals={aid: None for aid in self.agent_ids},
             quota_messages_per_agent_per_round=self.quota_messages_per_agent_per_round,

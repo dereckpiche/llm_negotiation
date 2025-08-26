@@ -10,47 +10,21 @@ coins they keep for themselves. Rewards are proportional if the proposed totals 
 
 import copy
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Literal, Tuple
 
 from numpy.random import default_rng
 
 from mllm.markov_games.rollout_tree import SimulationStepLog
 from mllm.markov_games.simulation import Simulation
-from mllm.utils.get_coagent_id import get_coagent_id
+from mllm.markov_games.negotiation.nego_simulation import Split, Message, NegotiationState, NegotiationObs
 
 AgentId = str
 
 
-@dataclass
-class Split:
-    coins_given_to_self: int
-
-
-@dataclass
-class Message:
-    message: str
-
-
-def get_rewards(
-    coins_to_self_0: int,
-    val_0: float,
-    coins_to_self_1: int,
-    val_1: float,
-    max_coins: int,
-) -> tuple[float, float]:
-    denom = max(max_coins, coins_to_self_0 + coins_to_self_1)
-    q0 = float(max_coins) * float(coins_to_self_0) / float(denom)
-    q1 = float(max_coins) * float(coins_to_self_1) / float(denom)
-    r0 = q0 * float(val_0)
-    r1 = q1 * float(val_1)
-    return r0, r1
-
-
-def _get_rps_winner(hand1: str, hand2: str) -> str:
+def _get_rps_winner(hand1: Literal["rock", "paper", "scissors"], hand2: Literal["rock", "paper", "scissors"]) -> Literal["rock", "paper", "scissors"]:
     """Determine winner of rock-paper-scissors between two hands."""
     if hand1 == hand2:
         raise ValueError("Hands should be different")
-    
     if (hand1 == "rock" and hand2 == "scissors") or \
        (hand1 == "paper" and hand2 == "rock") or \
        (hand1 == "scissors" and hand2 == "paper"):
@@ -60,31 +34,15 @@ def _get_rps_winner(hand1: str, hand2: str) -> str:
 
 
 @dataclass
-class TrustAndSplitState:
-    round_nb: int
-    last_message: str
-    current_agent: AgentId
-    values: Dict[AgentId, float]
-    previous_values: Dict[AgentId, float] | None
-    hands: Dict[AgentId, str]  # rock, paper, or scissors
-    previous_hands: Dict[AgentId, str] | None
-    splits: Dict[AgentId, Split | None]
-    messages_sent: Dict[AgentId, int]
-    split_phase: bool = False
-
+class TrustAndSplitState(NegotiationState):
+    hands: Dict[AgentId, Literal["rock", "paper", "scissors"]]  # rock, paper, or scissors
+    previous_hands: Dict[AgentId, Literal["rock", "paper", "scissors"]] | None
 
 @dataclass
-class TrustAndSplitObs:
-    round_nb: int
-    last_message: str
-    quota_messages_per_agent_per_round: int
-    current_agent: AgentId
+class TrustAndSplitObs(NegotiationObs):
     last_value_coagent: float | None
-    value: float
-    other_agent_split: int | None
-    hand: str  # rock, paper, or scissors
-    last_hand_coagent: str | None
-    split_phase: bool = False
+    hand: Literal["rock", "paper", "scissors"]
+    last_hand_coagent: Literal["rock", "paper", "scissors"] | None
 
 @dataclass
 class SplitsLog:
@@ -94,7 +52,6 @@ class SplitsLog:
     hands: Dict[AgentId, str]
     coins_given_to_self: Dict[AgentId, int]
     
-
 
 class TrustAndSplitSimulation(Simulation):
     def __init__(
@@ -147,110 +104,36 @@ class TrustAndSplitSimulation(Simulation):
                 
         return agent_hands, values
 
-    def _other(self, agent_id: AgentId) -> AgentId:
-        return get_coagent_id(self.agent_ids, agent_id)
+    def set_new_round_of_variant(self):
+        self.state.previous_values = copy.deepcopy(self.state.values)
+        self.state.previous_hands = copy.deepcopy(self.state.hands)
+        new_hands, new_values = self._sample_hands_and_values()
+        self.state.hands = new_hands
+        self.state.values = new_values
 
-    def step(self, actions: Any) -> Tuple[bool, SimulationStepLog]:
-        """
-        Returns terminated, step_log
-        """
-        assert self.state is not None
-        current_agent = self.state.current_agent
-        a0, a1 = self.agent_ids[0], self.agent_ids[1]
-        action = actions.get(current_agent)
-
-        # Split phase: require both splits in the same timestep
-        if self.state.split_phase:
-            action_a0 = actions.get(a0)
-            action_a1 = actions.get(a1)
-            have_both_splits = isinstance(action_a0, Split) and isinstance(
-                action_a1, Split
-            )
-            if not have_both_splits:
-                rewards = {agent_id: 0.0 for agent_id in self.agent_ids}
-                return False, SimulationStepLog(
-                    rewards=rewards, info={"type": "waiting_for_splits"}
-                )
-
-            # Record splits
-            self.state.splits[a0] = action_a0
-            self.state.splits[a1] = action_a1
-
-            # Compute rewards and end round
-            coins_to_self_0 = int(
-                self.state.splits[a0].coins_given_to_self
-                if self.state.splits[a0] is not None
-                else 0
-            )
-            coins_to_self_1 = int(
-                self.state.splits[a1].coins_given_to_self
-                if self.state.splits[a1] is not None
-                else 0
-            )
-            val_0 = float(self.state.values[a0])
-            val_1 = float(self.state.values[a1])
-            sums_to_max = (coins_to_self_0 + coins_to_self_1) == self.max_coins
-            r0, r1 = get_rewards(
-                coins_to_self_0, val_0, coins_to_self_1, val_1, self.max_coins
-            )
-            rewards = {a0: r0, a1: r1}
-
-            # Prepare next round
-            self.state.previous_values = copy.deepcopy(self.state.values)
-            self.state.previous_hands = copy.deepcopy(self.state.hands)
-            new_hands, new_values = self._sample_hands_and_values()
-            self.state.hands = new_hands
-            self.state.values = new_values
-            self.state.round_nb += 1
-            self.state.last_message = ""
-            self.state.split_phase = False
-            self.state.splits = {aid: None for aid in self.agent_ids}
-            self.state.messages_sent = {aid: 0 for aid in self.agent_ids}
-            # Alternate starting agent
-            self._starting_agent_index = 1 - self._starting_agent_index
-            self.state.current_agent = self.agent_ids[self._starting_agent_index]
-
-            done = self.state.round_nb >= self.rounds_per_game
-            return done, SimulationStepLog(
-                rewards=rewards,
-                info=SplitsLog(
-                    sums_to_max_coins=sums_to_max,
-                    num_coins=self.max_coins,
-                    values={a0: val_0, a1: val_1},
-                    hands={a0: self.state.previous_hands[a0], a1: self.state.previous_hands[a1]},
-                    coins_given_to_self={a0: coins_to_self_0, a1: coins_to_self_1},
-                ),
-            )
-
-        # Message phase
-        if isinstance(action, Message):
-            self.state.last_message = action.message
-            self.state.messages_sent[current_agent] += 1
-
-            # Move turn to other agent
-            self.state.current_agent = self._other(current_agent)
-
-            # If both agents have reached their message quota, enter split phase
-            if all(
-                self.state.messages_sent[aid] >= self.quota_messages_per_agent_per_round
-                for aid in self.agent_ids
-            ):
-                self.state.split_phase = True
-
-            rewards = {agent_id: 0.0 for agent_id in self.agent_ids}
-            return False, SimulationStepLog(rewards=rewards, info={"type": "message"})
-
-        # Splits are only valid during split_phase; otherwise invalid action
-        if isinstance(action, Split):
-            raise Exception(
-                "Split received outside of split_phase. Agents must message until split_phase begins."
-            )
-
-        raise Exception("Invalid action type for TrustAndSplitSimulation.")
+    def get_info_of_variant(self, state: NegotiationState, actions: Dict[AgentId, Any]) -> Dict[str, Any]:
+        return {
+            "hands": copy.deepcopy(state.hands),
+            "values": copy.deepcopy(state.values),
+            "previous_hands": copy.deepcopy(state.previous_hands),
+            "previous_values": copy.deepcopy(state.previous_values),
+            "splits": copy.deepcopy(state.splits),
+        }
 
     def get_obs(self):
         """Returns all agent observations in dict"""
         return {agent_id: self.get_obs_agent(agent_id) for agent_id in self.agent_ids}
+
+    def get_rewards(self, splits: Dict[AgentId, Split]) -> Dict[AgentId, float]:
+        a0, a1 = self.agent_ids[0], self.agent_ids[1]
+        coins_to_self_0 = int(splits[a0].items_given_to_self.values()[0] if splits[a0] is not None else 0)
+        coins_to_self_1 = int(splits[a1].items_given_to_self.values()[0] if splits[a1] is not None else 0)
+        denom = max(self.max_coins, coins_to_self_0 + coins_to_self_1)
+        q0 = float(self.max_coins) * float(coins_to_self_0) / float(denom)
+        q1 = float(self.max_coins) * float(coins_to_self_1) / float(denom)
+        r0 = q0 * float(self.state.values[a0])
+        r1 = q1 * float(self.state.values[a1])
+        return {a0: r0, a1: r1}
 
     def get_obs_agent(self, agent_id):
         """Returns observation for agent_id"""

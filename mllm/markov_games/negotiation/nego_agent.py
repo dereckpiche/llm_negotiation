@@ -46,9 +46,16 @@ class NegotiationAgent(Agent):
         ).format(agent_name=self.agent_id, goal=self.goal, quota_messages=self.quota_messages_per_agent_per_round, item_types=self.item_types)
 
         self.new_round_prompt = "(...)"
-        self.wait_for_message_prompt = "(...)"
-        self.last_message_prompt = "(...)"
-        self.send_message_prompt = "(...)"
+        self.last_round_prompt = "(...)"
+        self.wait_for_message_prompt = (
+            "Wait for {other_agent_id} to send a message..."
+        )
+        self.last_message_prompt = (    
+            "{other_agent_id} said: {last_message}"
+        )
+        self.send_message_prompt = (
+            "Send your message now in <message>...</message> (<=400 chars). "
+        )
         self.send_split_prompt = "(...)"
 
     @abstractmethod
