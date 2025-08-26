@@ -6,10 +6,11 @@ from typing import Any, Dict, List, Tuple
 
 from mllm.markov_games.agent import Agent
 from mllm.markov_games.rollout_tree import AgentActLog, ChatTurn
-from mllm.markov_games.deal_no_deal.dond_simulation import (
+from mllm.markov_games.negotiation.dond_simulation import (
     DealNoDealObs,
 )
-from mllm.markov_games.negotiation.nego_agent import Split, NegotiationAgent, NegotiationAgentState
+from mllm.markov_games.negotiation.nego_simulation import Split
+from mllm.markov_games.negotiation.nego_agent import NegotiationAgent, NegotiationAgentState
 
 class DealNoDealAgent(NegotiationAgent):
     def __init__(
@@ -19,7 +20,7 @@ class DealNoDealAgent(NegotiationAgent):
     ):
         super().__init__(*args, **kwargs)
         self.intro_prompt = (
-                "You are {agent_id}. You are playing an iterated game called Deal-or-No-Deal. "
+                "You are {agent_id}. You are playing an iterated game. "
                 "At each round, you and other agent will try to distribute among yourselves items of types {item_types}. "
                 "You only know how much you value each item type, but not the other agent's values. "
                 "You can communicate with the other agent by sending up to {quota_messages_per_agent_per_round} short messages per round. "
@@ -38,21 +39,23 @@ class DealNoDealAgent(NegotiationAgent):
     def get_split_regex(self, observation: DealNoDealObs) -> str:
         parts = []
         for t in observation.item_types:
-            s = int(observation.my_values.get(t, 0))
-            if s <= 0:
-                rng = "0"
-        else:
+            s = int(observation.quantities.get(t, 0))
             allowed = "|".join(str(k) for k in range(0, s + 1))
             rng = f"({allowed})"
-        parts.append(fr"<{t}>{rng}</{t}>")
+            parts.append(fr"<{t}>{rng}</{t}>")
         items_block = "".join(parts)
         return fr"(<split>{items_block}</split>)"
     
     def get_split_action(self, policy_output: str, observation: DealNoDealObs) -> Split:
         import re as _re
-        m = _re.search(r"<split>([0-9]+)</split>", policy_output)
-        coins_int = int(m.group(1)) if m else int(policy_output)
-        return Split(items_given_to_self=coins_int)
+        allocations: Dict[str, int] = {}
+        for t in observation.item_types:
+            m = _re.search(fr"<{t}>([0-9]+)</{t}>", policy_output)
+            if m:
+                allocations[t] = int(m.group(1))
+            else:
+                allocations[t] = 0
+        return Split(items_given_to_self=allocations)
  
 
 

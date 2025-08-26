@@ -187,3 +187,4 @@ class NegotiationSimulation(Simulation):
     def reset(self) -> dict[AgentId, NegotiationObs]:
         pass
 
+

@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Tuple
 from numpy.random import default_rng
 
 from mllm.markov_games.rollout_tree import SimulationStepLog
-from mllm.markov_games.simulation import Simulation
 from mllm.markov_games.negotiation.nego_simulation import Split, NegotiationState, NegotiationObs, NegotiationSimulation
 from mllm.utils.get_coagent_id import get_coagent_id
 
@@ -88,7 +87,8 @@ class DealNoDealSimulation(NegotiationSimulation):
         return True
     
     def set_new_round_of_variant(self):
-        self.state.quantities = {t: 0 for t in self.item_types}
+        # Keep same values, resample stock
+        self.state.quantities = self._sample_stock()
 
     def get_info_of_variant(self, state: NegotiationState, actions: Dict[AgentId, Any]) -> Dict[str, Any]:
         return {
@@ -117,17 +117,18 @@ class DealNoDealSimulation(NegotiationSimulation):
 
     def get_obs_agent(self, agent_id):
         other_id = self._other(agent_id)
-        other_prop = self.state.proposals.get(other_id) if self.state else None
         obs = DealNoDealObs(
             round_nb=self.state.round_nb,
             last_message=self.state.last_message,
             current_agent=self.state.current_agent,
+            quantities=copy.deepcopy(self.state.quantities),
+            value=0.0,  # unused in DOND
+            other_agent_split=None,  # not meaningful until split
+            split_phase=self.state.split_phase,
+            quota_messages_per_agent_per_round=self.quota_messages_per_agent_per_round,
             my_values=copy.deepcopy(self.state.values[agent_id]),
             item_types=list(self.item_types),
-            other_agent_proposal=copy.deepcopy(other_prop),
-            proposal_phase=self.state.proposal_phase,
-            quota_messages_per_agent_per_round=self.quota_messages_per_agent_per_round,
-            previous_values_coagent=copy.deepcopy(self.state.values.get(self._other(agent_id), {})),
+            previous_values_coagent=copy.deepcopy(self.state.values.get(other_id, {})),
         )
         return obs
 
@@ -139,12 +140,13 @@ class DealNoDealSimulation(NegotiationSimulation):
             round_nb=0,
             last_message="",
             current_agent=start_agent,
-            item_types=list(self.item_types),
+            quantities=stock,
             values=values,
-            proposals={aid: None for aid in self.agent_ids},
-            quota_messages_per_agent_per_round=self.quota_messages_per_agent_per_round,
-            messages_sent={aid: 0 for aid in self.agent_ids},
-            proposal_phase=False,
+            previous_values=None,
+            splits={aid: None for aid in self.agent_ids},
+            nb_messages_sent={aid: 0 for aid in self.agent_ids},
+            split_phase=False,
+            item_types=list(self.item_types),
         )
         return self.get_obs()
 
