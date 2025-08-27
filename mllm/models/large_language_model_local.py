@@ -54,6 +54,7 @@ class LeanLocalLLM:
         inference_backend_sampling_params: dict = {},
         inference_backend_init_kwargs: dict = {},
         initial_adapter_paths: dict[str, str] | None = None,
+        enable_thinking: bool = None,
     ):
         self.inference_backend_name = inference_backend
         self.output_directory = output_directory
@@ -62,6 +63,7 @@ class LeanLocalLLM:
         self.model_name = model_name
         self.adapter_configs = adapter_configs
         self.adapter_ids = list(adapter_configs.keys())
+        self.enable_thinking = enable_thinking
 
         # Optional user-specified initial adapter weight locations (local or HF Hub)
         # Format: {adapter_id: path_or_repo_id}
@@ -199,9 +201,17 @@ class LeanLocalLLM:
 
     async def generate(self, prompt: list[dict], regex: str | None = None) -> str:
         # Chat templating
-        prompt_text = self.tokenizer.apply_chat_template(
-            prompt, tokenize=False, add_generation_prompt=True
-        )
+        if self.enable_thinking is not None:
+            prompt_text = self.tokenizer.apply_chat_template(
+                prompt,
+                tokenize=False,
+                add_generation_prompt=True,
+                enable_thinking=self.enable_thinking,
+            )
+        else:
+            prompt_text = self.tokenizer.apply_chat_template(
+                prompt, tokenize=False, add_generation_prompt=True
+            )
         return await self.inference_backend.generate(
             prompt_text=prompt_text, regex=regex
         )

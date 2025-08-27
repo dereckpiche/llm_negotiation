@@ -11,6 +11,7 @@ experiment:
 
 common_agent_kwargs: &common_agent_kwargs
     goal: "Maximize your total points over the whole game."
+    num_message_chars: 500
 
 agent_0_id: Alice
 agent_1_id: Bob
@@ -46,3 +47,4 @@ trainers:
     agent_trainer:
         kwargs:
             mini_batch_size: 1
+            reward_normalizing_constant: 100.0
