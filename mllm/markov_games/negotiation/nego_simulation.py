@@ -1,11 +1,5 @@
 """
-Trust-and-Split simulation.
-
-This environment models a simple bargaining game over 10 coins with messaging.
-Agents are assigned rock/paper/scissors hands, with the winner getting value 10 per coin
-and the loser getting value 1 per coin. Agents alternate sending messages for a fixed 
-number of turns per round and then each submits a split proposal indicating how many 
-coins they keep for themselves. Rewards are proportional if the proposed totals exceed 10.
+Negotiation simulation environment
 """
 from abc import abstractmethod
 import copy
@@ -37,9 +31,11 @@ class NegotiationState:
     current_agent: AgentId
     quantities: Dict[str, int]
     values: Dict[AgentId, float]
-    previous_values: Dict[AgentId, float] | None
     splits: Dict[AgentId, Split | None]
     nb_messages_sent: Dict[AgentId, int]
+    previous_values: Dict[AgentId, float] | None
+    previous_splits: Dict[AgentId, Split | None] | None
+    previous_points: Dict[AgentId, float] | None
     split_phase: bool = False
 
 
@@ -49,11 +45,16 @@ class NegotiationObs:
     last_message: str
     quota_messages_per_agent_per_round: int
     current_agent: AgentId
+    other_agent: AgentId
     quantities: Dict[str, int]
     value: float
-    other_agent_split: int | None
     split_phase: bool = False
-
+    last_split_agent: int | None
+    last_value_agent: float | None
+    last_points_agent: float | None
+    last_split_coagent: int | None
+    last_value_coagent: float | None
+    last_points_coagent: float | None
 
 class NegotiationSimulation(Simulation):
     def __init__(
@@ -125,11 +126,14 @@ class NegotiationSimulation(Simulation):
             self.state.round_nb += 1
             self.state.last_message = ""
             self.state.split_phase = False
-            self.state.splits = {aid: None for aid in self.agent_ids}
-            self.state.nb_messages_sent = {aid: 0 for aid in self.agent_ids}
+            self.state.previous_splits = copy.deepcopy(self.state.splits)
+            self.state.previous_points = copy.deepcopy(rewards)
+            self.state.splits = {agent_id: None for agent_id in self.agent_ids}
+            self.state.nb_messages_sent = {agent_id: 0 for agent_id in self.agent_ids}
             # Alternate starting agent
             self._starting_agent_index = 1 - self._starting_agent_index
             self.state.current_agent = self.agent_ids[self._starting_agent_index]
+            self.state.other_agent = self._other(self.state.current_agent)
 
             done = self.state.round_nb >= self.nb_of_rounds
             return done, SimulationStepLog(
@@ -147,8 +151,8 @@ class NegotiationSimulation(Simulation):
 
             # If both agents have reached their message quota, enter split phase
             if all(
-                self.state.nb_messages_sent[aid] >= self.quota_messages_per_agent_per_round
-                for aid in self.agent_ids
+                self.state.nb_messages_sent[agent_id] >= self.quota_messages_per_agent_per_round
+                for agent_id in self.agent_ids
             ):
                 self.state.split_phase = True
             rewards = {agent_id: 0.0 for agent_id in self.agent_ids}

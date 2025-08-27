@@ -60,8 +60,8 @@ class TrustAndSplitState(NegotiationState):
 
 @dataclass
 class TrustAndSplitObs(NegotiationObs):
-    last_value_coagent: float | None
     hand: Literal["rock", "paper", "scissors"]
+    last_hand_agent: Literal["rock", "paper", "scissors"] | None
     last_hand_coagent: Literal["rock", "paper", "scissors"] | None
 
 @dataclass
@@ -76,7 +76,6 @@ class SplitsLog:
 class TrustAndSplitSimulation(NegotiationSimulation):
     def __init__(
         self,
-        agent_ids: List[AgentId],
         max_coins: int = 10,
         *args,
         **kwargs,
@@ -129,34 +128,63 @@ class TrustAndSplitSimulation(NegotiationSimulation):
     def get_obs_agent(self, agent_id):
         """Returns observation for agent_id"""
         other_id = self._other(agent_id)
-        last_value = (
+        last_value_coagent = (
             None
             if self.state.previous_values is None
             else self.state.previous_values.get(other_id)
         )
-        last_hand = (
+        last_hand_coagent = (
             None
             if self.state.previous_hands is None
             else self.state.previous_hands.get(other_id)
         )
-        other_split_val = None
-        if self.state.splits.get(other_id) is not None:
-            other_split_val = self.state.splits[other_id].items_given_to_self.get("coins", 0)
+        last_points_coagent = (
+            None
+            if self.state.previous_points is None
+            else self.state.previous_points.get(other_id)
+        )
+        last_value_agent = (
+            None
+            if self.state.previous_values is None
+            else self.state.previous_values.get(agent_id)
+        )
+        last_hand_agent = (
+            None
+            if self.state.previous_hands is None
+            else self.state.previous_hands.get(agent_id)
+        )
+        last_points_agent = (
+            None
+            if self.state.previous_points is None
+            else self.state.previous_points.get(agent_id)
+        )
+        last_split_coagent = None
+        last_split_agent = None
+        if self.state.previous_splits is not None:
+            last_split_coagent = self.state.previous_splits[
+                other_id
+            ].coins_given_to_self
+            last_split_agent = self.state.previous_splits[agent_id].coins_given_to_self
         obs = TrustAndSplitObs(
             round_nb=self.state.round_nb,
-            last_message=self.state.last_message,
             current_agent=self.state.current_agent,
-            last_value_coagent=last_value,
+            other_agent=other_id,
             value=self.state.values[agent_id],
-            other_agent_split=other_split_val,
             quota_messages_per_agent_per_round=self.quota_messages_per_agent_per_round,
-            quantities={"coins": self.max_coins},
             hand=self.state.hands[agent_id],
-            last_hand_coagent=last_hand,
             split_phase=self.state.split_phase,
+            last_message=self.state.last_message,
+            last_split_coagent=last_split_coagent,
+            last_split_agent=last_split_agent,
+            last_value_coagent=last_value_coagent,
+            last_hand_coagent=last_hand_coagent,
+            last_points_coagent=last_points_coagent,
+            last_value_agent=last_value_agent,
+            last_hand_agent=last_hand_agent,
+            last_points_agent=last_points_agent,
         )
         return obs
-
+        
     def get_state(self):
         return self.state
 

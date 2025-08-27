@@ -42,10 +42,10 @@ class NegotiationAgent(Agent):
 
         # Implemented in variants
         self.intro_prompt = (
-            "Welcome to an iterated game. You are {agent_name}.\n"
+            "Welcome to an iterated game. You are {current_agent}.\n"
             "(...) describe rules here ..."
             "Your goal: {goal}"
-        ).format(agent_name=self.agent_id, goal=self.goal, quota_messages=self.quota_messages_per_agent_per_round, item_types=self.item_types)
+        ).format(current_agent=self.agent_id, goal=self.goal, quota_messages=self.quota_messages_per_agent_per_round, item_types=self.item_types)
         self.new_round_prompt = ""
         self.last_round_prompt = ""
         self.send_split_prompt = ""
@@ -88,12 +88,14 @@ class NegotiationAgent(Agent):
         # First-ever call
         is_intro = round_nb == 0 and self.state.chat_counter == 0
         if is_intro:
-            prompt_parts.append(self.intro_prompt.format(agent_name=self.agent_id, goal=self.goal, quota_messages=observation.quota_messages_per_agent_per_round, item_types=self.item_types, **obs_ctx))
+            prompt_parts.append(self.intro_prompt.format(goal=self.goal, quota_messages=observation.quota_messages_per_agent_per_round, item_types=self.item_types, **obs_ctx))
 
         # New round
         is_new_round = round_nb > self.state.round_nb
-        if is_new_round or is_intro:
+        if is_new_round:
             self.state.nb_messages_sent_this_round = 0
+            if not is_intro:
+                prompt_parts.append(self.last_round_prompt.format(**obs_ctx))
             prompt_parts.append(self.new_round_prompt.format(round_nb=round_nb, **obs_ctx))
             self.state.round_nb = round_nb
 
