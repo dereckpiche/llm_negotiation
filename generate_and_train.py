@@ -26,6 +26,8 @@ from mllm.markov_games.mg_utils import (
     AgentConfig,
     MarkovGameConfig,
     init_markov_game_components,
+    group_time_steps,
+    modulo_stop_condition,
 )
 from mllm.markov_games.run_markov_games import run_markov_games
 from mllm.markov_games.alternative_actions_runner import AlternativeActionsRunner
@@ -218,6 +220,13 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
             output_folder=it_folder,
             markov_games=markov_games,
         )
+        # Group time steps if stop condition is set - useful when there are multiple actions per time step and we want to treat them as a single action during training
+        if cfg["markov_games"]["group_time_steps_stop_condition"] is not None:
+            rollout_trees = group_time_steps(
+                rollout_tree=rollout_trees, 
+                accumulation_stop_condition=cfg["markov_games"]["group_time_steps_stop_condition"], 
+            )
+        
         generation_end_time = time.time()
 
         # Process raw data into training data using the specified functions for each agent

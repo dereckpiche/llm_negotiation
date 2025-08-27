@@ -26,6 +26,10 @@ common_agent_kwargs: &common_agent_kwargs
     goal: "Maximize your total points over the whole game."
 
 markov_games:
+
+    group_time_steps_stop_condition: stop_when_round_ends # Set to None to disable grouping
+
+    group_modulo: 10
     runner_method_name: LinearRunner
     runner_kwargs: {}
 

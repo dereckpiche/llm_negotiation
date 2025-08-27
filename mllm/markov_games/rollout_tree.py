@@ -20,6 +20,7 @@ class ChatTurn(BaseModel):
     agent_id: AgentId  # ID of the agent with which the chat occured
     content: str
     is_state_end: bool  # indicates whether this chatturn marks the end of a state in the trajectory
+    real_time_step: int | None = None # used for logging purposes (html rendering)
 
 
 class SimulationStepLog(BaseModel):
