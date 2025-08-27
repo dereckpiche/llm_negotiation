@@ -13,16 +13,16 @@ Proportional splitting is used when the two proposals exceed the available total
   - No communication; agents go straight to making split proposals, with the starting player alternating deterministically.
   - Motivation: mirrors no‑communication setups (e.g., Advantage Alignment) while keeping the split decision nontrivial.
 
-- Trust-and-Split (TAS)
-  - Single item type (coins); each round, each agent’s per-coin value is independently sampled in a broad range (e.g., 1–20).
-  - Each agent observes only their own value; they may use short messages to share and negotiate.
-  - Motivation: a simple blend that tests whether agents learn to exchange private information and coordinate proportional, value-aware splits.
-
 - Trust-and-Split RPS (TAS-RPS)
   - Single item type (coins)
   - Each round, a rock–paper–scissors hand draw creates a strong asymmetry: the winner’s per-coin value is 10, the loser’s is 1.
   - Each agent initially sees only their own hand and must communicate to coordinate an optimal split.
   - Motivation: enforce large value disparity so one’s own value reveals little about the other’s (avoiding ceiling effects) and incentivize meaningful communication.
+ 
+- Trust-and-Split (TAS)
+  - Single item type (coins); each round, each agent’s per-coin value is independently sampled in a broad range (e.g., 1–20).
+  - Each agent observes only their own value; they may use short messages to share and negotiate.
+  - Motivation: a simple blend that tests whether agents learn to exchange private information and coordinate proportional, value-aware splits.
 
 - Deal-or-No-Deal (DOND)
   - Introduced in [Deal or No Deal? End-to-End Learning for Negotiation Dialogues](https://arxiv.org/pdf/1706.05125)
