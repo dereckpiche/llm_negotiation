@@ -88,12 +88,13 @@ class IPDAgent(Agent):
             ChatTurn(
                 agent_id=self.agent_id,
                 role="assistant",
-                content=policy_output,
+                content=policy_output.content,
+                reasoning_content=policy_output.reasoning_content,
                 is_state_end=False,
             )
         )
 
-        action = policy_output
+        action = policy_output.content
 
         agent_step_log = AgentActLog(
             chat_turns=self.state.chat_history[self.state.chat_counter :], info=None

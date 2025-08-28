@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Tuple
 from mllm.markov_games.agent import Agent
 from mllm.markov_games.negotiation.nego_simulation import Message, NegotiationObs, Split
 from mllm.markov_games.rollout_tree import AgentActLog, ChatTurn
+from mllm.models.inference_backend import PolicyOutput
 
 @dataclass
 class NegotiationAgentState:
@@ -151,7 +152,7 @@ class NegotiationAgent(Agent):
                     is_state_end=False,
                 )
             )
-            action = self.get_split_action(policy_output, observation)
+            action = self.get_split_action(policy_output.content, observation)
         else:
             action = None
 

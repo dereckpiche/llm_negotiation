@@ -1,5 +1,5 @@
 defaults:
-    - trust_and_split.yaml
+    - debug_ipd.yaml
 
 
 models:

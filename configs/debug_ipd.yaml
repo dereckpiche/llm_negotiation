@@ -5,13 +5,9 @@ defaults:
 
 experiment:
     name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
-    nb_epochs: 200
-    nb_matches_per_iteration: 1
-    reinit_matches_each_it: true
-    checkpoint_every_n_iterations: 1e5
-    start_epoch: 0
-    resume_experiment: true
-    base_seed: 1000
+    nb_epochs: 2
+    nb_matches_per_iteration: 4
+    seed_group_size: 1
 
 agent_0_id: Alice
 agent_1_id: Bob
@@ -21,9 +17,6 @@ markov_games:
     runner_method_name: LinearRunner
     simulation_init_args:
         rounds_per_game: 10
-    runner_kwargs:
-        nb_alternative_actions: 1
-        max_depth: 10
 
 temperature: 1.0
 
@@ -33,40 +26,7 @@ models:
         init_args:
             llm_id: base_llm
             model_name: "Qwen/Qwen3-4B-Instruct-2507" # Qwen/Qwen3-4B-Instruct-2507
-            max_thinking_characters: 10
-            hf_kwargs:
-                device_map: "cuda:0"
-                torch_dtype: "bfloat16"
-                max_memory: {0: "10GiB"}
-                attn_implementation: "eager"
-            inference_backend: vllm
-            inference_backend_init_kwargs:
-                max_model_len: 1e4
-                # max_num_seqs: 128
-                gpu_memory_utilization: 0.5
-                dtype: "bfloat16"
-                trust_remote_code: True
-                max_num_batched_tokens: 1000
-                enforce_eager: True
-                max_lora_rank: 32
-            inference_backend_sampling_params:
-                # max_tokens: 40
-                temperature: 1.0
-                top_p: 1.0
-                top_k: 0
-            adapter_configs:
-                agent_adapter:
-                    task_type: CAUSAL_LM
-                    r: 32
-                    lora_alpha: 128
-                    lora_dropout: 0.0
-                    target_modules: all-linear
-                critic_adapter:
-                    task_type: CAUSAL_LM
-                    r: 32
-                    lora_alpha: 128
-                    lora_dropout: 0.0
-                    target_modules: all-linear
+            inference_backend: dummy
 
 trainers:
     agent_trainer:

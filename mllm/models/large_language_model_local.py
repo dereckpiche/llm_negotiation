@@ -50,6 +50,7 @@ class LeanLocalLLM:
         hf_kwargs: dict = {},
         adapter_configs: dict = {},
         output_directory: str = "./models/",
+        max_thinking_characters: int = 0,
         inference_backend: Literal["vllm", "sglang", "dummy"] = "vllm",
         inference_backend_sampling_params: dict = {},
         inference_backend_init_kwargs: dict = {},
@@ -64,7 +65,7 @@ class LeanLocalLLM:
         self.adapter_configs = adapter_configs
         self.adapter_ids = list(adapter_configs.keys())
         self.enable_thinking = enable_thinking
-
+        self.max_thinking_characters = max_thinking_characters
         # Optional user-specified initial adapter weight locations (local or HF Hub)
         # Format: {adapter_id: path_or_repo_id}
         self.initial_adapter_paths: dict[str, str] | None = initial_adapter_paths
