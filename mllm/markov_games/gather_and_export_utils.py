@@ -200,10 +200,18 @@ def gather_all_chat_turns_for_path(path: RolloutNodeList) -> List[ChatTurnLog]:
     """Iterate through all chat turns for all agents in a path sorted by time step."""
     turns = []
 
-    # Collect all turns from all agents in all path nodes
+    # Collect turns from all agents, but interleave them per timestep by (user, assistant) pairs
     for node in path.nodes:
-        for agent_id, action_log in node.step_log.action_logs.items():
-            if action_log.chat_turns:
+        # Build (user[, assistant]) pairs for each agent at this timestep
+        agent_ids = sorted(list(node.step_log.action_logs.keys()))
+        per_agent_pairs: Dict[str, List[List[ChatTurnLog]]] = {}
+
+        for agent_id in agent_ids:
+            action_log = node.step_log.action_logs.get(agent_id)
+            pairs: List[List[ChatTurnLog]] = []
+            current_pair: List[ChatTurnLog] = []
+
+            if action_log and action_log.chat_turns:
                 for chat_turn in action_log.chat_turns:
                     turn_log = ChatTurnLog(
                         time_step=node.time_step,
@@ -211,11 +219,45 @@ def gather_all_chat_turns_for_path(path: RolloutNodeList) -> List[ChatTurnLog]:
                         role=chat_turn.role,
                         content=chat_turn.content,
                         is_state_end=chat_turn.is_state_end,
-                        reward=node.step_log.simulation_step_log.rewards.get(
-                            agent_id, 0
-                        ),
+                        reward=node.step_log.simulation_step_log.rewards.get(agent_id, 0),
                     )
-                    turns.append(turn_log)
+
+                    if chat_turn.role == "user":
+                        # If a previous pair is open, close it and start a new one
+                        if current_pair:
+                            pairs.append(current_pair)
+                            current_pair = []
+                        current_pair = [turn_log]
+                    else:
+                        # assistant: attach to an open user message if present; otherwise stand alone
+                        if current_pair and len(current_pair) == 1 and current_pair[0].role == "user":
+                            current_pair.append(turn_log)
+                            pairs.append(current_pair)
+                            current_pair = []
+                        else:
+                            # No preceding user or already paired; treat as its own unit
+                            pairs.append([turn_log])
+
+                if current_pair:
+                    # Unpaired trailing user message
+                    pairs.append(current_pair)
+
+            per_agent_pairs[agent_id] = pairs
+
+        # Interleave pairs across agents: A1, B1, A2, B2, ...
+        index = 0
+        while True:
+            added_any = False
+            for agent_id in agent_ids:
+                agent_pairs = per_agent_pairs.get(agent_id, [])
+                if index < len(agent_pairs):
+                    for tl in agent_pairs[index]:
+                        turns.append(tl)
+                    added_any = True
+            if not added_any:
+                break
+            index += 1
+
     return turns
 
 
@@ -460,6 +502,8 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             margin-right: 8px; /* small gap from following content */
             pointer-events: auto; /* allow events so we can ignore them in JS */
         }
+        /* Hide timestep badges when grouping by 1 */
+        .hide-ts-badges .ts-badge { display: none; }
         .ts-badge::before {
             content: "";
             position: relative;
@@ -476,10 +520,10 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             background: var(--bg);
             vertical-align: baseline;
             line-height: 1.2;
-            padding-left: 6px;
+            padding-left: 0;
             border-left: 0;
         }
-        .message-box::before { content: ""; display: inline-block; margin-right: 6px; line-height: 1; }
+        .message-box::before { content: none; display: none; margin-right: 0; line-height: 1; }
         .chat-turn.agent-alice.role-assistant .message-box::before { color: #0eb224; }
         .chat-turn.agent-bob.role-assistant .message-box::before { color: #ef8323; }
         .chat-turn.collapsed .message-box::before { display: none; }
@@ -507,9 +551,9 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         .group-divider {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 8px;
             width: 100%;
-            margin: 18px 0 10px 0;
+            margin: 8px 0 2px 0;
         }
         .group-divider::before,
         .group-divider::after {
@@ -589,6 +633,8 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "    }\n"
         "    flow.innerHTML = '';\n"
         "    flow.appendChild(frag);\n"
+        "    // Hide timestep badges when grouping is 1\n"
+        "    flow.classList.toggle('hide-ts-badges', n === 1);\n"
         "  }\n"
         "  const input = document.getElementById('group-size');\n"
         "  const btn = document.getElementById('apply-grouping');\n"
@@ -596,13 +642,15 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "    btn.addEventListener('click', () => { const n = parseInt(input.value || '0', 10); applyGrouping(n); });\n"
         "    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const n = parseInt(input.value || '0', 10); applyGrouping(n); } });\n"
         "  }\n"
+        "  // Default grouping to 1 timestep on load\n"
+        "  if (input) { input.value = '1'; applyGrouping(1); }\n"
         "});\n"
         "</script>",
         "</head>",
         "<body>",
         '<div class="toolbar">',
         '<label for="group-size">Group every</label>',
-        '<input id="group-size" type="number" min="0" step="1" value="0" />',
+        '<input id="group-size" type="number" min="0" step="1" value="1" />',
         '<span>timesteps</span>',
         '<button id="apply-grouping">Apply</button>',
         '</div>',
@@ -627,17 +675,20 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
                     reward_val = reward_val[:8] + "…"
             else:
                 reward_val = str(raw_val)
-            reward_part = f'<span class="sep"> • </span><span class="reward">Reward: {reward_val}</span>'
+            # Format: "🤖 Alice 💬 • Reward: 5.5556 • "
+            badge_inner = (
+                f"{emoji} <span class=\"agent-name\">{name}</span> 💬"
+                f" <span class=\"sep\"> • </span><span class=\"reward\">Reward: {reward_val}</span>"
+                f" <span class=\"sep\"> • </span>"
+            )
         else:
             # For user messages, show "User of {Agent ID}" in the badge
             name = 'User of ' + html.escape(turn.agent_id)
             emoji = '<span class="emoji-bw">⚙️</span>'
-            reward_part = ""
+            # Format (no reward): "⚙️ User of Alice 💬 • "
+            badge_inner = f"{emoji} <span class=\"agent-name\">{name}</span> 💬 <span class=\"sep\"> • </span>"
 
-        badge = (
-            f'<span class="agent-badge">{emoji}:<span class="agent-name"> {name}</span>'
-            f'{reward_part}<span class="sep"> • 💬: </span></span>'
-        )
+        badge = f'<span class="agent-badge">{badge_inner}</span>'
 
         # Inline timestep distinction badge at step boundaries (render before first message)
         ts_badge_html = ""
