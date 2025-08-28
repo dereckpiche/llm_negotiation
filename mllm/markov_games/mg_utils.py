@@ -6,6 +6,8 @@ from mllm.markov_games.ipd.ipd_simulation import IPD
 from mllm.markov_games.markov_game import MarkovGame
 from mllm.markov_games.negotiation.dond_agent import DealNoDealAgent
 from mllm.markov_games.negotiation.dond_simulation import DealNoDealSimulation
+from mllm.markov_games.negotiation.no_press_nego_agent import NoPressAgent
+from mllm.markov_games.negotiation.no_press_nego_simulation import NoPressSimulation
 from mllm.markov_games.negotiation.tas_agent import TrustAndSplitAgent
 from mllm.markov_games.negotiation.tas_rps_agent import TrustAndSplitRPSAgent
 from mllm.markov_games.negotiation.tas_rps_simulation import TrustAndSplitRPSSimulation
@@ -21,6 +23,7 @@ class AgentConfig:
     policy_id: str
     init_kwargs: dict
 
+
 @dataclass
 class MarkovGameConfig:
     id: int
@@ -31,9 +34,8 @@ class MarkovGameConfig:
 
 
 def init_markov_game_components(
-    config: MarkovGameConfig,
-    policies: dict[str, Callable[[list[dict]], str]]
-    ):
+    config: MarkovGameConfig, policies: dict[str, Callable[[list[dict]], str]]
+):
     """
     TOWRITE
     """
@@ -47,9 +49,9 @@ def init_markov_game_components(
         agent_class = eval(agent_config.agent_class_name)
         agent = agent_class(
             seed=config.seed,
-            agent_id = agent_id,
-            policy = policies[agent_config.policy_id],
-            **agent_config.init_kwargs
+            agent_id=agent_id,
+            policy=policies[agent_config.policy_id],
+            **agent_config.init_kwargs,
         )
         agents[agent_id] = agent
     markov_game = MarkovGame(

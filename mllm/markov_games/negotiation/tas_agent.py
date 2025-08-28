@@ -7,7 +7,6 @@ class TrustAndSplitAgent(NegotiationAgent):
     def __init__(self, num_message_chars, *args, **kwargs):
         self.num_message_chars = num_message_chars
         super().__init__(*args, **kwargs)
-        # TODO: take inspiration from DOND prompt
         self.intro_prompt = (
             "Welcome to an iterated game. You are {agent}. The other agent is {other_agent}.\n"
             "Setup:\n"
