@@ -1,8 +1,8 @@
 """
 Negotiation simulation environment
 """
-from abc import abstractmethod
 import copy
+from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
@@ -19,12 +19,13 @@ AgentId = str
 class Split:
     items_given_to_self: Dict[str, int]
 
+
 @dataclass
 class Message:
     message: str
 
 
-@dataclass # gets extended by variants
+@dataclass  # gets extended by variants
 class NegotiationState:
     round_nb: int
     last_message: str
@@ -36,10 +37,10 @@ class NegotiationState:
     previous_values: Dict[AgentId, float] | None
     previous_splits: Dict[AgentId, Split | None] | None
     previous_points: Dict[AgentId, float] | None
-    split_phase: bool = False
+    split_phase: bool
 
 
-@dataclass # gets extended by variants
+@dataclass  # gets extended by variants
 class NegotiationObs:
     round_nb: int
     last_message: str
@@ -47,14 +48,16 @@ class NegotiationObs:
     current_agent: AgentId
     other_agent: AgentId
     quantities: Dict[str, int]
+    item_types: List[str]
     value: float
-    split_phase: bool = False
+    split_phase: bool
     last_split_agent: int | None
     last_value_agent: float | None
     last_points_agent: float | None
     last_split_coagent: int | None
     last_value_coagent: float | None
     last_points_coagent: float | None
+
 
 class NegotiationSimulation(Simulation):
     def __init__(
@@ -63,30 +66,31 @@ class NegotiationSimulation(Simulation):
         seed: int,
         nb_of_rounds: int,
         quota_messages_per_agent_per_round: int,
-        nb_messages_per_agent: int = 1,
         item_types: List[str] | None = None,
     ):
         self.seed = seed
         self.rng = default_rng(self.seed)
         self.agent_ids = list(agent_ids)
         self.nb_of_rounds = int(nb_of_rounds)
-        self.quota_messages_per_agent_per_round = int(quota_messages_per_agent_per_round)
-        self.nb_messages_per_agent = int(nb_messages_per_agent)
+        self.quota_messages_per_agent_per_round = int(
+            quota_messages_per_agent_per_round
+        )
         self.item_types = item_types or ["coins"]
         self.state: NegotiationState | None = None
         self._starting_agent_index = self.rng.choice([0, 1])
         self.reset()
 
-
     def _other(self, agent_id: AgentId) -> AgentId:
         return get_coagent_id(self.agent_ids, agent_id)
-    
+
     @abstractmethod
     def set_new_round_of_variant(self):
         pass
 
     @abstractmethod
-    def get_info_of_variant(self, state: NegotiationState, actions: Dict[AgentId, Any]) -> Dict[str, Any]:
+    def get_info_of_variant(
+        self, state: NegotiationState, actions: Dict[AgentId, Any]
+    ) -> Dict[str, Any]:
         pass
 
     def step(self, actions: Any) -> Tuple[bool, SimulationStepLog]:
@@ -122,7 +126,7 @@ class NegotiationSimulation(Simulation):
             info = self.get_info_of_variant(self.state, actions)
 
             # Prepare next round
-            self.set_new_round_of_variant() # variant specific 
+            self.set_new_round_of_variant()  # variant specific
             self.state.round_nb += 1
             self.state.last_message = ""
             self.state.split_phase = False
@@ -136,10 +140,7 @@ class NegotiationSimulation(Simulation):
             self.state.other_agent = self._other(self.state.current_agent)
 
             done = self.state.round_nb >= self.nb_of_rounds
-            return done, SimulationStepLog(
-                rewards=rewards,
-                info=info
-            )
+            return done, SimulationStepLog(rewards=rewards, info=info)
 
         # Message phase
         if isinstance(action, Message):
@@ -151,7 +152,8 @@ class NegotiationSimulation(Simulation):
 
             # If both agents have reached their message quota, enter split phase
             if all(
-                self.state.nb_messages_sent[agent_id] >= self.quota_messages_per_agent_per_round
+                self.state.nb_messages_sent[agent_id]
+                >= self.quota_messages_per_agent_per_round
                 for agent_id in self.agent_ids
             ):
                 self.state.split_phase = True
@@ -165,11 +167,11 @@ class NegotiationSimulation(Simulation):
             )
 
         raise Exception("Invalid action type for NegotiationSimulation.")
-    
+
     def get_obs(self):
         """Returns all agent observations in dict"""
         return {agent_id: self.get_obs_agent(agent_id) for agent_id in self.agent_ids}
-    
+
     @abstractmethod
     def get_rewards(self, splits: Dict[AgentId, Split]) -> Dict[AgentId, float]:
         pass
@@ -190,5 +192,3 @@ class NegotiationSimulation(Simulation):
     @abstractmethod
     def reset(self) -> dict[AgentId, NegotiationObs]:
         pass
-
-
