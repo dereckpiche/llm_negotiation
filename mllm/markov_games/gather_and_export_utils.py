@@ -440,9 +440,17 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             display: flex;
             align-items: center;
             gap: 8px;
-            margin-bottom: 12px;
+            margin-bottom: 0;
             font-size: var(--small-font-size);
+            max-height: 0;
+            overflow: hidden;
+            opacity: 0;
+            pointer-events: none;
+            transition: max-height 0.2s ease, opacity 0.2s ease;
         }
+        .toolbar-wrap { position: sticky; top: 0; z-index: 10; background: var(--bg); }
+        .toolbar-hotzone { height: 6px; }
+        .toolbar-wrap:hover .toolbar { max-height: 200px; opacity: 1; pointer-events: auto; margin-bottom: 12px; }
         .toolbar input[type="number"] {
             width: 72px;
             padding: 2px 6px;
@@ -616,6 +624,20 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "      const beforeEnd = (currentRangeEnd === null) || (t <= currentRangeEnd);\n"
         "      el.style.display = (afterStart && beforeEnd) ? '' : 'none';\n"
         "    }\n"
+        "    // Hide group headers that have no visible turns in their section\n"
+        "    const dividers = Array.from(flow.querySelectorAll('.group-divider'));\n"
+        "    for (const d of dividers) {\n"
+        "      let anyVisible = false;\n"
+        "      let el = d.nextElementSibling;\n"
+        "      while (el && !el.classList.contains('group-divider')) {\n"
+        "        if (el.classList.contains('chat-turn')) {\n"
+        "          const disp = getComputedStyle(el).display;\n"
+        "          if (disp !== 'none') { anyVisible = true; break; }\n"
+        "        }\n"
+        "        el = el.nextElementSibling;\n"
+        "      }\n"
+        "      d.style.display = anyVisible ? '' : 'none';\n"
+        "    }\n"
         "  }\n"
         "  function applyGrouping(n) {\n"
         "    // Remove existing group dividers\n"
@@ -692,6 +714,8 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "</script>",
         "</head>",
         "<body>",
+        '<div class="toolbar-wrap">',
+        '<div class="toolbar-hotzone"></div>',
         '<div class="toolbar">',
         '<label for="group-size">Group every</label>',
         '<input id="group-size" type="number" min="0" step="1" value="1" />',
@@ -704,6 +728,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         '<input id="range-end" type="number" step="1" />',
         '<button id="apply-range"><span class="emoji-bw">▶︎</span> Apply</button>',
         '<button id="toggle-strong-hide"><span class="emoji-bw">🗜️</span> Strong Hide: <span id="strong-hide-state">On</span></button>',
+        '</div>',
         '</div>',
         '<div class="messages-flow">',
     ]
