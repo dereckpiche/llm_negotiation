@@ -16,36 +16,22 @@ AgentId = str
 
 
 @dataclass
-class ClassicState(NegotiationState):
+class TrustAndSplitState(NegotiationState):
     pass
 
 
 @dataclass
-class ClassicObs(NegotiationObs):
-    value: float  # override to ensure present
+class TrustAndSplitObs(NegotiationObs):
+    pass
 
 
-class ClassicSimulation(NegotiationSimulation):
+class TrustAndSplitSimulation(NegotiationSimulation):
     def __init__(
         self,
-        agent_ids: List[AgentId],
-        seed: int,
-        rounds_per_game: int,
-        quota_messages_per_agent_per_round: int,
-        nb_messages_per_agent: int = 1,
-        max_coins: int = 10,
         *args,
         **kwargs,
     ):
-        self.max_coins = int(max_coins)
-        super().__init__(
-            agent_ids=agent_ids,
-            seed=seed,
-            nb_of_rounds=int(rounds_per_game),
-            quota_messages_per_agent_per_round=int(quota_messages_per_agent_per_round),
-            nb_messages_per_agent=int(nb_messages_per_agent),
-            item_types=["coins"],
-        )
+        super().__init__(*args, **kwargs)
 
     def _sample_values(self) -> Dict[AgentId, float]:
         # Independent random per-coin values between 1 and 20 (inclusive)
@@ -54,7 +40,7 @@ class ClassicSimulation(NegotiationSimulation):
     def set_new_round_of_variant(self):
         self.state.previous_values = copy.deepcopy(self.state.values)
         self.state.values = self._sample_values()
-        self.state.quantities = {"coins": self.max_coins}
+        self.state.quantities = {"coins": 10}
 
     def get_info_of_variant(
         self, state: NegotiationState, actions: Dict[AgentId, Any]
@@ -63,49 +49,78 @@ class ClassicSimulation(NegotiationSimulation):
             "values": copy.deepcopy(state.values),
             "previous_values": copy.deepcopy(state.previous_values),
             "splits": copy.deepcopy(state.splits),
-            "quantities": copy.deepcopy(state.quantities),
         }
 
     def get_rewards(self, splits: Dict[AgentId, Split]) -> Dict[AgentId, float]:
         return compute_tas_style_rewards(
-            self.agent_ids, self.state.values, splits, self.max_coins
+            self.agent_ids, self.state.values, splits, 10.0
         )
 
     def get_obs(self):
         return {agent_id: self.get_obs_agent(agent_id) for agent_id in self.agent_ids}
 
     def get_obs_agent(self, agent_id):
-        other_id = (
-            self.agent_ids[1] if agent_id == self.agent_ids[0] else self.agent_ids[0]
+        other_id = self._other(agent_id)
+        last_value_coagent = (
+            None
+            if self.state.previous_values is None
+            else self.state.previous_values.get(other_id)
         )
-        other_split_val = None
-        if self.state.splits.get(other_id) is not None:
-            other_split_val = self.state.splits[other_id].items_given_to_self.get(
-                "coins", 0
-            )
-        return ClassicObs(
+        last_points_coagent = (
+            None
+            if self.state.previous_points is None
+            else round(self.state.previous_points.get(other_id), 1)
+        )
+        last_value_agent = (
+            None
+            if self.state.previous_values is None
+            else self.state.previous_values.get(agent_id)
+        )
+        last_points_agent = (
+            None
+            if self.state.previous_points is None
+            else round(self.state.previous_points.get(agent_id), 1)
+        )
+        last_split_coagent = None
+        last_split_agent = None
+        if self.state.previous_splits is not None:
+            last_split_coagent = self.state.previous_splits[
+                other_id
+            ].items_given_to_self
+            last_split_agent = self.state.previous_splits[agent_id].items_given_to_self
+        obs = TrustAndSplitObs(
             round_nb=self.state.round_nb,
             last_message=self.state.last_message,
-            current_agent=self.state.current_agent,
-            quantities={"coins": self.max_coins},
-            value=self.state.values[agent_id],
-            other_agent_split=other_split_val,
-            split_phase=self.state.split_phase,
             quota_messages_per_agent_per_round=self.quota_messages_per_agent_per_round,
+            current_agent=self.state.current_agent,
+            other_agent=other_id,
+            quantities={"coins": 10},
+            item_types=self.item_types,
+            value=self.state.values[agent_id],
+            split_phase=self.state.split_phase,
+            last_split_agent=last_split_agent,
+            last_value_agent=last_value_agent,
+            last_points_agent=last_points_agent,
+            last_split_coagent=last_split_coagent,
+            last_value_coagent=last_value_coagent,
+            last_points_coagent=last_points_coagent,
         )
+        return obs
 
     def reset(self):
         start_agent = self.agent_ids[self._starting_agent_index]
         values = self._sample_values()
-        self.state = ClassicState(
+        self.state = TrustAndSplitState(
             round_nb=0,
             last_message="",
             current_agent=start_agent,
-            quantities={"coins": self.max_coins},
+            quantities={"coins": 10},
             values=values,
             previous_values=None,
             splits={aid: None for aid in self.agent_ids},
             nb_messages_sent={aid: 0 for aid in self.agent_ids},
             split_phase=False,
+            previous_splits=None,
+            previous_points=None,
         )
         return self.get_obs()

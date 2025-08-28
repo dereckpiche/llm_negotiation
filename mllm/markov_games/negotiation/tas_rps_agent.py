@@ -10,7 +10,7 @@ from mllm.markov_games.negotiation.nego_agent import (
     NegotiationAgentState,
     Split,
 )
-from mllm.markov_games.negotiation.tas_simulation import TrustAndSplitRPSObs
+from mllm.markov_games.negotiation.tas_rps_simulation import TrustAndSplitRPSObs
 from mllm.markov_games.rollout_tree import AgentActLog, ChatTurn
 
 
@@ -31,9 +31,9 @@ class TrustAndSplitRPSAgent(NegotiationAgent):
             "2. In each round, there are 10 coins to split between the two agents.\n"
             "3. Each round, both agents are randomly assigned rock/paper/scissors hands. The assignment is always such that one hand is winning and the other hand is losing. There are no ties.\n"
             "4. You only see your own hand.\n"
-            "5. The hands are not played against each other. They only determine the value of your coin in that round:\n"
-            "   - The agent with the winning hand has a coin value of 10.\n"
-            "   - The agent with the losing hand has a coin value of 1.\n"
+            "5. The hands are not played against each other. They only determine your per-coin value in that round:\n"
+            "   - The agent with the winning hand has a per-coin value of 10.\n"
+            "   - The agent with the losing hand has a per-coin value of 1.\n"
             "   - Winning hands are rock beats scissors, scissors beats paper, paper beats rock.\n"
             "   - Because assignments are random, over many rounds both agents are equally likely to have winning and losing hands.\n"
             "\n"
@@ -44,7 +44,7 @@ class TrustAndSplitRPSAgent(NegotiationAgent):
             "3. After the chat, both agents simultaneously propose how many coins they keep.\n"
             "4. If the total sum of proposals is less than or equal to 10, both agents receive their proposals.\n"
             "5. If the total sum of proposals exceeds 10, the coins are allocated proportionally.\n"
-            "6. Your points for the round = (coins you receive) x (your coin value for that round). \n"
+            "6. Your points for the round = (coins you receive) x (your per-coin value for that round). \n"
             "7. The points are accumulated across rounds.\n"
             "Your goal: {goal}\n"
         )

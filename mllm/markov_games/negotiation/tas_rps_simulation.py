@@ -62,11 +62,9 @@ class TrustAndSplitRPSObs(NegotiationObs):
 class TrustAndSplitRPSSimulation(NegotiationSimulation):
     def __init__(
         self,
-        max_coins: int = 10,
         *args,
         **kwargs,
     ):
-        self.max_coins = int(max_coins)
         super().__init__(*args, **kwargs)
 
     def _sample_hands_and_values(
@@ -96,7 +94,7 @@ class TrustAndSplitRPSSimulation(NegotiationSimulation):
         self.state.hands = new_hands
         self.state.values = new_values
         # Quantities are constant in TAS
-        self.state.quantities = {"coins": self.max_coins}
+        self.state.quantities = {"coins": 10}
 
     def get_info_of_variant(
         self, state: NegotiationState, actions: Dict[AgentId, Any]
@@ -110,9 +108,7 @@ class TrustAndSplitRPSSimulation(NegotiationSimulation):
         }
 
     def get_rewards(self, splits: Dict[AgentId, Split]) -> Dict[AgentId, float]:
-        return compute_tas_style_rewards(
-            self.agent_ids, self.state.values, splits, self.max_coins
-        )
+        return compute_tas_style_rewards(self.agent_ids, self.state.values, splits, 10)
 
     def get_obs_agent(self, agent_id):
         """Returns observation for agent_id"""
@@ -160,7 +156,7 @@ class TrustAndSplitRPSSimulation(NegotiationSimulation):
             quota_messages_per_agent_per_round=self.quota_messages_per_agent_per_round,
             current_agent=self.state.current_agent,
             other_agent=other_id,
-            quantities={"coins": self.max_coins},
+            quantities={"coins": 10},
             item_types=self.item_types,
             value=self.state.values[agent_id],
             split_phase=self.state.split_phase,
@@ -194,7 +190,7 @@ class TrustAndSplitRPSSimulation(NegotiationSimulation):
             round_nb=0,
             last_message="",
             current_agent=start_agent,
-            quantities={"coins": self.max_coins},
+            quantities={"coins": 10},
             values=values,
             splits={aid: None for aid in self.agent_ids},
             nb_messages_sent={aid: 0 for aid in self.agent_ids},
