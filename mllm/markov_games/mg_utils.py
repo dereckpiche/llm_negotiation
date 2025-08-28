@@ -1,13 +1,13 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from mllm.markov_games.markov_game import MarkovGame
 from mllm.markov_games.ipd.ipd_agent import IPDAgent
 from mllm.markov_games.ipd.ipd_simulation import IPD
-from mllm.markov_games.trust_and_split.tas_agent import TrustAndSplitAgent
-from mllm.markov_games.trust_and_split.tas_simulation import TrustAndSplitSimulation
-from mllm.markov_games.deal_no_deal.dond_agent import DealNoDealAgent
-from mllm.markov_games.deal_no_deal.dond_simulation import DealNoDealSimulation
+from mllm.markov_games.markov_game import MarkovGame
+from mllm.markov_games.negotiation.dond_agent import DealNoDealAgent
+from mllm.markov_games.negotiation.dond_simulation import DealNoDealSimulation
+from mllm.markov_games.negotiation.tas_agent import TrustAndSplitAgent
+from mllm.markov_games.negotiation.tas_simulation import TrustAndSplitSimulation
 
 AgentId = str
 
