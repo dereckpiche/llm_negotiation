@@ -504,6 +504,8 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         }
         /* Hide timestep badges when grouping by 1 */
         .hide-ts-badges .ts-badge { display: none; }
+        /* Strong hide: completely hide collapsed turns */
+        .strong-hide .chat-turn.collapsed { display: none; }
         .ts-badge::before {
             content: "";
             position: relative;
@@ -595,6 +597,10 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "<script>\n"
         "document.addEventListener('DOMContentLoaded', function() {\n"
         "  const flow = document.querySelector('.messages-flow');\n"
+        "  // State for range filtering and strong hide\n"
+        "  let currentRangeStart = null;\n"
+        "  let currentRangeEnd = null;\n"
+        "  let strongHideOn = true;\n"
         "  // Toggle collapse per message\n"
         "  document.body.addEventListener('click', function(e){\n"
         "    if (e.target.closest('.ts-badge')) { return; }\n"
@@ -602,6 +608,15 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "    if (turn) { e.stopPropagation(); turn.classList.toggle('collapsed'); }\n"
         "  });\n"
         "  // Grouping logic\n"
+        "  function applyRangeFilter() {\n"
+        "    const turns = Array.from(flow.querySelectorAll('.chat-turn'));\n"
+        "    for (const el of turns) {\n"
+        "      const t = parseInt(el.getAttribute('data-time-step') || '0', 10);\n"
+        "      const afterStart = (currentRangeStart === null) || (t >= currentRangeStart);\n"
+        "      const beforeEnd = (currentRangeEnd === null) || (t <= currentRangeEnd);\n"
+        "      el.style.display = (afterStart && beforeEnd) ? '' : 'none';\n"
+        "    }\n"
+        "  }\n"
         "  function applyGrouping(n) {\n"
         "    // Remove existing group dividers\n"
         "    Array.from(flow.querySelectorAll('.group-divider')).forEach(el => el.remove());\n"
@@ -635,6 +650,10 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "    flow.appendChild(frag);\n"
         "    // Hide timestep badges when grouping is 1\n"
         "    flow.classList.toggle('hide-ts-badges', n === 1);\n"
+        "    // Keep strong hide state\n"
+        "    flow.classList.toggle('strong-hide', strongHideOn);\n"
+        "    // Re-apply range filter after regrouping\n"
+        "    applyRangeFilter();\n"
         "  }\n"
         "  const input = document.getElementById('group-size');\n"
         "  const btn = document.getElementById('apply-grouping');\n"
@@ -644,6 +663,31 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "  }\n"
         "  // Default grouping to 1 timestep on load\n"
         "  if (input) { input.value = '1'; applyGrouping(1); }\n"
+        "  // Range filter controls\n"
+        "  const rangeStart = document.getElementById('range-start');\n"
+        "  const rangeEnd = document.getElementById('range-end');\n"
+        "  const rangeBtn = document.getElementById('apply-range');\n"
+        "  if (rangeBtn && rangeStart && rangeEnd) {\n"
+        "    const applyRange = () => {\n"
+        "      const sv = parseInt(rangeStart.value || '', 10);\n"
+        "      const ev = parseInt(rangeEnd.value || '', 10);\n"
+        "      currentRangeStart = Number.isFinite(sv) ? sv : null;\n"
+        "      currentRangeEnd = Number.isFinite(ev) ? ev : null;\n"
+        "      applyRangeFilter();\n"
+        "    };\n"
+        "    rangeBtn.addEventListener('click', applyRange);\n"
+        "    rangeStart.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyRange(); });\n"
+        "    rangeEnd.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyRange(); });\n"
+        "  }\n"
+        "  // Strong hide toggle (on by default)\n"
+        "  const strongHideBtn = document.getElementById('toggle-strong-hide');\n"
+        "  const strongHideStateEl = document.getElementById('strong-hide-state');\n"
+        "  if (strongHideBtn) {\n"
+        "    const setLabel = () => { if (strongHideStateEl) { strongHideStateEl.textContent = strongHideOn ? 'On' : 'Off'; } };\n"
+        "    strongHideBtn.addEventListener('click', () => { strongHideOn = !strongHideOn; flow.classList.toggle('strong-hide', strongHideOn); setLabel(); });\n"
+        "    flow.classList.add('strong-hide');\n"
+        "    setLabel();\n"
+        "  }\n"
         "});\n"
         "</script>",
         "</head>",
@@ -653,6 +697,13 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         '<input id="group-size" type="number" min="0" step="1" value="1" />',
         '<span>timesteps</span>',
         '<button id="apply-grouping">Apply</button>',
+        '<span style="margin-left:8px"></span>',
+        '<label for="range-start"><span class="emoji-bw">🔎</span> Range</label>',
+        '<input id="range-start" type="number" step="1" />',
+        '<span>to</span>',
+        '<input id="range-end" type="number" step="1" />',
+        '<button id="apply-range"><span class="emoji-bw">▶︎</span> Apply</button>',
+        '<button id="toggle-strong-hide"><span class="emoji-bw">🗜️</span> Strong Hide: <span id="strong-hide-state">On</span></button>',
         '</div>',
         '<div class="messages-flow">',
     ]
