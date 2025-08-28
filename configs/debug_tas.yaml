@@ -1,65 +1,28 @@
 # To quickly check if code still runs
 
 defaults:
-    - trust_and_split.yaml
+    - tas.yaml
 
 experiment:
     name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
-    nb_epochs: 200
-    nb_matches_per_iteration: 32
-    reinit_matches_each_it: true
-    checkpoint_every_n_iterations: 1e5
-    start_epoch: 0
-    resume_experiment: true
-    base_seed: 1000
+    nb_epochs: 2
+    nb_matches_per_iteration: 8
+    seed_group_size: 2
+
 
 markov_games:
     runner_method_name: LinearRunner
     runner_kwargs: {}
     simulation_class_name: TrustAndSplitSimulation
     simulation_init_args:
-        agent_ids: ${agent_ids}
         rounds_per_game: 10
-        quota_messages_per_agent_per_round: 1
-
 models:
     base_llm:
         class: LeanLocalLLM
         init_args:
             llm_id: base_llm
             model_name: "Qwen/Qwen3-4B-Instruct-2507" # Qwen/Qwen3-4B-Instruct-2507
-            hf_kwargs: 
-                device_map: "cuda:0"
-                torch_dtype: "bfloat16"
-                max_memory: {0: "35GiB"}
-                attn_implementation: "flash_attention_2"
-            inference_backend: vllm
-            inference_backend_init_kwargs:
-                max_model_len: 1e4
-                gpu_memory_utilization: 0.5
-                dtype: "bfloat16"
-                trust_remote_code: True
-                max_num_batched_tokens: 1000
-                enforce_eager: True
-                max_lora_rank: 32
-            inference_backend_sampling_params:
-                temperature: 1.0
-                top_p: 1.0
-                max_tokens: 400
-                top_k: 0
-            adapter_configs:
-                agent_adapter:
-                    task_type: CAUSAL_LM
-                    r: 32
-                    lora_alpha: 128
-                    lora_dropout: 0.0
-                    target_modules: all-linear
-                critic_adapter:
-                    task_type: CAUSAL_LM
-                    r: 32
-                    lora_alpha: 128
-                    lora_dropout: 0.0
-                    target_modules: all-linear
+            inference_backend: dummy
 trainers:
     agent_trainer:
         class: TrainerSumRewards
