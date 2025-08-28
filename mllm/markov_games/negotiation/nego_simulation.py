@@ -1,5 +1,6 @@
 """
 Negotiation simulation environment
+other agent is set at the start of every round. Even though current agent changes over message turns in a round.
 """
 import copy
 from abc import abstractmethod

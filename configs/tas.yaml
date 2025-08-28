@@ -3,7 +3,7 @@ defaults:
 
 
 experiment:
-    name: "tas_debug"
+    name: "tas"
     method: generate_and_train
     description: "Trust-and-Split negotiation game"
     nb_matches_per_iteration: 64
