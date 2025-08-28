@@ -38,9 +38,10 @@ class AgentAndActionSafeCopy:
 class MarkovGame(object):
     def __init__(
         self,
-        id: str,
+        id: int,
         simulation: type[Simulation],
         agents: dict[AgentId, type[Agent]],
+        crn_id: int,
     ):
         """
         Args:
@@ -50,13 +51,20 @@ class MarkovGame(object):
             output_path:
                 Path where the step infos are saved.
         """
-        self.id = id
         self.simulation = simulation
         self.agents = agents
         self.agent_ids = self.agents.keys()
         self.simulation_step_log = None
         self.agent_step_logs = {agent_id: None for agent_id in self.agent_ids}
         self.actions = {}
+        self.id = id
+        self.crn_id = crn_id
+
+    def get_id(self) -> str:
+        return self.id
+
+    def get_crn_id(self) -> int:
+        return self.crn_id
 
     async def get_action_of_agent_without_side_effects(
         self, agent_id: AgentId

@@ -14,7 +14,7 @@ from mllm.markov_games.rollout_tree import (
 )
 
 AgentId = str
-import uuid
+
 
 
 async def run_with_unilateral_alt_action(
@@ -74,7 +74,10 @@ async def AlternativeActionsRunner(
     tasks = []
     time_step = 0
     terminated = False
-    root = RolloutTreeRootNode(id=int(str(uuid.uuid4().int)[:8]))
+    root = RolloutTreeRootNode(
+        id=markov_game.get_id(),
+        crn_id=markov_game.get_crn_id()
+    )
     previous_node = root
 
     while not terminated:

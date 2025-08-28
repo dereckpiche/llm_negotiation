@@ -154,7 +154,6 @@ class BaseTrainer(ABC):
         self.enable_tokenwise_logging = enable_tokenwise_logging
         self.reward_normalizing_constant = reward_normalizing_constant
         self.pg_loss_normalization = pg_loss_normalization
-
         # Common containers used by all trainers
         self.training_data: dict = {}
         self.debug_path_list: list[str] = []
@@ -602,7 +601,15 @@ class BaseTrainer(ABC):
                 discount_factor=self.discount_factor,
             )
             if self.use_rloo:
-                padded_credits, _ = get_rloo_credits(credits=padded_credits)
+                is_grouped_by_rng = trajectories.crn_ids.unique().shape[0]  != trajectories.crn_ids.shape[0]
+                if is_grouped_by_rng:
+                    for crn_id in trajectories.crn_ids.unique():
+                        rng_mask = trajectories.crn_ids == crn_id
+                        rng_credits = padded_credits[rng_mask]
+                        rng_credits, _ = get_rloo_credits(credits=rng_credits)
+                        padded_credits[rng_mask] = rng_credits
+                else:   
+                    padded_credits, _ = get_rloo_credits(credits=padded_credits)
             credits = [
                 padded_credits[i, : lengths[i]] for i in range(padded_credits.shape[0])
             ]
