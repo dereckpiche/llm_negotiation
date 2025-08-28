@@ -45,13 +45,11 @@ class VLLMAsyncBackend(LLMInferenceBackend):
             self.adapter_paths[adapter_id],
         )
 
-    def toggle_training_mode(self) -> None:
-        # TODO: use vllm.sleep
-        self.engine.sleep()
+    async def toggle_training_mode(self) -> None:
+        await self.engine.sleep()
 
-    def toggle_eval_mode(self) -> None:
-        # TODO: use vllm.waks_sleep
-        self.engine.wake_up()
+    async def toggle_eval_mode(self) -> None:
+        await self.engine.wake_up()
 
     def shutdown(self) -> None:
         # No explicit close call; engine stops when process exits.

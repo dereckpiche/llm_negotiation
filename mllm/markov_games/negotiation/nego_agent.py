@@ -1,107 +1,104 @@
 import copy
+from abc import abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
 from mllm.markov_games.agent import Agent
+from mllm.markov_games.negotiation.nego_simulation import Message, NegotiationObs, Split
 from mllm.markov_games.rollout_tree import AgentActLog, ChatTurn
-from mllm.markov_games.trust_and_split.tas_simulation import (
-    Message,
-    Split,
-    TrustAndSplitObs,
-)
-from mllm.models.inference_backend import PolicyOutput
 
 @dataclass
-class TrustAndSplitAgentState:
+class NegotiationAgentState:
     round_nb: int
     nb_messages_sent_this_round: int
     chat_counter: int
     chat_history: List[ChatTurn]
 
 
-INTRO_PROMPT = (
-    "Welcome to an iterated game. You are {agent_name}. "
-    "Each round there are 10 coins. Your per-coin value for the current round will be provided. "
-    "Agents can exchange short messages and then each proposes how many coins they keep for themselves. "
-    "If totals exceed 10, coins are allocated proportionally. "
-    "Message format: <message>...</message> (<=400 chars). "
-    "Split format: <coins_to_self>x</coins_to_self>."
-    "Your goal is: {goal}"
-)
-
-
-class TrustAndSplitAgent(Agent):
+class NegotiationAgent(Agent):
     def __init__(
         self,
         seed: int,
         agent_id: str,
         policy: Callable[[List[Dict]], str],
-        nb_messages_per_round: int,
         goal: str,
+        num_message_chars: int,
     ):
         self.seed = seed
         self.agent_id = agent_id
         self.policy = policy
-        self.nb_messages_per_round = int(nb_messages_per_round)
         self.goal = goal
-        self.state = TrustAndSplitAgentState(
+        self.state = NegotiationAgentState(
             round_nb=0, nb_messages_sent_this_round=0, chat_counter=0, chat_history=[]
         )
 
-    async def act(self, observation: TrustAndSplitObs) -> Tuple[Any, AgentActLog]:
+        # Implemented in variants
+        self.intro_prompt = ""
+        self.new_round_prompt = ""
+        self.last_round_prompt = ""
+        self.send_split_prompt = ""
+        self.wait_for_message_prompt = ""
+        self.last_message_prompt = ""
+        self.send_message_prompt = ""
+
+    @abstractmethod
+    def get_message_regex(self, observation: NegotiationObs) -> str:
+        pass
+
+    @abstractmethod
+    def get_split_regex(self, observation: NegotiationObs) -> str:
+        pass
+
+    @abstractmethod
+    def get_split_action(
+        self, policy_output: str, observation: NegotiationObs
+    ) -> Split:
+        pass
+
+    async def act(self, observation: NegotiationObs) -> Tuple[Any, AgentActLog]:
         is_our_turn = observation.current_agent == self.agent_id
         action: Any = None
         round_nb = observation.round_nb
 
         prompt_parts: List[str] = []
+        obs_ctx = vars(observation)
 
         #######################################
         # build user prompt
         #######################################
 
         # First-ever call
-        if round_nb == 0 and self.state.chat_counter == 0:
-            prompt_parts.append(
-                INTRO_PROMPT.format(agent_name=self.agent_id, goal=self.goal)
-            )
+        is_intro = round_nb == 0 and self.state.chat_counter == 0
+        if is_intro:
+            prompt_parts.append(self.intro_prompt.format(goal=self.goal, **obs_ctx))
 
         # New round
         is_new_round = round_nb > self.state.round_nb
-        if is_new_round:
+        if is_new_round or is_intro:
             self.state.nb_messages_sent_this_round = 0
-            round_intro = (
-                f"New round {round_nb}. Your value per coin: {observation.value}. "
-                f"Last round, other agent value per coin: {observation.last_value_coagent}."
-            )
-            prompt_parts.append(round_intro)
+            if not is_intro:
+                prompt_parts.append(self.last_round_prompt.format(**obs_ctx))
+            prompt_parts.append(self.new_round_prompt.format(**obs_ctx))
             self.state.round_nb = round_nb
 
         # Wait for message
         if not is_our_turn and not observation.split_phase:
-            prompt_parts.append("Wait for other agent to send a message...")
+            prompt_parts.append(self.wait_for_message_prompt.format(**obs_ctx))
 
         # Get last message
-        if is_our_turn and not is_new_round:
-            prompt_parts.append(f"Other agent said: {observation.last_message}")
+        if is_our_turn and not is_new_round and not is_intro:
+            prompt_parts.append(self.last_message_prompt.format(**obs_ctx))
 
         # Prompt to send message
-        must_send_message = (
-            not observation.split_phase
-            and self.state.nb_messages_sent_this_round < self.nb_messages_per_round
-            and is_our_turn
-        )
+        must_send_message = not observation.split_phase and is_our_turn
         if must_send_message:
-            prompt_parts.append(
-                "Send your message now in <message>...</message> (<=400 chars)."
-            )
+            prompt_parts.append(self.send_message_prompt.format(**obs_ctx))
 
         # Prompt to give split
         must_send_split = not must_send_message and observation.split_phase
         if must_send_split:
-            prompt_parts.append(
-                "Respond with <coins_to_self>x</coins_to_self> where x is an integer in [0, 10]."
-            )
+            prompt_parts.append(self.send_split_prompt.format(**obs_ctx))
 
         # Append one ChatTurn with is_state_end=True
         user_prompt = "\n".join(prompt_parts)
@@ -120,8 +117,8 @@ class TrustAndSplitAgent(Agent):
 
         # Query policy for the appropriate format
         if must_send_message:
-            return_regex = r"<message>[\s\S]{0,400}</message>"
-            policy_output: PolicyOutput = await self.policy(
+            return_regex = self.get_message_regex(observation)
+            policy_output = await self.policy(
                 prompt=[c.dict() for c in self.state.chat_history],
                 regex=return_regex,
             )
@@ -137,9 +134,10 @@ class TrustAndSplitAgent(Agent):
             )
             action = Message(message=policy_output)
             self.state.nb_messages_sent_this_round += 1
+
         elif must_send_split:
-            return_regex = r"<coins_to_self>(10|[0-9])</coins_to_self>"
-            policy_output: PolicyOutput = await self.policy(
+            return_regex = self.get_split_regex(observation)
+            policy_output = await self.policy(
                 prompt=[c.dict() for c in self.state.chat_history],
                 regex=return_regex,
             )
@@ -153,11 +151,7 @@ class TrustAndSplitAgent(Agent):
                     is_state_end=False,
                 )
             )
-            import re as _re
-
-            m = _re.search(r"<coins_to_self>([0-9]+)</coins_to_self>", policy_output.content)
-            coins_int = int(m.group(1)) if m else int(policy_output)
-            action = Split(coins_given_to_self=coins_int)
+            action = self.get_split_action(policy_output, observation)
         else:
             action = None
 
@@ -173,6 +167,6 @@ class TrustAndSplitAgent(Agent):
         return agent_copy
 
     def reset(self):
-        self.state = TrustAndSplitAgentState(
+        self.state = NegotiationAgentState(
             round_nb=0, nb_messages_sent_this_round=0, chat_counter=0, chat_history=[]
         )

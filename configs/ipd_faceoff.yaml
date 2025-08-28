@@ -2,7 +2,7 @@ defaults:
   - ipd.yaml
 
 experiment:
-    name: "ipd_faceoff_prev_ad_align_coop"
+    name: "ipd_faceoff_ad_align_rloo_branch_itr600_greedy"
     description: "no description"
     nb_matches: 64
     base_seed: 1000
@@ -35,5 +35,5 @@ models:
                     lora_dropout: 0.0
                     target_modules: all-linear
             initial_adapter_paths:
-                alice_adapter: "/home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/2025_08/ipd_prev_ad_align/seed_1000/Qwen/Qwen3-4B-Instruct-2507/adapters/agent_adapter"
-                bob_adapter: "/home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/2025_08/ipd_sum_rewards/seed_1000/Qwen/Qwen3-4B-Instruct-2507/adapters/agent_adapter"
+                alice_adapter: "/home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/2025_08/ipd_ad_align_rloo_branch/seed_1000/checkpoints/agent_adapter-iter_600-2025-08-18_07-16-59/agent_adapter"
+                bob_adapter: "/home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/2025_08/ipd/seed_1000/Qwen/Qwen3-4B-Instruct-2507/adapters/agent_adapter"

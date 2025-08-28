@@ -51,6 +51,7 @@ class TrainerNaive(BaseTrainer):
 
         # Tensorize Chats
         rollout_ids = []
+        crn_ids = [] # common random number id
         batch_input_ids = []
         batch_action_mask = []
         batch_timesteps = []
@@ -63,6 +64,7 @@ class TrainerNaive(BaseTrainer):
                 "mgid:" + str(rollout_id) + "_agent_id:" + agent_id
             )
             rollout_ids.append(rollout_id)
+            crn_ids.append(root.crn_id)
             chat, rewards = get_main_chat_list_and_rewards(agent_id=agent_id, root=root)
             (
                 input_ids,
@@ -79,6 +81,7 @@ class TrainerNaive(BaseTrainer):
             batch_reasoning_limits.append(reasoning_limit_tuples)
         trajectory_batch = TrajectoryBatch(
             rollout_ids=torch.tensor(rollout_ids, dtype=torch.int32),
+            crn_ids=torch.tensor(crn_ids, dtype=torch.int32),
             batch_input_ids=batch_input_ids,
             batch_action_mask=batch_action_mask,
             batch_timesteps=batch_timesteps,

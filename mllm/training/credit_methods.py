@@ -41,13 +41,13 @@ def get_discounted_returns(
 
 def get_rloo_credits(credits: torch.Tensor):  # (B, S)
     assert credits.dim() == 2, "Wrong dimensions."
+    rloo_baselines = torch.zeros_like(credits)
     n = credits.shape[0]
     if n == 1:
-        return credits
-    rloo_credits = credits - (torch.sum(credits, dim=0, keepdim=True) - credits) / (
-        n - 1
-    )
-    return rloo_credits
+        return credits, rloo_baselines
+    rloo_baselines = (torch.sum(credits, dim=0, keepdim=True) - credits) / (n - 1)
+    rloo_credits = credits - rloo_baselines
+    return rloo_credits, rloo_baselines
 
 
 def get_generalized_advantage_estimates(
@@ -133,6 +133,8 @@ def get_advantage_alignment_credits(
     use_time_regularization: bool = False,
     force_coop_first_step: bool = False,
     use_variance_regularization: bool = False,
+    rloo_branch: bool = False,
+    reuse_baseline: bool = False,
     tally: Tally = Tally(),
 ) -> torch.Tensor:
     """
@@ -165,11 +167,12 @@ def get_advantage_alignment_credits(
         torch.Tensor: The advantage alignment credits.
     """
     assert a1.dim() == a2.dim() == 2, "Advantages must be of shape (B, S)"
-    assert (
-        a1_alternative.dim() == 3
-    ), "Alternative advantages must be of shape (B, S, A)"
+    if a1_alternative is not None:
+        assert (
+            a1_alternative.dim() == 3
+        ), "Alternative advantages must be of shape (B, S, A)"
+        B, T, A = a1_alternative.shape
     assert a1.shape == a2.shape, "Not the same shape"
-    B, T, A = a1_alternative.shape
 
     if use_old_ad_align:
         ad_align_weights = get_advantage_alignment_weights(
@@ -178,7 +181,16 @@ def get_advantage_alignment_credits(
         if exclude_k_equals_t:
             ad_align_weights = gamma * ad_align_weights
     else:
-        a1_alternative = a1_alternative.mean(dim=2)
+        assert a1_alternative is not None, "Alternative advantages must be provided"
+        if rloo_branch:
+            a1_alternative = torch.cat([a1.unsqueeze(2), a1_alternative], dim=2)
+            a1_alternative = a1_alternative.mean(dim=2)
+            # print(f"a1_alternative: {a1_alternative}, a1: {a1}\n")
+            a1, baseline = get_rloo_credits(a1)
+            if reuse_baseline:
+                a1_alternative = a1_alternative - baseline
+            else:
+                a1_alternative, _ = get_rloo_credits(a1_alternative)
         assert a1.shape == a1_alternative.shape, "Not the same shape"
         ad_align_weights = get_advantage_alignment_weights(
             advantages=a1_alternative,

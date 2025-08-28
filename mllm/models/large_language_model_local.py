@@ -8,6 +8,7 @@ import sys
 import uuid
 from collections.abc import Callable
 from copy import deepcopy
+from datetime import datetime
 from typing import Literal
 
 import httpx
@@ -28,7 +29,6 @@ from mllm.models.adapter_training_wrapper import AdapterWrapper
 from mllm.models.inference_backend_dummy import DummyInferenceBackend
 from mllm.models.inference_backend_sglang import SGLangOfflineBackend
 from mllm.models.inference_backend_vllm import VLLMAsyncBackend
-from mllm.utils.common_imports import *
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -54,7 +54,7 @@ class LeanLocalLLM:
         inference_backend_sampling_params: dict = {},
         inference_backend_init_kwargs: dict = {},
         initial_adapter_paths: dict[str, str] | None = None,
-        max_thinking_characters: int = 0,
+        enable_thinking: bool = None,
     ):
         self.inference_backend_name = inference_backend
         self.output_directory = output_directory
@@ -63,7 +63,8 @@ class LeanLocalLLM:
         self.model_name = model_name
         self.adapter_configs = adapter_configs
         self.adapter_ids = list(adapter_configs.keys())
-        self.max_thinking_characters = max_thinking_characters
+        self.enable_thinking = enable_thinking
+
         # Optional user-specified initial adapter weight locations (local or HF Hub)
         # Format: {adapter_id: path_or_repo_id}
         self.initial_adapter_paths: dict[str, str] | None = initial_adapter_paths
@@ -108,7 +109,9 @@ class LeanLocalLLM:
                 logger.info(
                     f"Initializing adapter '{adapter_id}': using existing weights from output folder '{chosen_path}'."
                 )
-            elif self.initial_adapter_paths and adapter_id in self.initial_adapter_paths:
+            elif (
+                self.initial_adapter_paths and adapter_id in self.initial_adapter_paths
+            ):
                 chosen_path = self.initial_adapter_paths[adapter_id]
                 logger.info(
                     f"Initializing adapter '{adapter_id}': using provided initial path '{chosen_path}'."
@@ -181,12 +184,12 @@ class LeanLocalLLM:
         trainable_objects = {an: self.hf_adapters[an] for an in self.adapter_ids}
         return trainable_objects
 
-    def toggle_training_mode(self) -> None:
+    async def toggle_training_mode(self) -> None:
         for adn in self.adapter_ids:
             self.adapter_train_ids[adn] = self.short_id_generator()
         self.inference_backend.toggle_training_mode()
 
-    def toggle_eval_mode(self) -> None:
+    async def toggle_eval_mode(self) -> None:
         self.inference_backend.toggle_eval_mode()
 
     def prepare_adapter_for_inference(self, adapter_id: AdapterID) -> None:

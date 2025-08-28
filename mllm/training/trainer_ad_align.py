@@ -113,6 +113,9 @@ class TrainerAdAlign(BaseTrainer):
         ad_align_clipping: float,
         ad_align_force_coop_first_step: bool,
         use_old_ad_align: bool,
+        use_time_regularization: bool,
+        rloo_branch: bool,
+        reuse_baseline: bool,
         *args,
         **kwargs,
     ):
@@ -134,6 +137,9 @@ class TrainerAdAlign(BaseTrainer):
         self.ad_align_clipping = ad_align_clipping
         self.ad_align_force_coop_first_step = ad_align_force_coop_first_step
         self.use_old_ad_align = use_old_ad_align
+        self.use_time_regularization = use_time_regularization
+        self.rloo_branch = rloo_branch
+        self.reuse_baseline = reuse_baseline
         self.training_data: dict[AgentId, AdAlignTrainingData] = {}
         self.debug_path_list: list[str] = []
 
@@ -149,6 +155,7 @@ class TrainerAdAlign(BaseTrainer):
 
         # For main rollouts
         batch_rollout_ids = []
+        batch_crn_ids = []
         batch_input_ids = []
         batch_action_mask = []
         batch_timesteps = []
@@ -165,7 +172,10 @@ class TrainerAdAlign(BaseTrainer):
         alternative_batch_reasoning_limits = []
         jT_list = []
 
-        A = len(roots[0].child.branches[agent_id])  # Number of alternative actions
+        try:
+            A = len(roots[0].child.branches[agent_id])  # Number of alternative actions
+        except:
+            A = 0
 
         for root in roots:
             rollout_id = root.id
@@ -174,6 +184,7 @@ class TrainerAdAlign(BaseTrainer):
             )
             # Get main trajectory
             batch_rollout_ids.append(rollout_id)
+            batch_crn_ids.append(root.crn_id)
             main_chat, main_rewards = get_main_chat_list_and_rewards(
                 agent_id=agent_id, root=root
             )
@@ -192,34 +203,35 @@ class TrainerAdAlign(BaseTrainer):
             batch_reasoning_limits.append(reasoning_limit_tuples)
             jT = main_rewards.numel()  # TODO: better than this
             jT_list.append(jT)
+            if A > 0:
+                # We get the branching time steps for each of the `jT` time steps in the main trajectory.
+                branching_time_steps = [bt for item in range(jT) for bt in A * [item]]
+                batch_branching_time_steps.extend(branching_time_steps)
 
-            # We get the branching time steps for each of the `jT` time steps in the main trajectory.
-            branching_time_steps = [bt for item in range(jT) for bt in A * [item]]
-            batch_branching_time_steps.extend(branching_time_steps)
+                # Get all of the (jT*A) alternative trajectories in the tree
+                # (jT is the number of time steps in the main trajectory, A is the number of alternative actions)
+                alternative_chats, alternative_rewards = get_alternative_chat_histories(
+                    agent_id=agent_id, root=root
+                )
+                assert (
+                    len(alternative_chats) == A * jT
+                ), "Incorrect number of alternative trajectories."
 
-            # Get all of the (jT*A) alternative trajectories in the tree
-            # (jT is the number of time steps in the main trajectory, A is the number of alternative actions)
-            alternative_chats, alternative_rewards = get_alternative_chat_histories(
-                agent_id=agent_id, root=root
-            )
-            assert (
-                len(alternative_chats) == A * jT
-            ), "Incorrect number of alternative trajectories."
+                for chat, rewards in zip(alternative_chats, alternative_rewards):
+                    (
+                        input_ids,
+                        action_mask,
+                        timesteps,
+                        state_ends_mask,
+                    ) = process_training_chat(
+                        tokenizer=self.tokenizer, chat_history=chat
+                    )
+                    alternative_batch_input_ids.append(input_ids)
+                    alternative_batch_action_mask.append(action_mask)
+                    alternative_batch_timesteps.append(timesteps)
+                    alternative_batch_state_ends_mask.append(state_ends_mask)
+                    alternative_batch_rewards.append(rewards)
 
-            for chat, rewards in zip(alternative_chats, alternative_rewards):
-                (
-                    input_ids,
-                    action_mask,
-                    timesteps,
-                    state_ends_mask,
-                    reasoning_limit_tuples,
-                ) = process_training_chat(tokenizer=self.tokenizer, chat_history=chat)
-                alternative_batch_input_ids.append(input_ids)
-                alternative_batch_action_mask.append(action_mask)
-                alternative_batch_timesteps.append(timesteps)
-                alternative_batch_state_ends_mask.append(state_ends_mask)
-                alternative_batch_rewards.append(rewards)
-                alternative_batch_reasoning_limits.append(reasoning_limit_tuples)
         jT_list = torch.Tensor(jT_list)
 
         # Assert that number of alternative actions is constant
@@ -228,6 +240,7 @@ class TrainerAdAlign(BaseTrainer):
 
         trajectory_batch = TrajectoryBatch(
             rollout_ids=torch.tensor(batch_rollout_ids, dtype=torch.int32),  # (B,)
+            crn_ids=torch.tensor(batch_crn_ids, dtype=torch.int32),
             batch_input_ids=batch_input_ids,
             batch_action_mask=batch_action_mask,
             batch_timesteps=batch_timesteps,
@@ -235,25 +248,6 @@ class TrainerAdAlign(BaseTrainer):
             batch_rewards=batch_rewards,
             batch_reasoning_limits=batch_reasoning_limits,
         )
-
-        # Here, `A` is the number of alternative actions / trajectories taken at each time step.
-        # For each of the `B` rollout perspectives, at each of its jT (`j` is for jagged, since each main rollout may be of a different length) steps, we take A alternate trajectories (from different actions).
-        # Therefore, we have ∑jT * A trajectories to process. If each of the main trajectories have T steps, we will have `B*T*A` to process.
-        with resource_logger_context(logger, "Create alternative trajectory batch"):
-            sum_jT = int(torch.sum(jT_list).item())
-            jT_list = (
-                jT_list.int().tolist()
-            )  # (jT,) # (we only want the advantages where we branched out)
-            alternative_trajectory_batch = TrajectoryBatch(
-                rollout_ids=torch.zeros(A * sum_jT, dtype=torch.int32),
-                batch_input_ids=alternative_batch_input_ids,
-                batch_action_mask=alternative_batch_action_mask,
-                batch_timesteps=alternative_batch_timesteps,
-                batch_state_ends_mask=alternative_batch_state_ends_mask,
-                batch_rewards=alternative_batch_rewards,
-                batch_reasoning_limits=alternative_batch_reasoning_limits,
-            )
-
         # Get Advantages & Train Critic
         with resource_logger_context(
             logger, "Get advantages with critic gradient accumulation"
@@ -262,36 +256,61 @@ class TrainerAdAlign(BaseTrainer):
                 self.get_advantages_with_critic_gradient_accumulation(trajectory_batch)
             )  # (B, jT)
 
-        # Get alternative advantages
-        # BAAs stands for batch alternative advantages
-        # (torch nested tensors have very little api support, so we have to do some odd manual work here)
-        with resource_logger_context(logger, "Compute alternative advantage estimates"):
-            BAAs_list = self.get_advantages_with_critic_gradient_accumulation(
-                alternative_trajectory_batch
-            )  # list length (∑jT * A), each (jT',)
-            # Pad alternative advantages to (∑jT*A, P)
+        if A > 0:
+            # Here, `A` is the number of alternative actions / trajectories taken at each time step.
+            # For each of the `B` rollout perspectives, at each of its jT (`j` is for jagged, since each main rollout may be of a different length) steps, we take A alternate trajectories (from different actions).
+            # Therefore, we have ∑jT * A trajectories to process. If each of the main trajectories have T steps, we will have `B*T*A` to process.
+            with resource_logger_context(logger, "Create alternative trajectory batch"):
+                sum_jT = int(torch.sum(jT_list).item())
+                jT_list = (
+                    jT_list.int().tolist()
+                )  # (jT,) # (we only want the advantages where we branched out)
+                alternative_trajectory_batch = TrajectoryBatch(
+                    rollout_ids=torch.zeros(A * sum_jT, dtype=torch.int32),
+                    crn_ids=torch.zeros(A * sum_jT, dtype=torch.int32),
+                    batch_input_ids=alternative_batch_input_ids,
+                    batch_action_mask=alternative_batch_action_mask,
+                    batch_timesteps=alternative_batch_timesteps,
+                    batch_state_ends_mask=alternative_batch_state_ends_mask,
+                    batch_rewards=alternative_batch_rewards,
+                )
 
-            BAAs_padded = pad_sequence(BAAs_list, batch_first=True, padding_value=0.0)
-            branch_idx = torch.tensor(
-                batch_branching_time_steps, device=BAAs_padded.device, dtype=torch.long
-            )
-            gathered = BAAs_padded.gather(dim=1, index=branch_idx.unsqueeze(1)).squeeze(
-                1
-            )
-            # Reshape and split per rollout, then transpose to (jT_i, A)
-            gathered = gathered.view(A, sum_jT)  # (A, ∑jT)
-            blocks = list(
-                torch.split(gathered, jT_list, dim=1)
-            )  # len B, shapes (A, jT_i)
-            BAAs = [
-                blk.transpose(0, 1).contiguous() for blk in blocks
-            ]  # list of (jT_i, A)
+            # Get alternative advantages
+            # BAAs stands for batch alternative advantages
+            # (torch nested tensors have very little api support, so we have to do some odd manual work here)
+            with resource_logger_context(
+                logger, "Compute alternative advantage estimates"
+            ):
+                BAAs_list = self.get_advantages_with_critic_gradient_accumulation(
+                    alternative_trajectory_batch
+                )  # list length (∑jT * A), each (jT',)
+                # Pad alternative advantages to (∑jT*A, P)
+
+                BAAs_padded = pad_sequence(
+                    BAAs_list, batch_first=True, padding_value=0.0
+                )
+                branch_idx = torch.tensor(
+                    batch_branching_time_steps,
+                    device=BAAs_padded.device,
+                    dtype=torch.long,
+                )
+                gathered = BAAs_padded.gather(
+                    dim=1, index=branch_idx.unsqueeze(1)
+                ).squeeze(1)
+                # Reshape and split per rollout, then transpose to (jT_i, A)
+                gathered = gathered.view(A, sum_jT)  # (A, ∑jT)
+                blocks = list(
+                    torch.split(gathered, jT_list, dim=1)
+                )  # len B, shapes (A, jT_i)
+                BAAs = [
+                    blk.transpose(0, 1).contiguous() for blk in blocks
+                ]  # list of (jT_i, A)
 
         self.training_data[agent_id] = AdAlignTrainingData(
             agent_id=agent_id,
             main_data=trajectory_batch,
             main_advantages=self.batch_advantages,
-            alternative_advantages=BAAs,
+            alternative_advantages=BAAs if A > 0 else None,
         )
 
     def share_advantage_data(self) -> list[AdvantagePacket]:
@@ -354,11 +373,14 @@ class TrainerAdAlign(BaseTrainer):
                 padded_main_advantages = pad_sequence(
                     agent_advantages, batch_first=True, padding_value=0.0
                 )
-                padded_alternative_advantages = pad_sequence(
-                    agent_data.alternative_advantages,
-                    batch_first=True,
-                    padding_value=0.0,
-                )  # (B, P, A)
+                if agent_data.alternative_advantages:
+                    padded_alternative_advantages = pad_sequence(
+                        agent_data.alternative_advantages,
+                        batch_first=True,
+                        padding_value=0.0,
+                    )  # (B, P, A)
+                else:
+                    padded_alternative_advantages = None
                 padded_co_agent_advantages = pad_sequence(
                     co_agent_advantages, batch_first=True, padding_value=0.0
                 )
@@ -375,6 +397,9 @@ class TrainerAdAlign(BaseTrainer):
                     clipping=self.ad_align_clipping,
                     force_coop_first_step=self.ad_align_force_coop_first_step,
                     use_old_ad_align=self.use_old_ad_align,
+                    use_time_regularization=self.use_time_regularization,
+                    rloo_branch=self.rloo_branch,
+                    reuse_baseline=self.reuse_baseline,
                     tally=self.tally,
                 )
 

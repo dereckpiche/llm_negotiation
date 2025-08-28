@@ -3,9 +3,10 @@ from __future__ import annotations
 import csv
 import json
 import re
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from mllm.markov_games.rollout_tree import *
 
@@ -107,7 +108,7 @@ def get_rollout_tree_paths(
         current,
         main_path_prefix: List[RolloutTreeNode],
         path_id: str,
-        current_time_step: Optional[int] = None,
+        current_time_step: Optional[int] = 0,
     ):
         """Traverse tree to collect all branch paths."""
         if current is None:
@@ -264,6 +265,20 @@ def gather_all_rewards(path: RolloutNodeList) -> List[Dict[AgentId, float]]:
     return rewards
 
 
+def gather_simulation_stats(
+    path: RolloutNodeList,
+    filter: Callable[[SimulationStepLog], bool],
+    stat_func: Callable[[SimulationStepLog], Any],
+) -> List[Any]:
+    """Gather stats from main trajectory in a path."""
+    stats = []
+    for node in path.nodes:
+        sl = node.step_log.simulation_step_log
+        if filter(sl):
+            stats.append(stat_func(sl))
+    return stats
+
+
 def gather_simulation_infos(path: RolloutNodeList) -> List[Dict[str, Any]]:
     """Gather simulation information from main trajectory in a path."""
     infos = []
@@ -306,6 +321,31 @@ def export_chat_logs(path: Path, outdir: Path):
             f.write(json.dumps(output_obj, indent=2) + "\n")
 
 
+def export_rewards_to_csv(path: Path, outdir: Path, first_file: bool):
+    # Load the rollout tree
+    root = load_rollout_tree(path)
+    mgid = root.id
+
+    # Get all paths
+    main_path, branch_paths = get_rollout_tree_paths(root)
+    outdir.mkdir(parents=True, exist_ok=True)
+    rewards_dict_list = gather_all_rewards(main_path)
+    agent_ids = rewards_dict_list[0].keys()
+    rewards_list = defaultdict(list)
+    for rewards_dict in rewards_dict_list:
+        for agent_id in agent_ids:
+            rewards_list[agent_id].append(rewards_dict[agent_id])
+    for agent_id in agent_ids:
+        output_file = outdir / f"agent:{agent_id}_rewards.csv"
+        if first_file:
+            mode = "w"
+        else:
+            mode = "a"
+        with open(output_file, mode, newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([int(x) for x in rewards_list[agent_id]])
+
+
 # --------------------------------------------------------------------------------------
 # HTML exports
 # --------------------------------------------------------------------------------------
@@ -313,154 +353,193 @@ def export_chat_logs(path: Path, outdir: Path):
 
 def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
     """
-    Render a list of chat turns as an HTML file.
-    Each time step is in a separate div.
-    The chat turns of each each agents of the same time step are side by side.
-    A visual separator is added between each time step.
-    Visual style helps distinguish between roles of each time step.
+    Render chat turns as a single, wrapping sequence of messages in time order.
+    Keep badge and message bubble styles, include time on every badge and
+    include rewards on assistant badges. Each message is individually
+    hide/show by click; when hidden, only the badge remains and "(...)" is
+    shown inline (not inside a bubble).
     """
     import html
-    from collections import defaultdict
 
-    # Group chat turns by time step
-    turns_by_time_step = defaultdict(list)
-    for turn in chat_turns:
-        turns_by_time_step[turn.time_step].append(turn)
+    # Prepare ordering: sort by (time_step, original_index) to keep stable order within same step
+    indexed_turns = list(enumerate(chat_turns))
+    indexed_turns.sort(key=lambda t: (t[1].time_step, t[0]))
 
-    # CSS styles
+    # CSS styles (simplified layout; no time-step or agent-column backgrounds)
     css = """
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f5f5f5; }
-        .time-step {
-            background: white;
-            margin: 20px 0;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        :root {
+            --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            --bg: #ffffff;
+            --text: #1c0b00;
+            --muted-text: #2C3E50;
+            --accent-muted: #BDC3C7;
+            --accent-muted-2: #D0D7DE;
+            --panel-bg: #F8FAFC;
+            --reward-color: #a89206;
+            --font-size: 15px;
+            --small-font-size: 13px;
+            --group-label-font-size: 12px;
+            --border-width: 2px;
+            --corner-radius: 6px;
+            --pill-radius-left: 999px 0 0 999px;
+            --pill-radius-right: 0 999px 999px 0;
+            --inset-shadow: 0 1px 0 rgba(0,0,0,0.03) inset;
         }
-        .time-step-header {
-            font-weight: bold;
-            color: #333;
-            border-bottom: 2px solid #ddd;
-            padding-bottom: 5px;
-            margin-bottom: 15px;
+        body {
+            font-family: var(--font-family);
+            margin: 16px;
+            background-color: var(--bg);
+            color: var(--text);
+            font-size: var(--font-size);
+            line-height: 1.6;
         }
-        .agents-container {
+        .messages-flow {
+            display: block; /* behave like a text container */
+        }
+        .toolbar {
             display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            font-size: var(--small-font-size);
         }
-        .agent-column {
-            flex: 1;
-            min-width: 300px;
-            border: 1px solid #e0e0e0;
-            border-radius: 6px;
-            overflow: hidden;
+        .toolbar input[type="number"] {
+            width: 72px;
+            padding: 2px 6px;
+            border: 1px solid var(--accent-muted);
+            border-radius: var(--corner-radius);
+            background: var(--bg);
         }
-        .agent-header {
-            background: #f8f9fa;
-            padding: 10px;
-            font-weight: bold;
-            border-bottom: 1px solid #e0e0e0;
+        .toolbar button {
+            padding: 4px 8px;
+            border: 1px solid var(--accent-muted);
+            background: var(--panel-bg);
+            border-radius: var(--corner-radius);
+            cursor: pointer;
         }
         .chat-turn {
-            padding: 10px;
-            margin: 5px;
-            border-radius: 4px;
-            border-left: 4px solid #ccc;
-        }
-        .role-user {
-            background-color: #e3f2fd;
-            border-left-color: #1976d2;
-        }
-        .role-assistant {
-            background-color: #f3e5f5;
-            border-left-color: #7b1fa2;
-        }
-        .turn-meta {
-            font-size: 0.8em;
-            color: #666;
-            margin-bottom: 5px;
-        }
-        .turn-content {
-            white-space: pre-wrap;
-            line-height: 1.4;
-        }
-        details.reasoning {
-            margin: 6px 0 8px;
-            border: none;
+            display: inline; /* inline like text */
             background: transparent;
-        }
-        /* hide default marker */
-        .reasoning-summary::-webkit-details-marker { display: none; }
-        .reasoning-summary { list-style: none; }
-        .reasoning-summary {
-            padding: 2px 0;
-            font-weight: 500;
-            color: #607d8b;
-            background: transparent;
-            border: 0;
+            position: relative;
             cursor: pointer;
-            font-size: 0.9em;
-            display: inline-flex;
+        }
+        /* No agent-specific background distinctions */
+        .turn-content {
+            white-space: normal;
+            color: var(--text);
+            font-size: var(--font-size);
+            display: inline; /* inline flow */
+        }
+        .chat-turn .agent-badge { margin-right: 0; vertical-align: baseline; }
+        .agent-badge {
+            display: inline;
+            position: relative;
+            border: var(--border-width) solid var(--accent-muted); /* slightly thicker */
+            border-radius: var(--pill-radius-left); /* round left and bottom-right */
+            font-size: var(--font-size);
+            color: var(--muted-text);
+            background: var(--panel-bg);
+            box-shadow: var(--inset-shadow);
+            line-height: 1.2;
+            border-right: 0;
+        }
+        .agent-badge::after {
+            content: none;
+        }
+        /* removed external separator; emoji is rendered inside message bubble */
+        .agent-name { font-weight: 700; }
+        .emoji-bw { filter: grayscale(100%); opacity: 0.95; font-size: var(--font-size); vertical-align: baseline; margin: 0; position: relative; top: -1px; line-height: 1; display: inline-block; }
+        .ts-badge {
+            position: relative;
+            display: inline;
+            border: var(--border-width) solid var(--accent-muted-2); /* slightly thicker */
+            border-radius: var(--corner-radius); /* not a pill */
+            font-size: var(--font-size);
+            font-weight: 700;
+            color: var(--muted-text);
+            background: #F4F8FB; /* subtle tint */
+            padding: 1px 6px; /* slight padding for visibility */
+            margin-right: 8px; /* small gap from following content */
+            pointer-events: auto; /* allow events so we can ignore them in JS */
+        }
+        .ts-badge::before {
+            content: "";
+            position: relative;
+            background: var(--accent-muted-2);
+            border-radius: 2px;
+        }
+        .agent-badge { margin-left: 6px;  }
+        .message-box {
+            display: inline; /* inline bubble behaving like text */
+            font-size: var(--font-size);
+            border: var(--border-width) solid var(--accent-muted);
+            border-radius: var(--pill-radius-right); /* round left and bottom-right */
+            position: relative;
+            background: var(--bg);
+            vertical-align: baseline;
+            line-height: 1.2;
+            padding-left: 6px;
+            border-left: 0;
+        }
+        .message-box::before { content: ""; display: inline-block; margin-right: 6px; line-height: 1; }
+        .chat-turn.agent-alice.role-assistant .message-box::before { color: #0eb224; }
+        .chat-turn.agent-bob.role-assistant .message-box::before { color: #ef8323; }
+        .chat-turn.collapsed .message-box::before { display: none; }
+        /* Assistant bubble border colors by common agent names */
+        .chat-turn.agent-alice.role-assistant .message-box { border-color: #0eb224; }
+        .chat-turn.agent-bob.role-assistant .message-box { border-color: #ef8323; }
+        /* Tie badge and seam to agent color for a cohesive capsule, assistants only */
+        .chat-turn.agent-alice.role-assistant .agent-badge { border-color: #0eb224; }
+        .chat-turn.agent-alice.role-assistant .agent-badge::after { border-right-color: #0eb224; }
+        .chat-turn.agent-alice.role-assistant .turn-content::before { border-left-color: #0eb224; border-top-color: #0eb224; }
+        .chat-turn.agent-alice.role-assistant .message-box { border-color: #0eb224; }
+
+        .chat-turn.agent-bob.role-assistant .agent-badge { border-color: #ef8323; }
+        .chat-turn.agent-bob.role-assistant .agent-badge::after { border-right-color: #ef8323; }
+        .chat-turn.agent-bob.role-assistant .turn-content::before { border-left-color: #ef8323; border-top-color: #ef8323; }
+        .chat-turn.agent-bob.role-assistant .message-box { border-color: #ef8323; }
+        /* No colored agent-name; keep neutral */
+        .reward { color: var(--reward-color); font-weight: 600; } /* dark gold */
+        .message-placeholder { display: none; color: #7f8c8d; font-style: italic; }
+        .chat-turn.collapsed .message-box { color: transparent; font-size: 0; display: inline-block; }
+        .chat-turn.collapsed .message-box::after { content: "(...)"; color: #7f8c8d; font-style: italic; font-size: var(--font-size); line-height: 1.2; }
+        .chat-turn.collapsed .agent-badge,
+        .chat-turn.collapsed .message-box { opacity: 0.3; }
+        /* Group divider - clearer and pretty */
+        .group-divider {
+            display: flex;
             align-items: center;
+            gap: 12px;
+            width: 100%;
+            margin: 18px 0 10px 0;
         }
-        /* modern subtle toggle icon */
-        details.reasoning .reasoning-summary::before {
-            content: "+";
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 16px;
-            height: 16px;
-            margin-right: 6px;
-            font-size: 12px;
-            line-height: 1;
-            color: #334155;
-            border-radius: 6px;
-            background: linear-gradient(180deg, #f8fafc, #f1f5f9);
-            box-shadow: inset 0 0 0 1px #e2e8f0, 0 1px 1px rgba(0,0,0,0.04);
-            box-sizing: border-box;
-            transition: background-color 120ms ease, box-shadow 120ms ease, color 120ms ease;
+        .group-divider::before,
+        .group-divider::after {
+            content: "";
+            flex: 1 1 auto;
+            height: 2px;
+            background: linear-gradient(90deg, rgba(224,230,235,0), var(--accent-muted-2) 30%, var(--accent-muted-2) 70%, rgba(224,230,235,0));
         }
-        details.reasoning[open] .reasoning-summary {
-            color: #455a64;
+        .group-divider .group-label {
+            display: inline-block;
+            border: 1px solid var(--accent-muted);
+            border-radius: 999px;
+            padding: 2px 10px;
+            font-size: var(--group-label-font-size);
+            font-weight: 700;
+            color: var(--muted-text);
+            background: var(--bg);
+            box-shadow: var(--inset-shadow);
         }
-        details.reasoning[open] .reasoning-summary::before {
-            content: "−";
-            color: #334155;
-            background: linear-gradient(180deg, #eef2ff, #eaeef6);
-            box-shadow: inset 0 0 0 1px #cbd5e1, 0 1px 1px rgba(0,0,0,0.05);
+        .chat-turn .turn-content { position: relative; }
+        .chat-turn .turn-content::before {
+            content: none;
         }
-        .reasoning-summary:hover::before {
-            box-shadow: inset 0 0 0 1px #94a3b8, 0 1px 2px rgba(0,0,0,0.08);
+        .chat-turn .agent-badge {
+            position: relative;
         }
-        .reasoning-content {
-            white-space: pre-wrap;
-            padding: 6px 8px;
-            margin-left: 14px;
-            border-left: 2px solid #e0e0e0;
-            color: #4a5568;
-            line-height: 1.4;
-            font-style: italic;
-            font-size: 0.9em;
-            background: transparent;
-        }
-        .state-end-marker {
-            background: #ffeb3b;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 0.7em;
-            font-weight: bold;
-        }
-        .reward {
-            background: #4caf50;
-            color: white;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 0.7em;
-            margin-left: 5px;
-        }
+        /* removed absolute-positioned emoji to prevent overlap */
     </style>
     """
 
@@ -472,78 +551,116 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "<meta charset='UTF-8'>",
         "<title>Chat Turns</title>",
         css,
+        "<script>\n"
+        "document.addEventListener('DOMContentLoaded', function() {\n"
+        "  const flow = document.querySelector('.messages-flow');\n"
+        "  // Toggle collapse per message\n"
+        "  document.body.addEventListener('click', function(e){\n"
+        "    if (e.target.closest('.ts-badge')) { return; }\n"
+        "    const turn = e.target.closest('.chat-turn');\n"
+        "    if (turn) { e.stopPropagation(); turn.classList.toggle('collapsed'); }\n"
+        "  });\n"
+        "  // Grouping logic\n"
+        "  function applyGrouping(n) {\n"
+        "    // Remove existing group dividers\n"
+        "    Array.from(flow.querySelectorAll('.group-divider')).forEach(el => el.remove());\n"
+        "    if (!n || n <= 0) { return; }\n"
+        "    const turns = Array.from(flow.querySelectorAll('.chat-turn'));\n"
+        "    if (turns.length === 0) return;\n"
+        "    // Re-append in order with dividers\n"
+        "    const items = Array.from(flow.children).filter(el => !el.classList.contains('group-divider'));\n"
+        "    const frag = document.createDocumentFragment();\n"
+        "    let lastGroup = -1;\n"
+        "    for (const el of items) {\n"
+        "      if (!el.classList.contains('chat-turn')) { frag.appendChild(el); continue; }\n"
+        "      const t = parseInt(el.getAttribute('data-time-step') || '0', 10);\n"
+        "      const g = Math.floor(t / n);\n"
+        "      if (g !== lastGroup) {\n"
+        "        const div = document.createElement('div');\n"
+        "        div.className = 'group-divider';\n"
+        "        const label = document.createElement('span');\n"
+        "        label.className = 'group-label';\n"
+        "        const start = g * n;\n"
+        "        const end = start + n - 1;\n"
+        "        const roundIndex = g + 1;\n"
+        "        label.textContent = `Round ${roundIndex}`;\n"
+        "        div.appendChild(label);\n"
+        "        frag.appendChild(div);\n"
+        "        lastGroup = g;\n"
+        "      }\n"
+        "      frag.appendChild(el);\n"
+        "    }\n"
+        "    flow.innerHTML = '';\n"
+        "    flow.appendChild(frag);\n"
+        "  }\n"
+        "  const input = document.getElementById('group-size');\n"
+        "  const btn = document.getElementById('apply-grouping');\n"
+        "  if (btn && input) {\n"
+        "    btn.addEventListener('click', () => { const n = parseInt(input.value || '0', 10); applyGrouping(n); });\n"
+        "    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const n = parseInt(input.value || '0', 10); applyGrouping(n); } });\n"
+        "  }\n"
+        "});\n"
+        "</script>",
         "</head>",
         "<body>",
-        "<h1>Chat Conversation</h1>",
+        '<div class="toolbar">',
+        '<label for="group-size">Group every</label>',
+        '<input id="group-size" type="number" min="0" step="1" value="0" />',
+        '<span>timesteps</span>',
+        '<button id="apply-grouping">Apply</button>',
+        '</div>',
+        '<div class="messages-flow">',
     ]
 
-    # Process each time step
-    for time_step in sorted(turns_by_time_step.keys()):
-        turns = turns_by_time_step[time_step]
+    last_time_step = None
+    for original_index, turn in indexed_turns:
+        # Build classes
+        agent_class = f"agent-{re.sub('[^a-z0-9_-]', '-', turn.agent_id.lower())}"
+        role_class = f"role-{turn.role}"
+        collapsed_class = " collapsed" if turn.role == "user" else ""
 
-        # Group turns by agent for this time step
-        turns_by_agent = defaultdict(list)
-        for turn in turns:
-            turns_by_agent[turn.agent_id].append(turn)
+        # Badge content
+        if turn.role == "assistant":
+            name = html.escape(turn.agent_id)
+            emoji = '<span class="emoji-bw">🤖</span>'
+            raw_val = turn.reward
+            if isinstance(raw_val, (int, float)):
+                reward_val = f"{raw_val:.4f}".rstrip("0").rstrip(".")
+                if len(reward_val) > 8:
+                    reward_val = reward_val[:8] + "…"
+            else:
+                reward_val = str(raw_val)
+            reward_part = f'<span class="sep"> • </span><span class="reward">Reward: {reward_val}</span>'
+        else:
+            # For user messages, show "User of {Agent ID}" in the badge
+            name = 'User of ' + html.escape(turn.agent_id)
+            emoji = '<span class="emoji-bw">⚙️</span>'
+            reward_part = ""
 
-        # Time step container
-        html_parts.append('<div class="time-step">')
-        html_parts.append(f'<div class="time-step-header">Time Step {time_step}</div>')
-        html_parts.append('<div class="agents-container">')
+        badge = (
+            f'<span class="agent-badge">{emoji}:<span class="agent-name"> {name}</span>'
+            f'{reward_part}<span class="sep"> • 💬: </span></span>'
+        )
 
-        # Process each agent
-        for agent_id in sorted(turns_by_agent.keys()):
-            agent_turns = turns_by_agent[agent_id]
+        # Inline timestep distinction badge at step boundaries (render before first message)
+        ts_badge_html = ""
+        if last_time_step is None or turn.time_step != last_time_step:
+            ts_badge_html = f'<span class="ts-badge">⏱ {turn.time_step}</span>'
+            last_time_step = turn.time_step
 
-            html_parts.append('<div class="agent-column">')
-            html_parts.append(
-                f'<div class="agent-header">Agent: {html.escape(agent_id)}</div>'
-            )
+        escaped_content = html.escape(turn.content)
+        collapsed_text = re.sub(r"\s+", " ", escaped_content).strip()
 
-            # Process each turn for this agent
-            for turn in agent_turns:
-                role_class = (
-                    f"role-{turn.role}"
-                    if turn.role in ["user", "assistant"]
-                    else "role-other"
-                )
+        html_parts.append(
+            f'<div class="chat-turn {agent_class} {role_class}{collapsed_class}" data-time-step="{turn.time_step}">'
+            f'<div class="turn-content {agent_class} {role_class}">{ts_badge_html}{badge}'
+            f'<span class="message-box">{collapsed_text}</span>'
+            f'<span class="message-placeholder">(...)</span>'
+            f'</div>'
+            f'</div>'
+        )
 
-                html_parts.append(f'<div class="chat-turn {role_class}">')
-
-                # Turn metadata
-                meta_parts = [f"Role: {html.escape(turn.role)}"]
-                if turn.is_state_end:
-                    meta_parts.append('<span class="state-end-marker">STATE END</span>')
-                if turn.role == "assistant":
-                    meta_parts.append(
-                        f'<span class="reward">Reward: {turn.reward}</span>'
-                    )
-
-                html_parts.append(
-                    f'<div class="turn-meta">{" ".join(meta_parts)}</div>'
-                )
-
-                # Optional reasoning content (collapsible, above the answer)
-                if turn.reasoning_content:
-                    escaped_reasoning = html.escape(turn.reasoning_content)
-                    html_parts.append('<details class="reasoning">')
-                    html_parts.append('<summary class="reasoning-summary">Reasoning</summary>')
-                    html_parts.append(f'<div class="reasoning-content">{escaped_reasoning}</div>')
-                    html_parts.append('</details>')
-
-                # Turn content (answer/body)
-                escaped_content = html.escape(turn.content)
-                html_parts.append(f'<div class="turn-content">{escaped_content}</div>')
-
-                html_parts.append("</div>")  # Close chat-turn
-
-            html_parts.append("</div>")  # Close agent-column
-
-        html_parts.append("</div>")  # Close agents-container
-        html_parts.append("</div>")  # Close time-step
-
-    # Close HTML
-    html_parts.extend(["</body>", "</html>"])
+    html_parts.extend(['</div>', "</body>", "</html>"])
 
     return "\n".join(html_parts)
 

@@ -1,21 +1,20 @@
 defaults:
-    - defaults.yaml
+    - base.yaml
+
+
 
 experiment:
     name: "ipd"
     method: generate_and_train
     description: "no description"
-    nb_epochs: 1000
+    nb_epochs: 2000
     nb_matches_per_iteration: 64
     reinit_matches_each_it: true
     checkpoint_every_n_iterations: 50
     start_epoch: 0
     resume_experiment: true
-    base_seed: 1000
+    base_seed: 0
 
-####################################################################################################
-#                                           GENERATION
-####################################################################################################
 
 common_agent_kwargs: &common_agent_kwargs
     max_errors: 0
@@ -45,6 +44,7 @@ common_agent_kwargs: &common_agent_kwargs
 
     goal_prompt: |
         Your goal is to maximize your utility.
+    skip_regex: True
 
 agent_0_id: Alice
 agent_1_id: Bob
@@ -78,11 +78,18 @@ markov_games:
             init_kwargs:
                 <<: *common_agent_kwargs
 
-    log_func: log_ipd_match
+models:
+    base_llm:
+        class: LeanLocalLLM
+        init_args:
+            llm_id: base_llm
+            model_name: Qwen/Qwen3-4B-Instruct-2507
+            hf_kwargs:
+                max_memory: {0: "15GiB"}
+            inference_backend_init_kwargs:
+                gpu_memory_utilization: 0.5
 
-    run_batched_matches_args:
-        nb_parallel_matches: -1
-
-temperature: 1.0
-
-
+trainers:
+    agent_trainer:
+        kwargs:
+            reward_normalizing_constant: 5.0

@@ -155,7 +155,6 @@ class BaseTrainer(ABC):
         self.enable_tokenwise_logging = enable_tokenwise_logging
         self.reward_normalizing_constant = reward_normalizing_constant
         self.pg_loss_normalization = pg_loss_normalization
-
         # Common containers used by all trainers
         self.training_data: dict = {}
         self.debug_path_list: list[str] = []
@@ -376,25 +375,30 @@ class BaseTrainer(ABC):
                     # (B, S, T)
                     # We only take the entropy of actions
                     token_entropy_terms *= action_mask_mb[:, :, None]
+                    mb_entropy = token_entropy_terms.sum(dim=-1)
                     if self.enable_tokenwise_logging:
                         self.tally.add_contextualized_token_metrics(
                             metric_id="entropy",
-                            metrics=token_entropy_terms.sum(dim=-1),
+                            metrics=mb_entropy,
                         )
 
-                    mb_entropy = token_entropy_terms.sum()
-                    del token_entropy_terms
+                    if self.pg_loss_normalization == "batch":
+                        nb_act_tokens = action_mask_mb.sum()
+                        mb_entropy = -mb_entropy.sum() / nb_act_tokens
+                    else:
+                        mb_entropy = -mb_entropy.sum()
+
                     mb_entropy *= self.entropy_coeff
                     self.tally.add_metric(
                         path=["loss_mb_total", "entropy_mb_total"],
                         metric=mb_entropy.item(),
                     )
 
-                    if self.enable_tokenwise_logging:
-                        self.tally.add_metric(
-                            path=["gradient_term_magnitudes", "entropy"],
-                            metric=self.get_gradient_magnitude(loss_term=mb_entropy),
-                        )
+                    # if self.enable_tokenwise_logging:
+                    #     self.tally.add_metric(
+                    #         path=["gradient_term_magnitudes", "entropy"],
+                    #         metric=self.get_gradient_magnitude(loss_term=mb_entropy),
+                    #     )
                     loss += mb_entropy
 
                 # -------------------------------------------------
@@ -608,7 +612,15 @@ class BaseTrainer(ABC):
                 discount_factor=self.discount_factor,
             )
             if self.use_rloo:
-                padded_credits = get_rloo_credits(credits=padded_credits)
+                is_grouped_by_rng = trajectories.crn_ids.unique().shape[0]  != trajectories.crn_ids.shape[0]
+                if is_grouped_by_rng:
+                    for crn_id in trajectories.crn_ids.unique():
+                        rng_mask = trajectories.crn_ids == crn_id
+                        rng_credits = padded_credits[rng_mask]
+                        rng_credits, _ = get_rloo_credits(credits=rng_credits)
+                        padded_credits[rng_mask] = rng_credits
+                else:   
+                    padded_credits, _ = get_rloo_credits(credits=padded_credits)
             credits = [
                 padded_credits[i, : lengths[i]] for i in range(padded_credits.shape[0])
             ]

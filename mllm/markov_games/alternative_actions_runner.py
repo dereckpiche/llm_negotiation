@@ -1,9 +1,10 @@
 import asyncio
+import copy
 import json
 import os.path
 from typing import Any, Tuple
 
-from mllm.markov_games.markov_game import MarkovGame
+from mllm.markov_games.markov_game import AgentAndActionSafeCopy, MarkovGame
 from mllm.markov_games.rollout_tree import (
     AgentActLog,
     RolloutTreeBranchNode,
@@ -13,13 +14,12 @@ from mllm.markov_games.rollout_tree import (
 )
 
 AgentId = str
-import uuid
+
 
 
 async def run_with_unilateral_alt_action(
     markov_game: MarkovGame,
     agent_id: AgentId,
-    branch_id: int,
     time_step: int,
     branch_node: RolloutTreeBranchNode,
     max_depth: int,
@@ -41,7 +41,7 @@ async def run_with_unilateral_alt_action(
     time_step += 1
     counter = 1
     previous_node = first_alternative_node
-    while not terminated and counter < max_depth:
+    while not terminated and counter <= max_depth:
         terminated, step_log = await markov_game.step()
         current_node = RolloutTreeNode(step_log=step_log, time_step=time_step)
         previous_node.child = current_node
@@ -74,15 +74,21 @@ async def AlternativeActionsRunner(
     tasks = []
     time_step = 0
     terminated = False
-    root = RolloutTreeRootNode(id=int(str(uuid.uuid4().int)[:8]))
+    root = RolloutTreeRootNode(
+        id=markov_game.get_id(),
+        crn_id=markov_game.get_crn_id()
+    )
     previous_node = root
 
     while not terminated:
         mg_before_action = markov_game.get_safe_copy()
-        actions: dict[
-            AgentId, Tuple[Any, AgentActLog]
+
+        # Get safe copies for main branch
+        agent_action_safe_copies: dict[
+            AgentId, AgentAndActionSafeCopy
         ] = await markov_game.get_actions_of_agents_without_side_effects()
-        markov_game.set_actions_of_agents_manually(actions)
+
+        markov_game.set_actions_of_agents_manually(agent_action_safe_copies)
         terminated = markov_game.take_simulation_step()
         main_node = RolloutTreeNode(
             step_log=markov_game.get_step_log(), time_step=time_step
@@ -94,20 +100,30 @@ async def AlternativeActionsRunner(
         # Get alternative branches by generating new unilateral actions
         for agent_id in markov_game.agent_ids:
             for _ in range(nb_alternative_actions):
+                # Get safe copies for branches
+                branch_agent_action_safe_copies: dict[
+                    AgentId, AgentAndActionSafeCopy
+                ] = {
+                    agent_id: AgentAndActionSafeCopy(
+                        action=copy.deepcopy(agent_action_safe_copy.action),
+                        action_info=copy.deepcopy(agent_action_safe_copy.action_info),
+                        agent_after_action=agent_action_safe_copy.agent_after_action.get_safe_copy(),
+                    )
+                    for agent_id, agent_action_safe_copy in agent_action_safe_copies.items()
+                }
                 mg_branch: MarkovGame = mg_before_action.get_safe_copy()
                 other_agent_id = [id for id in mg_branch.agent_ids if id != agent_id][0]
-                other_action: Any = actions[other_agent_id][0]
-                other_action_info: AgentActLog = actions[other_agent_id][1]
-                mg_branch.set_action_of_agent_manually(
-                    other_agent_id, other_action, other_action_info
+                mg_branch.set_action_and_agent_after_action_manually(
+                    agent_id=other_agent_id,
+                    agent_action_safe_copy=branch_agent_action_safe_copies[
+                        other_agent_id
+                    ],
                 )
-                branch_id = int(str(uuid.uuid4().int)[:8])
                 task = asyncio.create_task(
                     run_with_unilateral_alt_action(
                         markov_game=mg_branch,
                         time_step=time_step,
                         agent_id=agent_id,
-                        branch_id=branch_id,
                         branch_node=branch_node,
                         max_depth=max_depth,
                     )

@@ -39,19 +39,40 @@ def resource_logger_context(logger: logging.Logger, task_description: str):
     """
     try:
         initial_time = time.time()
-        initial_gpu_allocated = torch.cuda.memory_allocated(0)
-        initial_gpu_reserved = torch.cuda.memory_reserved(0)
+        # Assume CUDA is available and use device 0 only
+        total_mem_bytes = torch.cuda.get_device_properties(0).total_memory
+        initial_total_bytes = (
+            torch.cuda.memory_allocated(0) + torch.cuda.memory_reserved(0)
+        )
+        torch.cuda.reset_peak_memory_stats(0)
         yield None
     finally:
         final_time = time.time()
-        final_gpu_allocated = torch.cuda.memory_allocated(0)
-        final_gpu_reserved = torch.cuda.memory_reserved(0)
-        total_gpu_memory = torch.cuda.get_device_properties(0).total_memory
+        # Ensure kernels within the block are accounted for
+        torch.cuda.synchronize()
+
+        # Compute metrics
+        final_allocated_bytes = torch.cuda.memory_allocated(0)
+        final_reserved_bytes = torch.cuda.memory_reserved(0)
+        final_total_bytes = final_allocated_bytes + final_reserved_bytes
+
+        delta_vram_percent_total = (
+            100 * (final_total_bytes - initial_total_bytes) / total_mem_bytes
+            if total_mem_bytes
+            else 0.0
+        )
+        current_percent_vram_taken = (
+            100 * final_total_bytes / total_mem_bytes if total_mem_bytes else 0.0
+        )
+        block_peak_percent = (
+            100 * torch.cuda.max_memory_allocated(0) / total_mem_bytes
+            if total_mem_bytes
+            else 0.0
+        )
+        delta_time_str = time.strftime(
+            '%H:%M:%S', time.gmtime(final_time - initial_time)
+        )
+
         logger.info(
-            f"""For task: {task_description}\n,
-            ΔVRAM Allocated: {(final_gpu_allocated - initial_gpu_allocated)/ (1024 ** 3)} GB,
-            ΔVRAM Reserved: {(final_gpu_reserved - initial_gpu_reserved)/ (1024 ** 3)} GB,
-            ΔTime: {time.strftime('%H:%M:%S', time.gmtime(final_time - initial_time))},
-            Percentage of VRAM taken: {100*(final_gpu_allocated+final_gpu_reserved)/total_gpu_memory}%,
-            """
+            f"For task: {task_description}, ΔVRAM % (total): {delta_vram_percent_total:.2f}%, Current % of VRAM taken: {current_percent_vram_taken:.2f}%, Block Peak % of device VRAM: {block_peak_percent:.2f}%, ΔTime: {delta_time_str}"
         )
