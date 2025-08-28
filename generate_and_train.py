@@ -33,6 +33,7 @@ from mllm.markov_games.run_markov_games import run_markov_games
 from mllm.markov_games.alternative_actions_runner import AlternativeActionsRunner
 from mllm.markov_games.linear_runner import LinearRunner
 from mllm.models.large_language_model_local import LeanLocalLLM
+from mllm.models.large_language_model_api import LargeLanguageModelOpenAI
 
 # from mllm.models.large_language_model_server import ServerLLM
 from mllm.models.scalar_critic import ScalarCritic
@@ -99,7 +100,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
     # Init llms + llm adapters
     llms_dict = {}
     for llm_id, model_config in cfg["models"].items():
-        model_class: LeanLocalLLM = globals()[  # TODO: Add server llm
+        model_class: LeanLocalLLM | LargeLanguageModelOpenAI = globals()[  # TODO: Add server llm
             model_config["class"]
         ]
         llms_dict[llm_id] = model_class(
@@ -112,10 +113,10 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
     for llm_id, llm in llms_dict.items():
         policies.update(llm.get_inference_policies())
 
-    #
     adapter_modules = {}  # These are trainable Pytorch modules
     for llm_id, llm in llms_dict.items():
-        adapter_modules[llm_id] = llm.get_adapter_modules()
+        if isinstance(llm, LeanLocalLLM):
+            adapter_modules[llm_id] = llm.get_adapter_modules()
 
     # Scalar Critics
     critics = {}
