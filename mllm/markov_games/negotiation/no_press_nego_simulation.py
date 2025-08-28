@@ -26,9 +26,11 @@ class NoPressObs(NegotiationObs):
 class NoPressSimulation(NegotiationSimulation):
     def __init__(
         self,
+        deterministic: bool,
         *args,
         **kwargs,
     ):
+        self.deterministic = deterministic
         super().__init__(*args, **kwargs)
 
     def _sample_values(self) -> Dict[AgentId, float]:
@@ -38,7 +40,13 @@ class NoPressSimulation(NegotiationSimulation):
     def set_new_round_of_variant(self):
         self.state.previous_values = copy.deepcopy(self.state.values)
         self.state.quantities = {"coins": 10.0}
-        self.state.values = self._sample_values()
+        if self.deterministic:
+            self.state.values = {
+                aid: 1.0 if aid == self.state.current_agent else 10.0
+                for aid in self.agent_ids
+            }
+        else:
+            self.state.values = self._sample_values()
         self.state.split_phase = True
 
     def get_info_of_variant(
@@ -111,7 +119,12 @@ class NoPressSimulation(NegotiationSimulation):
 
     def reset(self):
         start_agent = self.agent_ids[self._starting_agent_index]
-        values = self._sample_values()
+        if self.deterministic:
+            values = {
+                aid: 1.0 if aid == start_agent else 10.0 for aid in self.agent_ids
+            }
+        else:
+            values = self._sample_values()
         self.state = NoPressState(
             round_nb=0,
             last_message="",

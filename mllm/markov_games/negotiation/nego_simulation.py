@@ -157,18 +157,17 @@ class NegotiationSimulation(Simulation):
             info = self.get_info_of_variant(self.state, actions)
 
             # Prepare next round
+            # Alternate starting agent
             self.state.round_nb += 1
+            self._starting_agent_index = 1 - self._starting_agent_index
+            self.state.current_agent = self.agent_ids[self._starting_agent_index]
+            self.state.other_agent = self._other(self.state.current_agent)
             self.set_new_round_of_variant()  # variant specific
             self.state.previous_splits = copy.deepcopy(self.state.splits)
             self.state.previous_points = copy.deepcopy(rewards)
             self.state.last_message = ""
             self.state.splits = {agent_id: None for agent_id in self.agent_ids}
             self.state.nb_messages_sent = {agent_id: 0 for agent_id in self.agent_ids}
-            # Alternate starting agent
-            self._starting_agent_index = 1 - self._starting_agent_index
-            self.state.current_agent = self.agent_ids[self._starting_agent_index]
-            self.state.other_agent = self._other(self.state.current_agent)
-
             done = self.state.round_nb >= self.nb_of_rounds
             return done, SimulationStepLog(rewards=rewards, info=info)
 
