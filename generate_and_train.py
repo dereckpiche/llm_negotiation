@@ -5,6 +5,7 @@ TODO: use ModulePointer instead of nested dicts
 """
 import asyncio
 import copy
+import json
 import logging
 import os
 import pickle
@@ -27,10 +28,12 @@ from mllm.markov_games.mg_utils import (
     MarkovGameConfig,
     init_markov_game_components,
 )
+from mllm.markov_games.group_timesteps import group_by_round
 from mllm.markov_games.run_markov_games import run_markov_games
 from mllm.markov_games.alternative_actions_runner import AlternativeActionsRunner
 from mllm.markov_games.linear_runner import LinearRunner
 from mllm.models.large_language_model_local import LeanLocalLLM
+from mllm.models.large_language_model_api import LargeLanguageModelOpenAI
 
 # from mllm.models.large_language_model_server import ServerLLM
 from mllm.models.scalar_critic import ScalarCritic
@@ -97,7 +100,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
     # Init llms + llm adapters
     llms_dict = {}
     for llm_id, model_config in cfg["models"].items():
-        model_class: LeanLocalLLM = globals()[  # TODO: Add server llm
+        model_class: LeanLocalLLM | LargeLanguageModelOpenAI = globals()[  # TODO: Add server llm
             model_config["class"]
         ]
         llms_dict[llm_id] = model_class(
@@ -110,10 +113,10 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
     for llm_id, llm in llms_dict.items():
         policies.update(llm.get_inference_policies())
 
-    #
     adapter_modules = {}  # These are trainable Pytorch modules
     for llm_id, llm in llms_dict.items():
-        adapter_modules[llm_id] = llm.get_adapter_modules()
+        if isinstance(llm, LeanLocalLLM):
+            adapter_modules[llm_id] = llm.get_adapter_modules()
 
     # Scalar Critics
     critics = {}
@@ -218,6 +221,15 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
             output_folder=it_folder,
             markov_games=markov_games,
         )
+        # This will merge all timesteps of a round into a single timestep - simplifies credit assignment during training
+        if cfg["markov_games"].get("group_by_round", False):
+            rollout_trees = [group_by_round(rollout_tree) for rollout_tree in rollout_trees]
+
+        # Export rollout trees
+        for i, rollout_tree in enumerate(rollout_trees):
+            with open(os.path.join(it_folder, f"mgid_{i}_rollout_tree.json"), "w") as f:
+                f.write(rollout_tree.model_dump_json(indent=4))
+        
         generation_end_time = time.time()
 
         # Process raw data into training data using the specified functions for each agent

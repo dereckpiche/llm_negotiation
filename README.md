@@ -36,6 +36,11 @@ sys.path.append('your-path-to-the-repo')
 ```
 in order to add the repository to your system path. 
 
+To run with OpenAI API models, set 
+```bash
+export OPENAI_API_KEY=your/api/key 
+```
+
 ## Development
 
 ```bash

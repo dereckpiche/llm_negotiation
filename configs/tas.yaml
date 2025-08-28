@@ -19,6 +19,8 @@ agent_ids: ["Alice", "Bob"]
 
 markov_games:
 
+    group_by_round: True # This will merge all timesteps of a round into a single timestep
+
     simulation_class_name: TrustAndSplitSimulation
     simulation_init_args:
         agent_ids: ${agent_ids}

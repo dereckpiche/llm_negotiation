@@ -29,7 +29,7 @@ class TrainingChatTurn:
 
     def __init__(
         self, time_step: int, role: str, agent_id: str, content: str, is_state_end: bool
-    ):
+    ) -> None:
         self.time_step = time_step
         self.role = role
         self.agent_id = agent_id

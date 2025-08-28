@@ -26,13 +26,5 @@ async def LinearRunner(
         previous_node = current_node
         time_step += 1
 
-    # Export the tree & its schema
-    os.makedirs(output_folder, exist_ok=True)
-    export_path = os.path.join(
-        output_folder, "mgid:" + str(root.id) + "_rollout_tree" + ".json"
-    )
-    with open(export_path, "w") as f:
-        f.write(root.model_dump_json(indent=4))
-
     return root
-    # TODO: export schema
+    
