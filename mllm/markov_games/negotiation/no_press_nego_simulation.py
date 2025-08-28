@@ -10,47 +10,48 @@ from mllm.markov_games.negotiation.nego_simulation import (
     compute_tas_style_rewards,
 )
 
-
 AgentId = str
 
 
 @dataclass
-class DeterministicNoPressState(NegotiationState):
+class NoPressState(NegotiationState):
     pass
 
 
 @dataclass
-class DeterministicNoPressObs(NegotiationObs):
-    my_value: float
+class NoPressObs(NegotiationObs):
     other_value: float
 
 
-class DeterministicNoPressSimulation(NegotiationSimulation):
+class NoPressSimulation(NegotiationSimulation):
     def __init__(
         self,
-        agent_ids: List[AgentId],
-        seed: int,
-        rounds_per_game: int,
-        max_coins: int = 10,
+        deterministic: bool,
         *args,
         **kwargs,
     ):
-        self.max_coins = int(max_coins)
-        super().__init__(
-            agent_ids=agent_ids,
-            seed=seed,
-            nb_of_rounds=int(rounds_per_game),
-            quota_messages_per_agent_per_round=0,
-            nb_messages_per_agent=0,
-            item_types=["coins"],
-        )
+        self.deterministic = deterministic
+        super().__init__(*args, **kwargs)
+
+    def _sample_values(self) -> Dict[AgentId, float]:
+        # Independent random per-coin values of either 1 or 10 (inclusive)
+        return {aid: float(int(self.rng.choice([1, 10]))) for aid in self.agent_ids}
 
     def set_new_round_of_variant(self):
-        # Keep fixed values and immediately enter split phase with constant quantity
-        self.state.quantities = {"coins": self.max_coins}
+        self.state.previous_values = copy.deepcopy(self.state.values)
+        self.state.quantities = {"coins": 10.0}
+        if self.deterministic:
+            self.state.values = {
+                aid: 1.0 if aid == self.state.current_agent else 10.0
+                for aid in self.agent_ids
+            }
+        else:
+            self.state.values = self._sample_values()
         self.state.split_phase = True
 
-    def get_info_of_variant(self, state: NegotiationState, actions: Dict[AgentId, Any]) -> Dict[str, Any]:
+    def get_info_of_variant(
+        self, state: NegotiationState, actions: Dict[AgentId, Any]
+    ) -> Dict[str, Any]:
         return {
             "quantities": copy.deepcopy(state.quantities),
             "values": copy.deepcopy(state.values),
@@ -58,47 +59,83 @@ class DeterministicNoPressSimulation(NegotiationSimulation):
         }
 
     def get_rewards(self, splits: Dict[AgentId, Split]) -> Dict[AgentId, float]:
-        return compute_tas_style_rewards(self.agent_ids, self.state.values, splits, self.max_coins)
+        return compute_tas_style_rewards(
+            self.agent_ids, self.state.values, splits, 10.0
+        )
 
     def get_obs(self):
         return {agent_id: self.get_obs_agent(agent_id) for agent_id in self.agent_ids}
 
     def get_obs_agent(self, agent_id):
-        other_id = self.agent_ids[1] if agent_id == self.agent_ids[0] else self.agent_ids[0]
-        other_split_val = None
-        if self.state.splits.get(other_id) is not None:
-            other_split_val = self.state.splits[other_id].items_given_to_self.get("coins", 0)
-        return DeterministicNoPressObs(
+        other_id = self._other(agent_id)
+        last_value_coagent = (
+            None
+            if self.state.previous_values is None
+            else self.state.previous_values.get(other_id)
+        )
+        last_points_coagent = (
+            None
+            if self.state.previous_points is None
+            else round(self.state.previous_points.get(other_id), 1)
+        )
+        last_value_agent = (
+            None
+            if self.state.previous_values is None
+            else self.state.previous_values.get(agent_id)
+        )
+        last_points_agent = (
+            None
+            if self.state.previous_points is None
+            else round(self.state.previous_points.get(agent_id), 1)
+        )
+        last_split_coagent = None
+        last_split_agent = None
+        if self.state.previous_splits is not None:
+            last_split_coagent = self.state.previous_splits[
+                other_id
+            ].items_given_to_self["coins"]
+            last_split_agent = self.state.previous_splits[agent_id].items_given_to_self[
+                "coins"
+            ]
+        obs = NoPressObs(
             round_nb=self.state.round_nb,
             last_message="",
+            quota_messages_per_agent_per_round=self.quota_messages_per_agent_per_round,
             current_agent=self.state.current_agent,
-            quantities={"coins": self.max_coins},
+            other_agent=other_id,
+            quantities={"coins": 10},
+            item_types=self.item_types,
             value=self.state.values[agent_id],
-            other_agent_split=other_split_val,
-            split_phase=True,
-            quota_messages_per_agent_per_round=0,
-            my_value=self.state.values[agent_id],
+            split_phase=self.state.split_phase,
+            last_split_agent=last_split_agent,
+            last_value_agent=last_value_agent,
+            last_points_agent=last_points_agent,
+            last_split_coagent=last_split_coagent,
+            last_value_coagent=last_value_coagent,
+            last_points_coagent=last_points_coagent,
             other_value=self.state.values[other_id],
         )
+        return obs
 
     def reset(self):
         start_agent = self.agent_ids[self._starting_agent_index]
-        # Fixed deterministic values: agent 0 gets 10, agent 1 gets 1
-        values = {
-            self.agent_ids[0]: 10.0,
-            self.agent_ids[1]: 1.0,
-        }
-        self.state = DeterministicNoPressState(
+        if self.deterministic:
+            values = {
+                aid: 1.0 if aid == start_agent else 10.0 for aid in self.agent_ids
+            }
+        else:
+            values = self._sample_values()
+        self.state = NoPressState(
             round_nb=0,
             last_message="",
             current_agent=start_agent,
-            quantities={"coins": self.max_coins},
+            quantities={"coins": 10.0},
             values=values,
             previous_values=None,
             splits={aid: None for aid in self.agent_ids},
             nb_messages_sent={aid: 0 for aid in self.agent_ids},
             split_phase=True,
+            previous_splits=None,
+            previous_points=None,
         )
         return self.get_obs()
-
-
