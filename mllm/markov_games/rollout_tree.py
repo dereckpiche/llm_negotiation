@@ -76,6 +76,7 @@ class RolloutTreeBranchNode(BaseModel):
 
 class RolloutTreeRootNode(BaseModel):
     id: int
+    crn_id: int  # ID of the rng used to generate this rollout tree
     child: RolloutTreeNode | RolloutTreeBranchNode | None = None
 
 
