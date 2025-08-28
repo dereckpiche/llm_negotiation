@@ -13,7 +13,7 @@ experiment:
     start_epoch: 0
     resume_experiment: true
     base_seed: 0
-    seed_ground_size: 8
+    seed_group_size: 8
 temperature: 1.0
 
 markov_games:

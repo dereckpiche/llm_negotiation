@@ -67,7 +67,6 @@ class BaseTrainer(ABC):
         use_gae: bool,
         pg_loss_normalization: Literal["batch", "nb_tokens"],
         use_rloo: bool,
-        use_common_rng_for_rloo: bool,
         skip_discounted_state_visitation: bool,
         gae_lambda_for_credits: float,
         gae_lambda_for_targets: float,
@@ -155,7 +154,6 @@ class BaseTrainer(ABC):
         self.enable_tokenwise_logging = enable_tokenwise_logging
         self.reward_normalizing_constant = reward_normalizing_constant
         self.pg_loss_normalization = pg_loss_normalization
-        self.use_common_rng_for_rloo = use_common_rng_for_rloo
         # Common containers used by all trainers
         self.training_data: dict = {}
         self.debug_path_list: list[str] = []
@@ -603,9 +601,10 @@ class BaseTrainer(ABC):
                 discount_factor=self.discount_factor,
             )
             if self.use_rloo:
-                if self.use_common_rng_for_rloo:
-                    for rng_seed in trajectories.rng_seeds.unique():
-                        rng_mask = trajectories.rng_seeds == rng_seed
+                is_grouped_by_rng = trajectories.crn_ids.unique().shape[0]  != trajectories.crn_ids.shape[0]
+                if is_grouped_by_rng:
+                    for crn_id in trajectories.crn_ids.unique():
+                        rng_mask = trajectories.crn_ids == crn_id
                         rng_credits = padded_credits[rng_mask]
                         rng_credits, _ = get_rloo_credits(credits=rng_credits)
                         padded_credits[rng_mask] = rng_credits
@@ -654,7 +653,6 @@ class BaseTrainer(ABC):
             )
             policy_gradient_data = TrainingBatch(
                 rollout_ids=trajectory_batch.rollout_ids,
-                rng_seeds=trajectory_batch.rng_seeds,
                 batch_input_ids=trajectory_batch.batch_input_ids,
                 batch_action_mask=trajectory_batch.batch_action_mask,
                 batch_credits=tokenwise_batch_credits,

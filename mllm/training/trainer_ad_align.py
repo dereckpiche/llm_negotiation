@@ -155,7 +155,7 @@ class TrainerAdAlign(BaseTrainer):
 
         # For main rollouts
         batch_rollout_ids = []
-        batch_rng_seeds = []
+        batch_crn_ids = []
         batch_input_ids = []
         batch_action_mask = []
         batch_timesteps = []
@@ -183,7 +183,7 @@ class TrainerAdAlign(BaseTrainer):
             )
             # Get main trajectory
             batch_rollout_ids.append(rollout_id)
-            batch_rng_seeds.append(root.rng_seed)
+            batch_crn_ids.append(root.crn_id)
             main_chat, main_rewards = get_main_chat_list_and_rewards(
                 agent_id=agent_id, root=root
             )
@@ -237,7 +237,7 @@ class TrainerAdAlign(BaseTrainer):
 
         trajectory_batch = TrajectoryBatch(
             rollout_ids=torch.tensor(batch_rollout_ids, dtype=torch.int32),  # (B,)
-            rng_seeds=torch.tensor(batch_rng_seeds, dtype=torch.int32),
+            crn_ids=torch.tensor(batch_crn_ids, dtype=torch.int32),
             batch_input_ids=batch_input_ids,
             batch_action_mask=batch_action_mask,
             batch_timesteps=batch_timesteps,
@@ -263,7 +263,7 @@ class TrainerAdAlign(BaseTrainer):
                 )  # (jT,) # (we only want the advantages where we branched out)
                 alternative_trajectory_batch = TrajectoryBatch(
                     rollout_ids=torch.zeros(A * sum_jT, dtype=torch.int32),
-                    rng_seeds=torch.zeros(A * sum_jT, dtype=torch.int32),
+                    crn_ids=torch.zeros(A * sum_jT, dtype=torch.int32),
                     batch_input_ids=alternative_batch_input_ids,
                     batch_action_mask=alternative_batch_action_mask,
                     batch_timesteps=alternative_batch_timesteps,

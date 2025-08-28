@@ -21,7 +21,7 @@ import torch
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import OmegaConf
 from pandas.core.base import IndexLabel
-
+from mllm.utils.short_id_gen import generate_short_id
 from mllm.markov_games.mg_utils import (
     AgentConfig,
     MarkovGameConfig,
@@ -173,9 +173,9 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         for agent_config_ in cfg["markov_games"]["agents"].values():
             agent_config = AgentConfig(**agent_config_)
             agent_configs.append(agent_config)
-        assert nb_matches % seed_ground_size == 0, "nb_matches must be divisible by seed_ground_size"
         nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
-        seed_ground_size = cfg["experiment"]["seed_ground_size"]
+        seed_group_size = cfg["experiment"].get("seed_group_size", 1)
+        assert nb_matches % seed_group_size == 0, "nb_matches must be divisible by seed_group_size"
 
     for iteration in range(
         cfg["experiment"]["start_epoch"], cfg["experiment"]["nb_epochs"]
@@ -191,7 +191,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
         iteration_start_time = time.time()
         it_folder = os.path.join(output_directory, f"iteration_{iteration:03}")
-        seeds = [env_rng.integers(0, 1e9, size=seed_ground_size) for _ in range(nb_matches//seed_ground_size)]
+        crn_seeds = [env_rng.integers(0, 1e9, 1)[0] for _ in range(nb_matches//seed_group_size)] # common random number seeds
         os.makedirs(it_folder, exist_ok=True)
         generation_start_time = time.time()
 
@@ -199,8 +199,8 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         markov_games = []
         for i in range(nb_matches):
             markov_game_config = MarkovGameConfig(
-                id="mgid_" + str(iteration * nb_matches + i),
-                seed=int(seeds[i//seed_ground_size][i%seed_ground_size]),
+                id=generate_short_id(),
+                seed=int(crn_seeds[i//seed_group_size]),
                 simulation_class_name=cfg["markov_games"]["simulation_class_name"],
                 simulation_init_args=cfg["markov_games"]["simulation_init_args"],
                 agent_configs=agent_configs,

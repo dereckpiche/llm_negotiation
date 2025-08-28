@@ -1,7 +1,6 @@
 import asyncio
 import json
 import os.path
-import uuid
 
 from mllm.markov_games.markov_game import MarkovGame
 from mllm.markov_games.rollout_tree import RolloutTreeNode, RolloutTreeRootNode
@@ -16,7 +15,8 @@ async def LinearRunner(
     time_step = 0
     terminated = False
     root = RolloutTreeRootNode(
-        id=int(str(uuid.uuid4().int)[:8]), rng_seed=markov_game.get_rng_seed()
+        id=markov_game.get_id(),
+        crn_id=markov_game.get_crn_id()
     )
     previous_node = root
     while not terminated:
