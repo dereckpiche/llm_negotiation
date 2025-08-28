@@ -59,6 +59,36 @@ class NegotiationObs:
     last_points_coagent: float | None
 
 
+def compute_tas_style_rewards(
+    agent_ids: List[AgentId],
+    values: Dict[AgentId, float],
+    splits: Dict[AgentId, Split],
+    max_coins: int,
+) -> Dict[AgentId, float]:
+    """
+    TAS-like reward computation: if sum of proposed coins exceeds max_coins,
+    allocate proportionally. Otherwise, use proposed amounts directly.
+    Rewards are quantity_kept * per-coin value for each agent.
+    """
+    a0, a1 = agent_ids[0], agent_ids[1]
+    coins_to_self_0 = int(
+        (splits[a0].items_given_to_self.get("coins", 0))
+        if splits[a0] is not None
+        else 0
+    )
+    coins_to_self_1 = int(
+        (splits[a1].items_given_to_self.get("coins", 0))
+        if splits[a1] is not None
+        else 0
+    )
+    denom = max(int(max_coins), coins_to_self_0 + coins_to_self_1)
+    q0 = float(max_coins) * float(coins_to_self_0) / float(denom)
+    q1 = float(max_coins) * float(coins_to_self_1) / float(denom)
+    r0 = q0 * float(values[a0])
+    r1 = q1 * float(values[a1])
+    return {a0: r0, a1: r1}
+
+
 class NegotiationSimulation(Simulation):
     def __init__(
         self,

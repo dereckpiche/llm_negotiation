@@ -7,6 +7,8 @@ from mllm.markov_games.markov_game import MarkovGame
 from mllm.markov_games.negotiation.dond_agent import DealNoDealAgent
 from mllm.markov_games.negotiation.dond_simulation import DealNoDealSimulation
 from mllm.markov_games.negotiation.tas_agent import TrustAndSplitAgent
+from mllm.markov_games.negotiation.tas_rps_agent import TrustAndSplitRPSAgent
+from mllm.markov_games.negotiation.tas_rps_simulation import TrustAndSplitRPSSimulation
 from mllm.markov_games.negotiation.tas_simulation import TrustAndSplitSimulation
 
 AgentId = str

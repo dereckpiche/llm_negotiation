@@ -18,7 +18,7 @@ agent_ids: ["Alice", "Bob"]
 
 markov_games:
 
-    simulation_class_name: TrustAndSplitSimulation
+    simulation_class_name: TrustAndSplitRPSSimulation
     simulation_init_args:
         agent_ids: ${agent_ids}
         nb_of_rounds: 10
@@ -28,7 +28,7 @@ markov_games:
     agents:
         0:
             agent_id: ${agent_0_id}
-            agent_class_name: TrustAndSplitAgent
+            agent_class_name: TrustAndSplitRPSAgent
             policy_id: base_llm/agent_adapter
             init_kwargs:
                 <<: *common_agent_kwargs
