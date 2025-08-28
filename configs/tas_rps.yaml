@@ -3,9 +3,9 @@ defaults:
 
 
 experiment:
-    name: "tas_debug"
+    name: "tas_rps"
     method: generate_and_train
-    description: "Trust-and-Split negotiation game"
+    description: "Trust-and-Split Rock Paper Scissors negotiation game"
     nb_matches_per_iteration: 64
 
 
@@ -19,7 +19,7 @@ agent_ids: ["Alice", "Bob"]
 
 markov_games:
 
-    simulation_class_name: TrustAndSplitSimulation
+    simulation_class_name: TrustAndSplitRPSSimulation
     simulation_init_args:
         agent_ids: ${agent_ids}
         nb_of_rounds: 10
@@ -28,14 +28,14 @@ markov_games:
     agents:
         0:
             agent_id: ${agent_0_id}
-            agent_class_name: TrustAndSplitAgent
+            agent_class_name: TrustAndSplitRPSAgent
             policy_id: base_llm/agent_adapter
             init_kwargs:
                 <<: *common_agent_kwargs
 
         1:
             agent_id: ${agent_1_id}
-            agent_class_name: TrustAndSplitAgent
+            agent_class_name: TrustAndSplitRPSAgent
             policy_id: base_llm/agent_adapter
             init_kwargs:
                 <<: *common_agent_kwargs
@@ -46,4 +46,4 @@ trainers:
     agent_trainer:
         kwargs:
             mini_batch_size: 1
-            reward_normalizing_constant: 200.0
+            reward_normalizing_constant: 100.0
