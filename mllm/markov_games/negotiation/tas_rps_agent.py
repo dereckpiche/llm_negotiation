@@ -24,7 +24,7 @@ class TrustAndSplitRPSAgent(NegotiationAgent):
         self.num_message_chars = num_message_chars
         super().__init__(*args, **kwargs)
         self.intro_prompt = (
-            "Welcome to an iterated game. You are {current_agent}. The other agent is {other_agent}.\n"
+            "Welcome to an iterated game. You are {agent}. The other agent is {other_agent}.\n"
             "\n"
             "Setup:\n"
             "1. The game consists of multiple independent rounds.\n"

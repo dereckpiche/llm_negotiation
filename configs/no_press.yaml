@@ -3,15 +3,14 @@ defaults:
 
 
 experiment:
-    name: "tas"
+    name: "no_press"
     method: generate_and_train
-    description: "Trust-and-Split negotiation game"
+    description: "No press negotiation game"
     nb_matches_per_iteration: 64
-
 
 common_agent_kwargs: &common_agent_kwargs
     goal: "Maximize your total points over the whole game."
-    num_message_chars: 500
+
 
 agent_0_id: Alice
 agent_1_id: Bob
@@ -19,25 +18,24 @@ agent_ids: ["Alice", "Bob"]
 
 markov_games:
 
-    group_by_round: True # This will merge all timesteps of a round into a single timestep
-
-    simulation_class_name: TrustAndSplitSimulation
+    simulation_class_name: NoPressSimulation
     simulation_init_args:
         agent_ids: ${agent_ids}
         nb_of_rounds: 10
-        quota_messages_per_agent_per_round: 1
+        quota_messages_per_agent_per_round: 0
+        deterministic: false
 
     agents:
         0:
             agent_id: ${agent_0_id}
-            agent_class_name: TrustAndSplitAgent
+            agent_class_name: NoPressAgent
             policy_id: base_llm/agent_adapter
             init_kwargs:
                 <<: *common_agent_kwargs
 
         1:
             agent_id: ${agent_1_id}
-            agent_class_name: TrustAndSplitAgent
+            agent_class_name: NoPressAgent
             policy_id: base_llm/agent_adapter
             init_kwargs:
                 <<: *common_agent_kwargs
@@ -48,4 +46,4 @@ trainers:
     agent_trainer:
         kwargs:
             mini_batch_size: 1
-            reward_normalizing_constant: 200.0
+            reward_normalizing_constant: 100.0
