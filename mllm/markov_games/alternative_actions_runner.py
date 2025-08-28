@@ -62,6 +62,7 @@ async def AlternativeActionsRunner(
     output_folder: str,
     nb_alternative_actions: int,
     max_depth: int,
+    branch_only_on_new_round: bool = False,
 ):
     """
     This method generates a trajectory with partially completed branches,

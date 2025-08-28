@@ -132,6 +132,7 @@ class NegotiationSimulation(Simulation):
         a0, a1 = self.agent_ids[0], self.agent_ids[1]
         action = actions.get(current_agent)
 
+
         # Split phase: require both splits in the same timestep
         if self.state.split_phase:
             action_a0 = actions.get(a0)
@@ -167,13 +168,13 @@ class NegotiationSimulation(Simulation):
             # Alternate starting agent
             self._starting_agent_index = 1 - self._starting_agent_index
             self.state.current_agent = self.agent_ids[self._starting_agent_index]
+            is_last_timestep_in_round = True
             self.state.other_agent = self._other(self.state.current_agent)
-
             done = self.state.round_nb >= self.nb_of_rounds
-            return done, SimulationStepLog(rewards=rewards, info=info)
+            
 
         # Message phase
-        if isinstance(action, Message):
+        elif isinstance(action, Message):
             self.state.last_message = action.message
             self.state.nb_messages_sent[current_agent] += 1
 
@@ -187,16 +188,15 @@ class NegotiationSimulation(Simulation):
                 for agent_id in self.agent_ids
             ):
                 self.state.split_phase = True
+            is_last_timestep_in_round = False
+            done = False
             rewards = {agent_id: 0.0 for agent_id in self.agent_ids}
-            return False, SimulationStepLog(rewards=rewards, info={"type": "message"})
+            info = {"type": "message"}
 
-        # Splits are only valid during split_phase; otherwise invalid action
-        if isinstance(action, Split):
-            raise Exception(
-                "Split received outside of split_phase. Agents must message until split_phase begins."
-            )
+            
 
-        raise Exception("Invalid action type for NegotiationSimulation.")
+        info["is_last_timestep_in_round"] = is_last_timestep_in_round # Used later to group round timesteps if needed
+        return done, SimulationStepLog(rewards=rewards, info=info)
 
     def get_obs(self):
         """Returns all agent observations in dict"""

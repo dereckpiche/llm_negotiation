@@ -24,7 +24,6 @@ class NegotiationAgent(Agent):
         agent_id: str,
         policy: Callable[[List[Dict]], str],
         goal: str,
-        num_message_chars: int,
     ):
         self.seed = seed
         self.agent_id = agent_id

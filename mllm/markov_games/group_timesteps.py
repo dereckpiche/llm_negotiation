@@ -12,17 +12,7 @@ from typing import Callable
 AgentId = str
 
 
-def stop_when_round_ends(step_log: StepLog) -> bool:
-    """
-    Simplest stop condition. Will return True if step log is the last time step of a round.
-    This will throw an error if this information is not available in the simulation info.
-    """
-    # TODO: implement real version 
-    rewards = list(step_log.simulation_step_log.rewards.values())
-    if rewards[0] + rewards[1] != 0:
-        return True
-    return False
-    
+
 
 def group_time_steps(rollout_tree: RolloutTreeRootNode, accumulation_stop_condition: Callable[[StepLog], bool]) -> RolloutTreeRootNode:
     """
@@ -69,27 +59,32 @@ def group_time_steps(rollout_tree: RolloutTreeRootNode, accumulation_stop_condit
         """
         Groups time steps. Recursion is used to handle branches.
         """
+        assert isinstance(current_node, RolloutTreeNode) or isinstance(current_node, RolloutTreeBranchNode), "Current node must be a tree node or a branch node. Is of type: " + str(type(current_node))
         first_group_node = None
         current_group_node = None
-        while not isinstance(current_node, RolloutTreeBranchNode) and current_node is not None:
+        while current_node is not None:
 
-            # Special recursive case for branches
             if isinstance(current_node, RolloutTreeBranchNode):
-                main_child_group_node = group_time_steps_rec(
-                    current_node=current_node.main_child, 
-                    group_time_step=group_time_step, 
-                    accumulation_step_logs=copy.deepcopy(accumulation_step_logs))
-                branches = {}
-                for agent_id, branch_nodes in current_node.branches.items():
-                    branch_group_nodes = []
-                    for branch_node in branch_nodes:
-                        branch_group_node = group_time_steps_rec(
-                            current_node=branch_node, 
-                            group_time_step=group_time_step, 
-                            accumulation_step_logs=copy.deepcopy(accumulation_step_logs))
-                        branch_group_nodes.append(branch_group_node)
-                    branches[agent_id] = branch_group_nodes
-                return RolloutTreeBranchNode(main_child=main_child_group_node, branches=branches)
+                raise Exception("Grouping timesteps by round is not supported for branching trajectories yet.")
+            # Special recursive case for branches
+            # if isinstance(current_node, RolloutTreeBranchNode):
+            #     branches = {}
+            #     for agent_id, branch_nodes in current_node.branches.items():
+            #         branch_group_nodes = []
+            #         for branch_node in branch_nodes:
+            #             branch_group_node = group_time_steps_rec(
+            #                 current_node=branch_node, 
+            #                 group_time_step=group_time_step, 
+            #                 accumulation_step_logs=copy.deepcopy(accumulation_step_logs))
+            #             branch_group_nodes.append(branch_group_node)
+            #         branches[agent_id] = branch_group_nodes
+
+            #     main_child_group_node = group_time_steps_rec(
+            #         current_node=current_node.main_child, 
+            #         group_time_step=group_time_step, 
+            #         accumulation_step_logs=copy.deepcopy(accumulation_step_logs))
+                    
+            #     return RolloutTreeBranchNode(main_child=main_child_group_node, branches=branches)
 
             # Accumulate
             accumulation_step_logs.append(current_node.step_log)
@@ -106,9 +101,18 @@ def group_time_steps(rollout_tree: RolloutTreeRootNode, accumulation_stop_condit
             current_node = current_node.child
         return first_group_node
 
-    node = group_time_steps_rec(current_node=rollout_tree.child, group_time_step=0, accumulation_step_logs=[])
-    return RolloutTreeRootNode(id=rollout_tree.id, child=node)
 
+    node = group_time_steps_rec(current_node=rollout_tree.child, group_time_step=0, accumulation_step_logs=[])
+    return RolloutTreeRootNode(id=rollout_tree.id, crn_id=rollout_tree.crn_id, child=node)
+
+def stop_when_round_ends(step_log: StepLog) -> bool:
+    """
+    Simplest stop condition. Will return True if step log is the last time step of a round.
+    This will throw an error if this information is not available in the simulation info.
+    """
+    assert "is_last_timestep_in_round" in step_log.simulation_step_log.info.keys(), "To group by round, is_last_timestep_in_round must be set in the info of your simulation step log at each time step."
+    return step_log.simulation_step_log.info["is_last_timestep_in_round"]
+    
 
 def group_by_round(rollout_tree: RolloutTreeRootNode) -> RolloutTreeRootNode:
     """

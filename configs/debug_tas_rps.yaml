@@ -1,7 +1,7 @@
 # To quickly check if code still runs
 
 defaults:
-    - tas.yaml
+    - tas_rps.yaml
 
 experiment:
     name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
@@ -11,11 +11,11 @@ experiment:
 
 
 markov_games:
-    runner_method_name: LinearRunner
-    runner_kwargs: {}
-    simulation_class_name: TrustAndSplitSimulation
-    simulation_init_args:
-        rounds_per_game: 10
+    runner_method_name: AlternativeActionsRunner
+    runner_kwargs:
+        nb_alternative_actions: 1
+        max_depth: 10
+
 models:
     base_llm:
         class: LeanLocalLLM

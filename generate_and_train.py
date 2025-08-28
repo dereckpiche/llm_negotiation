@@ -221,7 +221,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
             markov_games=markov_games,
         )
         # This will merge all timesteps of a round into a single timestep - simplifies credit assignment during training
-        if cfg["markov_games"]["group_by_round"]:
+        if cfg["markov_games"].get("group_by_round", False):
             rollout_trees = [group_by_round(rollout_tree) for rollout_tree in rollout_trees]
 
         # Export rollout trees
