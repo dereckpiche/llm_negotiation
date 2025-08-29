@@ -18,7 +18,7 @@ class NoPressAgent(NegotiationAgent):
             "Setup:\n"
             "1. The game consists of multiple independent rounds.\n"
             "2. In each round, there are 10 coins to split between the two agents.\n"
-            "3. Each round, both agents are randomly assigned a value of either 1 or 10 for the coin.\n"
+            "3. Each round, both agents are randomly assigned a value of either 1 or 10 per coin.\n"
             "4. You can observe values of both agents.\n"
             "5. Because assignments are random, both agents are equally likely to have same expected per-coin value.\n"
             "\n"

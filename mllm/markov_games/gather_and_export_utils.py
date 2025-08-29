@@ -43,7 +43,7 @@ def gather_rollout_trees(iteration_folder):
     iteration_path = Path(iteration_folder)
     for item in iteration_path.glob("**/*.json"):
         if item.is_file() and re.match(
-            r"(rollout_tree\.json|mgid:\d+_rollout_tree\.json)$", item.name
+            r"(rollout_tree\.json|mgid[:_]\d+_rollout_tree\.json)$", item.name
         ):
             rollout_tree = RolloutTreeRootNode.model_validate_json(item.read_text())
             rollout_trees.append(rollout_tree)

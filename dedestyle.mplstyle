@@ -1,7 +1,7 @@
 
 # ===== FIGURE SETTINGS =====
-figure.figsize: 10, 6
-figure.dpi: 300
+figure.figsize: 8, 6
+figure.dpi: 100
 savefig.dpi: 300
 savefig.bbox: tight
 savefig.pad_inches: 0.1
