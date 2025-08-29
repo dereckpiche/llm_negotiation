@@ -42,6 +42,7 @@ markov_games:
 
 temperature: 1.0
 
+
 trainers:
     agent_trainer:
         kwargs:

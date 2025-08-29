@@ -42,6 +42,11 @@ markov_games:
 
 temperature: 1.0
 
+models:
+    base_llm:
+        init_args:
+            regex_max_attempts: 3
+
 trainers:
     agent_trainer:
         kwargs:
