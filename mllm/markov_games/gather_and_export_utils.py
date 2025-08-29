@@ -219,7 +219,9 @@ def gather_all_chat_turns_for_path(path: RolloutNodeList) -> List[ChatTurnLog]:
                         role=chat_turn.role,
                         content=chat_turn.content,
                         is_state_end=chat_turn.is_state_end,
-                        reward=node.step_log.simulation_step_log.rewards.get(agent_id, 0),
+                        reward=node.step_log.simulation_step_log.rewards.get(
+                            agent_id, 0
+                        ),
                     )
 
                     if chat_turn.role == "user":
@@ -230,7 +232,11 @@ def gather_all_chat_turns_for_path(path: RolloutNodeList) -> List[ChatTurnLog]:
                         current_pair = [turn_log]
                     else:
                         # assistant: attach to an open user message if present; otherwise stand alone
-                        if current_pair and len(current_pair) == 1 and current_pair[0].role == "user":
+                        if (
+                            current_pair
+                            and len(current_pair) == 1
+                            and current_pair[0].role == "user"
+                        ):
                             current_pair.append(turn_log)
                             pairs.append(current_pair)
                             current_pair = []
@@ -382,7 +388,9 @@ def export_rewards_to_csv(path: Path, outdir: Path, first_file: bool):
             mode = "a"
         with open(output_file, mode, newline="") as f:
             writer = csv.writer(f)
-            writer.writerow([int(x) for x in rewards_list[agent_id]])
+            max_steps = len(rewards_list[agent_id])
+            formatted_rewards = [f"{round(x, 1):>5}" for x in rewards_list[agent_id]]
+            writer.writerow(formatted_rewards)
 
 
 # --------------------------------------------------------------------------------------
@@ -719,17 +727,17 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         '<div class="toolbar">',
         '<label for="group-size">Group every</label>',
         '<input id="group-size" type="number" min="0" step="1" value="1" />',
-        '<span>timesteps</span>',
+        "<span>timesteps</span>",
         '<button id="apply-grouping">Apply</button>',
         '<span style="margin-left:8px"></span>',
         '<label for="range-start"><span class="emoji-bw">🔎</span> Range</label>',
         '<input id="range-start" type="number" step="1" />',
-        '<span>to</span>',
+        "<span>to</span>",
         '<input id="range-end" type="number" step="1" />',
         '<button id="apply-range"><span class="emoji-bw">▶︎</span> Apply</button>',
         '<button id="toggle-strong-hide"><span class="emoji-bw">🗜️</span> Strong Hide: <span id="strong-hide-state">On</span></button>',
-        '</div>',
-        '</div>',
+        "</div>",
+        "</div>",
         '<div class="messages-flow">',
     ]
 
@@ -753,16 +761,16 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
                 reward_val = str(raw_val)
             # Format: "🤖 Alice 💬 • Reward: 5.5556 • "
             badge_inner = (
-                f"{emoji} <span class=\"agent-name\">{name}</span> 💬"
-                f" <span class=\"sep\"> • </span><span class=\"reward\">Reward: {reward_val}</span>"
-                f" <span class=\"sep\"> • </span>"
+                f'{emoji} <span class="agent-name">{name}</span> 💬'
+                f' <span class="sep"> • </span><span class="reward">Reward: {reward_val}</span>'
+                f' <span class="sep"> • </span>'
             )
         else:
             # For user messages, show "User of {Agent ID}" in the badge
-            name = 'User of ' + html.escape(turn.agent_id)
+            name = "User of " + html.escape(turn.agent_id)
             emoji = '<span class="emoji-bw">⚙️</span>'
             # Format (no reward): "⚙️ User of Alice 💬 • "
-            badge_inner = f"{emoji} <span class=\"agent-name\">{name}</span> 💬 <span class=\"sep\"> • </span>"
+            badge_inner = f'{emoji} <span class="agent-name">{name}</span> 💬 <span class="sep"> • </span>'
 
         badge = f'<span class="agent-badge">{badge_inner}</span>'
 
@@ -780,11 +788,11 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             f'<div class="turn-content {agent_class} {role_class}">{ts_badge_html}{badge}'
             f'<span class="message-box">{collapsed_text}</span>'
             f'<span class="message-placeholder">(...)</span>'
-            f'</div>'
-            f'</div>'
+            f"</div>"
+            f"</div>"
         )
 
-    html_parts.extend(['</div>', "</body>", "</html>"])
+    html_parts.extend(["</div>", "</body>", "</html>"])
 
     return "\n".join(html_parts)
 

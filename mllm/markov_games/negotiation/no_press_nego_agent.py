@@ -32,7 +32,7 @@ class NoPressAgent(NegotiationAgent):
         )
         self.new_round_prompt = "In this round, your per-coin value is {value} and {other_agent}'s per-coin value is {other_value}."
         self.last_round_prompt = "In the last round, your per-coin value was {last_value_agent} and {other_agent}'s per-coin value was {last_value_coagent}.\nYou proposed {last_split_agent} coins and earned {last_points_agent} points, while {other_agent} proposed {last_split_coagent} coins and earned {last_points_coagent} points."
-        self.send_split_prompt = "Respond with <coins_to_self> x </coins_to_self> where x is an integer in [0, 10]."
+        self.send_split_prompt = "Respond with <coins_to_self> X </coins_to_self> where X is the number of coins you propose for yourself, between 0 and 10 inclusive."
 
     def get_message_regex(self, observation: NoPressObs) -> str:
         return r"^$"  # No messages allowed

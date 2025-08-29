@@ -4,6 +4,7 @@ TODO: Figure out how to tweak SGlang not to go OOM when batch size is 32. See ht
 
 import logging
 import os
+import re
 import sys
 import uuid
 from collections.abc import Callable
@@ -55,6 +56,7 @@ class LeanLocalLLM:
         inference_backend_init_kwargs: dict = {},
         initial_adapter_paths: dict[str, str] | None = None,
         enable_thinking: bool = None,
+        regex_max_attempts: int = -1,
     ):
         self.inference_backend_name = inference_backend
         self.output_directory = output_directory
@@ -64,6 +66,7 @@ class LeanLocalLLM:
         self.adapter_configs = adapter_configs
         self.adapter_ids = list(adapter_configs.keys())
         self.enable_thinking = enable_thinking
+        self.regex_max_attempts = regex_max_attempts
 
         # Optional user-specified initial adapter weight locations (local or HF Hub)
         # Format: {adapter_id: path_or_repo_id}
@@ -168,7 +171,6 @@ class LeanLocalLLM:
             ):
                 self.prepare_adapter_for_inference(adapter_id=_adapter_id)
                 response = await self.generate(prompt, regex)
-                # response = await self.generate(prompt, "^<(A|B)>$")
                 return response
 
             policies[self.llm_id + "/" + adapter_id] = policy
@@ -199,7 +201,7 @@ class LeanLocalLLM:
         self.currently_loaded_adapter_id = adapter_id
         self.weights_got_updated[adapter_id] = False
 
-    async def generate(self, prompt: list[dict], regex: str | None = None) -> str:
+    def _make_prompt_text(self, prompt: list[dict]) -> str:
         # Chat templating
         if self.enable_thinking is not None:
             prompt_text = self.tokenizer.apply_chat_template(
@@ -212,9 +214,38 @@ class LeanLocalLLM:
             prompt_text = self.tokenizer.apply_chat_template(
                 prompt, tokenize=False, add_generation_prompt=True
             )
-        return await self.inference_backend.generate(
-            prompt_text=prompt_text, regex=regex
-        )
+        return prompt_text
+
+    async def generate(self, prompt: list[dict], regex: str | None = None) -> str:
+        if self.regex_max_attempts != -1 and regex is not None:
+            pattern = re.compile(regex)
+            for i in range(self.regex_max_attempts):
+                prompt_text = self._make_prompt_text(prompt)
+                response = await self.inference_backend.generate(
+                    prompt_text=prompt_text
+                )
+                if pattern.fullmatch(response):
+                    return response
+                logger.warning(
+                    f"Response {response} did not match regex: {regex}, retry {i + 1}/{self.regex_max_attempts}"
+                )
+                prompt = [
+                    *prompt,
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Invalid response format. Expected format (regex): {regex}\n Please try again and provide ONLY a response that matches this regex."
+                        ),
+                    },
+                ]
+            raise ValueError(
+                f"Response did not match regex after {self.regex_max_attempts} attempts"
+            )
+        else:
+            prompt_text = self._make_prompt_text(prompt)
+            return await self.inference_backend.generate(
+                prompt_text=prompt_text, regex=regex
+            )
 
     def export_adapters(self) -> None:
         """
