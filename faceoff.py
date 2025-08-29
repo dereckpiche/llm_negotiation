@@ -20,21 +20,17 @@ from hydra.core.hydra_config import HydraConfig
 from omegaconf import OmegaConf
 from pandas.core.base import IndexLabel
 
+from mllm.markov_games.linear_runner import LinearRunner
 from mllm.markov_games.mg_utils import (
     AgentConfig,
     MarkovGameConfig,
     init_markov_game_components,
 )
 from mllm.markov_games.run_markov_games import run_markov_games
-from mllm.markov_games.runners.alternative_actions_runner import (
-    AlternativeActionsRunner,
-)
-from mllm.markov_games.runners.linear_runner import LinearRunner
 from mllm.models.large_language_model_local import LeanLocalLLM
 
 # from mllm.models.large_language_model_server import ServerLLM
 from mllm.utils.kill_sglang import kill_sglang
-from mllm.utils.update_start_epoch import update_start_epoch
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
@@ -64,8 +60,6 @@ async def faceoff(cfg: dict, base_seed: int) -> None:
     output_directory = f"{hydra_cfg['runtime']['output_dir']}/seed_{base_seed}"
     os.makedirs(output_directory, exist_ok=True)
 
-    update_start_epoch(cfg=cfg, output_directory=output_directory)
-
     random.seed(base_seed)  # Python random
     np.random.seed(base_seed)  # NumPy
     torch.manual_seed(base_seed)  # PyTorch (CPU)
@@ -73,17 +67,6 @@ async def faceoff(cfg: dict, base_seed: int) -> None:
     torch.cuda.manual_seed_all(base_seed)  # If using multi-GPU
 
     env_rng = np.random.default_rng(base_seed)
-
-    random_state_dir = f"{output_directory}/random_state.pkl"
-    # Load saved states
-    if os.path.exists(random_state_dir):
-        with open(random_state_dir, "rb") as f:
-            random_state_dict = pickle.load(f)
-        print(f"Loaded random states from {random_state_dir}")
-        random.setstate(random_state_dict["python"])
-        np.random.set_state(random_state_dict["numpy"])
-        torch.set_rng_state(random_state_dict["torch"])
-        torch.cuda.set_rng_state_all(random_state_dict["torch_cuda"])
 
     # -----------------------------------------------------------------
     # Initialize models
@@ -145,6 +128,10 @@ async def faceoff(cfg: dict, base_seed: int) -> None:
         output_folder=output_directory,
         markov_games=markov_games,
     )
+    # Export rollout trees
+    for i, rollout_tree in enumerate(rollout_trees):
+        with open(os.path.join(it_folder, f"mgid_{i}_rollout_tree.json"), "w") as f:
+            f.write(rollout_tree.model_dump_json(indent=4))
 
 
 @hydra.main(config_path="./configs")
