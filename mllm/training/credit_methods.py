@@ -18,6 +18,7 @@ def get_discounted_state_visitation_credits(
 def get_discounted_returns(
     rewards: torch.Tensor,  # (B, T)
     discount_factor: float,
+    reward_normalizing_constant: float,
 ) -> torch.Tensor:
     """
     Computes Monte Carlo discounted returns for a sequence of rewards.
@@ -29,7 +30,7 @@ def get_discounted_returns(
         torch.Tensor: Array of discounted returns.
     """
     assert rewards.dim() == 2, "Wrong dimensions."
-
+    rewards = rewards / reward_normalizing_constant
     B, T = rewards.shape
     discounted_returns = torch.zeros_like(rewards)
     accumulator = torch.zeros(B, device=rewards.device, dtype=rewards.dtype)

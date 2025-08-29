@@ -599,16 +599,20 @@ class BaseTrainer(ABC):
             padded_credits = get_discounted_returns(
                 rewards=padded_rewards,
                 discount_factor=self.discount_factor,
+                reward_normalizing_constant=self.reward_normalizing_constant,
             )
             if self.use_rloo:
-                is_grouped_by_rng = trajectories.crn_ids.unique().shape[0]  != trajectories.crn_ids.shape[0]
+                is_grouped_by_rng = (
+                    trajectories.crn_ids.unique().shape[0]
+                    != trajectories.crn_ids.shape[0]
+                )
                 if is_grouped_by_rng:
                     for crn_id in trajectories.crn_ids.unique():
                         rng_mask = trajectories.crn_ids == crn_id
                         rng_credits = padded_credits[rng_mask]
                         rng_credits, _ = get_rloo_credits(credits=rng_credits)
                         padded_credits[rng_mask] = rng_credits
-                else:   
+                else:
                     padded_credits, _ = get_rloo_credits(credits=padded_credits)
             credits = [
                 padded_credits[i, : lengths[i]] for i in range(padded_credits.shape[0])
