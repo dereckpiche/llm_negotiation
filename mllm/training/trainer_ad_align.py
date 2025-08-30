@@ -238,6 +238,7 @@ class TrainerAdAlign(BaseTrainer):
         trajectory_batch = TrajectoryBatch(
             rollout_ids=torch.tensor(batch_rollout_ids, dtype=torch.int32),  # (B,)
             crn_ids=torch.tensor(batch_crn_ids, dtype=torch.int32),
+            agent_ids=[agent_id] * len(batch_rollout_ids),
             batch_input_ids=batch_input_ids,
             batch_action_mask=batch_action_mask,
             batch_timesteps=batch_timesteps,
@@ -264,6 +265,7 @@ class TrainerAdAlign(BaseTrainer):
                 alternative_trajectory_batch = TrajectoryBatch(
                     rollout_ids=torch.zeros(A * sum_jT, dtype=torch.int32),
                     crn_ids=torch.zeros(A * sum_jT, dtype=torch.int32),
+                    agent_ids=[agent_id] * (A * sum_jT),
                     batch_input_ids=alternative_batch_input_ids,
                     batch_action_mask=alternative_batch_action_mask,
                     batch_timesteps=alternative_batch_timesteps,

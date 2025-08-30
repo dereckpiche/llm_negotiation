@@ -5,7 +5,6 @@ TODO: use ModulePointer instead of nested dicts
 """
 import asyncio
 import copy
-import json
 import logging
 import os
 import pickle
@@ -207,7 +206,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         markov_games = []
         for i in range(nb_matches):
             markov_game_config = MarkovGameConfig(
-                id=generate_short_id(),
+                id=iteration * nb_matches + i,
                 seed=int(crn_seeds[i // seed_group_size]),
                 simulation_class_name=cfg["markov_games"]["simulation_class_name"],
                 simulation_init_args=cfg["markov_games"]["simulation_init_args"],
@@ -234,8 +233,13 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
 
         # Export rollout trees
         for i, rollout_tree in enumerate(rollout_trees):
-            with open(os.path.join(it_folder, f"mgid_{i}_rollout_tree.json"), "w") as f:
-                f.write(rollout_tree.model_dump_json(indent=4))
+            with open(
+                os.path.join(it_folder, f"mgid_{rollout_tree.id}.rt.pkl"), "wb"
+            ) as f:
+                # Store as pure Python dict to avoid class dependency on load
+                pickle.dump(
+                    rollout_tree.model_dump(), f, protocol=pickle.HIGHEST_PROTOCOL
+                )
 
         generation_end_time = time.time()
 
@@ -244,6 +248,8 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         # -----------------------------------------------------------------
         # Train
         # -----------------------------------------------------------------
+        if not cfg["experiment"].get("train", True):
+            continue
 
         if not cfg["experiment"]["train"]:
             continue
@@ -274,8 +280,9 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         # Export trainer stuff
         for trainer_id, trainer in trainers.items():
             trainer.export_optimizer_states()
-            trainer.export_training_metrics(
-                path=os.path.join(it_folder, trainer_id + "_log")
+            trainer.export_training_tally(
+                identifier=trainer_id,
+                folder=it_folder,
             )
 
         # Export all HF adapters weights (needed for vLLM inference)

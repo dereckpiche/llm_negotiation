@@ -446,10 +446,6 @@ class BaseTrainer(ABC):
 
                     loss += mb_kl
 
-                logger.info(
-                    f"Accumulated the policy gradient loss for {total_tokens_generated} tokens."
-                )
-
                 # Accumulate gradient
                 loss /= normalization_factor
                 self.accelerator.backward(loss)
@@ -461,6 +457,10 @@ class BaseTrainer(ABC):
                 del loss
                 del action_log_probs
                 del rewarded_action_log_probs
+
+            logger.info(
+                f"Accumulated the policy gradient loss for {total_tokens_generated} tokens."
+            )
 
             # Clip gradients and take step
             if self.gradient_clipping is not None:
@@ -507,7 +507,7 @@ class BaseTrainer(ABC):
                 trajectory_mb = trajectories[mb : mb + mb_size]
                 trajectory_mb.to(self.device)
                 rewards_mb = trajectory_mb.batch_rewards
-
+                self.tally.add_metric(path=["mb_rewards"], metric=rewards_mb)
                 # use & train critic
                 (
                     tokens_mb,
@@ -535,6 +535,9 @@ class BaseTrainer(ABC):
                 ).to(dtype=dtype)
 
                 det_vals_estimate_mb = vals_estimate_mb.detach()
+                self.tally.add_metric(
+                    path=["mb_value_estimates_critic"], metric=det_vals_estimate_mb
+                )
 
                 # If no infinite trajectory bootstrap, append V(Terminal State) = 0
                 # TODO: use alternative approach!
@@ -564,11 +567,13 @@ class BaseTrainer(ABC):
                 # Ensure dtype consistency
                 gae_targets = gae_targets.to(dtype=dtype)
                 targets = gae_targets + det_vals_estimate_mb[:, :-1]
+                self.tally.add_metric(path=["mb_targets_critic"], metric=targets)
 
                 loss = loss_scaling_factor * F.huber_loss(
                     input=vals_estimate_mb,
                     target=targets,
                 )
+                self.tally.add_metric(path=["mb_critic_loss"], metric=loss.item())
                 self.accelerator.backward(loss)
 
                 # self.tally.add_metric(path=["critic_loss"], metric=loss.item())
@@ -580,6 +585,7 @@ class BaseTrainer(ABC):
                     discount_factor=self.discount_factor,
                     lambda_coef=self.gae_lambda_for_credits,
                 )
+                self.tally.add_metric(path=["mb_gae_credits"], metric=credits_padded)
                 # Ensure dtype consistency for credits
                 credits_padded = credits_padded.to(dtype=dtype)
 
@@ -592,6 +598,7 @@ class BaseTrainer(ABC):
 
         else:
             batch_rewards = trajectories.batch_rewards
+            self.tally.add_metric(path=["batch_rewards"], metric=batch_rewards)
             lengths = [len(c) for c in batch_rewards]
             padded_rewards = pad_sequence(
                 batch_rewards, batch_first=True, padding_value=0.0
@@ -600,6 +607,7 @@ class BaseTrainer(ABC):
                 rewards=padded_rewards,
                 discount_factor=self.discount_factor,
                 reward_normalizing_constant=self.reward_normalizing_constant,
+                tally=self.tally,
             )
             if self.use_rloo:
                 is_grouped_by_rng = (
@@ -610,7 +618,9 @@ class BaseTrainer(ABC):
                     for crn_id in trajectories.crn_ids.unique():
                         rng_mask = trajectories.crn_ids == crn_id
                         rng_credits = padded_credits[rng_mask]
-                        rng_credits, _ = get_rloo_credits(credits=rng_credits)
+                        rng_credits, _ = get_rloo_credits(
+                            credits=rng_credits, tally=self.tally
+                        )
                         padded_credits[rng_mask] = rng_credits
                 else:
                     padded_credits, _ = get_rloo_credits(credits=padded_credits)
@@ -650,6 +660,10 @@ class BaseTrainer(ABC):
         Already set earlier # TODO: make it separate and clean
         """
         self.policy_gradient_data = None
+        # Track row id order aligned with concatenation
+        concat_crn_ids = []
+        concat_rollout_ids = []
+        concat_agent_ids = []
         for agent_id, trajectory_batch in self.training_data.items():
             tokenwise_batch_credits = get_tokenwise_credits(
                 batch_timesteps=trajectory_batch.batch_timesteps,
@@ -666,10 +680,24 @@ class BaseTrainer(ABC):
             else:
                 self.policy_gradient_data.append(policy_gradient_data)
 
+            concat_crn_ids.append(trajectory_batch.crn_ids)
+            concat_rollout_ids.append(trajectory_batch.rollout_ids)
+            concat_agent_ids.extend(trajectory_batch.agent_ids)
+
         self.tokenwise_tally = ContextualizedTokenwiseTally(
             tokenizer=self.tokenizer,
             paths=self.debug_path_list,
         )
+
+        # Register row ids once in the same order used to build policy_gradient_data
+        try:
+            self.tally.add_row_ids(
+                crn_ids=torch.cat(concat_crn_ids),
+                rollout_ids=torch.cat(concat_rollout_ids),
+                agent_ids=concat_agent_ids,
+            )
+        except Exception:
+            pass
 
     def train(self) -> None:
         """
@@ -681,13 +709,15 @@ class BaseTrainer(ABC):
             self.critic_optimizer.zero_grad()
         self.apply_reinforce_step(training_batch=self.policy_gradient_data)
 
-    def export_training_metrics(self, path: str) -> None:
+    def export_training_tally(self, identifier: str, folder: str) -> None:
         """
         Saves and resets the collected training metrics using the tally object.
         """
-        os.makedirs(path, exist_ok=True)
-        self.tally.save(path=path)
-        self.tokenwise_tally.save(path=path)
+        os.makedirs(folder, exist_ok=True)
+        self.tally.save(identifier=identifier, folder=folder)
+        self.tokenwise_tally.save(
+            path=os.path.join(folder, f"{identifier}_tokenwise.csv")
+        )
         self.tally.reset()
         self.tokenwise_tally = None
         self.debug_path_list = []

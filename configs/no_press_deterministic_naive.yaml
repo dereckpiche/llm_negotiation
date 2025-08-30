@@ -1,0 +1,17 @@
+defaults:
+    - no_press.yaml
+
+
+experiment:
+    name: "no_press_deterministic"
+
+
+markov_games:
+    simulation_init_args:
+        deterministic: true
+
+
+trainers:
+    agent_trainer:
+        kwargs:
+            reward_normalizing_constant: 100.0

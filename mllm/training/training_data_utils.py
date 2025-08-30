@@ -109,6 +109,7 @@ class TrajectoryBatch:
     # B := batch size, S := number of tokens / seq. length, T := number of states.
     rollout_ids: torch.IntTensor  # (B,)
     crn_ids: torch.IntTensor  # (B,)
+    agent_ids: list[str]  # (B,)
     batch_input_ids: list[torch.LongTensor]  # List[(jS,)]
     batch_action_mask: list[torch.BoolTensor]  # List[(jS,)]
     batch_timesteps: list[torch.IntTensor]  # List[(jS,)]
@@ -124,6 +125,9 @@ class TrajectoryBatch:
         assert (
             self.crn_ids.shape[0] == B
         ), "RNG IDs must have length equal to batch size."
+        assert (
+            len(self.agent_ids) == B
+        ), "agent_ids must have length equal to batch size."
         assert (
             len(self.batch_input_ids)
             == len(self.batch_action_mask)
@@ -176,6 +180,7 @@ class TrajectoryBatch:
             return TrajectoryBatch(
                 rollout_ids=self.rollout_ids.__getitem__(key),
                 crn_ids=self.crn_ids.__getitem__(key),
+                agent_ids=self.agent_ids[key],
                 batch_input_ids=self.batch_input_ids[key],
                 batch_action_mask=self.batch_action_mask[key],
                 batch_timesteps=self.batch_timesteps[key],

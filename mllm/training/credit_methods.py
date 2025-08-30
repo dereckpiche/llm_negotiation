@@ -4,8 +4,7 @@ from mllm.training.tally_basic import Tally
 
 
 def get_discounted_state_visitation_credits(
-    credits: torch.Tensor,  # (B, T)
-    discount_factor: float,
+    credits: torch.Tensor, discount_factor: float, tally: Tally = Tally()  # (B, T)
 ) -> torch.Tensor:
     """
     Computes discounted state visitation credits for a sequence of credits.
@@ -13,12 +12,17 @@ def get_discounted_state_visitation_credits(
     return credits * (
         discount_factor ** torch.arange(credits.shape[1], device=credits.device)
     )
+    tally.add_metric(
+        path=["discounted_state_visitation_credits"],
+        metric=discounted_state_visitation_credits,
+    )
 
 
 def get_discounted_returns(
     rewards: torch.Tensor,  # (B, T)
     discount_factor: float,
     reward_normalizing_constant: float,
+    tally: Tally = Tally(),
 ) -> torch.Tensor:
     """
     Computes Monte Carlo discounted returns for a sequence of rewards.
@@ -37,10 +41,11 @@ def get_discounted_returns(
     for t in reversed(range(T)):
         accumulator = rewards[:, t] + discount_factor * accumulator
         discounted_returns[:, t] = accumulator
+    tally.add_metric(path=["discounted_returns"], metric=discounted_returns)
     return discounted_returns
 
 
-def get_rloo_credits(credits: torch.Tensor):  # (B, S)
+def get_rloo_credits(credits: torch.Tensor, tally: Tally = Tally()):  # (B, S)
     assert credits.dim() == 2, "Wrong dimensions."
     rloo_baselines = torch.zeros_like(credits)
     n = credits.shape[0]
@@ -48,6 +53,8 @@ def get_rloo_credits(credits: torch.Tensor):  # (B, S)
         return credits, rloo_baselines
     rloo_baselines = (torch.sum(credits, dim=0, keepdim=True) - credits) / (n - 1)
     rloo_credits = credits - rloo_baselines
+    tally.add_metric(path=["rloo_credits"], metric=rloo_credits)
+    tally.add_metric(path=["rloo_baselines"], metric=rloo_baselines)
     return rloo_credits, rloo_baselines
 
 
@@ -175,6 +182,11 @@ def get_advantage_alignment_credits(
         B, T, A = a1_alternative.shape
     assert a1.shape == a2.shape, "Not the same shape"
 
+    tally.add_metric(path=["regular_advantages"], metric=a1)
+    tally.add_metric(path=["regular_advantages_other"], metric=a2)
+    if a1_alternative is not None:
+        tally.add_metric(path=["alternative_advantages"], metric=a1_alternative)
+
     if use_old_ad_align:
         ad_align_weights = get_advantage_alignment_weights(
             advantages=a1, exclude_k_equals_t=exclude_k_equals_t, gamma=gamma
@@ -199,9 +211,8 @@ def get_advantage_alignment_credits(
             gamma=gamma,
         )
 
-    # tally.add_metric(
-    #     path=["raw_advantage_alignment_weights"], metric=ad_align_weights
-    # )
+    # Log raw weights before further processing
+    tally.add_metric(path=["raw_advantage_alignment_weights"], metric=ad_align_weights)
 
     # Use sign
     if use_sign:
@@ -279,14 +290,10 @@ def get_advantage_alignment_credits(
 
     opp_shaping_terms = beta * ad_align_weights * a2
 
-    # tally.add_metric(
-    #     path=["ad_align_opp_shaping_terms"], metric=opp_shaping_terms
-    # )
+    tally.add_metric(path=["ad_align_opp_shaping_terms"], metric=opp_shaping_terms)
 
     credits = a1 + opp_shaping_terms
 
-    # tally.add_metric(
-    #     path=["final_advantage_alignment_credits"], metric=credits
-    # )
+    tally.add_metric(path=["final_advantage_alignment_credits"], metric=credits)
 
     return credits

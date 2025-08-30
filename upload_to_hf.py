@@ -31,5 +31,5 @@ if __name__ == "__main__":
         folder_path=model_path,
         repo_id=hf_model_name,
         repo_type="model",
-        # allow_patterns=["**/sp_adapter/", "**/checkpoints/"],
+        ignore_patterns=["**/*.render.*"],
     )
