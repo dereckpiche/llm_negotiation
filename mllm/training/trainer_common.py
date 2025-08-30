@@ -688,24 +688,14 @@ class BaseTrainer(ABC):
         )
 
         # Register row ids once in the same order used to build policy_gradient_data
-        if concat_rollout_ids:
-            try:
-                crn_all = (
-                    torch.cat(concat_crn_ids)
-                    if len(concat_crn_ids) > 1
-                    else concat_crn_ids[0]
-                )
-                rid_all = (
-                    torch.cat(concat_rollout_ids)
-                    if len(concat_rollout_ids) > 1
-                    else concat_rollout_ids[0]
-                )
-            except Exception:
-                crn_all = concat_crn_ids[0]
-                rid_all = concat_rollout_ids[0]
+        try:
             self.tally.add_row_ids(
-                crn_ids=crn_all, rollout_ids=rid_all, agent_ids=concat_agent_ids
+                crn_ids=torch.cat(concat_crn_ids),
+                rollout_ids=torch.cat(concat_rollout_ids),
+                agent_ids=concat_agent_ids,
             )
+        except Exception:
+            pass
 
     def train(self) -> None:
         """
