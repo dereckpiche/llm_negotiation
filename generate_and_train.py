@@ -5,7 +5,6 @@ TODO: use ModulePointer instead of nested dicts
 """
 import asyncio
 import copy
-import json
 import logging
 import os
 import pickle
@@ -22,18 +21,18 @@ import torch
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import OmegaConf
 from pandas.core.base import IndexLabel
-from mllm.utils.short_id_gen import generate_short_id
+
+from mllm.markov_games.alternative_actions_runner import AlternativeActionsRunner
+from mllm.markov_games.group_timesteps import group_by_round
+from mllm.markov_games.linear_runner import LinearRunner
 from mllm.markov_games.mg_utils import (
     AgentConfig,
     MarkovGameConfig,
     init_markov_game_components,
 )
-from mllm.markov_games.group_timesteps import group_by_round
 from mllm.markov_games.run_markov_games import run_markov_games
-from mllm.markov_games.alternative_actions_runner import AlternativeActionsRunner
-from mllm.markov_games.linear_runner import LinearRunner
-from mllm.models.large_language_model_local import LeanLocalLLM
 from mllm.models.large_language_model_api import LargeLanguageModelOpenAI
+from mllm.models.large_language_model_local import LeanLocalLLM
 
 # from mllm.models.large_language_model_server import ServerLLM
 from mllm.models.scalar_critic import ScalarCritic
@@ -42,6 +41,7 @@ from mllm.training.trainer_independent import TrainerNaive
 from mllm.training.trainer_sum_rewards import TrainerSumRewards
 from mllm.utils.dict_get_path import get_from_nested_dict
 from mllm.utils.kill_sglang import kill_sglang
+from mllm.utils.short_id_gen import generate_short_id
 from mllm.utils.update_start_epoch import update_start_epoch
 
 logger = logging.getLogger(__name__)
@@ -100,9 +100,9 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
     # Init llms + llm adapters
     llms_dict = {}
     for llm_id, model_config in cfg["models"].items():
-        model_class: LeanLocalLLM | LargeLanguageModelOpenAI = globals()[  # TODO: Add server llm
+        model_class: LeanLocalLLM | LargeLanguageModelOpenAI = globals()[
             model_config["class"]
-        ]
+        ]  # TODO: Add server llm
         llms_dict[llm_id] = model_class(
             **model_config["init_args"],
             output_directory=output_directory,
@@ -178,7 +178,9 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
             agent_configs.append(agent_config)
         nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
         seed_group_size = cfg["experiment"].get("seed_group_size", 1)
-        assert nb_matches % seed_group_size == 0, "nb_matches must be divisible by seed_group_size"
+        assert (
+            nb_matches % seed_group_size == 0
+        ), "nb_matches must be divisible by seed_group_size"
 
     for iteration in range(
         cfg["experiment"]["start_epoch"], cfg["experiment"]["nb_epochs"]
@@ -194,7 +196,9 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
         iteration_start_time = time.time()
         it_folder = os.path.join(output_directory, f"iteration_{iteration:03}")
-        crn_seeds = [env_rng.integers(0, 1e9, 1)[0] for _ in range(nb_matches//seed_group_size)] # common random number seeds
+        crn_seeds = [
+            env_rng.integers(0, 1e9, 1)[0] for _ in range(nb_matches // seed_group_size)
+        ]  # common random number seeds
         os.makedirs(it_folder, exist_ok=True)
         generation_start_time = time.time()
 
@@ -202,8 +206,8 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         markov_games = []
         for i in range(nb_matches):
             markov_game_config = MarkovGameConfig(
-                id=generate_short_id(),
-                seed=int(crn_seeds[i//seed_group_size]),
+                id=iteration * nb_matches + i,
+                seed=int(crn_seeds[i // seed_group_size]),
                 simulation_class_name=cfg["markov_games"]["simulation_class_name"],
                 simulation_init_args=cfg["markov_games"]["simulation_init_args"],
                 agent_configs=agent_configs,
@@ -213,7 +217,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
             )
             markov_games.append(markov_game)
 
-        # Generate rollouts raw data asynchronously 
+        # Generate rollouts raw data asynchronously
         runner = eval(cfg["markov_games"]["runner_method_name"])
         rollout_trees = await run_markov_games(
             runner=runner,
@@ -223,13 +227,20 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         )
         # This will merge all timesteps of a round into a single timestep - simplifies credit assignment during training
         if cfg["markov_games"].get("group_by_round", False):
-            rollout_trees = [group_by_round(rollout_tree) for rollout_tree in rollout_trees]
+            rollout_trees = [
+                group_by_round(rollout_tree) for rollout_tree in rollout_trees
+            ]
 
         # Export rollout trees
         for i, rollout_tree in enumerate(rollout_trees):
-            with open(os.path.join(it_folder, f"mgid_{i}_rollout_tree.json"), "w") as f:
-                f.write(rollout_tree.model_dump_json(indent=4))
-        
+            with open(
+                os.path.join(it_folder, f"mgid_{rollout_tree.id}.rt.pkl"), "wb"
+            ) as f:
+                # Store as pure Python dict to avoid class dependency on load
+                pickle.dump(
+                    rollout_tree.model_dump(), f, protocol=pickle.HIGHEST_PROTOCOL
+                )
+
         generation_end_time = time.time()
 
         # Process raw data into training data using the specified functions for each agent
@@ -237,6 +248,8 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         # -----------------------------------------------------------------
         # Train
         # -----------------------------------------------------------------
+        if not cfg["experiment"].get("train", True):
+            continue
 
         training_start_time = time.time()
 
@@ -264,8 +277,9 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         # Export trainer stuff
         for trainer_id, trainer in trainers.items():
             trainer.export_optimizer_states()
-            trainer.export_training_metrics(
-                path=os.path.join(it_folder, trainer_id + "_log")
+            trainer.export_training_tally(
+                identifier=trainer_id,
+                folder=it_folder,
             )
 
         # Export all HF adapters weights (needed for vLLM inference)
@@ -356,7 +370,7 @@ def main(cfg):
         "mllm",
         os.path.join(hydra_run_dir, "src_code_for_reproducibility"),
         dirs_exist_ok=True,
-     )
+    )
 
     # Run the experiment specified in the configuration
     try:

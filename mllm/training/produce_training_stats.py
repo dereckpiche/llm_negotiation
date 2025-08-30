@@ -1,29 +1,29 @@
-import matplotlib.pyplot as plt
-import os
-import json
-import numpy as np
 import copy
 import gc
 import json
 import logging
-import sys
 import os
+import pickle
 import random
 import re
 import subprocess
+import sys
 import time
 from datetime import datetime
 from statistics import mean
 
 import hydra
 import matplotlib.pyplot as plt
-# import pandas as pd
+import numpy as np
+import pandas as pd
 from omegaconf import OmegaConf
+
 
 def get_from_nested_dict(dictio: dict, path: list[str]):
     for sp in path[:-1]:
         dictio = dictio[sp]
     return dictio.get(path[-1])
+
 
 def set_at_path(dictio: dict, path: list[str], value):
     for sp in path[:-1]:
@@ -32,7 +32,7 @@ def set_at_path(dictio: dict, path: list[str], value):
         dictio = dictio[sp]
     dictio[path[-1]] = value
 
- 
+
 def produce_tabular_render(inpath: str, outpath: str = None):
     """
     TODO: docstring
@@ -48,7 +48,7 @@ def produce_tabular_render(inpath: str, outpath: str = None):
                 os.path.split(inpath)[0]
                 + "/contextualized_tabular_renders/"
                 + m_path
-                + "_tabular_render.csv"
+                + "_tabular_render.render.csv"
             )
         # import pdb; pdb.set_trace()
         os.makedirs(os.path.split(m_path)[0], exist_ok=True)
@@ -60,9 +60,11 @@ def produce_tabular_render(inpath: str, outpath: str = None):
         d = pd.DataFrame(d)
         d.to_csv(m_path)
 
+
 def get_metric_paths(data: list[dict]):
     d = data[0]
     paths = []
+
     def traverse_dict(d, current_path=[]):
         for key, value in d.items():
             new_path = current_path + [key]
@@ -70,16 +72,20 @@ def get_metric_paths(data: list[dict]):
                 traverse_dict(value, new_path)
             else:
                 paths.append(new_path)
+
     traverse_dict(d)
     return paths
 
+
 def print_metric_paths(data: list[dict]):
     paths = get_metric_paths(data)
-    for p in paths: print(p)
+    for p in paths:
+        print(p)
 
 
 def get_metric_iteration_list(data: list[dict], metric_path: list[str]):
-    if isinstance(metric_path, str): metric_path = [metric_path]
+    if isinstance(metric_path, str):
+        metric_path = [metric_path]
     sgl = []
     for d in data:
         sgl.append(get_from_nested_dict(d, metric_path))
@@ -87,24 +93,33 @@ def get_metric_iteration_list(data: list[dict], metric_path: list[str]):
 
 
 def to_1d_numeric(x):
-    """Return a 1-D float array (or None if not numeric)."""
+    """Return a 1-D float array (or None if not numeric). Accepts scalars, numpy arrays, or nested list/tuple of them."""
     if x is None:
         return None
-    # Scalars
     if isinstance(x, (int, float, np.number)):
-        return np.array([float(x)])
-
-    # Anything list‑like → recurse & flatten
-    try:
-        flat = np.array(list(np.ravel(x)), dtype=float)
-        return flat
-    except Exception:
-        return None    # skip non‑numeric or badly structured payloads
+        return np.array([float(x)], dtype=float)
+    if isinstance(x, np.ndarray):
+        try:
+            return x.astype(float).ravel()
+        except Exception:
+            return None
+    if isinstance(x, (list, tuple)):
+        parts = []
+        for e in x:
+            arr = to_1d_numeric(e)
+            if arr is not None and arr.size > 0:
+                parts.append(arr)
+        if parts:
+            return np.concatenate(parts)
+        return None
+    return None
 
 
 def get_single_metric_vector(data, metric_path, iterations=None):
-    if isinstance(metric_path, str): metric_path = [metric_path]
-    if iterations == None: iterations = len(data)
+    if isinstance(metric_path, str):
+        metric_path = [metric_path]
+    if iterations == None:
+        iterations = len(data)
     vecs = []
     for d in data:
         ar = get_from_nested_dict(d, metric_path)
@@ -115,22 +130,148 @@ def get_single_metric_vector(data, metric_path, iterations=None):
     return np.concatenate(vecs) if vecs else np.empty(0, dtype=float)
 
 
+def _load_metrics_file(file_path: str):
+    if not (file_path.endswith(".tally.pkl") or file_path.endswith(".pkl")):
+        raise ValueError("Only *.tally.pkl files are supported.")
+    import pickle
+
+    with open(file_path, "rb") as f:
+        tree = pickle.load(f)
+    return tree
+
+
 def get_iterations_data(iterations_path: str):
     iterations_data = []
     more_iterations = True
-    paths = os.listdir(iterations_path)
     n = 0
     iteration_path = os.path.join(iterations_path, f"iteration_{n:03d}")
     while more_iterations:
         if os.path.isdir(iteration_path):
             for root, dirs, files in os.walk(iteration_path):
-                for file in files:
-                    if file.startswith("basic_training_metrics"):
-                        file_path = os.path.join(root, file)
-                        with open(file_path, "r") as f:
-                            iterations_data.append(json.load(f))
+                for file in sorted([f for f in files if f.endswith(".tally.pkl")]):
+                    file_path = os.path.join(root, file)
+                    iterations_data.append(_load_metrics_file(file_path))
         else:
             more_iterations = False
         n += 1
         iteration_path = os.path.join(iterations_path, f"iteration_{n:03d}")
     return iterations_data
+
+
+def _traverse_array_tally(array_tally: dict, prefix: list[str] = None):
+    if prefix is None:
+        prefix = []
+    for key, value in array_tally.items():
+        next_prefix = prefix + [str(key)]
+        if isinstance(value, dict):
+            yield from _traverse_array_tally(value, next_prefix)
+        else:
+            yield next_prefix, value
+
+
+def _sanitize_filename_part(part: str) -> str:
+    s = part.replace("/", "|")
+    s = s.replace(" ", "_")
+    return s
+
+
+def render_tally_pkl_to_csvs(pkl_path: str, outdir: str):
+    with open(pkl_path, "rb") as f:
+        payload = pickle.load(f)
+    # Backward compatibility: older tallies stored the dict directly
+    if isinstance(payload, dict) and "array_tally" in payload:
+        array_tally = payload.get("array_tally", {})
+        rowmeta = payload.get("rowmeta", {})
+        row_ids = payload.get("row_ids", [])
+    else:
+        array_tally = payload
+        rowmeta = {}
+        row_ids = []
+    os.makedirs(outdir, exist_ok=True)
+    trainer_id = os.path.basename(pkl_path).replace(".tally.pkl", "")
+    for path_list, array_list in _traverse_array_tally(array_tally):
+        # Build datapoints by expanding element-wise: vectors → 1 row, matrices → per-row
+        datapoints = []
+        for item in array_list:
+            # Normalize item
+            if isinstance(item, (int, float)):
+                arr = np.asarray([item])
+            else:
+                try:
+                    arr = np.asarray(item)
+                except Exception:
+                    arr = np.array([item], dtype=object)
+
+            # If object array (ragged), iterate elements directly
+            if isinstance(arr, np.ndarray) and arr.dtype == object:
+                for sub in arr:
+                    sub_arr = np.asarray(sub)
+                    if sub_arr.ndim <= 1:
+                        datapoints.append(sub_arr.reshape(-1))
+                    else:
+                        # Use first axis as rows, flatten the rest
+                        for i in range(sub_arr.shape[0]):
+                            datapoints.append(sub_arr[i].reshape(-1))
+                continue
+
+            # Numeric arrays
+            if arr.ndim == 0:
+                datapoints.append(arr.reshape(1))
+            elif arr.ndim == 1:
+                datapoints.append(arr)
+            else:
+                for i in range(arr.shape[0]):
+                    datapoints.append(arr[i].reshape(-1))
+        # Build filename
+        path_part = ".".join(_sanitize_filename_part(p) for p in path_list)
+        filename = f"{trainer_id}__{path_part}.render.csv"
+        out_path = os.path.join(outdir, filename)
+        # Determine alignment with global row_ids
+        aligned_with_ids = len(row_ids) > 0 and len(datapoints) == len(row_ids)
+        # Write CSV
+        with open(out_path, "w", newline="") as f:
+            import csv
+
+            writer = csv.writer(f)
+            # Determine max length after expansion for header
+            max_len = 0
+            for r in datapoints:
+                max_len = max(max_len, int(np.asarray(r).size))
+            # Header: include id columns only if aligned (agent_id, crn_id, rollout_id)
+            header = (
+                ["agent_id", "crn_id", "rollout_id"] if aligned_with_ids else []
+            ) + [f"c{j}" for j in range(max_len)]
+            if header:
+                writer.writerow(header)
+            for i, r in enumerate(datapoints):
+                r_arr = np.asarray(r)
+                if r_arr.size < max_len:
+                    pad = np.empty((max_len - r_arr.size,), dtype=r_arr.dtype)
+                    if pad.dtype == object:
+                        pad[:] = ""
+                    else:
+                        pad[:] = np.nan
+                    r_arr = np.concatenate([r_arr, pad])
+                row_vals = [
+                    x if not isinstance(x, (np.floating, np.integer)) else x.item()
+                    for x in r_arr
+                ]
+                if aligned_with_ids:
+                    row_prefix = [
+                        row_ids[i].get("agent_id", ""),
+                        row_ids[i].get("crn_id", ""),
+                        row_ids[i].get("rollout_id", ""),
+                    ]
+                    writer.writerow(row_prefix + row_vals)
+                else:
+                    writer.writerow(row_vals)
+
+
+def render_iteration_trainer_stats(iteration_dir: str, outdir: str | None = None):
+    input_dir = iteration_dir
+    output_dir = outdir or os.path.join(iteration_dir, "trainer_stats.render.")
+    os.makedirs(output_dir, exist_ok=True)
+    for fname in sorted(os.listdir(input_dir)):
+        if fname.endswith(".tally.pkl"):
+            pkl_path = os.path.join(input_dir, fname)
+            render_tally_pkl_to_csvs(pkl_path=pkl_path, outdir=output_dir)
