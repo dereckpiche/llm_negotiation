@@ -606,6 +606,8 @@ class BaseTrainer(ABC):
             padded_credits = get_discounted_returns(
                 rewards=padded_rewards,
                 discount_factor=self.discount_factor,
+                reward_normalizing_constant=self.reward_normalizing_constant,
+                tally=self.tally,
             )
             if self.use_rloo:
                 is_grouped_by_rng = (

@@ -248,6 +248,8 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         # -----------------------------------------------------------------
         # Train
         # -----------------------------------------------------------------
+        if not cfg["experiment"].get("train", True):
+            continue
 
         training_start_time = time.time()
 

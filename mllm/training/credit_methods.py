@@ -21,6 +21,8 @@ def get_discounted_state_visitation_credits(
 def get_discounted_returns(
     rewards: torch.Tensor,  # (B, T)
     discount_factor: float,
+    reward_normalizing_constant: float,
+    tally: Tally = Tally(),
 ) -> torch.Tensor:
     """
     Computes Monte Carlo discounted returns for a sequence of rewards.
