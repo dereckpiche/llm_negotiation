@@ -606,7 +606,6 @@ class BaseTrainer(ABC):
             padded_credits = get_discounted_returns(
                 rewards=padded_rewards,
                 discount_factor=self.discount_factor,
-                tally=self.tally,
             )
             if self.use_rloo:
                 is_grouped_by_rng = (
@@ -622,9 +621,7 @@ class BaseTrainer(ABC):
                         )
                         padded_credits[rng_mask] = rng_credits
                 else:
-                    padded_credits, _ = get_rloo_credits(
-                        credits=padded_credits, tally=self.tally
-                    )
+                    padded_credits, _ = get_rloo_credits(credits=padded_credits)
             credits = [
                 padded_credits[i, : lengths[i]] for i in range(padded_credits.shape[0])
             ]

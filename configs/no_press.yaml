@@ -7,6 +7,7 @@ experiment:
     method: generate_and_train
     description: "No press negotiation game"
     nb_matches_per_iteration: 64
+    seed_group_size: 8
 
 common_agent_kwargs: &common_agent_kwargs
     goal: "Maximize your total points over the whole game."
