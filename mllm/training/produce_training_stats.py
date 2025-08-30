@@ -3,6 +3,7 @@ import gc
 import json
 import logging
 import os
+import pickle
 import random
 import re
 import subprocess
@@ -47,7 +48,7 @@ def produce_tabular_render(inpath: str, outpath: str = None):
                 os.path.split(inpath)[0]
                 + "/contextualized_tabular_renders/"
                 + m_path
-                + "_tabular_render.csv"
+                + "_tabular_render.render.csv"
             )
         # import pdb; pdb.set_trace()
         os.makedirs(os.path.split(m_path)[0], exist_ok=True)
@@ -155,3 +156,82 @@ def get_iterations_data(iterations_path: str):
         n += 1
         iteration_path = os.path.join(iterations_path, f"iteration_{n:03d}")
     return iterations_data
+
+
+def _traverse_array_tally(array_tally: dict, prefix: list[str] = None):
+    if prefix is None:
+        prefix = []
+    for key, value in array_tally.items():
+        next_prefix = prefix + [str(key)]
+        if isinstance(value, dict):
+            yield from _traverse_array_tally(value, next_prefix)
+        else:
+            yield next_prefix, value
+
+
+def _sanitize_filename_part(part: str) -> str:
+    s = part.replace("/", "|")
+    s = s.replace(" ", "_")
+    return s
+
+
+def render_tally_pkl_to_csvs(pkl_path: str, outdir: str):
+    with open(pkl_path, "rb") as f:
+        array_tally = pickle.load(f)
+    os.makedirs(outdir, exist_ok=True)
+    trainer_id = os.path.basename(pkl_path).replace(".tally.pkl", "")
+    for path_list, array_list in _traverse_array_tally(array_tally):
+        # Ensure list of numpy arrays
+        rows = []
+        max_len = 0
+        for item in array_list:
+            if isinstance(item, (int, float)):
+                arr = np.asarray([item])
+            elif isinstance(item, np.ndarray):
+                arr = item
+            else:
+                try:
+                    arr = np.asarray(item)
+                except Exception:
+                    arr = np.array([str(item)], dtype=object)
+            flat = arr.ravel()
+            rows.append(flat)
+            if flat.size > max_len:
+                max_len = flat.size
+        # Pad to same width
+        padded_rows = []
+        for r in rows:
+            if r.size < max_len:
+                pad = np.empty((max_len - r.size,), dtype=r.dtype)
+                if pad.dtype == object:
+                    pad[:] = ""
+                else:
+                    pad[:] = np.nan
+                r = np.concatenate([r, pad])
+            padded_rows.append(r)
+        # Build filename
+        path_part = ".".join(_sanitize_filename_part(p) for p in path_list)
+        filename = f"{trainer_id}__{path_part}.render.csv"
+        out_path = os.path.join(outdir, filename)
+        # Write CSV
+        with open(out_path, "w", newline="") as f:
+            import csv
+
+            writer = csv.writer(f)
+            for r in padded_rows:
+                writer.writerow(
+                    [
+                        x if not isinstance(x, (np.floating, np.integer)) else x.item()
+                        for x in r
+                    ]
+                )
+
+
+def render_iteration_trainer_stats(iteration_dir: str, outdir: str | None = None):
+    input_dir = iteration_dir
+    output_dir = outdir or os.path.join(iteration_dir, "trainer_stats.render.")
+    os.makedirs(output_dir, exist_ok=True)
+    for fname in sorted(os.listdir(input_dir)):
+        if fname.endswith(".tally.pkl"):
+            pkl_path = os.path.join(input_dir, fname)
+            render_tally_pkl_to_csvs(pkl_path=pkl_path, outdir=output_dir)
