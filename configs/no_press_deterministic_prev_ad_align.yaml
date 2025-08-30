@@ -1,0 +1,20 @@
+defaults:
+    - no_press_deterministic_naive.yaml
+
+experiment:
+    name: "no_press_deterministic_prev_ad_align"
+
+trainers:
+    agent_trainer:
+        class: TrainerAdAlign
+        kwargs:
+            ad_align_beta: 0.1
+            ad_align_gamma: 0.9
+            ad_align_force_coop_first_step: False
+            ad_align_clipping: null
+            ad_align_exclude_k_equals_t: False
+            ad_align_use_sign: False
+            use_old_ad_align: True
+            use_time_regularization: False
+            rloo_branch: True
+            reuse_baseline: True

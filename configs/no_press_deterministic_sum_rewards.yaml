@@ -1,8 +1,8 @@
 defaults:
-    - no_press_naive.yaml
+    - no_press_deterministic_naive.yaml
 
 experiment:
-    name: "no_press_sum_rewards"
+    name: "no_press_deterministic_sum_rewards"
 
 
 trainers:
