@@ -25,12 +25,15 @@ class Tally:
         """
         # Array-preserving structure (leaf lists hold numpy arrays / scalars)
         self.array_tally = {}
+        # Global ordered list of sample identifiers (crn_id, rollout_id) added in the order samples are processed
+        self.sample_row_ids = []
 
     def reset(self):
         """
         Resets the base and contextualized tallies to empty dictionaries.
         """
         self.array_tally = {}
+        self.sample_row_ids = []
 
     def get_from_nested_dict(self, dictio: dict, path: str):
         """
@@ -102,6 +105,32 @@ class Tally:
         else:
             array_list.append(array_metric)
 
+    def add_row_ids(self, crn_ids, rollout_ids):
+        """
+        Append an ordered list of (crn_id, rollout_id) pairs to the global sample list.
+        Accepts tensors, numpy arrays, or lists. Scalars will be broadcast if needed.
+        """
+
+        # Normalize to lists
+        def to_list(x):
+            if isinstance(x, torch.Tensor):
+                return x.detach().cpu().tolist()
+            if isinstance(x, np.ndarray):
+                return x.tolist()
+            if isinstance(x, list):
+                return x
+            return [x]
+
+        crn_list = to_list(crn_ids)
+        rid_list = to_list(rollout_ids)
+        n = max(len(crn_list), len(rid_list))
+        if len(crn_list) != n:
+            crn_list = crn_list * n
+        if len(rid_list) != n:
+            rid_list = rid_list * n
+        for a, b in zip(crn_list, rid_list):
+            self.sample_row_ids.append({"crn_id": a, "rollout_id": b})
+
     def save(self, identifier: str, folder: str):
         """
         Saves the base and contextualized tallies to disk as JSON files, and also saves contextualized tallies as CSV files for each game/rollout.
@@ -120,7 +149,8 @@ class Tally:
             import pickle
 
             pkl_path = os.path.join(folder, f"{identifier}.tally.pkl")
+            payload = {"array_tally": self.array_tally, "row_ids": self.sample_row_ids}
             with open(pkl_path, "wb") as f:
-                pickle.dump(self.array_tally, f, protocol=pickle.HIGHEST_PROTOCOL)
+                pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
         except Exception:
             pass

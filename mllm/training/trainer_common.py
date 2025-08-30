@@ -661,6 +661,9 @@ class BaseTrainer(ABC):
         Already set earlier # TODO: make it separate and clean
         """
         self.policy_gradient_data = None
+        # Track row id order aligned with concatenation
+        concat_crn_ids = []
+        concat_rollout_ids = []
         for agent_id, trajectory_batch in self.training_data.items():
             tokenwise_batch_credits = get_tokenwise_credits(
                 batch_timesteps=trajectory_batch.batch_timesteps,
@@ -677,10 +680,31 @@ class BaseTrainer(ABC):
             else:
                 self.policy_gradient_data.append(policy_gradient_data)
 
+            concat_crn_ids.append(trajectory_batch.crn_ids)
+            concat_rollout_ids.append(trajectory_batch.rollout_ids)
+
         self.tokenwise_tally = ContextualizedTokenwiseTally(
             tokenizer=self.tokenizer,
             paths=self.debug_path_list,
         )
+
+        # Register row ids once in the same order used to build policy_gradient_data
+        if concat_rollout_ids:
+            try:
+                crn_all = (
+                    torch.cat(concat_crn_ids)
+                    if len(concat_crn_ids) > 1
+                    else concat_crn_ids[0]
+                )
+                rid_all = (
+                    torch.cat(concat_rollout_ids)
+                    if len(concat_rollout_ids) > 1
+                    else concat_rollout_ids[0]
+                )
+            except Exception:
+                crn_all = concat_crn_ids[0]
+                rid_all = concat_rollout_ids[0]
+            self.tally.add_row_ids(crn_ids=crn_all, rollout_ids=rid_all)
 
     def train(self) -> None:
         """
