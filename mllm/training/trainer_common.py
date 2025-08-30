@@ -664,6 +664,7 @@ class BaseTrainer(ABC):
         # Track row id order aligned with concatenation
         concat_crn_ids = []
         concat_rollout_ids = []
+        concat_agent_ids = []
         for agent_id, trajectory_batch in self.training_data.items():
             tokenwise_batch_credits = get_tokenwise_credits(
                 batch_timesteps=trajectory_batch.batch_timesteps,
@@ -682,6 +683,7 @@ class BaseTrainer(ABC):
 
             concat_crn_ids.append(trajectory_batch.crn_ids)
             concat_rollout_ids.append(trajectory_batch.rollout_ids)
+            concat_agent_ids.extend(trajectory_batch.agent_ids)
 
         self.tokenwise_tally = ContextualizedTokenwiseTally(
             tokenizer=self.tokenizer,
@@ -704,7 +706,9 @@ class BaseTrainer(ABC):
             except Exception:
                 crn_all = concat_crn_ids[0]
                 rid_all = concat_rollout_ids[0]
-            self.tally.add_row_ids(crn_ids=crn_all, rollout_ids=rid_all)
+            self.tally.add_row_ids(
+                crn_ids=crn_all, rollout_ids=rid_all, agent_ids=concat_agent_ids
+            )
 
     def train(self) -> None:
         """

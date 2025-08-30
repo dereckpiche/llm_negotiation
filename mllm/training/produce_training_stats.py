@@ -237,10 +237,10 @@ def render_tally_pkl_to_csvs(pkl_path: str, outdir: str):
             max_len = 0
             for r in datapoints:
                 max_len = max(max_len, int(np.asarray(r).size))
-            # Header: include id columns only if aligned
-            header = (["crn_id", "rollout_id"] if aligned_with_ids else []) + [
-                f"c{j}" for j in range(max_len)
-            ]
+            # Header: include id columns only if aligned (agent_id, crn_id, rollout_id)
+            header = (
+                ["agent_id", "crn_id", "rollout_id"] if aligned_with_ids else []
+            ) + [f"c{j}" for j in range(max_len)]
             if header:
                 writer.writerow(header)
             for i, r in enumerate(datapoints):
@@ -258,6 +258,7 @@ def render_tally_pkl_to_csvs(pkl_path: str, outdir: str):
                 ]
                 if aligned_with_ids:
                     row_prefix = [
+                        row_ids[i].get("agent_id", ""),
                         row_ids[i].get("crn_id", ""),
                         row_ids[i].get("rollout_id", ""),
                     ]

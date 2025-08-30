@@ -105,7 +105,7 @@ class Tally:
         else:
             array_list.append(array_metric)
 
-    def add_row_ids(self, crn_ids, rollout_ids):
+    def add_row_ids(self, crn_ids, rollout_ids, agent_ids=None):
         """
         Append an ordered list of (crn_id, rollout_id) pairs to the global sample list.
         Accepts tensors, numpy arrays, or lists. Scalars will be broadcast if needed.
@@ -123,13 +123,21 @@ class Tally:
 
         crn_list = to_list(crn_ids)
         rid_list = to_list(rollout_ids)
+        ag_list = to_list(agent_ids) if agent_ids is not None else None
         n = max(len(crn_list), len(rid_list))
+        if ag_list is not None:
+            n = max(n, len(ag_list))
         if len(crn_list) != n:
             crn_list = crn_list * n
         if len(rid_list) != n:
             rid_list = rid_list * n
-        for a, b in zip(crn_list, rid_list):
-            self.sample_row_ids.append({"crn_id": a, "rollout_id": b})
+        if ag_list is not None and len(ag_list) != n:
+            ag_list = ag_list * n
+        for i in range(n):
+            entry = {"crn_id": crn_list[i], "rollout_id": rid_list[i]}
+            if ag_list is not None:
+                entry["agent_id"] = ag_list[i]
+            self.sample_row_ids.append(entry)
 
     def save(self, identifier: str, folder: str):
         """
