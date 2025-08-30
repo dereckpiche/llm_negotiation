@@ -1,12 +1,9 @@
 defaults:
-    - no_press.yaml
+    - no_press_deterministic_naive.yaml
 
 experiment:
     name: "no_press_deterministic_prev_ad_align"
 
-markov_games:
-    simulation_init_args:
-        deterministic: true
 trainers:
     agent_trainer:
         class: TrainerAdAlign
@@ -19,6 +16,5 @@ trainers:
             ad_align_use_sign: False
             use_old_ad_align: True
             use_time_regularization: False
-            use_rloo: True
             rloo_branch: True
             reuse_baseline: True
