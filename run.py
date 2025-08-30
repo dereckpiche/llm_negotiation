@@ -251,6 +251,9 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         if not cfg["experiment"].get("train", True):
             continue
 
+        if not cfg["experiment"]["train"]:
+            continue
+
         training_start_time = time.time()
 
         # Prepare base models for training
