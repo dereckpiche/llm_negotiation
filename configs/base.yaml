@@ -5,7 +5,6 @@ hydra:
         chdir: false
 
 experiment:
-    method: generate_and_train
     nb_epochs: 1000
     nb_matches_per_iteration: 64
     reinit_matches_each_it: true
@@ -14,6 +13,8 @@ experiment:
     resume_experiment: true
     base_seed: 0
     seed_group_size: 1
+    train: true
+
 temperature: 1.0
 
 markov_games:

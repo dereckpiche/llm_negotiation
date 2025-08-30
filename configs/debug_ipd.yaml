@@ -1,29 +1,27 @@
 # To quickly check if code still runs
 
 defaults:
-    - ipd_ad_align.yaml
+    - ipd.yaml
 
 experiment:
     name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
-    nb_epochs: 200
-    nb_matches_per_iteration: 1
+    nb_epochs: 1000
+    nb_matches_per_iteration: 64
     reinit_matches_each_it: true
     checkpoint_every_n_iterations: 1e5
     start_epoch: 0
     resume_experiment: true
     base_seed: 1000
+    train: false
 
 agent_0_id: Alice
 agent_1_id: Bob
 agent_ids: ["Alice", "Bob"]
 
 markov_games:
-    runner_method_name: AlternativeActionsRunner
     simulation_init_args:
-        rounds_per_game: 10
-    runner_kwargs:
-        nb_alternative_actions: 1
-        max_depth: 10
+        rounds_per_game: 4
+
 
 temperature: 1.0
 
@@ -33,43 +31,5 @@ models:
         init_args:
             llm_id: base_llm
             model_name: "Qwen/Qwen2.5-0.5B-Instruct" # Qwen/Qwen3-4B-Instruct-2507
-            hf_kwargs:
-                device_map: "cuda:0"
-                torch_dtype: "bfloat16"
-                max_memory: {0: "15GiB"}
-                attn_implementation: "flash_attention_2"
             inference_backend: dummy
-            inference_backend_init_kwargs:
-                max_model_len: 1e4
-                # max_num_seqs: 128
-                gpu_memory_utilization: 0.5
-                dtype: "bfloat16"
-                trust_remote_code: True
-                max_num_batched_tokens: 1000
-                enforce_eager: True
-                max_lora_rank: 32
-            inference_backend_sampling_params:
-                temperature: 1.0
-                top_p: 1.0
-                max_tokens: 400
-                top_k: 0
-            adapter_configs:
-                agent_adapter:
-                    task_type: CAUSAL_LM
-                    r: 32
-                    lora_alpha: 128
-                    lora_dropout: 0.0
-                    target_modules: all-linear
-                critic_adapter:
-                    task_type: CAUSAL_LM
-                    r: 32
-                    lora_alpha: 128
-                    lora_dropout: 0.0
-                    target_modules: all-linear
-
-trainers:
-    agent_trainer:
-        class: TrainerAdAlign
-        kwargs:
-            use_old_ad_align: False
-            enable_tokenwise_logging: True
+            reward_normalizing_constant: 5.0

@@ -6,7 +6,7 @@ experiment:
     description: "no description"
     nb_matches: 64
     base_seed: 1000
-
+    train: false
 
 
 markov_games:
@@ -35,5 +35,5 @@ models:
                     lora_dropout: 0.0
                     target_modules: all-linear
             initial_adapter_paths:
-                alice_adapter: "/home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/2025_08/ipd_ad_align_rloo_branch/seed_1000/checkpoints/agent_adapter-iter_600-2025-08-18_07-16-59/agent_adapter"
-                bob_adapter: "/home/mila/m/mohammed.muqeeth/scratch/llm_negotiation/2025_08/ipd/seed_1000/Qwen/Qwen3-4B-Instruct-2507/adapters/agent_adapter"
+                alice_adapter: "/home/mila/d/dereck.piche/scratch/llm_negotiation/2025_08/debug_2025-08-30___10-29-02/seed_1000/Qwen/Qwen2.5-0.5B-Instruct/adapters/agent_adapter"
+                bob_adapter: "/home/mila/d/dereck.piche/scratch/llm_negotiation/2025_08/debug_2025-08-30___10-29-02/seed_1000/Qwen/Qwen2.5-0.5B-Instruct/adapters/agent_adapter"
