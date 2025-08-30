@@ -1,6 +1,7 @@
 import argparse
 import glob
 import os
+import re
 from pathlib import Path
 
 from mllm.markov_games.gather_and_export_utils import *
@@ -24,7 +25,9 @@ def process_single_folder(
         output_path = Path(output_dir)
 
     pattern = "**/*.json" if recursive else "*.json"
-    files = sorted(input_path.glob(pattern))
+    files = input_path.glob(pattern)
+    mgid_re = re.compile(r"mgid_(\d+)")
+    files = sorted(files, key=lambda f: int(mgid_re.search(f.name).group(1)))
     if not files:
         print(f"No JSON files found in {input_path} (recursive={recursive}).")
         return False
@@ -54,7 +57,7 @@ def process_single_folder(
     return True
 
 
-def find_iteration_folders(global_folder):
+def find_iteration_folders(global_folder, from_iteration=0):
     """Find all iteration_* folders within the global folder structure."""
     global_path = Path(global_folder)
 
@@ -73,7 +76,9 @@ def find_iteration_folders(global_folder):
                 if item.is_dir():
                     iteration_folders.append(item)
 
-    return sorted(iteration_folders)
+    return sorted(iteration_folders, key=lambda path: int(path.name.split("_")[-1]))[
+        from_iteration:
+    ]
 
 
 def main():
@@ -126,6 +131,12 @@ def main():
         default=False,
         help="Search subfolders for JSON files (default: False)",
     )
+    parser.add_argument(
+        "--from-iteration",
+        type=int,
+        default=0,
+        help="Start processing from a specific iteration (default: 0)",
+    )
 
     args = parser.parse_args()
 
@@ -138,7 +149,9 @@ def main():
 
     if args.global_folder:
         # Find all iteration_* folders in the global folder
-        iteration_folders = find_iteration_folders(args.global_folder)
+        iteration_folders = find_iteration_folders(
+            args.global_folder, args.from_iteration
+        )
         if not iteration_folders:
             print(f"No iteration_* folders found in {args.global_folder}")
             return

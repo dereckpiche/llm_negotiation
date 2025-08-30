@@ -218,6 +218,7 @@ class LeanLocalLLM:
 
     async def generate(self, prompt: list[dict], regex: str | None = None) -> str:
         if self.regex_max_attempts != -1 and regex is not None:
+            prompt_text_beginning = self._make_prompt_text(prompt)
             pattern = re.compile(regex)
             for i in range(self.regex_max_attempts):
                 prompt_text = self._make_prompt_text(prompt)
@@ -238,8 +239,9 @@ class LeanLocalLLM:
                         ),
                     },
                 ]
-            raise ValueError(
-                f"Response did not match regex after {self.regex_max_attempts} attempts"
+            logger.warning(f"Falling back to using regex")
+            return await self.inference_backend.generate(
+                prompt_text=prompt_text_beginning, regex=regex
             )
         else:
             prompt_text = self._make_prompt_text(prompt)
