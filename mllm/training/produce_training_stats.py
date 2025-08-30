@@ -1,29 +1,28 @@
-import matplotlib.pyplot as plt
-import os
-import json
-import numpy as np
 import copy
 import gc
 import json
 import logging
-import sys
 import os
 import random
 import re
 import subprocess
+import sys
 import time
 from datetime import datetime
 from statistics import mean
 
 import hydra
 import matplotlib.pyplot as plt
-# import pandas as pd
+import numpy as np
+import pandas as pd
 from omegaconf import OmegaConf
+
 
 def get_from_nested_dict(dictio: dict, path: list[str]):
     for sp in path[:-1]:
         dictio = dictio[sp]
     return dictio.get(path[-1])
+
 
 def set_at_path(dictio: dict, path: list[str], value):
     for sp in path[:-1]:
@@ -32,7 +31,7 @@ def set_at_path(dictio: dict, path: list[str], value):
         dictio = dictio[sp]
     dictio[path[-1]] = value
 
- 
+
 def produce_tabular_render(inpath: str, outpath: str = None):
     """
     TODO: docstring
@@ -60,9 +59,11 @@ def produce_tabular_render(inpath: str, outpath: str = None):
         d = pd.DataFrame(d)
         d.to_csv(m_path)
 
+
 def get_metric_paths(data: list[dict]):
     d = data[0]
     paths = []
+
     def traverse_dict(d, current_path=[]):
         for key, value in d.items():
             new_path = current_path + [key]
@@ -70,16 +71,20 @@ def get_metric_paths(data: list[dict]):
                 traverse_dict(value, new_path)
             else:
                 paths.append(new_path)
+
     traverse_dict(d)
     return paths
 
+
 def print_metric_paths(data: list[dict]):
     paths = get_metric_paths(data)
-    for p in paths: print(p)
+    for p in paths:
+        print(p)
 
 
 def get_metric_iteration_list(data: list[dict], metric_path: list[str]):
-    if isinstance(metric_path, str): metric_path = [metric_path]
+    if isinstance(metric_path, str):
+        metric_path = [metric_path]
     sgl = []
     for d in data:
         sgl.append(get_from_nested_dict(d, metric_path))
@@ -87,24 +92,33 @@ def get_metric_iteration_list(data: list[dict], metric_path: list[str]):
 
 
 def to_1d_numeric(x):
-    """Return a 1-D float array (or None if not numeric)."""
+    """Return a 1-D float array (or None if not numeric). Accepts scalars, numpy arrays, or nested list/tuple of them."""
     if x is None:
         return None
-    # Scalars
     if isinstance(x, (int, float, np.number)):
-        return np.array([float(x)])
-
-    # Anything list‑like → recurse & flatten
-    try:
-        flat = np.array(list(np.ravel(x)), dtype=float)
-        return flat
-    except Exception:
-        return None    # skip non‑numeric or badly structured payloads
+        return np.array([float(x)], dtype=float)
+    if isinstance(x, np.ndarray):
+        try:
+            return x.astype(float).ravel()
+        except Exception:
+            return None
+    if isinstance(x, (list, tuple)):
+        parts = []
+        for e in x:
+            arr = to_1d_numeric(e)
+            if arr is not None and arr.size > 0:
+                parts.append(arr)
+        if parts:
+            return np.concatenate(parts)
+        return None
+    return None
 
 
 def get_single_metric_vector(data, metric_path, iterations=None):
-    if isinstance(metric_path, str): metric_path = [metric_path]
-    if iterations == None: iterations = len(data)
+    if isinstance(metric_path, str):
+        metric_path = [metric_path]
+    if iterations == None:
+        iterations = len(data)
     vecs = []
     for d in data:
         ar = get_from_nested_dict(d, metric_path)
@@ -115,20 +129,27 @@ def get_single_metric_vector(data, metric_path, iterations=None):
     return np.concatenate(vecs) if vecs else np.empty(0, dtype=float)
 
 
+def _load_metrics_file(file_path: str):
+    if not (file_path.endswith(".tally.pkl") or file_path.endswith(".pkl")):
+        raise ValueError("Only *.tally.pkl files are supported.")
+    import pickle
+
+    with open(file_path, "rb") as f:
+        tree = pickle.load(f)
+    return tree
+
+
 def get_iterations_data(iterations_path: str):
     iterations_data = []
     more_iterations = True
-    paths = os.listdir(iterations_path)
     n = 0
     iteration_path = os.path.join(iterations_path, f"iteration_{n:03d}")
     while more_iterations:
         if os.path.isdir(iteration_path):
             for root, dirs, files in os.walk(iteration_path):
-                for file in files:
-                    if file.startswith("basic_training_metrics"):
-                        file_path = os.path.join(root, file)
-                        with open(file_path, "r") as f:
-                            iterations_data.append(json.load(f))
+                for file in sorted([f for f in files if f.endswith(".tally.pkl")]):
+                    file_path = os.path.join(root, file)
+                    iterations_data.append(_load_metrics_file(file_path))
         else:
             more_iterations = False
         n += 1

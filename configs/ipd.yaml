@@ -2,7 +2,6 @@ defaults:
     - base.yaml
 
 
-
 experiment:
     name: "ipd"
     method: generate_and_train

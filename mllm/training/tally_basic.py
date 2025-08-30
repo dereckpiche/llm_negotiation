@@ -23,13 +23,14 @@ class Tally:
             tokenizer (AutoTokenizer): Tokenizer for converting token IDs to strings.
             max_context_length (int, optional): Maximum context length for contextualized metrics. Defaults to 30.
         """
-        self.base_tally = {}
+        # Array-preserving structure (leaf lists hold numpy arrays / scalars)
+        self.array_tally = {}
 
     def reset(self):
         """
         Resets the base and contextualized tallies to empty dictionaries.
         """
-        self.base_tally = {}
+        self.array_tally = {}
 
     def get_from_nested_dict(self, dictio: dict, path: str):
         """
@@ -60,7 +61,9 @@ class Tally:
             dictio = dictio.setdefault(sp, {})
         dictio[path[-1]] = value
 
-    def add_metric(self, path: str, metric: Union[float, int, str, np.ndarray, dict]):
+    def add_metric(
+        self, path: str, metric: Union[float, int, np.ndarray, torch.Tensor, list]
+    ):
         """
         Adds a metric to the base tally at the specified path.
 
@@ -69,35 +72,55 @@ class Tally:
             metric (float|int|str|np.ndarray|dict): The metric value to add.
         """
         metric = deepcopy(metric)
-        assert isinstance(
-            metric, Union[float, int, str, np.ndarray, dict]
-        ), "Metric of incorrect type"
 
-        current_metric = self.get_from_nested_dict(dictio=self.base_tally, path=path)
+        # Array-only: accept numbers, tensors, numpy arrays, lists (will convert). No strings.
+        allowed_types = (float, int, np.ndarray, torch.Tensor, list)
+        assert isinstance(metric, allowed_types), "Metric of incorrect type"
 
-        if isinstance(metric, np.ndarray):
-            metric = metric.tolist()
+        # Prepare array-preserving representation only
+        array_metric = metric
 
-        if current_metric == None:
-            self.set_at_path(dictio=self.base_tally, path=path, value=[metric])
+        if isinstance(metric, torch.Tensor):
+            if metric.dim() == 0:
+                array_metric = np.asarray(metric.item())
+            else:
+                array_metric = metric.detach().cpu().numpy()
+
+        if isinstance(array_metric, (float, int, np.number)):
+            array_metric = np.asarray(array_metric)
+        elif isinstance(array_metric, list):
+            # convert lists to numpy arrays; may be object dtype for ragged
+            try:
+                array_metric = np.asarray(array_metric)
+            except Exception:
+                array_metric = np.array(array_metric, dtype=object)
+
+        # Update array-preserving tally
+        array_list = self.get_from_nested_dict(dictio=self.array_tally, path=path)
+        if array_list is None:
+            self.set_at_path(dictio=self.array_tally, path=path, value=[array_metric])
         else:
-            current_metric.append(metric)
+            array_list.append(array_metric)
 
-    def save(self, path: str):
+    def save(self, identifier: str, folder: str):
         """
         Saves the base and contextualized tallies to disk as JSON files, and also saves contextualized tallies as CSV files for each game/rollout.
 
         Args:
             path (str): Directory path where the metrics will be saved.
         """
-        os.makedirs(name=path, exist_ok=True)
+        os.makedirs(name=folder, exist_ok=True)
 
         from datetime import datetime
 
         now = datetime.now()
 
-        savepath = os.path.join(
-            path, f"basic_training_metrics_{now:%Y-%m-%d___%H-%M-%S}.json"
-        )
-        with open(savepath, "w") as fp:
-            json.dump(self.base_tally, fp, indent=4)
+        # Pickle only (fastest, exact structure with numpy/scalars at leaves)
+        try:
+            import pickle
+
+            pkl_path = os.path.join(folder, f"{identifier}.tally.pkl")
+            with open(pkl_path, "wb") as f:
+                pickle.dump(self.array_tally, f, protocol=pickle.HIGHEST_PROTOCOL)
+        except Exception:
+            pass

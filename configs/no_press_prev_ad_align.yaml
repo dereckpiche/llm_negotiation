@@ -1,8 +1,8 @@
 defaults:
-    - ipd.yaml
+    - no_press.yaml
 
 experiment:
-    name: "ipd_prev_ad_align"
+    name: "no_press_prev_ad_align"
 
 
 trainers:
@@ -18,5 +18,5 @@ trainers:
             use_old_ad_align: True
             use_time_regularization: False
             use_rloo: True
-            rloo_branch: False
-            reuse_baseline: False
+            rloo_branch: True
+            reuse_baseline: True
