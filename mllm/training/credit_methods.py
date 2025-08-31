@@ -18,6 +18,35 @@ def get_discounted_state_visitation_credits(
     )
 
 
+def whiten_advantages(advantages: torch.Tensor, tally: Tally = Tally()) -> torch.Tensor:
+    """
+    Whitens the advantages.
+    """
+    whitened_advantages = advantages - torch.mean(advantages) / (
+        torch.std(advantages) + 1e-9
+    )
+    tally.add_metric(path=["whitened_advantages"], metric=whitened_advantages)
+    return whitened_advantages
+
+
+def whiten_advantages_time_step_wise(
+    advantages: torch.Tensor,  # (B, T)
+    tally: Tally = Tally(),
+) -> torch.Tensor:
+    """
+    Whitens the advantages.
+    """
+    assert advantages.dim() == 2, "Wrong dimensions."
+    whitened_advantages_time_step_wise = advantages - advantages.mean(
+        dim=0, keepdim=True
+    ) / (advantages.std(dim=0, keepdim=True) + 1e-9)
+    tally.add_metric(
+        path=["whitened_advantages_time_step_wise"],
+        metric=whitened_advantages_time_step_wise,
+    )
+    return whitened_advantages_time_step_wise
+
+
 def get_discounted_returns(
     rewards: torch.Tensor,  # (B, T)
     discount_factor: float,
@@ -135,14 +164,12 @@ def get_advantage_alignment_credits(
     exclude_k_equals_t: bool,
     beta: float,
     gamma: float = 1.0,
-    use_old_ad_align: bool = False,
+    ad_align_only_use_main_advantages: bool = False,
     use_sign: bool = False,
     clipping: float | None = None,
     use_time_regularization: bool = False,
     force_coop_first_step: bool = False,
     use_variance_regularization: bool = False,
-    rloo_branch: bool = False,
-    reuse_baseline: bool = False,
     tally: Tally = Tally(),
 ) -> torch.Tensor:
     """
@@ -187,7 +214,7 @@ def get_advantage_alignment_credits(
     if a1_alternative is not None:
         tally.add_metric(path=["alternative_advantages"], metric=a1_alternative)
 
-    if use_old_ad_align:
+    if ad_align_only_use_main_advantages:
         ad_align_weights = get_advantage_alignment_weights(
             advantages=a1, exclude_k_equals_t=exclude_k_equals_t, gamma=gamma
         )
@@ -195,18 +222,9 @@ def get_advantage_alignment_credits(
             ad_align_weights = gamma * ad_align_weights
     else:
         assert a1_alternative is not None, "Alternative advantages must be provided"
-        if rloo_branch:
-            a1_alternative = torch.cat([a1.unsqueeze(2), a1_alternative], dim=2)
-            a1_alternative = a1_alternative.mean(dim=2)
-            # print(f"a1_alternative: {a1_alternative}, a1: {a1}\n")
-            a1, baseline = get_rloo_credits(a1)
-            if reuse_baseline:
-                a1_alternative = a1_alternative - baseline
-            else:
-                a1_alternative, _ = get_rloo_credits(a1_alternative)
-        assert a1.shape == a1_alternative.shape, "Not the same shape"
+        expected_a1 = torch.mean(a1_alternative, dim=2)
         ad_align_weights = get_advantage_alignment_weights(
-            advantages=a1_alternative,
+            advantages=expected_a1,
             exclude_k_equals_t=exclude_k_equals_t,
             gamma=gamma,
         )

@@ -24,6 +24,8 @@ from mllm.training.credit_methods import (
     get_discounted_returns,
     get_generalized_advantage_estimates,
     get_rloo_credits,
+    whiten_advantages,
+    whiten_advantages_time_step_wise,
 )
 from mllm.training.tally_basic import Tally
 from mllm.training.tally_tokenwise import ContextualizedTokenwiseTally
@@ -73,7 +75,9 @@ class BaseTrainer(ABC):
         discount_factor: float,
         enable_tokenwise_logging: bool,
         save_path: str,
-        reward_normalizing_constant: float = 1.0,
+        reward_normalizing_constant: float,
+        use_whitening: bool,
+        use_whitening_time_step_wise: bool,
     ):
         """
         Initialize the REINFORCE trainer with reward shaping for multi-agent or single-agent training.
@@ -154,6 +158,8 @@ class BaseTrainer(ABC):
         self.enable_tokenwise_logging = enable_tokenwise_logging
         self.reward_normalizing_constant = reward_normalizing_constant
         self.pg_loss_normalization = pg_loss_normalization
+        self.use_whitening = use_whitening
+        self.use_whitening_time_step_wise = use_whitening_time_step_wise
         # Common containers used by all trainers
         self.training_data: dict = {}
         self.debug_path_list: list[str] = []
@@ -627,6 +633,26 @@ class BaseTrainer(ABC):
             credits = [
                 padded_credits[i, : lengths[i]] for i in range(padded_credits.shape[0])
             ]
+
+        if self.use_whitening_time_step_wise:
+            lengths = [len(c) for c in batch_rewards]
+            padded_credits = pad_sequence(credits, batch_first=True, padding_value=0.0)
+            whitened_padded_credits = whiten_advantages_time_step_wise(
+                padded_credits, tally=self.tally
+            )
+            credits = [
+                whitened_padded_credits[i, : lengths[i]].flatten()
+                for i in range(whitened_padded_credits.shape[0])
+            ]
+
+        if self.use_whitening:
+            lengths = [len(c) for c in batch_rewards]
+            whitened_credits = whiten_advantages(
+                torch.stack(credits, dim=0).flatten(), tally=self.tally
+            )
+            credits = torch.split(
+                tensor=whitened_credits, split_size_or_sections=lengths
+            )
         return credits
 
     @abstractmethod

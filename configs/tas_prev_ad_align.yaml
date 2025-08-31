@@ -17,5 +17,5 @@ trainers:
             ad_align_exclude_k_equals_t: False
             ad_align_use_sign: False
             ad_align_beta: 0.1
-            use_old_ad_align: True
+            ad_align_only_use_main_advantages: True
             rloo_branch: False

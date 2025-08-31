@@ -1,35 +1,35 @@
 # To quickly check if code still runs
 
 defaults:
-    - ipd.yaml
-
+    - ipd_prev_ad_align.yaml
 experiment:
     name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
-    nb_epochs: 1000
-    nb_matches_per_iteration: 64
-    reinit_matches_each_it: true
-    checkpoint_every_n_iterations: 1e5
-    start_epoch: 0
-    resume_experiment: true
-    base_seed: 1000
-    train: false
+    nb_matches_per_iteration: 12
 
-agent_0_id: Alice
-agent_1_id: Bob
-agent_ids: ["Alice", "Bob"]
+
+
+optimizers:
+    agent_optimizer:
+        init_args:
+            lr: 3e-6
+            weight_decay: 0.0
 
 markov_games:
     simulation_init_args:
         rounds_per_game: 4
 
-
-temperature: 1.0
-
 models:
     base_llm:
-        class: LeanLocalLLM
         init_args:
-            llm_id: base_llm
-            model_name: "Qwen/Qwen2.5-0.5B-Instruct" # Qwen/Qwen3-4B-Instruct-2507
-            inference_backend: dummy
-            reward_normalizing_constant: 5.0
+            model_name:  Qwen/Qwen3-4B-Instruct-2507 # Qwen/Qwen3-4B-Instruct-2507, Qwen/Qwen2.5-7B-Instruct
+
+trainers:
+    agent_trainer:
+        kwargs:
+            use_whitening: True
+            ad_align_beta: 1.0
+            reward_normalizing_constant: 1.0
+            skip_discounted_state_visitation: False
+            ad_align_gamma: 1.0
+            ad_align_only_use_main_advantages: True
+            use_rloo: True

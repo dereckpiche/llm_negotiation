@@ -112,7 +112,7 @@ class TrainerAdAlign(BaseTrainer):
         ad_align_use_sign: bool,
         ad_align_clipping: float,
         ad_align_force_coop_first_step: bool,
-        use_old_ad_align: bool,
+        ad_align_only_use_main_advantages: bool,
         use_time_regularization: bool,
         rloo_branch: bool,
         reuse_baseline: bool,
@@ -136,7 +136,7 @@ class TrainerAdAlign(BaseTrainer):
         self.ad_align_use_sign = ad_align_use_sign
         self.ad_align_clipping = ad_align_clipping
         self.ad_align_force_coop_first_step = ad_align_force_coop_first_step
-        self.use_old_ad_align = use_old_ad_align
+        self.ad_align_only_use_main_advantages = ad_align_only_use_main_advantages
         self.use_time_regularization = use_time_regularization
         self.rloo_branch = rloo_branch
         self.reuse_baseline = reuse_baseline
@@ -231,10 +231,6 @@ class TrainerAdAlign(BaseTrainer):
 
         jT_list = torch.Tensor(jT_list)
 
-        # Assert that number of alternative actions is constant
-        # assert len(set(nb_alternative_actions)) == 1, "Number of alternative actions must be constant"
-        # A = nb_alternative_actions[0]
-
         trajectory_batch = TrajectoryBatch(
             rollout_ids=torch.tensor(batch_rollout_ids, dtype=torch.int32),  # (B,)
             crn_ids=torch.tensor(batch_crn_ids, dtype=torch.int32),
@@ -245,19 +241,16 @@ class TrainerAdAlign(BaseTrainer):
             batch_state_ends_mask=batch_state_ends_mask,
             batch_rewards=batch_rewards,
         )
-        # Get Advantages & Train Critic
-        with resource_logger_context(
-            logger, "Get advantages with critic gradient accumulation"
-        ):
-            self.batch_advantages: torch.FloatTensor = (
-                self.get_advantages_with_critic_gradient_accumulation(trajectory_batch)
-            )  # (B, jT)
 
-        if A > 0:
-            # Here, `A` is the number of alternative actions / trajectories taken at each time step.
-            # For each of the `B` rollout perspectives, at each of its jT (`j` is for jagged, since each main rollout may be of a different length) steps, we take A alternate trajectories (from different actions).
-            # Therefore, we have ∑jT * A trajectories to process. If each of the main trajectories have T steps, we will have `B*T*A` to process.
+        has_alternatives = (
+            A > 0
+        )  # If there are no alternative action sample trajectories, we don't need to create an alternative trajectory batch
+
+        if has_alternatives:
             with resource_logger_context(logger, "Create alternative trajectory batch"):
+                # Here, `A` is the number of alternative actions / trajectories taken at each time step.
+                # For each of the `B` rollout perspectives, at each of its jT (`j` is for jagged, since each main rollout may be of a different length) steps, we take A alternate trajectories (from different actions).
+                # Therefore, we have ∑jT * A trajectories to process. If each of the main trajectories have T steps, we will have `B*T*A` to process.
                 sum_jT = int(torch.sum(jT_list).item())
                 jT_list = (
                     jT_list.int().tolist()
@@ -273,42 +266,54 @@ class TrainerAdAlign(BaseTrainer):
                     batch_rewards=alternative_batch_rewards,
                 )
 
-            # Get alternative advantages
+        # Append all trajectories
+        all_trajectories = trajectory_batch
+        if has_alternatives:
+            all_trajectories = trajectory_batch.append(alternative_trajectory_batch)
+
+        # Get advantages
+        with resource_logger_context(
+            logger, "Get advantages with critic gradient accumulation"
+        ):
+            all_advantages = self.get_advantages_with_critic_gradient_accumulation(
+                all_trajectories
+            )
+
+        # Split into main and alternative advantages
+        self.batch_advantages = all_advantages[:B]  # (B, jT)
+        if has_alternatives:
+            alternative_advantages = all_advantages[B:]  # (∑jT * A, jT')
+
+        if has_alternatives:
+            # Process alternative advantages
             # BAAs stands for batch alternative advantages
             # (torch nested tensors have very little api support, so we have to do some odd manual work here)
-            with resource_logger_context(
-                logger, "Compute alternative advantage estimates"
-            ):
-                BAAs_list = self.get_advantages_with_critic_gradient_accumulation(
-                    alternative_trajectory_batch
-                )  # list length (∑jT * A), each (jT',)
-                # Pad alternative advantages to (∑jT*A, P)
-
-                BAAs_padded = pad_sequence(
-                    BAAs_list, batch_first=True, padding_value=0.0
-                )
-                branch_idx = torch.tensor(
-                    batch_branching_time_steps,
-                    device=BAAs_padded.device,
-                    dtype=torch.long,
-                )
-                gathered = BAAs_padded.gather(
-                    dim=1, index=branch_idx.unsqueeze(1)
-                ).squeeze(1)
-                # Reshape and split per rollout, then transpose to (jT_i, A)
-                gathered = gathered.view(A, sum_jT)  # (A, ∑jT)
-                blocks = list(
-                    torch.split(gathered, jT_list, dim=1)
-                )  # len B, shapes (A, jT_i)
-                BAAs = [
-                    blk.transpose(0, 1).contiguous() for blk in blocks
-                ]  # list of (jT_i, A)
+            BAAs_list = alternative_advantages  # list length (∑jT * A), each (jT',)
+            # Pad alternative advantages to (∑jT*A, P)
+            BAAs_padded = pad_sequence(BAAs_list, batch_first=True, padding_value=0.0)
+            # Get the branching time steps for each of the `jT` time steps in the main trajectory.
+            branch_idx = torch.tensor(
+                batch_branching_time_steps,
+                device=BAAs_padded.device,
+                dtype=torch.long,
+            )
+            gathered = BAAs_padded.gather(dim=1, index=branch_idx.unsqueeze(1)).squeeze(
+                1
+            )
+            # Reshape and split per rollout, then transpose to (jT_i, A)
+            gathered = gathered.view(A, sum_jT)  # (A, ∑jT)
+            blocks = list(
+                torch.split(gathered, jT_list, dim=1)
+            )  # len B, shapes (A, jT_i)
+            BAAs = [
+                blk.transpose(0, 1).contiguous() for blk in blocks
+            ]  # list of (jT_i, A)
 
         self.training_data[agent_id] = AdAlignTrainingData(
             agent_id=agent_id,
             main_data=trajectory_batch,
             main_advantages=self.batch_advantages,
-            alternative_advantages=BAAs if A > 0 else None,
+            alternative_advantages=BAAs if has_alternatives else None,
         )
 
     def share_advantage_data(self) -> list[AdvantagePacket]:
@@ -394,10 +399,8 @@ class TrainerAdAlign(BaseTrainer):
                     use_sign=self.ad_align_use_sign,
                     clipping=self.ad_align_clipping,
                     force_coop_first_step=self.ad_align_force_coop_first_step,
-                    use_old_ad_align=self.use_old_ad_align,
+                    ad_align_only_use_main_advantages=self.ad_align_only_use_main_advantages,
                     use_time_regularization=self.use_time_regularization,
-                    rloo_branch=self.rloo_branch,
-                    reuse_baseline=self.reuse_baseline,
                     tally=self.tally,
                 )
 

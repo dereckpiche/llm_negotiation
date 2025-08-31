@@ -1,6 +1,7 @@
 # macOS generated files
 .DS_Store
 .analyse_venv
+configs/debug_ipd.yaml
 *.png
 .venv
 home/
