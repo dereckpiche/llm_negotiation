@@ -34,8 +34,8 @@ class NoPressSimulation(NegotiationSimulation):
         super().__init__(*args, **kwargs)
 
     def _sample_values(self) -> Dict[AgentId, float]:
-        # Independent random per-coin values of either 1 or 10 (inclusive)
-        return {aid: float(int(self.rng.choice([1, 10]))) for aid in self.agent_ids}
+        v = float(int(self.rng.choice([1, 10])))
+        return {self.agent_ids[0]: v, self.agent_ids[1]: 10.0 if v == 1.0 else 1.0}
 
     def set_new_round_of_variant(self):
         self.state.previous_values = copy.deepcopy(self.state.values)

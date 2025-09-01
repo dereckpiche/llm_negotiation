@@ -248,9 +248,6 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         # -----------------------------------------------------------------
         # Train
         # -----------------------------------------------------------------
-        if not cfg["experiment"].get("train", True):
-            continue
-
         if not cfg["experiment"]["train"]:
             continue
 

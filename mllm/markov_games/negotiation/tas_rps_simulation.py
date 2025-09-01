@@ -101,6 +101,7 @@ class TrustAndSplitRPSSimulation(NegotiationSimulation):
         self, state: NegotiationState, actions: Dict[AgentId, Any]
     ) -> Dict[str, Any]:
         return {
+            "quantities": copy.deepcopy(state.quantities),
             "hands": copy.deepcopy(state.hands),
             "values": copy.deepcopy(state.values),
             "previous_hands": copy.deepcopy(state.previous_hands),

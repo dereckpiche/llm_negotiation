@@ -47,6 +47,7 @@ class TrustAndSplitSimulation(NegotiationSimulation):
         self, state: NegotiationState, actions: Dict[AgentId, Any]
     ) -> Dict[str, Any]:
         return {
+            "quantities": copy.deepcopy(state.quantities),
             "values": copy.deepcopy(state.values),
             "previous_values": copy.deepcopy(state.previous_values),
             "splits": copy.deepcopy(state.splits),
