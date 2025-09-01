@@ -100,9 +100,9 @@ trainers:
             whiten_advantages: False
             whiten_advantages_time_step_wise: False
             skip_discounted_state_visitation: True
-            use_gae_lambda_annealing: True
-            gae_lambda_annealing_method: "sigmoid_annealing"
-            gae_lambda_annealing_method_params: {temperature: 15}
+            use_gae_lambda_annealing: False
+            gae_lambda_annealing_method: None
+            gae_lambda_annealing_method_params: None
             gae_lambda_annealing_limit: 0.92
             discount_factor: 0.9
             use_rloo: True

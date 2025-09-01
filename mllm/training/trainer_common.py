@@ -176,7 +176,8 @@ class BaseTrainer(ABC):
         self.skip_discounted_state_visitation = skip_discounted_state_visitation
         self.use_gae_lambda_annealing = use_gae_lambda_annealing
         self.gae_lambda_annealing_limit = gae_lambda_annealing_limit
-        self.gae_lambda_annealing_method: Callable[[int], float] = lambda step: eval(gae_lambda_annealing_method)(step=step, **gae_lambda_annealing_method_params)
+        if use_gae_lambda_annealing:
+            self.gae_lambda_annealing_method: Callable[[int], float] = lambda step: eval(gae_lambda_annealing_method)(step=step, **gae_lambda_annealing_method_params)
         self.discount_factor = discount_factor
         self.enable_tokenwise_logging = enable_tokenwise_logging
         self.reward_normalizing_constant = reward_normalizing_constant
