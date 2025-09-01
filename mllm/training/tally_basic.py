@@ -87,7 +87,7 @@ class Tally:
             if metric.dim() == 0:
                 array_metric = np.asarray(metric.item())
             else:
-                array_metric = metric.detach().cpu().numpy()
+                array_metric = metric.to(torch.float32).detach().cpu().numpy()
 
         if isinstance(array_metric, (float, int, np.number)):
             array_metric = np.asarray(array_metric)

@@ -8,7 +8,7 @@ import os
 import sys
 from abc import ABC, abstractmethod
 from typing import Literal, Union
-
+import pickle
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -41,6 +41,10 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
 
+@dataclass
+class TrainerAnnealingState:
+    annealing_step_counter: int = 0
+
 class BaseTrainer(ABC):
     """
     Trainer
@@ -65,11 +69,11 @@ class BaseTrainer(ABC):
         temperature: float,
         device: str,
         use_gae: bool,
+        gae_lambda_annealing_limit: float,
+        gae_annealing_temp: float,
         pg_loss_normalization: Literal["batch", "nb_tokens"],
         use_rloo: bool,
         skip_discounted_state_visitation: bool,
-        gae_lambda_for_credits: float,
-        gae_lambda_for_targets: float,
         discount_factor: float,
         enable_tokenwise_logging: bool,
         save_path: str,
@@ -88,7 +92,6 @@ class BaseTrainer(ABC):
             critic_lr_scheduler (torch.optim.lr_scheduler.LRScheduler or None): LR scheduler for the critic (optional).
             config (RtConfig): Configuration object for training.
         """
-
         self.tokenizer = tokenizer
         # self.tokenizer.padding_side = "left"  # needed for flash attention
         if self.tokenizer.pad_token_id is None:
@@ -112,7 +115,19 @@ class BaseTrainer(ABC):
 
         self.save_path = save_path
 
-        # Load states if already exist
+        # Load trainer state if it exists
+        self.trainer_annealing_state_path = os.path.join(
+            self.save_path, "trainer_annealing_state.pkl"
+        )
+        if os.path.exists(self.trainer_annealing_state_path):
+            logger.info(
+                f"Loading trainer state from {self.trainer_annealing_state_path}"
+            )
+            self.trainer_annealing_state = pickle.load(open(self.trainer_annealing_state_path, "rb"))
+        else:
+            self.trainer_annealing_state = TrainerAnnealingState()
+
+        # Load policy optimizer state if it exists
         self.policy_optimizer_path = os.path.join(
             self.save_path, "policy_optimizer_state.pt"
         )
@@ -124,6 +139,8 @@ class BaseTrainer(ABC):
                 torch.load(self.policy_optimizer_path)
             )
 
+
+        # Load critic optimizer state if it exists
         self.critic_optimizer_path = os.path.join(
             self.save_path, "critic_optimizer_state.pt"
         )
@@ -148,8 +165,8 @@ class BaseTrainer(ABC):
         self.use_gae = use_gae
         self.use_rloo = use_rloo
         self.skip_discounted_state_visitation = skip_discounted_state_visitation
-        self.gae_lambda_for_credits = gae_lambda_for_credits
-        self.gae_lambda_for_targets = gae_lambda_for_targets
+        self.gae_lambda_annealing_limit = gae_lambda_annealing_limit
+        self.gae_annealing_temp = gae_annealing_temp
         self.discount_factor = discount_factor
         self.enable_tokenwise_logging = enable_tokenwise_logging
         self.reward_normalizing_constant = reward_normalizing_constant
@@ -499,6 +516,9 @@ class BaseTrainer(ABC):
         batch_size = trajectories.rollout_ids.shape[0]
         # self.tally.add_metric(path=["discounted_returns"], metric=rewards)
 
+        ######################################
+        # Use Critic for credit assignment
+        ######################################
         if self.use_gae:
             credits = []
 
@@ -507,8 +527,6 @@ class BaseTrainer(ABC):
                 trajectory_mb = trajectories[mb : mb + mb_size]
                 trajectory_mb.to(self.device)
                 rewards_mb = trajectory_mb.batch_rewards
-                self.tally.add_metric(path=["mb_rewards"], metric=rewards_mb)
-                # use & train critic
                 (
                     tokens_mb,
                     state_ends_mask_mb,
@@ -519,28 +537,29 @@ class BaseTrainer(ABC):
                 vals_estimate_full = self.critic(tokens_mb)
                 if vals_estimate_full.dim() == 3:
                     vals_estimate_full = vals_estimate_full.squeeze(-1)
+
                 # Select only positions where states end, per sample → list of (jT,)
                 B = tokens_mb.shape[0]
                 vals_list = [
                     vals_estimate_full[b][state_ends_mask_mb[b]] for b in range(B)
                 ]
-                # Pad to (B, max_jT)
+
+                # Pad to (B, max_jT) = (B, S)
                 vals_estimate_mb = pad_sequence(
                     vals_list, batch_first=True, padding_value=0.0
                 )
                 dtype = vals_estimate_mb.dtype
-                # Ensure rewards have the same dtype as value estimates; pad to same (B, max_jT)
                 rewards_mb = pad_sequence(
                     rewards_mb, batch_first=True, padding_value=0.0
-                ).to(dtype=dtype)
+                ).to(dtype=dtype) # (B, S)
+                self.tally.add_metric(path=["mb_rewards"], metric=rewards_mb)
 
-                det_vals_estimate_mb = vals_estimate_mb.detach()
+                det_vals_estimate_mb = vals_estimate_mb.detach() # (B, max_jT)
                 self.tally.add_metric(
                     path=["mb_value_estimates_critic"], metric=det_vals_estimate_mb
                 )
 
-                # If no infinite trajectory bootstrap, append V(Terminal State) = 0
-                # TODO: use alternative approach!
+                # Append a 0 value to the end of the value estimates
                 if det_vals_estimate_mb.shape[1] == rewards_mb.shape[1]:
                     Bsize = det_vals_estimate_mb.shape[0]
                     device = det_vals_estimate_mb.device
@@ -551,22 +570,23 @@ class BaseTrainer(ABC):
                             torch.zeros((Bsize, 1), device=device, dtype=dtype),
                         ],
                         dim=1,
-                    )
+                    ) # (B, max_jT+1)
 
-                # self.tally.add_metric(
-                #     path=["value_estimates"], metric=detached_vals_estimate
-                # )
+                # Get annealed lambda
+                annealing_constant = 2 / (1 + np.exp(-self.trainer_annealing_state.annealing_step_counter / self.gae_annealing_temp)) -1
+                annealed_lambda = self.gae_lambda_annealing_limit * annealing_constant
+                self.tally.add_metric(path=["annealed_lambda"], metric=annealed_lambda)
 
-                # Get GAE target
-                gae_targets = get_generalized_advantage_estimates(
+                # Get GAE advantages
+                gae_advantages = get_generalized_advantage_estimates(
                     rewards=rewards_mb,
                     value_estimates=det_vals_estimate_mb,
                     discount_factor=self.discount_factor,
-                    lambda_coef=self.gae_lambda_for_targets,
-                )
-                # Ensure dtype consistency
-                gae_targets = gae_targets.to(dtype=dtype)
-                targets = gae_targets + det_vals_estimate_mb[:, :-1]
+                    lambda_coef=annealed_lambda,
+                ) # (B, max_jT)
+                self.tally.add_metric(path=["mb_gae_credits"], metric=gae_advantages)
+
+                targets = gae_advantages.to(dtype=dtype) + det_vals_estimate_mb[:, :-1] # (B, max_jT) # A(s, a, b) + V(s) = Q(s, a, b) 
                 self.tally.add_metric(path=["mb_targets_critic"], metric=targets)
 
                 loss = loss_scaling_factor * F.huber_loss(
@@ -576,26 +596,15 @@ class BaseTrainer(ABC):
                 self.tally.add_metric(path=["mb_critic_loss"], metric=loss.item())
                 self.accelerator.backward(loss)
 
-                # self.tally.add_metric(path=["critic_loss"], metric=loss.item())
-
-                # Get GAE Credit
-                credits_padded = get_generalized_advantage_estimates(
-                    rewards=rewards_mb,
-                    value_estimates=det_vals_estimate_mb,
-                    discount_factor=self.discount_factor,
-                    lambda_coef=self.gae_lambda_for_credits,
-                )
-                self.tally.add_metric(path=["mb_gae_credits"], metric=credits_padded)
-                # Ensure dtype consistency for credits
-                credits_padded = credits_padded.to(dtype=dtype)
-
-                # Get jagged back using timestep_counts from get_padded_tensors_for_critic()
+                # Get jagged back using timestep_counts
                 credits.extend(
-                    [credits_padded[i, : timestep_counts[i]] for i in range(B)]
+                    [gae_advantages[i, : timestep_counts[i]] for i in range(B)]
                 )
 
-            # return list-of-tensors
 
+        ######################################
+        # Use exclusively Monte Carlo returns for credit assignment
+        ######################################
         else:
             batch_rewards = trajectories.batch_rewards
             self.tally.add_metric(path=["batch_rewards"], metric=batch_rewards)
@@ -627,6 +636,7 @@ class BaseTrainer(ABC):
             credits = [
                 padded_credits[i, : lengths[i]] for i in range(padded_credits.shape[0])
             ]
+        self.trainer_annealing_state.annealing_step_counter += 1
         return credits
 
     @abstractmethod
@@ -742,3 +752,18 @@ class BaseTrainer(ABC):
         except Exception as e:
             logger.error(f"Error saving optimizer states: {str(e)}")
             raise
+
+    def export_trainer_annealing_state(self) -> None:
+        """
+        Saves the trainer state.
+        """
+        with open(self.trainer_annealing_state_path, "wb") as f:
+            pickle.dump(self.trainer_annealing_state, f)
+        logger.info(f"Saved trainer state to {self.trainer_annealing_state_path}")
+
+    def export_trainer_states(self) -> None:
+        """
+        Saves the trainer states.
+        """
+        self.export_optimizer_states()
+        self.export_trainer_annealing_state()
