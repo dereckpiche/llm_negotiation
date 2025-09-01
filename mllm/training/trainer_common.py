@@ -7,12 +7,13 @@ import logging
 import os
 import sys
 from abc import ABC, abstractmethod
-from typing import Literal, Union
+from typing import Callable, Literal, Union
 import pickle
 import numpy as np
 import torch
 import torch.nn.functional as F
 from accelerate import Accelerator
+from mllm.training.annealing_methods import sigmoid_annealing
 from pandas._libs.tslibs.offsets import CBMonthBegin
 from peft import LoraConfig
 from torch.nn.utils.rnn import pad_sequence
@@ -69,8 +70,10 @@ class BaseTrainer(ABC):
         temperature: float,
         device: str,
         use_gae: bool,
+        use_gae_lambda_annealing: bool,
         gae_lambda_annealing_limit: float,
-        gae_annealing_temp: float,
+        gae_lambda_annealing_method: Literal["sigmoid_annealing"],
+        gae_lambda_annealing_method_params: dict,
         pg_loss_normalization: Literal["batch", "nb_tokens"],
         use_rloo: bool,
         skip_discounted_state_visitation: bool,
@@ -165,8 +168,9 @@ class BaseTrainer(ABC):
         self.use_gae = use_gae
         self.use_rloo = use_rloo
         self.skip_discounted_state_visitation = skip_discounted_state_visitation
+        self.use_gae_lambda_annealing = use_gae_lambda_annealing
         self.gae_lambda_annealing_limit = gae_lambda_annealing_limit
-        self.gae_annealing_temp = gae_annealing_temp
+        self.gae_lambda_annealing_method: Callable[[int], float] = lambda step: eval(gae_lambda_annealing_method)(step=step, **gae_lambda_annealing_method_params)
         self.discount_factor = discount_factor
         self.enable_tokenwise_logging = enable_tokenwise_logging
         self.reward_normalizing_constant = reward_normalizing_constant
@@ -573,9 +577,12 @@ class BaseTrainer(ABC):
                     ) # (B, max_jT+1)
 
                 # Get annealed lambda
-                annealing_constant = 2 / (1 + np.exp(-self.trainer_annealing_state.annealing_step_counter / self.gae_annealing_temp)) -1
-                annealed_lambda = self.gae_lambda_annealing_limit * annealing_constant
-                self.tally.add_metric(path=["annealed_lambda"], metric=annealed_lambda)
+                if self.use_gae_lambda_annealing:
+                    annealing_constant = self.gae_lambda_annealing_method(step=self.trainer_annealing_state.annealing_step_counter)
+                    annealed_lambda = self.gae_lambda_annealing_limit * annealing_constant
+                    self.tally.add_metric(path=["annealed_lambda"], metric=annealed_lambda)
+                else:
+                    annealed_lambda = self.gae_lambda_annealing_limit
 
                 # Get GAE advantages
                 gae_advantages = get_generalized_advantage_estimates(

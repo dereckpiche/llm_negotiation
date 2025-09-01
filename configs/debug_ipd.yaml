@@ -31,7 +31,7 @@ models:
         init_args:
             llm_id: base_llm
             model_name: "Qwen/Qwen3-4B-Instruct-2507" # Qwen/Qwen3-4B-Instruct-2507
-            inference_backend: vllm
+            inference_backend: dummy
 optimizers:
     critic_optimizer:
         module_pointer: agent_critic
@@ -43,12 +43,13 @@ trainers:
     agent_trainer:
         kwargs:
             use_gae: True
+            use_gae_lambda_annealing: True
             gae_lambda_annealing_limit: 0.92
-            gae_annealing_temp: 15
+            gae_lambda_annealing_method: "sigmoid_annealing"
+            gae_lambda_annealing_method_params: {temperature: 15}
             entropy_coeff: 0.0
             kl_coeff: 0.0
             gradient_clipping: 1.0
-            restrict_tokens: null
             mini_batch_size: 4
             use_gradient_checkpointing: True
             temperature: ${temperature}

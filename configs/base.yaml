@@ -98,8 +98,10 @@ trainers:
             device: "cuda:0"
             use_gae: False
             skip_discounted_state_visitation: True
+            use_gae_lambda_annealing: True
+            gae_lambda_annealing_method: "sigmoid_annealing"
+            gae_lambda_annealing_method_params: {temperature: 15}
             gae_lambda_annealing_limit: 0.92
-            gae_annealing_temp: 15
             discount_factor: 0.9
             use_rloo: True
             enable_tokenwise_logging: False
