@@ -97,6 +97,8 @@ trainers:
             temperature: ${temperature}
             device: "cuda:0"
             use_gae: False
+            whiten_advantages: False
+            whiten_advantages_time_step_wise: False
             skip_discounted_state_visitation: True
             use_gae_lambda_annealing: True
             gae_lambda_annealing_method: "sigmoid_annealing"

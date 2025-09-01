@@ -44,6 +44,8 @@ trainers:
         kwargs:
             use_gae: True
             use_gae_lambda_annealing: True
+            whiten_advantages: True
+            whiten_advantages_time_step_wise: True
             gae_lambda_annealing_limit: 0.92
             gae_lambda_annealing_method: "sigmoid_annealing"
             gae_lambda_annealing_method_params: {temperature: 15}

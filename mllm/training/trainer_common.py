@@ -22,6 +22,8 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from mllm.markov_games.rollout_tree import *
 from mllm.markov_games.rollout_tree import RolloutTreeRootNode
 from mllm.training.credit_methods import (
+    whiten_advantages,
+    whiten_advantages_time_step_wise,
     get_discounted_returns,
     get_generalized_advantage_estimates,
     get_rloo_credits,
@@ -69,6 +71,8 @@ class BaseTrainer(ABC):
         use_gradient_checkpointing: bool,
         temperature: float,
         device: str,
+        whiten_advantages: bool,
+        whiten_advantages_time_step_wise: bool,
         use_gae: bool,
         use_gae_lambda_annealing: bool,
         gae_lambda_annealing_limit: float,
@@ -166,6 +170,8 @@ class BaseTrainer(ABC):
         self.use_gradient_checkpointing = use_gradient_checkpointing
         self.temperature = temperature
         self.use_gae = use_gae
+        self.whiten_advantages = whiten_advantages
+        self.whiten_advantages_time_step_wise = whiten_advantages_time_step_wise
         self.use_rloo = use_rloo
         self.skip_discounted_state_visitation = skip_discounted_state_visitation
         self.use_gae_lambda_annealing = use_gae_lambda_annealing
@@ -513,7 +519,7 @@ class BaseTrainer(ABC):
         Uses GAE if enabled, otherwise uses Monte Carlo returns.
         Optionally trains the critic if GAE is used.
         Returns:
-            credits: NestedFloatTensors
+            advantages: NestedFloatTensors
         """
 
         mb_size = self.mini_batch_size
@@ -521,10 +527,10 @@ class BaseTrainer(ABC):
         # self.tally.add_metric(path=["discounted_returns"], metric=rewards)
 
         ######################################
-        # Use Critic for credit assignment
+        # use critic for advantage estimation
         ######################################
         if self.use_gae:
-            credits = []
+            advantages = []
 
             # For each minibatch
             for mb in range(0, batch_size, mb_size):
@@ -591,7 +597,7 @@ class BaseTrainer(ABC):
                     discount_factor=self.discount_factor,
                     lambda_coef=annealed_lambda,
                 ) # (B, max_jT)
-                self.tally.add_metric(path=["mb_gae_credits"], metric=gae_advantages)
+                self.tally.add_metric(path=["mb_gae_advantages"], metric=gae_advantages)
 
                 targets = gae_advantages.to(dtype=dtype) + det_vals_estimate_mb[:, :-1] # (B, max_jT) # A(s, a, b) + V(s) = Q(s, a, b) 
                 self.tally.add_metric(path=["mb_targets_critic"], metric=targets)
@@ -604,13 +610,13 @@ class BaseTrainer(ABC):
                 self.accelerator.backward(loss)
 
                 # Get jagged back using timestep_counts
-                credits.extend(
+                advantages.extend(
                     [gae_advantages[i, : timestep_counts[i]] for i in range(B)]
                 )
 
 
         ######################################
-        # Use exclusively Monte Carlo returns for credit assignment
+        # use exclusively Monte Carlo returns & rloo for advantage estimation
         ######################################
         else:
             batch_rewards = trajectories.batch_rewards
@@ -619,12 +625,12 @@ class BaseTrainer(ABC):
             padded_rewards = pad_sequence(
                 batch_rewards, batch_first=True, padding_value=0.0
             )
-            padded_credits = get_discounted_returns(
+            padded_advantages = get_discounted_returns(
                 rewards=padded_rewards,
                 discount_factor=self.discount_factor,
                 reward_normalizing_constant=self.reward_normalizing_constant,
                 tally=self.tally,
-            )
+            ) # no baseline for now
             if self.use_rloo:
                 is_grouped_by_rng = (
                     trajectories.crn_ids.unique().shape[0]
@@ -633,18 +639,40 @@ class BaseTrainer(ABC):
                 if is_grouped_by_rng:
                     for crn_id in trajectories.crn_ids.unique():
                         rng_mask = trajectories.crn_ids == crn_id
-                        rng_credits = padded_credits[rng_mask]
-                        rng_credits, _ = get_rloo_credits(
-                            credits=rng_credits, tally=self.tally
+                        rng_advantages = padded_advantages[rng_mask]
+                        rng_advantages, _ = get_rloo_advantages(
+                            advantages=rng_advantages, tally=self.tally
                         )
-                        padded_credits[rng_mask] = rng_credits
+                        padded_advantages[rng_mask] = rng_advantages
                 else:
-                    padded_credits, _ = get_rloo_credits(credits=padded_credits)
-            credits = [
-                padded_credits[i, : lengths[i]] for i in range(padded_credits.shape[0])
+                    padded_advantages, _ = get_rloo_advantages(advantages=padded_advantages)
+            advantages = [
+                padded_advantages[i, : lengths[i]] for i in range(padded_advantages.shape[0])
             ]
+
+        if self.whiten_advantages_time_step_wise:
+            lengths = [len(c) for c in advantages]
+            padded_advantages = pad_sequence(advantages, batch_first=True, padding_value=0.0)
+            whitened_padded_advantages = whiten_advantages_time_step_wise(
+                padded_advantages, tally=self.tally
+            )
+            advantages = [
+                whitened_padded_advantages[i, : lengths[i]].flatten()
+                for i in range(whitened_padded_advantages.shape[0])
+            ]
+
+        if self.whiten_advantages:
+            lengths = [len(c) for c in advantages]
+            whitened_advantages = whiten_advantages(
+                torch.stack(advantages, dim=0).flatten(), tally=self.tally
+            )
+            advantages = torch.split(
+                tensor=whitened_advantages, split_size_or_sections=lengths
+            )
+
         self.trainer_annealing_state.annealing_step_counter += 1
-        return credits
+
+        return advantages
 
     @abstractmethod
     def set_agent_trajectory_data(
