@@ -623,7 +623,9 @@ class BaseTrainer(ABC):
                         )
                         padded_credits[rng_mask] = rng_credits
                 else:
-                    padded_credits, _ = get_rloo_credits(credits=padded_credits)
+                    padded_credits, _ = get_rloo_credits(
+                        credits=padded_credits, tally=self.tally
+                    )
             credits = [
                 padded_credits[i, : lengths[i]] for i in range(padded_credits.shape[0])
             ]
