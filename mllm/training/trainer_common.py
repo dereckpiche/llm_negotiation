@@ -5,15 +5,15 @@ TODO: add lr schedulers support
 """
 import logging
 import os
+import pickle
 import sys
 from abc import ABC, abstractmethod
 from typing import Callable, Literal, Union
-import pickle
+
 import numpy as np
 import torch
 import torch.nn.functional as F
 from accelerate import Accelerator
-from mllm.training.annealing_methods import sigmoid_annealing
 from pandas._libs.tslibs.offsets import CBMonthBegin
 from peft import LoraConfig
 from torch.nn.utils.rnn import pad_sequence
@@ -21,12 +21,13 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from mllm.markov_games.rollout_tree import *
 from mllm.markov_games.rollout_tree import RolloutTreeRootNode
+from mllm.training.annealing_methods import sigmoid_annealing
 from mllm.training.credit_methods import (
-    whiten_advantages,
-    whiten_advantages_time_step_wise,
     get_discounted_returns,
     get_generalized_advantage_estimates,
     get_rloo_credits,
+    whiten_advantages,
+    whiten_advantages_time_step_wise,
 )
 from mllm.training.tally_basic import Tally
 from mllm.training.tally_tokenwise import ContextualizedTokenwiseTally
@@ -47,6 +48,7 @@ logger.addHandler(logging.StreamHandler(sys.stdout))
 @dataclass
 class TrainerAnnealingState:
     annealing_step_counter: int = 0
+
 
 class BaseTrainer(ABC):
     """
@@ -130,7 +132,9 @@ class BaseTrainer(ABC):
             logger.info(
                 f"Loading trainer state from {self.trainer_annealing_state_path}"
             )
-            self.trainer_annealing_state = pickle.load(open(self.trainer_annealing_state_path, "rb"))
+            self.trainer_annealing_state = pickle.load(
+                open(self.trainer_annealing_state_path, "rb")
+            )
         else:
             self.trainer_annealing_state = TrainerAnnealingState()
 
@@ -145,7 +149,6 @@ class BaseTrainer(ABC):
             self.policy_optimizer.load_state_dict(
                 torch.load(self.policy_optimizer_path)
             )
-
 
         # Load critic optimizer state if it exists
         self.critic_optimizer_path = os.path.join(
@@ -177,7 +180,11 @@ class BaseTrainer(ABC):
         self.use_gae_lambda_annealing = use_gae_lambda_annealing
         self.gae_lambda_annealing_limit = gae_lambda_annealing_limit
         if use_gae_lambda_annealing:
-            self.gae_lambda_annealing_method: Callable[[int], float] = lambda step: eval(gae_lambda_annealing_method)(step=step, **gae_lambda_annealing_method_params)
+            self.gae_lambda_annealing_method: Callable[
+                [int], float
+            ] = lambda step: eval(gae_lambda_annealing_method)(
+                step=step, **gae_lambda_annealing_method_params
+            )
         self.discount_factor = discount_factor
         self.enable_tokenwise_logging = enable_tokenwise_logging
         self.reward_normalizing_constant = reward_normalizing_constant
@@ -555,6 +562,14 @@ class BaseTrainer(ABC):
                     vals_estimate_full[b][state_ends_mask_mb[b]] for b in range(B)
                 ]
 
+                # Only for tallying
+                get_discounted_returns(
+                    rewards=rewards_mb,
+                    discount_factor=self.discount_factor,
+                    reward_normalizing_constant=self.reward_normalizing_constant,
+                    tally=self.tally,
+                )
+
                 # Pad to (B, max_jT) = (B, S)
                 vals_estimate_mb = pad_sequence(
                     vals_list, batch_first=True, padding_value=0.0
@@ -562,10 +577,12 @@ class BaseTrainer(ABC):
                 dtype = vals_estimate_mb.dtype
                 rewards_mb = pad_sequence(
                     rewards_mb, batch_first=True, padding_value=0.0
-                ).to(dtype=dtype) # (B, S)
+                ).to(
+                    dtype=dtype
+                )  # (B, S)
                 self.tally.add_metric(path=["mb_rewards"], metric=rewards_mb)
 
-                det_vals_estimate_mb = vals_estimate_mb.detach() # (B, max_jT)
+                det_vals_estimate_mb = vals_estimate_mb.detach()  # (B, max_jT)
                 self.tally.add_metric(
                     path=["mb_value_estimates_critic"], metric=det_vals_estimate_mb
                 )
@@ -581,13 +598,19 @@ class BaseTrainer(ABC):
                             torch.zeros((Bsize, 1), device=device, dtype=dtype),
                         ],
                         dim=1,
-                    ) # (B, max_jT+1)
+                    )  # (B, max_jT+1)
 
                 # Get annealed lambda
                 if self.use_gae_lambda_annealing:
-                    annealing_constant = self.gae_lambda_annealing_method(step=self.trainer_annealing_state.annealing_step_counter)
-                    annealed_lambda = self.gae_lambda_annealing_limit * annealing_constant
-                    self.tally.add_metric(path=["annealed_lambda"], metric=annealed_lambda)
+                    annealing_constant = self.gae_lambda_annealing_method(
+                        step=self.trainer_annealing_state.annealing_step_counter
+                    )
+                    annealed_lambda = (
+                        self.gae_lambda_annealing_limit * annealing_constant
+                    )
+                    self.tally.add_metric(
+                        path=["annealed_lambda"], metric=annealed_lambda
+                    )
                 else:
                     annealed_lambda = self.gae_lambda_annealing_limit
 
@@ -597,10 +620,12 @@ class BaseTrainer(ABC):
                     value_estimates=det_vals_estimate_mb,
                     discount_factor=self.discount_factor,
                     lambda_coef=annealed_lambda,
-                ) # (B, max_jT)
+                )  # (B, max_jT)
                 self.tally.add_metric(path=["mb_gae_advantages"], metric=gae_advantages)
 
-                targets = gae_advantages.to(dtype=dtype) + det_vals_estimate_mb[:, :-1] # (B, max_jT) # A(s, a, b) + V(s) = Q(s, a, b) 
+                targets = (
+                    gae_advantages.to(dtype=dtype) + det_vals_estimate_mb[:, :-1]
+                )  # (B, max_jT) # A(s, a, b) + V(s) = Q(s, a, b)
                 self.tally.add_metric(path=["mb_targets_critic"], metric=targets)
 
                 loss = loss_scaling_factor * F.huber_loss(
@@ -614,7 +639,6 @@ class BaseTrainer(ABC):
                 advantages.extend(
                     [gae_advantages[i, : timestep_counts[i]] for i in range(B)]
                 )
-
 
         ######################################
         # use exclusively Monte Carlo returns & rloo for advantage estimation
@@ -631,7 +655,7 @@ class BaseTrainer(ABC):
                 discount_factor=self.discount_factor,
                 reward_normalizing_constant=self.reward_normalizing_constant,
                 tally=self.tally,
-            ) # no baseline for now
+            )  # no baseline for now
             if self.use_rloo:
                 is_grouped_by_rng = (
                     trajectories.crn_ids.unique().shape[0]
@@ -641,19 +665,24 @@ class BaseTrainer(ABC):
                     for crn_id in trajectories.crn_ids.unique():
                         rng_mask = trajectories.crn_ids == crn_id
                         rng_advantages = padded_advantages[rng_mask]
-                        rng_advantages, _ = get_rloo_advantages(
+                        rng_advantages, _ = get_rloo_credits(
                             advantages=rng_advantages, tally=self.tally
                         )
                         padded_advantages[rng_mask] = rng_advantages
                 else:
-                    padded_advantages, _ = get_rloo_advantages(advantages=padded_advantages)
+                    padded_advantages, _ = get_rloo_credits(
+                        advantages=padded_advantages
+                    )
             advantages = [
-                padded_advantages[i, : lengths[i]] for i in range(padded_advantages.shape[0])
+                padded_advantages[i, : lengths[i]]
+                for i in range(padded_advantages.shape[0])
             ]
 
         if self.whiten_advantages_time_step_wise:
             lengths = [len(c) for c in advantages]
-            padded_advantages = pad_sequence(advantages, batch_first=True, padding_value=0.0)
+            padded_advantages = pad_sequence(
+                advantages, batch_first=True, padding_value=0.0
+            )
             whitened_padded_advantages = whiten_advantages_time_step_wise(
                 padded_advantages, tally=self.tally
             )

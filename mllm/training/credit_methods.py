@@ -2,6 +2,7 @@ import torch
 
 from mllm.training.tally_basic import Tally
 
+
 def whiten_advantages(advantages: torch.Tensor, tally: Tally = Tally()) -> torch.Tensor:
     """
     Whitens the advantages.
@@ -29,6 +30,7 @@ def whiten_advantages_time_step_wise(
         metric=whitened_advantages_time_step_wise,
     )
     return whitened_advantages_time_step_wise
+
 
 def get_discounted_state_visitation_credits(
     credits: torch.Tensor, discount_factor: float, tally: Tally = Tally()  # (B, T)
@@ -68,7 +70,7 @@ def get_discounted_returns(
     for t in reversed(range(T)):
         accumulator = rewards[:, t] + discount_factor * accumulator
         discounted_returns[:, t] = accumulator
-    tally.add_metric(path=["discounted_returns"], metric=discounted_returns)
+    tally.add_metric(path=["monte_carlo_discounted_returns"], metric=discounted_returns)
     return discounted_returns
 
 
