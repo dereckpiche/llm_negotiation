@@ -11,6 +11,16 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from mllm.markov_games.rollout_tree import *
 
+try:
+    # Re-export moved helpers for backward compatibility
+    from basic_render import (
+        find_iteration_folders,
+        gather_rollout_trees,
+        get_rollout_trees,
+    )
+except Exception:
+    pass
+
 # --------------------------------------------------------------------------------------
 # Fetch external rollout trees
 # --------------------------------------------------------------------------------------
