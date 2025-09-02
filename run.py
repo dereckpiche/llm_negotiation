@@ -276,12 +276,12 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
 
         # Export trainer stuff
         for trainer_id, trainer in trainers.items():
-            trainer.export_optimizer_states()
             trainer.export_training_tally(
                 identifier=trainer_id,
                 folder=it_folder,
             )
-
+            trainer.export_trainer_states()
+            
         # Export all HF adapters weights (needed for vLLM inference)
         for llm in llms_dict.values():
             llm.export_adapters()

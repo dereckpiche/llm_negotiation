@@ -76,7 +76,7 @@ optimizers:
         module_pointer: agent_critic
         optimizer_class_name: torch.optim.Adam
         init_args:
-            lr: 1e-6
+            lr: 3e-6
             weight_decay: 0.0
 
 trainers:
@@ -97,9 +97,13 @@ trainers:
             temperature: ${temperature}
             device: "cuda:0"
             use_gae: False
+            whiten_advantages: False
+            whiten_advantages_time_step_wise: False
             skip_discounted_state_visitation: True
-            gae_lambda_for_credits: 0.92
-            gae_lambda_for_targets: 0.92
+            use_gae_lambda_annealing: False
+            gae_lambda_annealing_method: None
+            gae_lambda_annealing_method_params: None
+            gae_lambda_annealing_limit: 0.92
             discount_factor: 0.9
             use_rloo: True
             enable_tokenwise_logging: False
