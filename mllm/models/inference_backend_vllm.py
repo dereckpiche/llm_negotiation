@@ -28,6 +28,7 @@ class VLLMAsyncBackend(LLMInferenceBackend):
         ea = dict(model=model_name, **engine_init_kwargs)
         ea["enable_lora"] = True
         ea["max_loras"] = len(self.vllm_adapter_ids)
+        ea["enable_sleep_mode"] = True
         self.engine = AsyncLLMEngine.from_engine_args(AsyncEngineArgs(**ea))
 
         self.sampling_params = sampling_params
@@ -45,7 +46,7 @@ class VLLMAsyncBackend(LLMInferenceBackend):
         )
 
     async def toggle_training_mode(self) -> None:
-        await self.engine.sleep()
+        await self.engine.sleep(level=1)
 
     async def toggle_eval_mode(self) -> None:
         await self.engine.wake_up()

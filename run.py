@@ -41,6 +41,7 @@ from mllm.training.trainer_independent import TrainerNaive
 from mllm.training.trainer_sum_rewards import TrainerSumRewards
 from mllm.utils.dict_get_path import get_from_nested_dict
 from mllm.utils.kill_sglang import kill_sglang
+from mllm.utils.resource_context import resource_logger_context
 from mllm.utils.short_id_gen import generate_short_id
 from mllm.utils.update_start_epoch import update_start_epoch
 
@@ -281,7 +282,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
                 folder=it_folder,
             )
             trainer.export_trainer_states()
-            
+
         # Export all HF adapters weights (needed for vLLM inference)
         for llm in llms_dict.values():
             llm.export_adapters()

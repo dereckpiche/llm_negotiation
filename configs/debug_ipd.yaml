@@ -5,7 +5,7 @@ defaults:
 
 experiment:
     name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
-    nb_epochs: 1000
+    nb_epochs: 2
     nb_matches_per_iteration: 8
     reinit_matches_each_it: true
     checkpoint_every_n_iterations: 1e5
@@ -30,8 +30,9 @@ models:
         class: LeanLocalLLM
         init_args:
             llm_id: base_llm
-            model_name: "Qwen/Qwen3-4B-Instruct-2507" # Qwen/Qwen3-4B-Instruct-2507
-            inference_backend: dummy
+            model_name: "Qwen/Qwen2-0.5B" # Qwen/Qwen3-4B-Instruct-2507
+            inference_backend: vllm
+            enable_eager_mode: true
 optimizers:
     critic_optimizer:
         module_pointer: agent_critic
