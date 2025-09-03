@@ -120,6 +120,8 @@ class TrainerAdAlign(BaseTrainer):
         ad_align_beta_anneal_rate: float = 0.5,
         min_ad_align_beta: float = 0.1,
         mean_normalize_ad_align: bool = False,
+        whiten_adalign_advantages: bool = False,
+        whiten_adalign_advantages_time_step_wise: bool = False,
         *args,
         **kwargs,
     ):
@@ -149,6 +151,10 @@ class TrainerAdAlign(BaseTrainer):
         self.min_ad_align_beta = min_ad_align_beta
         self.past_ad_align_step = -1
         self.mean_normalize_ad_align = mean_normalize_ad_align
+        self.whiten_adalign_advantages = whiten_adalign_advantages
+        self.whiten_adalign_advantages_time_step_wise = (
+            whiten_adalign_advantages_time_step_wise
+        )
         self.training_data: dict[AgentId, AdAlignTrainingData] = {}
         self.debug_path_list: list[str] = []
 
@@ -419,6 +425,8 @@ class TrainerAdAlign(BaseTrainer):
                     rloo_branch=self.rloo_branch,
                     reuse_baseline=self.reuse_baseline,
                     mean_normalize_ad_align=self.mean_normalize_ad_align,
+                    whiten_adalign_advantages=self.whiten_adalign_advantages,
+                    whiten_adalign_advantages_time_step_wise=self.whiten_adalign_advantages_time_step_wise,
                     tally=self.tally,
                 )
 

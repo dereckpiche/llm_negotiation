@@ -105,13 +105,13 @@ def get_generalized_advantage_estimates(
 
     assert (
         rewards.shape[0] == value_estimates.shape[0]
-    ), f"Got shapes {rewards.shape} and {value_estimates.shape}."
+    ), f"Got shapes {rewards.shape} and {value_estimates.shape} of rewards and value estimates."
     assert (
         rewards.shape[1] == value_estimates.shape[1] - 1
-    ), f"Got shapes {rewards.shape} and {value_estimates.shape}."
+    ), f"Got shapes {rewards.shape} and {value_estimates.shape} of rewards and value estimates."
 
     T = rewards.shape[1]
-    tds = rewards + lambda_coef * value_estimates[:, 1:] - value_estimates[:, :-1]
+    tds = rewards + discount_factor * value_estimates[:, 1:] - value_estimates[:, :-1]
     gaes = torch.zeros_like(tds)
     acc = 0.0
     for t in reversed(range(T)):
@@ -173,6 +173,8 @@ def get_advantage_alignment_credits(
     rloo_branch: bool = False,
     reuse_baseline: bool = False,
     mean_normalize_ad_align: bool = False,
+    whiten_adalign_advantages: bool = False,
+    whiten_adalign_advantages_time_step_wise: bool = False,
     tally: Tally = Tally(),
 ) -> torch.Tensor:
     """
@@ -327,6 +329,16 @@ def get_advantage_alignment_credits(
     if mean_normalize_ad_align:
         tally.add_metric(path=["ad_align_credits_before_mean"], metric=credits)
         credits = credits - credits.mean(dim=0)
+    if whiten_adalign_advantages:
+        tally.add_metric(path=["ad_align_credits_before_whiten"], metric=credits)
+        credits = (credits - credits.mean()) / (credits.std() + 1e-9)
+    if whiten_adalign_advantages_time_step_wise:
+        tally.add_metric(
+            path=["ad_align_credits_before_whiten_time_step_wise"], metric=credits
+        )
+        credits = (credits - credits.mean(dim=0, keepdim=True)) / (
+            credits.std(dim=0, keepdim=True) + 1e-9
+        )
 
     tally.add_metric(path=["final_advantage_alignment_credits"], metric=credits)
 

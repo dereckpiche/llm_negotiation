@@ -533,13 +533,14 @@ class BaseTrainer(ABC):
         mb_size = self.mini_batch_size
         batch_size = trajectories.rollout_ids.shape[0]
         # self.tally.add_metric(path=["discounted_returns"], metric=rewards)
-
+        batch_rewards = trajectories.batch_rewards
+        self.tally.add_metric(path=["batch_rewards"], metric=batch_rewards)
         ######################################
         # use critic for advantage estimation
         ######################################
         if self.use_gae:
             advantages = []
-
+            normalization_factor = np.ceil(batch_size / mb_size).astype(int)
             # For each minibatch
             for mb in range(0, batch_size, mb_size):
                 trajectory_mb = trajectories[mb : mb + mb_size]
@@ -553,22 +554,14 @@ class BaseTrainer(ABC):
 
                 # critic causal attention up to end flags
                 vals_estimate_full = self.critic(tokens_mb)
-                if vals_estimate_full.dim() == 3:
-                    vals_estimate_full = vals_estimate_full.squeeze(-1)
+                # if vals_estimate_full.dim() == 3:
+                #     vals_estimate_full = vals_estimate_full.squeeze(-1)
 
                 # Select only positions where states end, per sample → list of (jT,)
                 B = tokens_mb.shape[0]
                 vals_list = [
                     vals_estimate_full[b][state_ends_mask_mb[b]] for b in range(B)
                 ]
-
-                # Only for tallying
-                get_discounted_returns(
-                    rewards=rewards_mb,
-                    discount_factor=self.discount_factor,
-                    reward_normalizing_constant=self.reward_normalizing_constant,
-                    tally=self.tally,
-                )
 
                 # Pad to (B, max_jT) = (B, S)
                 vals_estimate_mb = pad_sequence(
@@ -580,7 +573,14 @@ class BaseTrainer(ABC):
                 ).to(
                     dtype=dtype
                 )  # (B, S)
-                self.tally.add_metric(path=["mb_rewards"], metric=rewards_mb)
+                # self.tally.add_metric(path=["mb_rewards"], metric=rewards_mb)
+                # # Only for tallying
+                # get_discounted_returns(
+                #     rewards=rewards_mb,
+                #     discount_factor=self.discount_factor,
+                #     reward_normalizing_constant=self.reward_normalizing_constant,
+                #     tally=self.tally,
+                # )
 
                 det_vals_estimate_mb = vals_estimate_mb.detach()  # (B, max_jT)
                 self.tally.add_metric(
@@ -599,6 +599,10 @@ class BaseTrainer(ABC):
                         ],
                         dim=1,
                     )  # (B, max_jT+1)
+                else:
+                    raise ValueError(
+                        "Incompatible shapes for value estimates and rewards."
+                    )
 
                 # Get annealed lambda
                 if self.use_gae_lambda_annealing:
@@ -628,10 +632,12 @@ class BaseTrainer(ABC):
                 )  # (B, max_jT) # A(s, a, b) + V(s) = Q(s, a, b)
                 self.tally.add_metric(path=["mb_targets_critic"], metric=targets)
 
-                loss = loss_scaling_factor * F.huber_loss(
+                loss = F.huber_loss(
                     input=vals_estimate_mb,
                     target=targets,
                 )
+                # Accumulate gradient
+                loss /= normalization_factor
                 self.tally.add_metric(path=["mb_critic_loss"], metric=loss.item())
                 self.accelerator.backward(loss)
 
@@ -644,8 +650,6 @@ class BaseTrainer(ABC):
         # use exclusively Monte Carlo returns & rloo for advantage estimation
         ######################################
         else:
-            batch_rewards = trajectories.batch_rewards
-            self.tally.add_metric(path=["batch_rewards"], metric=batch_rewards)
             lengths = [len(c) for c in batch_rewards]
             padded_rewards = pad_sequence(
                 batch_rewards, batch_first=True, padding_value=0.0
