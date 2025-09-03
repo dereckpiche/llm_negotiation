@@ -666,12 +666,12 @@ class BaseTrainer(ABC):
                         rng_mask = trajectories.crn_ids == crn_id
                         rng_advantages = padded_advantages[rng_mask]
                         rng_advantages, _ = get_rloo_credits(
-                            advantages=rng_advantages, tally=self.tally
+                            credits=rng_advantages, tally=self.tally
                         )
                         padded_advantages[rng_mask] = rng_advantages
                 else:
                     padded_advantages, _ = get_rloo_credits(
-                        advantages=padded_advantages
+                        credits=padded_advantages, tally=self.tally
                     )
             advantages = [
                 padded_advantages[i, : lengths[i]]

@@ -172,6 +172,7 @@ def get_advantage_alignment_credits(
     use_variance_regularization: bool = False,
     rloo_branch: bool = False,
     reuse_baseline: bool = False,
+    mean_normalize_ad_align: bool = False,
     tally: Tally = Tally(),
 ) -> torch.Tensor:
     """
@@ -322,6 +323,10 @@ def get_advantage_alignment_credits(
     tally.add_metric(path=["ad_align_opp_shaping_terms"], metric=opp_shaping_terms)
 
     credits = a1 + opp_shaping_terms
+
+    if mean_normalize_ad_align:
+        tally.add_metric(path=["ad_align_credits_before_mean"], metric=credits)
+        credits = credits - credits.mean(dim=0)
 
     tally.add_metric(path=["final_advantage_alignment_credits"], metric=credits)
 

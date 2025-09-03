@@ -119,6 +119,7 @@ class TrainerAdAlign(BaseTrainer):
         ad_align_beta_anneal_step: int = -1,
         ad_align_beta_anneal_rate: float = 0.5,
         min_ad_align_beta: float = 0.1,
+        mean_normalize_ad_align: bool = False,
         *args,
         **kwargs,
     ):
@@ -147,6 +148,7 @@ class TrainerAdAlign(BaseTrainer):
         self.ad_align_beta_anneal_rate = ad_align_beta_anneal_rate
         self.min_ad_align_beta = min_ad_align_beta
         self.past_ad_align_step = -1
+        self.mean_normalize_ad_align = mean_normalize_ad_align
         self.training_data: dict[AgentId, AdAlignTrainingData] = {}
         self.debug_path_list: list[str] = []
 
@@ -416,6 +418,7 @@ class TrainerAdAlign(BaseTrainer):
                     use_time_regularization=self.use_time_regularization,
                     rloo_branch=self.rloo_branch,
                     reuse_baseline=self.reuse_baseline,
+                    mean_normalize_ad_align=self.mean_normalize_ad_align,
                     tally=self.tally,
                 )
 
