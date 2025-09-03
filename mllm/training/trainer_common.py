@@ -520,7 +520,7 @@ class BaseTrainer(ABC):
             torch.cuda.empty_cache()
 
     def get_advantages_with_critic_gradient_accumulation(
-        self, trajectories: TrajectoryBatch, loss_scaling_factor: float = 1
+        self, trajectories: TrajectoryBatch, critic_loss_scaling_factor: float = 0.5
     ) -> torch.FloatTensor:
         """
         TOWRITE
@@ -539,8 +539,11 @@ class BaseTrainer(ABC):
         # use critic for advantage estimation
         ######################################
         if self.use_gae:
+            self.critic.train()
             advantages = []
-            normalization_factor = np.ceil(batch_size / mb_size).astype(int)
+            normalization_factor = (
+                np.ceil(batch_size / mb_size).astype(int) * critic_loss_scaling_factor
+            )
             # For each minibatch
             for mb in range(0, batch_size, mb_size):
                 trajectory_mb = trajectories[mb : mb + mb_size]
@@ -784,7 +787,7 @@ class BaseTrainer(ABC):
         """
         assert self.policy_gradient_data is not None, "Policy gradient data is not set"
         if self.critic_optimizer is not None:
-            self.critic.train()
+            self.critic_optimizer.step()
             self.critic_optimizer.zero_grad()
         self.apply_reinforce_step(training_batch=self.policy_gradient_data)
 
