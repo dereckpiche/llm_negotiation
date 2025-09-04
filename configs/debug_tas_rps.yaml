@@ -1,21 +1,23 @@
 # To quickly check if code still runs
 
 defaults:
-    - tas.yaml
+    - tas_rps.yaml
 
 experiment:
     name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
     nb_epochs: 2
-    nb_matches_per_iteration: 8
+    nb_matches_per_iteration: 2
     seed_group_size: 2
 
 
 markov_games:
-    runner_method_name: LinearRunner
-    runner_kwargs: {}
-    simulation_class_name: TrustAndSplitSimulation
+    simulation_class_name: TrustAndSplitRPSSimulation
     simulation_init_args:
-        rounds_per_game: 10
+        agent_ids: ${agent_ids}
+        nb_of_rounds: 10
+        quota_messages_per_agent_per_round: 1
+    runner_method_name: LinearRunner
+
 models:
     base_llm:
         class: LeanLocalLLM

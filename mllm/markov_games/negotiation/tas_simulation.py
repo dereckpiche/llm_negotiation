@@ -41,11 +41,13 @@ class TrustAndSplitSimulation(NegotiationSimulation):
         self.state.previous_values = copy.deepcopy(self.state.values)
         self.state.values = self._sample_values()
         self.state.quantities = {"coins": 10}
+        self.state.split_phase = False
 
     def get_info_of_variant(
         self, state: NegotiationState, actions: Dict[AgentId, Any]
     ) -> Dict[str, Any]:
         return {
+            "quantities": copy.deepcopy(state.quantities),
             "values": copy.deepcopy(state.values),
             "previous_values": copy.deepcopy(state.previous_values),
             "splits": copy.deepcopy(state.splits),
@@ -86,8 +88,10 @@ class TrustAndSplitSimulation(NegotiationSimulation):
         if self.state.previous_splits is not None:
             last_split_coagent = self.state.previous_splits[
                 other_id
-            ].items_given_to_self
-            last_split_agent = self.state.previous_splits[agent_id].items_given_to_self
+            ].items_given_to_self["coins"]
+            last_split_agent = self.state.previous_splits[agent_id].items_given_to_self[
+                "coins"
+            ]
         obs = TrustAndSplitObs(
             round_nb=self.state.round_nb,
             last_message=self.state.last_message,

@@ -11,6 +11,7 @@ from mllm.markov_games.rollout_tree import (
     RolloutTreeRootNode,
 )
 
+
 @dataclass
 class AdvantagePacket:
     agent_id: str
@@ -18,28 +19,41 @@ class AdvantagePacket:
     # list-of-tensors
     main_advantages: list[torch.FloatTensor]
 
+
 @dataclass
 class ReasoningLimits:
     reasoning_start: int
     reasoning_end: int
     content_end: int
 
-def get_causal_reasoning_mask(shape: Tuple[int, int], reasoning_limits:  list[ReasoningLimits]) -> ReasoningLimits:
+
+def get_causal_reasoning_mask(
+    shape: Tuple[int, int], reasoning_limits: list[ReasoningLimits]
+) -> ReasoningLimits:
     """
     TOWRITE
     """
     assert len(shape) == 2, "Must have batch and sequence dimensions"
     B, S = shape
     # Default causal attention
-    causal_reasoning_mask = torch.tril(torch.ones((B, S, S), dtype=torch.bool, device="cuda"), diagonal=0)
+    causal_reasoning_mask = torch.tril(
+        torch.ones((B, S, S), dtype=torch.bool, device="cuda"), diagonal=0
+    )
     for b in range(B):
         limits = reasoning_limits[b]
         for l in limits:
-            causal_reasoning_mask[b, :, l.reasoning_start:l.reasoning_end] = False # hide reasoning tokens for every token
-            causal_reasoning_mask[b, l.reasoning_start:l.content_end, l.reasoning_start:l.reasoning_end] = True # allow reasoning tokens whithin a block (plus associated content) to attend each other
-    causal_reasoning_mask = torch.tril(causal_reasoning_mask, diagonal=0) # add causality
+            causal_reasoning_mask[
+                b, :, l.reasoning_start : l.reasoning_end
+            ] = False  # hide reasoning tokens for every token
+            causal_reasoning_mask[
+                b,
+                l.reasoning_start : l.content_end,
+                l.reasoning_start : l.reasoning_end,
+            ] = True  # allow reasoning tokens whithin a block (plus associated content) to attend each other
+    causal_reasoning_mask = torch.tril(
+        causal_reasoning_mask, diagonal=0
+    )  # add causality
     return causal_reasoning_mask
-
 
 
 class TrainingChatTurn:
@@ -50,7 +64,13 @@ class TrainingChatTurn:
     """
 
     def __init__(
-        self, time_step: int, role: str, agent_id: str, content: str, reasoning_content: str | None, is_state_end: bool
+        self,
+        time_step: int,
+        role: str,
+        agent_id: str,
+        content: str,
+        reasoning_content: str | None,
+        is_state_end: bool,
     ):
         self.time_step = time_step
         self.role = role
@@ -143,6 +163,7 @@ class TrajectoryBatch:
     # B := batch size, S := number of tokens / seq. length, T := number of states.
     rollout_ids: torch.IntTensor  # (B,)
     crn_ids: torch.IntTensor  # (B,)
+    agent_ids: list[str]  # (B,)
     batch_input_ids: list[torch.LongTensor]  # List[(jS,)]
     batch_reasoning_limits: ReasoningLimits  # List[(jS,)]
     batch_action_mask: list[torch.BoolTensor]  # List[(jS,)]
@@ -159,6 +180,9 @@ class TrajectoryBatch:
         assert (
             self.crn_ids.shape[0] == B
         ), "RNG IDs must have length equal to batch size."
+        assert (
+            len(self.agent_ids) == B
+        ), "agent_ids must have length equal to batch size."
         assert (
             len(self.batch_input_ids)
             == len(self.batch_reasoning_limits)
@@ -212,6 +236,7 @@ class TrajectoryBatch:
             return TrajectoryBatch(
                 rollout_ids=self.rollout_ids.__getitem__(key),
                 crn_ids=self.crn_ids.__getitem__(key),
+                agent_ids=self.agent_ids[key],
                 batch_input_ids=self.batch_input_ids[key],
                 batch_reasoning_limits=self.batch_reasoning_limits[key],
                 batch_action_mask=self.batch_action_mask[key],
@@ -252,8 +277,15 @@ class TrajectoryBatch:
             device=padded_batch_input_ids.device,
             dtype=torch.long,
         )
-        causal_reasoning_mask = get_causal_reasoning_mask(padded_batch_input_ids.shape, self.batch_reasoning_limits)
-        return padded_batch_input_ids, padded_batch_state_ends_mask, timestep_counts, causal_reasoning_mask 
+        causal_reasoning_mask = get_causal_reasoning_mask(
+            padded_batch_input_ids.shape, self.batch_reasoning_limits
+        )
+        return (
+            padded_batch_input_ids,
+            padded_batch_state_ends_mask,
+            timestep_counts,
+            causal_reasoning_mask,
+        )
 
 
 timestep = int
@@ -261,10 +293,11 @@ timestep = int
 
 @dataclass
 class PaddedTensorTrainingBatch:
-    batch_input_ids: torch.LongTensor 
-    batch_action_mask: torch.BoolTensor 
-    batch_credits: torch.FloatTensor 
-    batch_causal_reasoning_mask: torch.BoolTensor 
+    batch_input_ids: torch.LongTensor
+    batch_action_mask: torch.BoolTensor
+    batch_credits: torch.FloatTensor
+    batch_causal_reasoning_mask: torch.BoolTensor
+
     def __len__(self):
         return self.batch_input_ids.shape[0]
 
@@ -274,9 +307,10 @@ class PaddedTensorTrainingBatch:
         self.batch_credits = self.batch_credits.to(device)
         self.batch_causal_reasoning_mask = self.batch_causal_reasoning_mask.to(device)
 
+
 @dataclass
 class TrainingBatch:
-    rollout_ids: torch.IntTensor   # (B,)
+    rollout_ids: torch.IntTensor  # (B,)
     batch_input_ids: list[torch.LongTensor]  # List[(jS,)]
     batch_action_mask: list[torch.BoolTensor]  # List[(jS,)]
     batch_reasoning_limits: ReasoningLimits  # List[(jTb,)] (Tb is number of thinking blocks)
@@ -327,24 +361,34 @@ class TrainingBatch:
         Always pad to the right.
         """
         padded_batch_input_ids = pad_sequence(
-            self.batch_input_ids, batch_first=True, padding_value=int(padding), padding_side="right"
+            self.batch_input_ids,
+            batch_first=True,
+            padding_value=int(padding),
+            padding_side="right",
         )
         padded_batch_action_mask = pad_sequence(
             [m.to(dtype=torch.bool) for m in self.batch_action_mask],
             batch_first=True,
             padding_value=False,
-            padding_side="right"
+            padding_side="right",
         )
         padded_batch_credits = pad_sequence(
-            self.batch_credits, batch_first=True, padding_value=float(padding), padding_side="right"
+            self.batch_credits,
+            batch_first=True,
+            padding_value=float(padding),
+            padding_side="right",
         )
 
-
         # indices are unchanged since we pad to the right
-        batch_causal_reasoning_mask = get_causal_reasoning_mask(padded_batch_input_ids.shape, self.batch_reasoning_limits)
+        batch_causal_reasoning_mask = get_causal_reasoning_mask(
+            padded_batch_input_ids.shape, self.batch_reasoning_limits
+        )
 
         return PaddedTensorTrainingBatch(
-            padded_batch_input_ids, padded_batch_action_mask, padded_batch_credits, batch_causal_reasoning_mask
+            padded_batch_input_ids,
+            padded_batch_action_mask,
+            padded_batch_credits,
+            batch_causal_reasoning_mask,
         )
 
     def append(self, other: "TrainingBatch"):

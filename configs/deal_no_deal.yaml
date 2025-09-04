@@ -23,6 +23,10 @@ common_agent_kwargs: &common_agent_kwargs
     goal: "Maximize your total points over the whole game."
 
 markov_games:
+
+    group_by_round: True # This will merge all timesteps of a round into a single timestep
+
+    group_modulo: 10
     runner_method_name: LinearRunner
     runner_kwargs: {}
 
@@ -138,5 +142,3 @@ trainers:
 
 train_on_which_data:
     agent_trainer: ${agent_ids}
-
-

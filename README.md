@@ -28,13 +28,18 @@ cd path/to/repo
 pip install -e .
 ```
 
-and run 
+and run
 
 ```python
 import sys
 sys.path.append('your-path-to-the-repo')
 ```
-in order to add the repository to your system path. 
+in order to add the repository to your system path.
+
+To run with OpenAI API models, set
+```bash
+export OPENAI_API_KEY=your/api/key
+```
 
 ## Development
 
@@ -49,12 +54,7 @@ nbstripout --install
 
 In order to launch a policy gradient training loop, use
 ```bash
-python generate_and_train.py --config-name your-config
-```
-
-In order to simply pit multiple models against each other, use
-```bash
-python faceoff.py --config-name your-config
+python run.py --config-name your-config
 ```
 
 To add render files to your output folder (next to the rollout files), use

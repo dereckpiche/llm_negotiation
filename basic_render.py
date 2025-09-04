@@ -1,9 +1,11 @@
 import argparse
 import glob
 import os
+import re
 from pathlib import Path
 
 from mllm.markov_games.gather_and_export_utils import *
+from mllm.training.produce_training_stats import render_iteration_trainer_stats
 
 
 def process_single_folder(
@@ -14,7 +16,7 @@ def process_single_folder(
     sim_csv=True,
     recursive=False,
 ):
-    """Process a single folder containing JSON rollout files."""
+    """Process a single folder containing PKL rollout tree files (.rt.pkl)."""
     input_path = Path(input_dir)
 
     # If no output_dir specified, create analysis files in the same input folder
@@ -23,10 +25,10 @@ def process_single_folder(
     else:
         output_path = Path(output_dir)
 
-    pattern = "**/*.json" if recursive else "*.json"
+    pattern = "**/*.rt.pkl" if recursive else "*.rt.pkl"
     files = sorted(input_path.glob(pattern))
     if not files:
-        print(f"No JSON files found in {input_path} (recursive={recursive}).")
+        print(f"No PKL rollout trees found in {input_path} (recursive={recursive}).")
         return False
 
     output_path.mkdir(parents=True, exist_ok=True)
@@ -50,11 +52,16 @@ def process_single_folder(
             outdir=output_path,
             main_only=False,
         )
+    # Also render trainer stats from any *.tally.pkl in this iteration folder
+    render_iteration_trainer_stats(
+        iteration_dir=str(input_path),
+        outdir=os.path.join(str(output_path), "trainer_stats.render."),
+    )
 
     return True
 
 
-def find_iteration_folders(global_folder):
+def find_iteration_folders(global_folder, from_iteration=0):
     """Find all iteration_* folders within the global folder structure."""
     global_path = Path(global_folder)
 
@@ -73,7 +80,9 @@ def find_iteration_folders(global_folder):
                 if item.is_dir():
                     iteration_folders.append(item)
 
-    return sorted(iteration_folders)
+    return sorted(iteration_folders, key=lambda path: int(path.name.split("_")[-1]))[
+        from_iteration:
+    ]
 
 
 def main():
@@ -132,6 +141,12 @@ def main():
         default=False,
         help="Search subfolders for JSON files (default: False)",
     )
+    parser.add_argument(
+        "--from-iteration",
+        type=int,
+        default=0,
+        help="Start processing from a specific iteration (default: 0)",
+    )
 
     args = parser.parse_args()
 
@@ -148,7 +163,9 @@ def main():
 
     if args.global_folder:
         # Find all iteration_* folders in the global folder
-        iteration_folders = find_iteration_folders(args.global_folder)
+        iteration_folders = find_iteration_folders(
+            args.global_folder, args.from_iteration
+        )
         if not iteration_folders:
             print(f"No iteration_* folders found in {args.global_folder}")
             return

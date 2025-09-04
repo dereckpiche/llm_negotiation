@@ -9,9 +9,11 @@ Proportional splitting is used when the two proposals exceed the available total
 ### Variants (in increasing difficulty) 
 
 - No‑Press Split 
-  - Single item type (coins); values are fixed and public: one agent values coins at 10, the other at 1.
+  - Single item type (coins)
   - No communication; agents go straight to making split proposals, with the starting player alternating deterministically.
   - Motivation: mirrors no‑communication setups (e.g., Advantage Alignment) while keeping the split decision nontrivial.
+  - Deterministic Mode: values are fixed and public: one agent values coins at 10, the other at 1 (alternates each round).
+  - Stochastic Mode: values are random and uncorrelated. 
 
 - Trust-and-Split RPS (TAS-RPS)
   - Single item type (coins)

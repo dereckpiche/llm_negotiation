@@ -29,6 +29,7 @@ class VLLMAsyncBackend(LLMInferenceBackend):
         ea = dict(model=model_name, **engine_init_kwargs)
         ea["enable_lora"] = True
         ea["max_loras"] = len(self.vllm_adapter_ids)
+        ea["enable_sleep_mode"] = True
         self.engine = AsyncLLMEngine.from_engine_args(AsyncEngineArgs(**ea))
 
         self.sampling_params = sampling_params
@@ -46,7 +47,7 @@ class VLLMAsyncBackend(LLMInferenceBackend):
         )
 
     async def toggle_training_mode(self) -> None:
-        await self.engine.sleep()
+        await self.engine.sleep(level=1)
 
     async def toggle_eval_mode(self) -> None:
         await self.engine.wake_up()
@@ -55,7 +56,9 @@ class VLLMAsyncBackend(LLMInferenceBackend):
         # No explicit close call; engine stops when process exits.
         pass
 
-    async def generate(self, prompt_text: str, regex: Optional[str] = None) -> PolicyOutput:
+    async def generate(
+        self, prompt_text: str, regex: Optional[str] = None
+    ) -> PolicyOutput:
         # Build SamplingParams correctly
 
         guided = GuidedDecodingParams(regex=regex) if regex else None
@@ -64,7 +67,6 @@ class VLLMAsyncBackend(LLMInferenceBackend):
             guided_decoding=guided,
             output_kind=RequestOutputKind.FINAL_ONLY,
         )
-
 
         request_id = f"req-{asyncio.get_running_loop().time()}"
         result_generator = self.engine.generate(
@@ -84,7 +86,9 @@ class VLLMAsyncBackend(LLMInferenceBackend):
 
         if regex:
             # Strict split: require \n<think>...</think>\n\n before final content
-            m = re.match(r"^\n<think>\n([\s\S]*?)</think>\n\n(.*)$", raw_text, flags=re.DOTALL)
+            m = re.match(
+                r"^\n<think>\n([\s\S]*?)</think>\n\n(.*)$", raw_text, flags=re.DOTALL
+            )
             if m:
                 reasoning_content = m.group(1)
                 content = m.group(2)

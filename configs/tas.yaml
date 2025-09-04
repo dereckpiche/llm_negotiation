@@ -3,7 +3,7 @@ defaults:
 
 
 experiment:
-    name: "tas_debug"
+    name: "tas"
     method: generate_and_train
     description: "Trust-and-Split negotiation game"
     nb_matches_per_iteration: 64
@@ -18,6 +18,8 @@ agent_1_id: Bob
 agent_ids: ["Alice", "Bob"]
 
 markov_games:
+
+    group_by_round: True # This will merge all timesteps of a round into a single timestep
 
     simulation_class_name: TrustAndSplitSimulation
     simulation_init_args:

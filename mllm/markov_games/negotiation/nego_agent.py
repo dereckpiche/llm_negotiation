@@ -9,6 +9,7 @@ from mllm.markov_games.negotiation.nego_simulation import Message, NegotiationOb
 from mllm.markov_games.rollout_tree import AgentActLog, ChatTurn
 from mllm.models.inference_backend import PolicyOutput
 
+
 @dataclass
 class NegotiationAgentState:
     round_nb: int
@@ -24,7 +25,6 @@ class NegotiationAgent(Agent):
         agent_id: str,
         policy: Callable[[List[Dict]], str],
         goal: str,
-        num_message_chars: int,
     ):
         self.seed = seed
         self.agent_id = agent_id
@@ -72,7 +72,9 @@ class NegotiationAgent(Agent):
         # First-ever call
         is_intro = round_nb == 0 and self.state.chat_counter == 0
         if is_intro:
-            prompt_parts.append(self.intro_prompt.format(goal=self.goal, **obs_ctx))
+            prompt_parts.append(
+                self.intro_prompt.format(goal=self.goal, agent=self.agent_id, **obs_ctx)
+            )
 
         # New round
         is_new_round = round_nb > self.state.round_nb
@@ -123,7 +125,9 @@ class NegotiationAgent(Agent):
                 prompt=[c.dict() for c in self.state.chat_history],
                 regex=return_regex,
             )
-            assert isinstance(policy_output, PolicyOutput), f"Policy output is not a PolicyOutput: {policy_output}"
+            assert isinstance(
+                policy_output, PolicyOutput
+            ), f"Policy output is not a PolicyOutput: {policy_output}"
             self.state.chat_history.append(
                 ChatTurn(
                     agent_id=self.agent_id,
@@ -142,7 +146,9 @@ class NegotiationAgent(Agent):
                 prompt=[c.dict() for c in self.state.chat_history],
                 regex=return_regex,
             )
-            assert isinstance(policy_output, PolicyOutput), f"Policy output is not a PolicyOutput: {policy_output}"
+            assert isinstance(
+                policy_output, PolicyOutput
+            ), f"Policy output is not a PolicyOutput: {policy_output}"
             self.state.chat_history.append(
                 ChatTurn(
                     agent_id=self.agent_id,

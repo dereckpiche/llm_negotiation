@@ -62,6 +62,7 @@ async def AlternativeActionsRunner(
     output_folder: str,
     nb_alternative_actions: int,
     max_depth: int,
+    branch_only_on_new_round: bool = False,
 ):
     """
     This method generates a trajectory with partially completed branches,
@@ -133,13 +134,5 @@ async def AlternativeActionsRunner(
 
     # wait for all branches to complete
     await asyncio.gather(*tasks)
-
-    # Export the tree & its schema
-    os.makedirs(output_folder, exist_ok=True)
-    export_path = os.path.join(
-        output_folder, "mgid:" + str(root.id) + "_rollout_tree" + ".json"
-    )
-    with open(export_path, "w") as f:
-        f.write(root.model_dump_json(indent=4))
 
     return root

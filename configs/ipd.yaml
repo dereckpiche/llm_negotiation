@@ -2,7 +2,6 @@ defaults:
     - base.yaml
 
 
-
 experiment:
     name: "ipd"
     method: generate_and_train
@@ -14,6 +13,7 @@ experiment:
     start_epoch: 0
     resume_experiment: true
     base_seed: 0
+    seed_group_size: 1
 
 
 common_agent_kwargs: &common_agent_kwargs
@@ -44,7 +44,6 @@ common_agent_kwargs: &common_agent_kwargs
 
     goal_prompt: |
         Your goal is to maximize your utility.
-    skip_regex: True
 
 agent_0_id: Alice
 agent_1_id: Bob

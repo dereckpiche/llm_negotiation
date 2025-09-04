@@ -116,6 +116,12 @@ class TrainerAdAlign(BaseTrainer):
         use_time_regularization: bool,
         rloo_branch: bool,
         reuse_baseline: bool,
+        ad_align_beta_anneal_step: int = -1,
+        ad_align_beta_anneal_rate: float = 0.5,
+        min_ad_align_beta: float = 0.1,
+        mean_normalize_ad_align: bool = False,
+        whiten_adalign_advantages: bool = False,
+        whiten_adalign_advantages_time_step_wise: bool = False,
         *args,
         **kwargs,
     ):
@@ -140,6 +146,15 @@ class TrainerAdAlign(BaseTrainer):
         self.use_time_regularization = use_time_regularization
         self.rloo_branch = rloo_branch
         self.reuse_baseline = reuse_baseline
+        self.ad_align_beta_anneal_step = ad_align_beta_anneal_step
+        self.ad_align_beta_anneal_rate = ad_align_beta_anneal_rate
+        self.min_ad_align_beta = min_ad_align_beta
+        self.past_ad_align_step = -1
+        self.mean_normalize_ad_align = mean_normalize_ad_align
+        self.whiten_adalign_advantages = whiten_adalign_advantages
+        self.whiten_adalign_advantages_time_step_wise = (
+            whiten_adalign_advantages_time_step_wise
+        )
         self.training_data: dict[AgentId, AdAlignTrainingData] = {}
         self.debug_path_list: list[str] = []
 
@@ -241,6 +256,7 @@ class TrainerAdAlign(BaseTrainer):
         trajectory_batch = TrajectoryBatch(
             rollout_ids=torch.tensor(batch_rollout_ids, dtype=torch.int32),  # (B,)
             crn_ids=torch.tensor(batch_crn_ids, dtype=torch.int32),
+            agent_ids=[agent_id] * len(batch_rollout_ids),
             batch_input_ids=batch_input_ids,
             batch_action_mask=batch_action_mask,
             batch_timesteps=batch_timesteps,
@@ -268,6 +284,7 @@ class TrainerAdAlign(BaseTrainer):
                 alternative_trajectory_batch = TrajectoryBatch(
                     rollout_ids=torch.zeros(A * sum_jT, dtype=torch.int32),
                     crn_ids=torch.zeros(A * sum_jT, dtype=torch.int32),
+                    agent_ids=[agent_id] * (A * sum_jT),
                     batch_input_ids=alternative_batch_input_ids,
                     batch_action_mask=alternative_batch_action_mask,
                     batch_timesteps=alternative_batch_timesteps,
@@ -305,7 +322,18 @@ class TrainerAdAlign(BaseTrainer):
                 BAAs = [
                     blk.transpose(0, 1).contiguous() for blk in blocks
                 ]  # list of (jT_i, A)
-
+        if self.ad_align_beta_anneal_step > 0:
+            max_rollout_id = torch.max(trajectory_batch.rollout_ids) + 1
+            if (
+                max_rollout_id % self.ad_align_beta_anneal_step == 0
+                and self.past_ad_align_step != max_rollout_id
+            ):
+                self.ad_align_beta = max(
+                    self.ad_align_beta * self.ad_align_beta_anneal_rate,
+                    self.min_ad_align_beta,
+                )
+                logger.info(f"Annealing ad_align_beta to {self.ad_align_beta}")
+                self.past_ad_align_step = max_rollout_id
         self.training_data[agent_id] = AdAlignTrainingData(
             agent_id=agent_id,
             main_data=trajectory_batch,
@@ -400,6 +428,9 @@ class TrainerAdAlign(BaseTrainer):
                     use_time_regularization=self.use_time_regularization,
                     rloo_branch=self.rloo_branch,
                     reuse_baseline=self.reuse_baseline,
+                    mean_normalize_ad_align=self.mean_normalize_ad_align,
+                    whiten_adalign_advantages=self.whiten_adalign_advantages,
+                    whiten_adalign_advantages_time_step_wise=self.whiten_adalign_advantages_time_step_wise,
                     tally=self.tally,
                 )
 

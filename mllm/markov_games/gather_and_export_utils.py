@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import csv
-import json
+import os
+import pickle
 import re
 from collections import defaultdict
 from dataclasses import dataclass
@@ -38,15 +39,15 @@ def find_iteration_folders(global_folder):
 
 
 def gather_rollout_trees(iteration_folder):
-    """Gather all rollout trees from the iteration folder."""
+    """Gather all rollout trees from the iteration folder (.pkl only)."""
     rollout_trees = []
     iteration_path = Path(iteration_folder)
-    for item in iteration_path.glob("**/*.json"):
-        if item.is_file() and re.match(
-            r"(rollout_tree\.json|mgid:\d+_rollout_tree\.json)$", item.name
-        ):
-            rollout_tree = RolloutTreeRootNode.model_validate_json(item.read_text())
-            rollout_trees.append(rollout_tree)
+    for item in iteration_path.glob("**/*.rt.pkl"):
+        with open(item, "rb") as f:
+            data = pickle.load(f)
+        # Validate dicts back into Pydantic model for downstream use
+        rollout_tree = RolloutTreeRootNode.model_validate(data)
+        rollout_trees.append(rollout_tree)
     return rollout_trees
 
 
@@ -65,8 +66,9 @@ def get_rollout_trees(global_folder) -> list[list[RolloutTreeRootNode]]:
 
 
 def load_rollout_tree(path: Path) -> RolloutTreeRootNode:
-    """Load a rollout tree from a JSON file."""
-    data = json.loads(path.read_text(encoding="utf-8"))
+    """Load a rollout tree from a PKL file containing a dict."""
+    with open(path, "rb") as f:
+        data = pickle.load(f)
     return RolloutTreeRootNode.model_validate(data)
 
 
@@ -222,7 +224,9 @@ def gather_all_chat_turns_for_path(path: RolloutNodeList) -> List[ChatTurnLog]:
                         content=chat_turn.content,
                         reasoning_content=chat_turn.reasoning_content,
                         is_state_end=chat_turn.is_state_end,
-                        reward=node.step_log.simulation_step_log.rewards.get(agent_id, 0),
+                        reward=node.step_log.simulation_step_log.rewards.get(
+                            agent_id, 0
+                        ),
                     )
 
                     if chat_turn.role == "user":
@@ -233,7 +237,11 @@ def gather_all_chat_turns_for_path(path: RolloutNodeList) -> List[ChatTurnLog]:
                         current_pair = [turn_log]
                     else:
                         # assistant: attach to an open user message if present; otherwise stand alone
-                        if current_pair and len(current_pair) == 1 and current_pair[0].role == "user":
+                        if (
+                            current_pair
+                            and len(current_pair) == 1
+                            and current_pair[0].role == "user"
+                        ):
                             current_pair.append(turn_log)
                             pairs.append(current_pair)
                             current_pair = []
@@ -330,37 +338,28 @@ def gather_simulation_infos(path: RolloutNodeList) -> List[Dict[str, Any]]:
 
 
 def export_chat_logs(path: Path, outdir: Path):
-    """Process a rollout tree file and a generate a JSONL.
-    Each json object in the JSONL should be a list of chat turns for a single path.
-    Each json object should be identified by the path id.
+    """Process a rollout tree PKL file and generate a JSONL of chat turns as dicts.
+    Each line contains an object with path_id and chat_turns for a single path.
     """
-    # Load the rollout tree
+    import json
+
     root = load_rollout_tree(path)
     mgid = root.id
 
-    # Get all paths
     main_path, branch_paths = get_rollout_tree_paths(root)
     all_paths = [main_path] + branch_paths
 
-    # Create output directory if it doesn't exist
     outdir.mkdir(parents=True, exist_ok=True)
+    output_file = outdir / f"mgid:{mgid}_plucked_chats.render.jsonl"
 
-    # Generate output filename based on input filename
-    output_file = outdir / f"mgid:{mgid}_plucked_chats.jsonl"
-
-    # Export chat logs for each path
     with open(output_file, "w", encoding="utf-8") as f:
         for path_obj in all_paths:
             chat_turns = gather_all_chat_turns_for_path(path_obj)
-
-            # Create output object with path id and chat turns
             output_obj = {
                 "path_id": str(path_obj.id),
                 "chat_turns": list(chat_turns_to_dict(iter(chat_turns))),
             }
-
-            # Write as JSON line
-            f.write(json.dumps(output_obj, indent=2) + "\n")
+            f.write(json.dumps(output_obj, ensure_ascii=False) + "\n")
 
 
 def export_rewards_to_csv(path: Path, outdir: Path, first_file: bool):
@@ -377,15 +376,79 @@ def export_rewards_to_csv(path: Path, outdir: Path, first_file: bool):
     for rewards_dict in rewards_dict_list:
         for agent_id in agent_ids:
             rewards_list[agent_id].append(rewards_dict[agent_id])
+
+    mgid = root.id
+    group_seed = getattr(root, "crn_id", None)
+
     for agent_id in agent_ids:
-        output_file = outdir / f"agent:{agent_id}_rewards.csv"
-        if first_file:
-            mode = "w"
-        else:
-            mode = "a"
-        with open(output_file, mode, newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow([int(x) for x in rewards_list[agent_id]])
+        output_file = outdir / f"agent:{agent_id}_rewards.render.csv"
+
+        # Build current row: [mgid, group_seed] + rewards
+        formatted_rewards = [f"{round(x, 1):>5}" for x in rewards_list[agent_id]]
+        current_row = [str(mgid), str(group_seed)] + formatted_rewards
+
+        # Read existing rows (if any), skipping header if present
+        existing_rows: List[List[str]] = []
+        if output_file.exists():
+            with open(output_file, "r", newline="") as rf:
+                reader = csv.reader(rf)
+                for row in reader:
+                    if not row or not any(cell.strip() for cell in row):
+                        continue
+                    if (
+                        len(row) >= 2
+                        and row[0].strip().lower() == "mgid"
+                        and row[1].strip().lower() == "group_seed"
+                    ):
+                        # skip header
+                        continue
+                    existing_rows.append(row)
+
+        # Append and sort by (group_seed, mgid)
+        existing_rows.append(current_row)
+
+        def sort_key(r: List[str]):
+            def try_int(val: str):
+                try:
+                    return int(val)
+                except Exception:
+                    return None
+
+            seed_raw = r[1] if len(r) > 1 else ""
+            mgid_raw = r[0] if len(r) > 0 else ""
+            seed_num = try_int(seed_raw)
+            mgid_num = try_int(mgid_raw)
+            # Sort numerically when possible; otherwise fall back to string
+            return (
+                0 if seed_num is not None else 1,
+                seed_num if seed_num is not None else seed_raw,
+                0 if mgid_num is not None else 1,
+                mgid_num if mgid_num is not None else mgid_raw,
+            )
+
+        existing_rows.sort(key=sort_key)
+
+        # Determine max reward length to build header and pad rows
+        max_reward_len = 0
+        for r in existing_rows:
+            if len(r) > 2:
+                max_reward_len = max(max_reward_len, len(r) - 2)
+        max_reward_len = max(max_reward_len, len(current_row) - 2)
+
+        def pad_row(r: List[str]) -> List[str]:
+            needed = (2 + max_reward_len) - len(r)
+            return r + ([""] * needed if needed > 0 else [])
+
+        padded_rows = [pad_row(r) for r in existing_rows]
+
+        # Build header
+        header = ["mgid", "group_seed"] + [f"r_t{t}" for t in range(max_reward_len)]
+
+        # Rewrite the file with header to avoid extra/blank rows
+        with open(output_file, "w", newline="") as wf:
+            writer = csv.writer(wf)
+            writer.writerow(header)
+            writer.writerows(padded_rows)
 
 
 # --------------------------------------------------------------------------------------
@@ -618,7 +681,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             position: relative;
         }
         /* removed absolute-positioned emoji to prevent overlap */
-        
+
         /* Reasoning styles - match message/badge segments (middle seam) */
         .reasoning-block {
             display: inline; /* inline like text */
@@ -767,8 +830,6 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "    // strong hide is off by default\n"
         "    setLabel();\n"
         "  }\n"
-
-
         "});\n"
         "</script>",
         "</head>",
@@ -778,17 +839,17 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         '<div class="toolbar">',
         '<label for="group-size">Group every</label>',
         '<input id="group-size" type="number" min="0" step="1" value="1" />',
-        '<span>timesteps</span>',
+        "<span>timesteps</span>",
         '<button id="apply-grouping">Apply</button>',
         '<span style="margin-left:8px"></span>',
         '<label for="range-start"><span class="emoji-bw">🔎</span> Range</label>',
         '<input id="range-start" type="number" step="1" />',
-        '<span>to</span>',
+        "<span>to</span>",
         '<input id="range-end" type="number" step="1" />',
         '<button id="apply-range"><span class="emoji-bw">▶︎</span> Apply</button>',
         '<button id="toggle-strong-hide"><span class="emoji-bw">🗜️</span> Strong Hide: <span id="strong-hide-state">On</span></button>',
-        '</div>',
-        '</div>',
+        "</div>",
+        "</div>",
         '<div class="messages-flow">',
     ]
 
@@ -812,15 +873,15 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
                 reward_val = str(raw_val)
             # Format: "🤖 Alice 💬 • Reward: 5.5556 • "
             badge_inner = (
-                f"{emoji} <span class=\"agent-name\">{name}</span>"
-                f" <span class=\"sep\"> • </span><span class=\"reward\">Reward: {reward_val}</span>"
+                f'{emoji} <span class="agent-name">{name}</span>'
+                f' <span class="sep"> • </span><span class="reward">Reward: {reward_val}</span>'
             )
         else:
             # For user messages, show "User of {Agent ID}" in the badge
-            name = 'User of ' + html.escape(turn.agent_id)
+            name = "User of " + html.escape(turn.agent_id)
             emoji = '<span class="emoji-bw">⚙️</span>'
             # Format (no reward): "⚙️ User of Alice 💬 • "
-            badge_inner = f"{emoji} <span class=\"agent-name\">{name}</span>"
+            badge_inner = f'{emoji} <span class="agent-name">{name}</span>'
 
         badge = f'<span class="agent-badge">{badge_inner}</span>'
 
@@ -837,14 +898,14 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         reasoning_html = ""
         reasoning_toggle = ""
         reasoning_collapsed_class = ""
-        
+
         if turn.reasoning_content:
             escaped_reasoning = html.escape(turn.reasoning_content)
             reasoning_html = (
                 ' <span class="reasoning-block hoverable">'
                 '<a href="#" class="reasoning-toggle">💭</a>'
                 f'<span class="reasoning-content">{escaped_reasoning}</span>'
-                '</span>'
+                "</span>"
             )
             reasoning_toggle = ""
             reasoning_collapsed_class = " reasoning-collapsed"
@@ -854,19 +915,21 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
 
         # Order: badge • reasoning • message (if no reasoning, badge • message)
         const_sep = '<span class="sep" aria-hidden="true">•</span>'
-        between_parts = const_sep + (reasoning_html + const_sep if reasoning_html else '')
+        between_parts = const_sep + (
+            reasoning_html + const_sep if reasoning_html else ""
+        )
 
         html_parts.append(
             f'<div class="chat-turn {agent_class} {role_class}{collapsed_class}{reasoning_collapsed_class}" data-time-step="{turn.time_step}">'
             f'<div class="turn-content {agent_class} {role_class}">{ts_badge_html}<span class="agent-badge">{badge_inner}</span>'
-            f'{between_parts}'
+            f"{between_parts}"
             f'<span class="hoverable">{message_part}</span>'
             f'<span class="message-placeholder">(...)</span>'
-            f'</div>'
-            f'</div>'
+            f"</div>"
+            f"</div>"
         )
 
-    html_parts.extend(['</div>', "</body>", "</html>"])
+    html_parts.extend(["</div>", "</body>", "</html>"])
 
     return "\n".join(html_parts)
 
@@ -897,7 +960,7 @@ def export_html_from_rollout_tree(path: Path, outdir: Path, main_only: bool = Fa
     # Generate HTML for the main path
     chat_turns = gather_all_chat_turns_for_path(main_path)
     html_content = html_from_chat_turns(chat_turns)
-    output_file = outdir / f"mgid:{mgid}_main_html_render.html"
+    output_file = outdir / f"mgid:{mgid}_main_html_render.render.html"
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(html_content)
 
@@ -908,7 +971,7 @@ def export_html_from_rollout_tree(path: Path, outdir: Path, main_only: bool = Fa
         html_content = html_from_chat_turns(chat_turns)
 
         path_id: str = path_obj.id
-        output_filename = f"{path_id}_html_render.html"
+        output_filename = f"{path_id}_html_render.render.html"
 
         output_file = branches_dir / output_filename
 

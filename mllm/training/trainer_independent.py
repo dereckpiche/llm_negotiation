@@ -51,7 +51,7 @@ class TrainerNaive(BaseTrainer):
 
         # Tensorize Chats
         rollout_ids = []
-        crn_ids = [] # common random number id
+        crn_ids = []  # common random number id
         batch_input_ids = []
         batch_action_mask = []
         batch_timesteps = []
@@ -82,6 +82,7 @@ class TrainerNaive(BaseTrainer):
         trajectory_batch = TrajectoryBatch(
             rollout_ids=torch.tensor(rollout_ids, dtype=torch.int32),
             crn_ids=torch.tensor(crn_ids, dtype=torch.int32),
+            agent_ids=[agent_id] * len(rollout_ids),
             batch_input_ids=batch_input_ids,
             batch_action_mask=batch_action_mask,
             batch_timesteps=batch_timesteps,
