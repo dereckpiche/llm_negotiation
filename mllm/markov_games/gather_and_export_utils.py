@@ -612,13 +612,19 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             display: inline; /* inline bubble behaving like text */
             font-size: var(--font-size);
             border: var(--border-width) solid var(--accent-muted);
-            border-radius: var(--pill-radius-right); /* round left and bottom-right */
+            border-radius: var(--pill-radius-right); /* message defaults to pill-right */
             position: relative;
             background: var(--bg);
             vertical-align: baseline;
             line-height: 1.2;
             padding-left: 0;
             border-left: 0;
+        }
+        /* Reasoning between badge and message: no left or right rounding, seam on both sides */
+        .reasoning-box {
+            border-radius: 0;
+            border-left: 0;
+            border-right: 0;
         }
         .message-box::before { content: none; display: none; margin-right: 0; line-height: 1; }
         .reasoning-box::before { content: none; display: none; margin-right: 0; line-height: 1; }
@@ -633,6 +639,8 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         /* Assistant bubble border colors by common agent names */
         .chat-turn.agent-alice.role-assistant .message-box { border-color: #0eb224; }
         .chat-turn.agent-bob.role-assistant .message-box { border-color: #ef8323; }
+        .chat-turn.agent-alice.role-assistant .reasoning-box { border-color: #0eb224; }
+        .chat-turn.agent-bob.role-assistant .reasoning-box { border-color: #ef8323; }
         /* Tie badge and seam to agent color for a cohesive capsule, assistants only */
         .chat-turn.agent-alice.role-assistant .agent-badge { border-color: #0eb224; }
         .chat-turn.agent-alice.role-assistant .agent-badge::after { border-right-color: #0eb224; }
@@ -872,7 +880,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             escaped_reasoning = html.escape(reasoning_val)
             reasoning_text = re.sub(r"\s+", " ", escaped_reasoning).strip()
             reasoning_html = (
-                f'<span class="segment reasoning-box{segment_collapsed_class}">'
+                f'<span class="segment reasoning-box collapsed{segment_collapsed_class}">'
                 f'<span class="emoji-bw">☁️</span> '
                 f'<span class="seg-text">{reasoning_text}</span>'
                 f"</span>"
