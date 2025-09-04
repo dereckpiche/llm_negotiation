@@ -1,0 +1,43 @@
+hydra:
+    run:
+        dir: "${oc.env:SCRATCH}/llm_negotiation/${now:%Y_%m}/${experiment.name}"
+    job:
+        chdir: false
+
+defaults:
+    - tas.yaml
+
+experiment:
+    name: openai_faceoff
+    nb_epochs: 1
+    nb_matches_per_iteration: 1
+    train: false
+
+markov_games:
+
+    agents:
+        0:
+            policy_id: openai_llm
+        1:
+            policy_id: openai_llm
+
+models:
+    openai_llm:
+        class: LargeLanguageModelOpenAI
+        init_args:
+            use_reasoning: true
+            llm_id: openai_llm
+            model: o3-mini # https://platform.openai.com/docs/pricing
+            base_url: https://api.openai.com/v1
+            timeout_s: 6000.0
+            regex_max_attempts: 3
+            sampling_params:
+                temperature: 1.0
+                top_p: 1.0
+
+    base_llm:
+        init_args:
+            inference_backend: dummy
+
+train_on_which_data:
+    agent_trainer: []

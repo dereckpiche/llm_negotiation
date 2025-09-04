@@ -16,6 +16,7 @@ class LargeLanguageModelOpenAI:
 
     def __init__(
         self,
+        use_reasoning: bool,
         llm_id: str,
         model: str,
         api_key: Optional[str] = None,
@@ -27,6 +28,8 @@ class LargeLanguageModelOpenAI:
     ) -> None:
         self.llm_id = llm_id
         self.model = model
+        self.use_reasoning = use_reasoning
+
         key = api_key or os.getenv("OPENAI_API_KEY")
         if not key:
             raise RuntimeError(
@@ -39,6 +42,11 @@ class LargeLanguageModelOpenAI:
 
         # Sampling/default request params set at init
         self.sampling_params = sampling_params
+        if use_reasoning:
+            self.sampling_params["reasoning"] = {
+                "effort": "medium",
+                "summary": "detailed",
+            }
         self.regex_max_attempts = max(1, int(regex_max_attempts))
 
     def get_inference_policies(self) -> Dict[str, Callable]:
@@ -66,6 +74,25 @@ class LargeLanguageModelOpenAI:
         await asyncio.sleep(0)
         pass
 
+    def extract_output_from_response(self, resp: Response) -> PolicyOutput:
+        if self.use_reasoning:
+            summary = resp.output[0].summary
+            if summary != []:
+                reasoning_content = summary[0].text
+                reasoning_content = f"OpenAI Reasoning Summary: {reasoning_content}"
+            else:
+                reasoning_content = None
+            content = resp.output[1].content[0].text
+
+        else:
+            reasoning_content = None
+            content = resp.output[0].content[0].text
+
+        return PolicyOutput(
+            content=content,
+            reasoning_content=reasoning_content,
+        )
+
     async def generate(
         self,
         prompt: list[dict],
@@ -91,23 +118,9 @@ class LargeLanguageModelOpenAI:
                     input=prompt,
                     **self.sampling_params,
                 )
-                summary = resp.output[0].summary
-                if summary != []:
-                    reasoning_content = summary.text
-                else:
-                    reasoning_content = ""
-                import pdb
-
-                pdb.set_trace()
-                content = resp.output[1].content.text
-                nb_reasoning_tokens = (
-                    resp.usage.completion_tokens_details.reasoning_tokens
-                )
-                if pattern.fullmatch(text):
-                    return PolicyOutput(
-                        content=content,
-                        reasoning_content=f"OpenAI Reasoning Summary: {reasoning_content}",
-                    )
+                policy_output = self.extract_output_from_response(resp)
+                if pattern.fullmatch(policy_output.content):
+                    return policy_output
                 prompt = [
                     *prompt,
                     {
@@ -117,21 +130,16 @@ class LargeLanguageModelOpenAI:
                         ),
                     },
                 ]
-            return PolicyOutput(
-                content=text,
-                reasoning_content=f"{nb_reasoning_tokens} reasoning tokens hidden by OpenAI.",
-            )
+            return policy_output
 
         # Simple, unconstrained generation
-        resp = await self.client.chat.completions.create(
+        resp = await self.client.responses.create(
             model=self.model,
-            messages=prompt,
+            input=prompt,
             **self.sampling_params,
         )
-        return PolicyOutput(
-            content=resp.choices[0].message.content,
-            reasoning_content=f"{resp.usage.completion_tokens_details.reasoning_tokens} reasoning tokens hidden by OpenAI.",
-        )
+        policy_output = self.extract_output_from_response(resp)
+        return policy_output
 
     def shutdown(self) -> None:
         self.client = None
