@@ -137,7 +137,7 @@ class NegotiationAgent(Agent):
                     is_state_end=False,
                 )
             )
-            action = Message(message=policy_output)
+            action = Message(message=policy_output.content)
             self.state.nb_messages_sent_this_round += 1
 
         elif must_send_split:
