@@ -91,17 +91,22 @@ class LargeLanguageModelOpenAI:
                     input=prompt,
                     **self.sampling_params,
                 )
+                summary = resp.output[0].summary
+                if summary != []:
+                    reasoning_content = summary.text
+                else:
+                    reasoning_content = ""
                 import pdb
 
                 pdb.set_trace()
-                text = (resp.choices[0].message.content or "").strip()
+                content = resp.output[1].content.text
                 nb_reasoning_tokens = (
                     resp.usage.completion_tokens_details.reasoning_tokens
                 )
                 if pattern.fullmatch(text):
                     return PolicyOutput(
-                        content=text,
-                        reasoning_content=f"{nb_reasoning_tokens} reasoning tokens hidden by OpenAI Reasoning Summary: ",
+                        content=content,
+                        reasoning_content=f"OpenAI Reasoning Summary: {reasoning_content}",
                     )
                 prompt = [
                     *prompt,
