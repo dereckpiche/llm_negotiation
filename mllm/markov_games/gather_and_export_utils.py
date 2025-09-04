@@ -564,7 +564,8 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             color: var(--muted-text);
             background: transparent;
             box-shadow: var(--inset-shadow);
-            line-height: 1.2;
+            line-height: 1.35;
+            padding: 3px 10px;
             border-right: 0;
             cursor: default;
         }
@@ -605,7 +606,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             position: relative;
             background: var(--bg);
             vertical-align: baseline;
-            line-height: 1.2;
+            line-height: 1.35;
             cursor: pointer;
         }
         .message-box, .reasoning-box {
@@ -616,8 +617,8 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             position: relative;
             background: var(--bg);
             vertical-align: baseline;
-            line-height: 1.2;
-            padding-left: 0;
+            line-height: 1.35;
+            padding: 3px 10px;
             border-left: 0;
         }
         /* Reasoning between badge and message: no left or right rounding, seam on both sides */
