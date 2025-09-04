@@ -57,7 +57,13 @@ In order to launch a policy gradient training loop, use
 python run.py --config-name your-config
 ```
 
-To add render files to your output folder (next to the rollout files), use
+To add render files to your output folder, use
 ```bash
-python basic_render.py --global_folder path-to-your-experiment-output-folder
+python render.py path-to-your-experiment-output-folder/seed_x
 ```
+
+To create a statistics file in your output folder, use
+```bash
+python stats.py path-to-your-experiment-output-folder/seed_x your/stat/name/1 your/stat/name/2
+```
+the available statistics are game specific and can be found in game_folder/game_name_statistics.py.
