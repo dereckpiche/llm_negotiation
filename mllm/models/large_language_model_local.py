@@ -78,6 +78,18 @@ class LeanLocalLLM:
             adapter_id: os.path.join(self.save_path, adapter_id)
             for adapter_id in self.adapter_ids
         }
+        checkpoints_dir = os.path.join(self.output_directory, "checkpoints")
+        self.past_agent_adapter_paths = {}
+        if os.path.isdir(checkpoints_dir):
+            for dirname in os.listdir(checkpoints_dir):
+                dirpath = os.path.join(checkpoints_dir, dirname)
+                if os.path.isdir(dirpath):
+                    # Key: directory name, Value: path to agent_adapter inside it
+                    self.past_agent_adapter_paths[dirname] = os.path.join(
+                        dirpath, "agent_adapter"
+                    )
+        self.past_agent_adapter_ids = list(self.past_agent_adapter_paths.keys())
+
         # ID management for tracking adapter versions
         self.adapter_train_ids = {
             adapter_id: self.short_id_generator() for adapter_id in self.adapter_ids
@@ -91,6 +103,9 @@ class LeanLocalLLM:
         self.weights_got_updated: dict[AdapterID, bool] = {
             adapter_id: False for adapter_id in self.adapter_ids
         }
+        self.weights_got_updated.update(
+            {adapter_id: False for adapter_id in self.past_agent_adapter_ids}
+        )
         self.current_lora_request = None
         self.currently_loaded_adapter_id = None
 
@@ -165,6 +180,21 @@ class LeanLocalLLM:
         """
         policies = {}
         for adapter_id in self.adapter_ids:
+            # define policy func
+            async def policy(
+                prompt: list[dict], regex: str | None = None, _adapter_id=adapter_id
+            ):
+                self.prepare_adapter_for_inference(adapter_id=_adapter_id)
+                response = await self.generate(prompt, regex)
+                return response
+
+            policies[self.llm_id + "/" + adapter_id] = policy
+        return policies
+
+    def get_buffer_policies(self) -> dict[PolicyID, Callable]:
+        """ """
+        policies = {}
+        for adapter_id in self.past_agent_adapter_ids:
             # define policy func
             async def policy(
                 prompt: list[dict], regex: str | None = None, _adapter_id=adapter_id
@@ -274,9 +304,12 @@ class LeanLocalLLM:
         output_dir = os.path.join(self.output_directory, "checkpoints")
         os.makedirs(output_dir, exist_ok=True)
         date_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        export_path = os.path.join(
-            output_dir, f"{adapter_id}-{checkpoint_indicator}-{date_str}"
+        agent_adapter_dir = f"{adapter_id}-{checkpoint_indicator}-{date_str}"
+        export_path = os.path.join(output_dir, agent_adapter_dir)
+        self.past_agent_adapter_paths[agent_adapter_dir] = os.path.join(
+            export_path, "agent_adapter"
         )
+        self.past_agent_adapter_ids.append(agent_adapter_dir)
         for adapter_id in self.adapter_ids:
             self.hf_adapters[adapter_id].save_pretrained(export_path)
 
