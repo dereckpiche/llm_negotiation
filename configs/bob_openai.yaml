@@ -11,7 +11,7 @@ models:
         class: LargeLanguageModelOpenAI
         init_args:
             llm_id: openai_llm
-            model: o1-mini
+            model: o3-mini
             base_url: https://api.openai.com/v1
             timeout_s: 60.0
             regex_max_attempts: 3
@@ -19,6 +19,9 @@ models:
                 temperature: 1.0
                 top_p: 1.0
                 # max_tokens: 400
+                reasoning:
+                    effort: medium
+                    summary: auto
 
 train_on_which_data:
     agent_trainer: ["Alice"]

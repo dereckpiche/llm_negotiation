@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import os
 import re
 from typing import Any, Callable, Dict, List, Optional, Sequence
@@ -70,6 +71,9 @@ class LargeLanguageModelOpenAI:
         prompt: list[dict],
         regex: Optional[str] = None,
     ) -> PolicyOutput:
+        # Remove any non-role/content keys from the prompt else openai will error
+        prompt = [{"role": p["role"], "content": p["content"]} for p in prompt]
+
         # If regex is required, prime the model and validate client-side
         if regex:
             constraint_msg = {
@@ -82,11 +86,14 @@ class LargeLanguageModelOpenAI:
             prompt = [constraint_msg, *prompt]
             pattern = re.compile(regex)
             for _ in range(self.regex_max_attempts):
-                resp = await self.client.chat.completions.create(
+                resp = await self.client.responses.create(
                     model=self.model,
-                    messages=prompt,
+                    input=prompt,
                     **self.sampling_params,
                 )
+                import pdb
+
+                pdb.set_trace()
                 text = (resp.choices[0].message.content or "").strip()
                 nb_reasoning_tokens = (
                     resp.usage.completion_tokens_details.reasoning_tokens
@@ -94,7 +101,7 @@ class LargeLanguageModelOpenAI:
                 if pattern.fullmatch(text):
                     return PolicyOutput(
                         content=text,
-                        reasoning_content=f"{nb_reasoning_tokens} reasoning tokens hidden by OpenAI.",
+                        reasoning_content=f"{nb_reasoning_tokens} reasoning tokens hidden by OpenAI Reasoning Summary: ",
                     )
                 prompt = [
                     *prompt,
