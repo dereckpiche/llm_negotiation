@@ -5,9 +5,9 @@ from typing import Optional
 import rstr
 from transformers import AutoTokenizer
 
-from mllm.models.inference_backend import LLMInferenceBackend
+from mllm.models.inference_backend import LLMInferenceBackend, PolicyOutput
 from mllm.utils.short_id_gen import generate_short_id
-from mllm.models.inference_backend import PolicyOutput
+
 
 class DummyInferenceBackend(LLMInferenceBackend):
     def __init__(
@@ -22,16 +22,20 @@ class DummyInferenceBackend(LLMInferenceBackend):
     ) -> None:
         pass
 
-    def toggle_training_mode(self) -> None:
+    async def toggle_training_mode(self) -> None:
+        await asyncio.sleep(0)
         pass
 
-    def toggle_eval_mode(self) -> None:
+    async def toggle_eval_mode(self) -> None:
+        await asyncio.sleep(0)
         pass
 
     def shutdown(self) -> None:
         pass
 
-    async def generate(self, prompt_text: str, regex: Optional[str] = None) -> PolicyOutput:
+    async def generate(
+        self, prompt_text: str, regex: Optional[str] = None
+    ) -> PolicyOutput:
         content = "I am a dummy backend without a regex."
         reasoning_content = None
 
@@ -39,7 +43,9 @@ class DummyInferenceBackend(LLMInferenceBackend):
             raw_text = rstr.xeger(regex)
             content = raw_text
             # Strict split: require \n<think>...</think>\n\n before final content
-            m = re.match(r"^\n<think>\n([\s\S]*?)</think>\n\n(.*)$", raw_text, flags=re.DOTALL)
+            m = re.match(
+                r"^\n<think>\n([\s\S]*?)</think>\n\n(.*)$", raw_text, flags=re.DOTALL
+            )
             if m:
                 reasoning_content = m.group(1)
                 content = m.group(2)

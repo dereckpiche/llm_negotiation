@@ -545,7 +545,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             display: inline; /* inline like text */
             background: transparent;
             position: relative;
-            cursor: pointer;
+            cursor: default;
         }
         /* highlight only hovered sub-part, not the entire chat-turn */
         .message-box:hover { background: #F4F8FB; }
@@ -560,6 +560,9 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             display: inline; /* inline flow */
         }
         .chat-turn .agent-badge { margin-right: 0; vertical-align: baseline; }
+        /* Remove unintended gap between badge and following segment */
+        .turn-content > .agent-badge + .reasoning-block,
+        .turn-content > .agent-badge + .message-box { margin-left: 0; }
         .agent-badge {
             display: inline;
             position: relative;
@@ -573,7 +576,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             border-right: 0;
             pointer-events: none; /* clicking badge does nothing */
         }
-        .agent-badge, .message-box, .reasoning-block, .sep { border-color: var(--segment-border-color, var(--accent-muted)); }
+        .agent-badge, .message-box, .reasoning-block { border-color: var(--segment-border-color, var(--accent-muted)); }
         .agent-badge::after {
             content: none;
         }
@@ -581,19 +584,17 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         .agent-name { font-weight: 700; }
         .emoji-bw { filter: grayscale(100%); opacity: 0.95; font-size: var(--font-size); vertical-align: baseline; margin: 0; margin-left: 2px; position: relative; top: 0; line-height: 1; display: inline-block; }
         .msg-emoji { margin-right: 6px; }
-        /* Dot separator bridging top/bottom borders */
+        /* Simple inline dot separator */
         .sep {
-            display: inline-flex;
-            align-items: center;
-            padding: 0 6px;
+            display: inline;
+            margin: 0 6px;
             line-height: 1;
-            border-top: var(--border-width) solid var(--accent-muted);
-            border-bottom: var(--border-width) solid var(--accent-muted);
             color: var(--muted-text);
             pointer-events: none;
         }
-        .chat-turn.agent-alice.role-assistant .sep { border-color: #0eb224; }
-        .chat-turn.agent-bob.role-assistant .sep { border-color: #ef8323; }
+        /* Remove left gap when dot starts a segment */
+        .reasoning-block > .sep:first-child,
+        .message-box > .sep:first-child { margin-left: 0; }
         .ts-badge {
             position: relative;
             display: inline;
@@ -627,9 +628,10 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             position: relative;
             background: var(--bg);
             vertical-align: baseline;
-            line-height: 1;
+            line-height: 1.2;
             padding-left: 0;
             border-left: 0;
+            cursor: pointer;
         }
         .message-box::before { content: none; display: none; margin-right: 0; line-height: 1; }
         .chat-turn.agent-alice.role-assistant .message-box::before { color: #0eb224; }
@@ -655,8 +657,13 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         .message-placeholder { display: none; color: #7f8c8d; font-style: italic; }
         .chat-turn.collapsed .message-box { color: transparent; font-size: 0; display: inline-block; }
         .chat-turn.collapsed .message-box::after { content: "(...)"; color: #7f8c8d; font-style: italic; font-size: var(--font-size); line-height: 1.2; }
-        .chat-turn.collapsed .agent-badge,
+        /* Only gray the badge if BOTH message and reasoning are collapsed */
+        .chat-turn.collapsed.reasoning-collapsed .agent-badge { opacity: 0.3; }
         .chat-turn.collapsed .message-box { opacity: 0.3; }
+        /* Reasoning collapse visuals */
+        .reasoning-placeholder { display: none; color: #7f8c8d; font-style: italic; font-size: var(--font-size); }
+        .chat-turn.reasoning-collapsed .reasoning-block { opacity: 0.3; }
+        .chat-turn.reasoning-collapsed .reasoning-placeholder { display: inline; }
         /* Group divider - clearer and pretty */
         .group-divider {
             display: flex;
@@ -694,7 +701,8 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
 
         /* Reasoning styles - match message/badge segments (middle seam) */
         .reasoning-block {
-            display: inline; /* inline like text */
+            display: inline-flex; /* inline like text, align with message-box */
+            align-items: center;
             font-size: var(--font-size);
             border-top: var(--border-width) solid var(--accent-muted);
             border-bottom: var(--border-width) solid var(--accent-muted);
@@ -706,6 +714,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             vertical-align: baseline;
             line-height: 1.2;
             padding-left: 0;
+            cursor: pointer;
         }
         .reasoning-content { display: inline; font-style: italic; color: #666; font-size: var(--font-size); }
         .chat-turn.reasoning-collapsed .reasoning-content {
@@ -730,10 +739,11 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "  let currentRangeStart = null;\n"
         "  let currentRangeEnd = null;\n"
         "  let strongHideOn = false;\n"
-        "  // Toggle collapse per message\n"
+        "  // Toggle collapse only when clicking on the message box\n"
         "  document.body.addEventListener('click', function(e){\n"
-        "    if (e.target.closest('.ts-badge') || e.target.closest('.reasoning-block') || e.target.closest('.agent-badge') || e.target.closest('.sep')) { return; }\n"
-        "    const turn = e.target.closest('.chat-turn');\n"
+        "    const messageBox = e.target.closest('.message-box');\n"
+        "    if (!messageBox) { return; }\n"
+        "    const turn = messageBox.closest('.chat-turn');\n"
         "    if (turn) { e.stopPropagation(); turn.classList.toggle('collapsed'); }\n"
         "  });\n"
         "  // Toggle reasoning collapse\n"
@@ -831,7 +841,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "    rangeStart.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyRange(); });\n"
         "    rangeEnd.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyRange(); });\n"
         "  }\n"
-        "  // Strong hide toggle (on by default)\n"
+        "  // Strong hide toggle (off by default)\n"
         "  const strongHideBtn = document.getElementById('toggle-strong-hide');\n"
         "  const strongHideStateEl = document.getElementById('strong-hide-state');\n"
         "  if (strongHideBtn) {\n"
@@ -857,7 +867,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "<span>to</span>",
         '<input id="range-end" type="number" step="1" />',
         '<button id="apply-range"><span class="emoji-bw">▶︎</span> Apply</button>',
-        '<button id="toggle-strong-hide"><span class="emoji-bw">🗜️</span> Strong Hide: <span id="strong-hide-state">On</span></button>',
+        '<button id="toggle-strong-hide"><span class="emoji-bw">🗜️</span> Strong Hide: <span id="strong-hide-state">Off</span></button>',
         "</div>",
         "</div>",
         '<div class="messages-flow">',
@@ -881,10 +891,10 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
                     reward_val = reward_val[:8] + "…"
             else:
                 reward_val = str(raw_val)
-            # Format: "🤖 Alice 💬 • Reward: 5.5556 • "
+            # Format: "🤖 Alice • Reward: 5.5556"
             badge_inner = (
                 f'{emoji} <span class="agent-name">{name}</span>'
-                f' <span class="sep"> • </span><span class="reward">Reward: {reward_val}</span>'
+                f'<span class="sep">•</span><span class="reward">Reward: {reward_val}</span>'
             )
         else:
             # For user messages, show "User of {Agent ID}" in the badge
@@ -913,27 +923,25 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             escaped_reasoning = html.escape(turn.reasoning_content)
             reasoning_html = (
                 ' <span class="reasoning-block hoverable">'
+                '<span class="sep" aria-hidden="true">•</span>'
                 '<a href="#" class="reasoning-toggle">💭</a>'
                 f'<span class="reasoning-content">{escaped_reasoning}</span>'
+                '<span class="reasoning-placeholder">(...)</span>'
                 "</span>"
             )
             reasoning_toggle = ""
             reasoning_collapsed_class = " reasoning-collapsed"
 
         # Build message part with leading message emoji
-        message_part = f'<span class="message-box"><span class="msg-emoji">💬</span>{collapsed_text}</span>'
+        message_part = f'<span class="message-box"><span class="sep" aria-hidden="true">•</span><span class="msg-emoji">💬</span>{collapsed_text}</span>'
 
-        # Order: badge • reasoning • message (if no reasoning, badge • message)
-        const_sep = '<span class="sep" aria-hidden="true">•</span>'
-        between_parts = const_sep + (
-            reasoning_html + const_sep if reasoning_html else ""
-        )
+        # Order: badge [• reasoning] • message (dots are embedded at start of segments)
+        segment_html = (reasoning_html if reasoning_html else "") + message_part
 
         html_parts.append(
             f'<div class="chat-turn {agent_class} {role_class}{collapsed_class}{reasoning_collapsed_class}" data-time-step="{turn.time_step}">'
             f'<div class="turn-content {agent_class} {role_class}">{ts_badge_html}<span class="agent-badge">{badge_inner}</span>'
-            f"{between_parts}"
-            f'<span class="hoverable">{message_part}</span>'
+            f"{segment_html}"
             f'<span class="message-placeholder">(...)</span>'
             f"</div>"
             f"</div>"

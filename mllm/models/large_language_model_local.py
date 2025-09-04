@@ -56,7 +56,6 @@ class LeanLocalLLM:
         inference_backend_sampling_params: dict = {},
         inference_backend_init_kwargs: dict = {},
         initial_adapter_paths: dict[str, str] | None = None,
-        enable_thinking: bool = None,
         regex_max_attempts: int = -1,
     ):
         self.inference_backend_name = inference_backend
@@ -66,7 +65,7 @@ class LeanLocalLLM:
         self.model_name = model_name
         self.adapter_configs = adapter_configs
         self.adapter_ids = list(adapter_configs.keys())
-        self.enable_thinking = enable_thinking
+        self.enable_thinking = max_thinking_characters > 0
         self.max_thinking_characters = max_thinking_characters
         self.regex_max_attempts = regex_max_attempts
 

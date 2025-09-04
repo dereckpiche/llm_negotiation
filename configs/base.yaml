@@ -94,6 +94,7 @@ trainers:
             restrict_tokens: null
             mini_batch_size: 4
             use_gradient_checkpointing: True
+            use_reasoning_mask: False
             temperature: ${temperature}
             device: "cuda:0"
             use_gae: False
