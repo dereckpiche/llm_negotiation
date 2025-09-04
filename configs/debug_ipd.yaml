@@ -16,7 +16,7 @@ agent_ids: ["Alice", "Bob"]
 markov_games:
     runner_method_name: LinearRunner
     simulation_init_args:
-        rounds_per_game: 10
+        rounds_per_game: 2
 
 temperature: 1.0
 
@@ -28,6 +28,8 @@ models:
             llm_id: base_llm
             model_name: "Qwen/Qwen3-4B-Instruct-2507" # Qwen/Qwen3-4B-Instruct-2507
             inference_backend: dummy
+            hf_kwargs:
+                attn_implementation: "eager"
 
 trainers:
     agent_trainer:

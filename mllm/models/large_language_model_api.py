@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from openai import AsyncOpenAI
+
+from mllm.models.inference_backend import PolicyOutput
 
 
 class LargeLanguageModelOpenAI:
@@ -43,35 +46,40 @@ class LargeLanguageModelOpenAI:
         }
 
     async def prepare_adapter_for_inference(self, *args: Any, **kwargs: Any) -> None:
+        await asyncio.sleep(0)
         pass
 
     async def toggle_eval_mode(self, *args: Any, **kwargs: Any) -> None:
+        await asyncio.sleep(0)
         pass
 
     async def toggle_training_mode(self, *args: Any, **kwargs: Any) -> None:
+        await asyncio.sleep(0)
         pass
 
     async def export_adapters(self, *args: Any, **kwargs: Any) -> None:
+        await asyncio.sleep(0)
         pass
 
     async def checkpoint_all_adapters(self, *args: Any, **kwargs: Any) -> None:
+        await asyncio.sleep(0)
         pass
 
     async def generate(
         self,
         prompt: list[dict],
         regex: Optional[str] = None,
-    ) -> str:
+    ) -> PolicyOutput:
         # If regex is required, prime the model and validate client-side
         if regex:
-            # constraint_msg = {
-            #     "role": "system",
-            #     "content": (
-            #         f"Output must match this regex exactly: {regex} \n"
-            #         "Return only the matching string, with no quotes or extra text."
-            #     ),
-            # }
-            # prompt = [constraint_msg, *prompt]
+            constraint_msg = {
+                "role": "user",
+                "content": (
+                    f"Output must match this regex exactly: {regex} \n"
+                    "Return only the matching string, with no quotes or extra text."
+                ),
+            }
+            prompt = [constraint_msg, *prompt]
             pattern = re.compile(regex)
             for _ in range(self.regex_max_attempts):
                 resp = await self.client.chat.completions.create(
@@ -80,8 +88,14 @@ class LargeLanguageModelOpenAI:
                     **self.sampling_params,
                 )
                 text = (resp.choices[0].message.content or "").strip()
+                nb_reasoning_tokens = (
+                    resp.usage.completion_tokens_details.reasoning_tokens
+                )
                 if pattern.fullmatch(text):
-                    return text
+                    return PolicyOutput(
+                        content=text,
+                        reasoning_content=f"{nb_reasoning_tokens} reasoning tokens hidden by OpenAI.",
+                    )
                 prompt = [
                     *prompt,
                     {
@@ -91,7 +105,10 @@ class LargeLanguageModelOpenAI:
                         ),
                     },
                 ]
-            return text
+            return PolicyOutput(
+                content=text,
+                reasoning_content=f"{nb_reasoning_tokens} reasoning tokens hidden by OpenAI.",
+            )
 
         # Simple, unconstrained generation
         resp = await self.client.chat.completions.create(
@@ -99,7 +116,10 @@ class LargeLanguageModelOpenAI:
             messages=prompt,
             **self.sampling_params,
         )
-        return resp.choices[0].message.content
+        return PolicyOutput(
+            content=resp.choices[0].message.content,
+            reasoning_content=f"{resp.usage.completion_tokens_details.reasoning_tokens} reasoning tokens hidden by OpenAI.",
+        )
 
     def shutdown(self) -> None:
         self.client = None

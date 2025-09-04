@@ -339,7 +339,7 @@ class BaseTrainer(ABC):
                         ]  # (B, S, V)
                     except Exception as e:
                         print(
-                            """Cannot use Flash Attention 2 with reasoning mask. Use "eager" or "flex_attention"."""
+                            f"Attn implementation not supported with reasoning mask. Should be 'eager' or 'flex_attention'."
                         )
                         raise e
                 else:

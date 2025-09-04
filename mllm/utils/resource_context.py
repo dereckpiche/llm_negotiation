@@ -41,9 +41,9 @@ def resource_logger_context(logger: logging.Logger, task_description: str):
         initial_time = time.time()
         # Assume CUDA is available and use device 0 only
         total_mem_bytes = torch.cuda.get_device_properties(0).total_memory
-        initial_total_bytes = (
-            torch.cuda.memory_allocated(0) + torch.cuda.memory_reserved(0)
-        )
+        initial_total_bytes = torch.cuda.memory_allocated(
+            0
+        ) + torch.cuda.memory_reserved(0)
         torch.cuda.reset_peak_memory_stats(0)
         yield None
     finally:
@@ -70,7 +70,7 @@ def resource_logger_context(logger: logging.Logger, task_description: str):
             else 0.0
         )
         delta_time_str = time.strftime(
-            '%H:%M:%S', time.gmtime(final_time - initial_time)
+            "%H:%M:%S", time.gmtime(final_time - initial_time)
         )
 
         logger.info(

@@ -1,5 +1,5 @@
 defaults:
-    - debug_tas_rps.yaml
+    - debug_ipd.yaml
 
 markov_games:
     agents:
@@ -11,14 +11,14 @@ models:
         class: LargeLanguageModelOpenAI
         init_args:
             llm_id: openai_llm
-            model: gpt-4.1-nano
+            model: o1-mini
             base_url: https://api.openai.com/v1
             timeout_s: 60.0
             regex_max_attempts: 3
             sampling_params:
                 temperature: 1.0
                 top_p: 1.0
-                max_tokens: 400
+                # max_tokens: 400
 
 train_on_which_data:
     agent_trainer: ["Alice"]
