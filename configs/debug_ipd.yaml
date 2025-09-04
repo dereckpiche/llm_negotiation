@@ -24,17 +24,14 @@ models:
     base_llm:
         class: LeanLocalLLM
         init_args:
-            max_thinking_characters: 40
             llm_id: base_llm
             model_name: "Qwen/Qwen3-4B-Instruct-2507" # Qwen/Qwen3-4B-Instruct-2507
-            inference_backend: dummy
-            hf_kwargs:
-                attn_implementation: "eager"
+            inference_backend: vllm
 
 trainers:
     agent_trainer:
         class: TrainerNaive
         kwargs:
-            use_reasoning_mask: True
+            use_qwen_reasoning_mask: False
             # use_old_ad_align: False
             enable_tokenwise_logging: True

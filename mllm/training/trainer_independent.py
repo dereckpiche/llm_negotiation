@@ -72,7 +72,11 @@ class TrainerNaive(BaseTrainer):
                 timesteps,
                 state_ends_mask,
                 reasoning_limit_tuples,
-            ) = process_training_chat(tokenizer=self.tokenizer, chat_history=chat)
+            ) = process_training_chat(
+                tokenizer=self.tokenizer,
+                chat_history=chat,
+                use_qwen_reasoning_mask=self.use_qwen_reasoning_mask,
+            )
             batch_input_ids.append(input_ids)
             batch_action_mask.append(action_mask)
             batch_timesteps.append(timesteps)

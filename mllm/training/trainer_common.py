@@ -67,7 +67,7 @@ class BaseTrainer(ABC):
         ######################################################################
         entropy_coeff: float,
         kl_coeff: float,
-        use_reasoning_mask: bool,
+        use_qwen_reasoning_mask: bool,
         gradient_clipping: Union[float, None],
         restrict_tokens: Union[list[str], None],
         mini_batch_size: int,
@@ -150,7 +150,6 @@ class BaseTrainer(ABC):
             self.policy_optimizer.load_state_dict(
                 torch.load(self.policy_optimizer_path)
             )
-        self.use_reasoning_mask = use_reasoning_mask
         self.critic_optimizer_path = os.path.join(
             self.save_path, "critic_optimizer_state.pt"
         )
@@ -176,6 +175,7 @@ class BaseTrainer(ABC):
         self.whiten_advantages = whiten_advantages
         self.whiten_advantages_time_step_wise = whiten_advantages_time_step_wise
         self.use_rloo = use_rloo
+        self.use_qwen_reasoning_mask = use_qwen_reasoning_mask
         self.skip_discounted_state_visitation = skip_discounted_state_visitation
         self.use_gae_lambda_annealing = use_gae_lambda_annealing
         self.gae_lambda_annealing_limit = gae_lambda_annealing_limit
@@ -326,7 +326,7 @@ class BaseTrainer(ABC):
                     )
 
                 # Forward pass + cast to FP-32 for higher prec.
-                if self.use_reasoning_mask:
+                if self.use_qwen_reasoning_mask:
                     try:
                         causal_reasoning_mask_mb = causal_reasoning_mask_mb.unsqueeze(
                             1
