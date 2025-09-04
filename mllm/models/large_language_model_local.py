@@ -27,6 +27,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import AutoModelForCausalLMWithValueHead
 
 from mllm.models.adapter_training_wrapper import AdapterWrapper
+from mllm.models.inference_backend import PolicyOutput
 from mllm.models.inference_backend_dummy import DummyInferenceBackend
 from mllm.models.inference_backend_sglang import SGLangOfflineBackend
 from mllm.models.inference_backend_vllm import VLLMAsyncBackend
@@ -202,21 +203,13 @@ class LeanLocalLLM:
         self.currently_loaded_adapter_id = adapter_id
         self.weights_got_updated[adapter_id] = False
 
-    def _make_prompt_text(self, prompt: list[dict]) -> str:
-        # Chat templating
-        enable_thinking = self.max_thinking_characters > 0
-        prompt_text = self.tokenizer.apply_chat_template(
-            prompt,
-            tokenize=False,
-            enable_thinking=enable_thinking,
-            add_generation_prompt=True,
-        )
-        return prompt_text
-
-    async def generate(self, prompt: list[dict], regex: str | None = None) -> str:
+    async def generate(
+        self, prompt: list[dict], regex: str | None = None
+    ) -> PolicyOutput:
         """
         TOWRITE
         """
+
         if self.enable_thinking:
             # REQUIRED <think>...</think> block with exact line breaks:
             #   \n<think>...</think>\n\n
@@ -237,26 +230,27 @@ class LeanLocalLLM:
                 # Require think_block, then capture the entire final output.
                 regex = rf"^{think_block}(.*)$"
 
-        else:
-            # No thinking allowed; just use the provided regex or match-all.
-            if not regex:
-                regex = r"^(.*)$"
+        prompt_text = self.tokenizer.apply_chat_template(
+            prompt,
+            tokenize=False,
+            enable_thinking=self.enable_thinking,
+            add_generation_prompt=True,
+        )
 
         if self.regex_max_attempts != -1 and regex is not None:
-            prompt_text_beginning = self._make_prompt_text(prompt)
             pattern = re.compile(regex)
             for i in range(self.regex_max_attempts):
-                prompt_text = self._make_prompt_text(prompt)
-                response = await self.inference_backend.generate(
+                policy_output: PolicyOutput = await self.inference_backend.generate(
                     prompt_text=prompt_text
                 )
-                if pattern.fullmatch(response):
-                    return response
+                if pattern.fullmatch(policy_output.content):
+                    return policy_output
                 logger.warning(
-                    f"Response {response} did not match regex: {regex}, retry {i + 1}/{self.regex_max_attempts}"
+                    f"Response {policy_output.content} did not match regex: {regex}, retry {i + 1}/{self.regex_max_attempts}"
                 )
                 prompt = [
                     *prompt,
+                    {"role": "assistant", "content": policy_output.content},
                     {
                         "role": "user",
                         "content": (
@@ -264,12 +258,17 @@ class LeanLocalLLM:
                         ),
                     },
                 ]
-            logger.warning(f"Falling back to using regex")
+                prompt_text = self.tokenizer.apply_chat_template(
+                    prompt,
+                    tokenize=False,
+                    enable_thinking=self.enable_thinking,
+                    add_generation_prompt=True,
+                )
+            logger.warning(f"Sending policy output that might not match regex.")
             return await self.inference_backend.generate(
-                prompt_text=prompt_text_beginning, regex=regex
+                prompt_text=prompt_text, regex=regex
             )
         else:
-            prompt_text = self._make_prompt_text(prompt)
             return await self.inference_backend.generate(
                 prompt_text=prompt_text, regex=regex
             )
