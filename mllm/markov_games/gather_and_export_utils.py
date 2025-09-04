@@ -626,6 +626,11 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             border-left: 0;
             border-right: 0;
         }
+        /* Reasoning text style: slightly smaller and slightly gray */
+        .reasoning-box .seg-text {
+            font-size: var(--small-font-size);
+            color: #6b7280;
+        }
         .message-box::before { content: none; display: none; margin-right: 0; line-height: 1; }
         .reasoning-box::before { content: none; display: none; margin-right: 0; line-height: 1; }
         /* Segment collapsed behavior */
@@ -852,16 +857,16 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
                 reward_val = str(raw_val)
             # Format: "🤖 Alice 💬 • Reward: 5.5556 • "
             badge_inner = (
-                f'{emoji} <span class="agent-name">{name}</span> 💬'
-                f' <span class="sep"> • </span><span class="reward">Reward: {reward_val}</span>'
+                f'{emoji} <span class="agent-name">{name}</span>'
+                f' <span class="sep"> • </span><span class="reward">{reward_val} ℝ</span>'
                 f' <span class="sep"> • </span>'
             )
         else:
             # For user messages, show "User of {Agent ID}" in the badge
             name = "User of " + html.escape(turn.agent_id)
             emoji = '<span class="emoji-bw">⚙️</span>'
-            # Format (no reward): "⚙️ User of Alice 💬 • "
-            badge_inner = f'{emoji} <span class="agent-name">{name}</span> 💬 <span class="sep"> • </span>'
+            # Format (no reward): "⚙️ User of Alice • "
+            badge_inner = f'{emoji} <span class="agent-name">{name}</span><span class="sep"> • </span>'
 
         badge = f'<span class="agent-badge">{badge_inner}</span>'
 
@@ -881,8 +886,8 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             reasoning_text = re.sub(r"\s+", " ", escaped_reasoning).strip()
             reasoning_html = (
                 f'<span class="segment reasoning-box collapsed{segment_collapsed_class}">'
-                f'<span class="emoji-bw">☁️</span> '
-                f'<span class="seg-text">{reasoning_text}</span>'
+                f'<span class="emoji-bw">💭</span> '
+                f'<span class="seg-text"><i>{reasoning_text}  </i></span>'
                 f"</span>"
             )
 
