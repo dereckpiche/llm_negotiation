@@ -1,7 +1,57 @@
+from __future__ import annotations
+
+import pickle
+from pathlib import Path
+from typing import List
+
+from mllm.markov_games.rollout_tree import RolloutTreeRootNode
+
+
+def find_iteration_folders(global_folder):
+    """Find all iteration_* folders within the global folder structure."""
+    global_path = Path(global_folder)
+
+    iteration_folders = []
+
+    for item in global_path.glob("iteration_*"):
+        if item.is_dir():
+            iteration_folders.append(item)
+
+    for seed_dir in global_path.glob("seed_*/"):
+        if seed_dir.is_dir():
+            for item in seed_dir.glob("iteration_*"):
+                if item.is_dir():
+                    iteration_folders.append(item)
+
+    return sorted(iteration_folders)
+
+
+def gather_rollout_trees(iteration_folder):
+    """Gather all rollout trees from the iteration folder (.pkl only)."""
+    rollout_trees = []
+    iteration_path = Path(iteration_folder)
+    for item in iteration_path.glob("**/*.rt.pkl"):
+        with open(item, "rb") as f:
+            data = pickle.load(f)
+        rollout_tree = RolloutTreeRootNode.model_validate(data)
+        rollout_trees.append(rollout_tree)
+    return rollout_trees
+
+
+def get_rollout_trees(global_folder) -> List[List[RolloutTreeRootNode]]:
+    """Get all rollout trees from the global folder."""
+    iteration_folders = find_iteration_folders(global_folder)
+    rollout_trees = []
+    for iteration_folder in iteration_folders:
+        rollout_trees.append(gather_rollout_trees(iteration_folder))
+    return rollout_trees
+
+
 import argparse
 import glob
 import os
 import re
+import shutil
 from pathlib import Path
 
 from mllm.markov_games.gather_and_export_utils import *
@@ -85,6 +135,53 @@ def find_iteration_folders(global_folder, from_iteration=0):
     ]
 
 
+def clean_render_artifacts(base_path: Path) -> int:
+    """Remove files and directories whose names contain '.render.' under base_path.
+
+    Returns the number of items removed.
+    """
+    removed_count = 0
+    # Ensure path exists
+    if not base_path.exists():
+        print(f"Path does not exist: {base_path}")
+        return 0
+
+    # Traverse all entries under base_path
+    for entry in base_path.rglob("*"):
+        try:
+            if ".render." in entry.name:
+                if entry.is_dir():
+                    shutil.rmtree(entry, ignore_errors=True)
+                    print(f"Removed directory: {entry}")
+                    removed_count += 1
+                elif entry.is_file() or entry.is_symlink():
+                    try:
+                        entry.unlink()
+                        print(f"Removed file: {entry}")
+                        removed_count += 1
+                    except FileNotFoundError:
+                        # Already gone
+                        pass
+        except Exception as e:
+            print(f"Failed to inspect/remove {entry}: {e}")
+
+    # Also check the base_path itself
+    if ".render." in base_path.name:
+        try:
+            if base_path.is_dir():
+                shutil.rmtree(base_path, ignore_errors=True)
+                print(f"Removed directory: {base_path}")
+                removed_count += 1
+            elif base_path.is_file() or base_path.is_symlink():
+                base_path.unlink()
+                print(f"Removed file: {base_path}")
+                removed_count += 1
+        except Exception as e:
+            print(f"Failed to remove base path {base_path}: {e}")
+
+    return removed_count
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Process negotiation game rollout files for analysis"
@@ -96,10 +193,17 @@ def main():
         help="Global folder containing iteration_* subdirectories (positional; same as --global-folder)",
     )
     parser.add_argument(
+        "path",
+        nargs="?",
+        help="Positional path to the global experiment folder (equivalent to --global-folder PATH)",
+    )
+    parser.add_argument(
         "--folders", nargs="+", help="List of specific folders to process"
     )
     parser.add_argument(
-        "--global-folder", help="Global folder containing iteration_* subdirectories"
+        "--global-folder",
+        default=".",
+        help="Global folder containing iteration_* subdirectories (default: current directory)",
     )
     parser.add_argument(
         "--output-dir",
@@ -147,31 +251,50 @@ def main():
         default=0,
         help="Start processing from a specific iteration (default: 0)",
     )
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="Remove all files/directories with '.render.' in their name under the given path(s) and exit",
+    )
 
     args = parser.parse_args()
 
-    # If a positional path is provided, treat it as --global-folder unless the flag is explicitly set
-    if not args.global_folder and args.positional_global_folder:
-        args.global_folder = args.positional_global_folder
+    # Positional path, if provided, takes precedence over --global-folder
+    effective_global_folder = args.path if args.path else args.global_folder
 
-    # Require at least one input method
-    if not args.folders and not args.global_folder:
-        parser.error("Must specify either --folders or --global_folder")
+    # Handle cleaning mode first
+    if args.clean:
+        target_paths = []
+        if effective_global_folder:
+            target_paths.append(Path(effective_global_folder))
+        if args.folders:
+            target_paths.extend([Path(p) for p in args.folders])
+        if not target_paths:
+            target_paths = [Path(".")]
+
+        total_removed = 0
+        for base in target_paths:
+            print(f"Cleaning under: {base}")
+            total_removed += clean_render_artifacts(base)
+
+        print(
+            f"Cleaning complete. Removed {total_removed} item(s) containing '.render.'"
+        )
         return
 
     folders_to_process = []
 
-    if args.global_folder:
+    if effective_global_folder:
         # Find all iteration_* folders in the global folder
         iteration_folders = find_iteration_folders(
-            args.global_folder, args.from_iteration
+            effective_global_folder, args.from_iteration
         )
         if not iteration_folders:
-            print(f"No iteration_* folders found in {args.global_folder}")
+            print(f"No iteration_* folders found in {effective_global_folder}")
             return
         folders_to_process.extend(iteration_folders)
         print(
-            f"Found {len(iteration_folders)} iteration folders in {args.global_folder}"
+            f"Found {len(iteration_folders)} iteration folders in {effective_global_folder}"
         )
 
     if args.folders:

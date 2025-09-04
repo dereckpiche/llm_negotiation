@@ -540,7 +540,7 @@ class BaseTrainer(ABC):
             torch.cuda.empty_cache()
 
     def get_advantages_with_critic_gradient_accumulation(
-        self, trajectories: TrajectoryBatch, loss_scaling_factor: float = 1
+        self, trajectories: TrajectoryBatch, critic_loss_scaling_factor: float = 2.0
     ) -> torch.FloatTensor:
         """
         TOWRITE
@@ -559,8 +559,12 @@ class BaseTrainer(ABC):
         # use critic for advantage estimation
         ######################################
         if self.use_gae:
+            self.critic.train()
             advantages = []
-            normalization_factor = np.ceil(batch_size / mb_size).astype(int)
+            # critic_loss_scaling_factor comes learning single critic for two agents
+            normalization_factor = (
+                np.ceil(batch_size / mb_size).astype(int) * critic_loss_scaling_factor
+            )
             # For each minibatch
             for mb in range(0, batch_size, mb_size):
                 trajectory_mb = trajectories[mb : mb + mb_size]
@@ -657,9 +661,9 @@ class BaseTrainer(ABC):
                     input=vals_estimate_mb,
                     target=targets,
                 )
+                self.tally.add_metric(path=["mb_critic_loss"], metric=loss.item())
                 # Accumulate gradient
                 loss /= normalization_factor
-                self.tally.add_metric(path=["mb_critic_loss"], metric=loss.item())
                 self.accelerator.backward(loss)
 
                 # Get jagged back using timestep_counts
@@ -806,8 +810,21 @@ class BaseTrainer(ABC):
         """
         assert self.policy_gradient_data is not None, "Policy gradient data is not set"
         if self.critic_optimizer is not None:
-            self.critic.train()
+            if self.gradient_clipping is not None:
+                grad_norm = self.accelerator.clip_grad_norm_(
+                    self.critic.parameters(), self.gradient_clipping
+                )
+                self.tally.add_metric(
+                    path=["gradient_norm_critic"], metric=grad_norm.item()
+                )
+            # Take step
+            self.critic_optimizer.step()
             self.critic_optimizer.zero_grad()
+            self.accelerator.clear(self.critic, self.critic_optimizer)
+            import gc
+
+            gc.collect()
+            torch.cuda.empty_cache()
         self.apply_reinforce_step(training_batch=self.policy_gradient_data)
 
     def export_training_tally(self, identifier: str, folder: str) -> None:
