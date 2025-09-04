@@ -562,7 +562,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             border-radius: var(--pill-radius-left); /* round left and bottom-right */
             font-size: var(--font-size);
             color: var(--muted-text);
-            background: var(--panel-bg);
+            background: transparent;
             box-shadow: var(--inset-shadow);
             line-height: 1.2;
             border-right: 0;
@@ -858,7 +858,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             # Format: "🤖 Alice 💬 • Reward: 5.5556 • "
             badge_inner = (
                 f'{emoji} <span class="agent-name">{name}</span>'
-                f' <span class="sep"> • </span><span class="reward">{reward_val} ℝ</span>'
+                f' <span class="sep"> • </span><span class="reward">{reward_val} r</span>'
                 f' <span class="sep"> • </span>'
             )
         else:
