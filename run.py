@@ -9,6 +9,7 @@ import logging
 import os
 import pickle
 import random
+import re
 import shutil
 import sys
 import time
@@ -109,11 +110,6 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
             output_directory=output_directory,
         )
 
-    # Get dictionnary of functionnal-like callable policies (only for inference)
-    policies = {}
-    for llm_id, llm in llms_dict.items():
-        policies.update(llm.get_inference_policies())
-
     adapter_modules = {}  # These are trainable Pytorch modules
     for llm_id, llm in llms_dict.items():
         if isinstance(llm, LeanLocalLLM):
@@ -177,6 +173,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         for agent_config_ in cfg["markov_games"]["agents"].values():
             agent_config = AgentConfig(**agent_config_)
             agent_configs.append(agent_config)
+
         nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
         seed_group_size = cfg["experiment"].get("seed_group_size", 1)
         assert (
@@ -192,26 +189,74 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         # -----------------------------------------------------------------
         for llm in llms_dict.values():
             await llm.toggle_eval_mode()
+        # Get dictionnary of functionnal-like callable policies (only for inference)
+        policies = {}
+        for llm_id, llm in llms_dict.items():
+            policies.update(llm.get_inference_policies())
 
         # Set folders and seeds
         env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
+        crn_rng = copy.deepcopy(env_rng)
         iteration_start_time = time.time()
         it_folder = os.path.join(output_directory, f"iteration_{iteration:03}")
         crn_seeds = [
-            env_rng.integers(0, 1e9, 1)[0] for _ in range(nb_matches // seed_group_size)
+            crn_rng.integers(0, 1e9, 1)[0] for _ in range(nb_matches // seed_group_size)
         ]  # common random number seeds
         os.makedirs(it_folder, exist_ok=True)
         generation_start_time = time.time()
 
         # Create new markov games
         markov_games = []
-        for i in range(nb_matches):
+        for match_number in range(nb_matches):
+            env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
+            match_rng = copy.deepcopy(env_rng)
+
+            def agent_configs_per_match(agent_configs, match_number, match_rng):
+                new_agent_configs = []
+                for index, agent_config in enumerate(agent_configs):
+                    if (match_number % len(agent_configs)) == index:
+                        new_agent_configs.append(agent_config)
+                    else:
+                        # take_buffer_agent = match_rng.choice([True, False])
+                        take_buffer_agent = True
+                        if take_buffer_agent:
+                            buffer_agent_config = copy.deepcopy(agent_config)
+                            buffer_agent_config.agent_id = (
+                                f"buffer_{agent_config.agent_id}"
+                            )
+                            policy_ids = list(policies.keys())
+                            buffer_policy_ids = [
+                                policy_id
+                                for policy_id in policy_ids
+                                if "buffer" in policy_id
+                                and agent_config.policy_id in policy_id
+                            ]
+                            buffer_policy_ids = sorted(
+                                buffer_policy_ids,
+                                key=lambda x: int(re.search(r"iter_(\d+)", x).group(1)),
+                                reverse=True,
+                            )[: cfg["experiment"]["agent_buffer_recent_k"]]
+                            buffer_agent_config.policy_id = match_rng.choice(
+                                buffer_policy_ids
+                            )
+                            if buffer_agent_config.policy_id is None:
+                                new_agent_configs.append(agent_config)
+                            else:
+                                new_agent_configs.append(buffer_agent_config)
+                        else:
+                            new_agent_configs.append(agent_config)
+                return new_agent_configs
+
             markov_game_config = MarkovGameConfig(
-                id=iteration * nb_matches + i,
-                seed=int(crn_seeds[i // seed_group_size]),
+                id=iteration * nb_matches + match_number,
+                seed=int(crn_seeds[match_number // seed_group_size]),
                 simulation_class_name=cfg["markov_games"]["simulation_class_name"],
                 simulation_init_args=cfg["markov_games"]["simulation_init_args"],
-                agent_configs=agent_configs,
+                agent_configs=agent_configs_per_match(
+                    agent_configs, match_number, match_rng
+                )
+                if cfg["experiment"].get("agent_buffer", False)
+                else agent_configs,
             )
             markov_game = init_markov_game_components(
                 config=markov_game_config, policies=policies

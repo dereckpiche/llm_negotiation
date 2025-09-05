@@ -9,25 +9,36 @@ the LLM policies.
 """
 
 from abc import ABC, abstractmethod
-from numpy.random import default_rng
 from collections.abc import Callable
-from mllm.markov_games.rollout_tree import AgentActLog
 from typing import Any, Tuple
 
-class Agent(ABC):
+from numpy.random import default_rng
 
+from mllm.markov_games.rollout_tree import AgentActLog
+
+
+class Agent(ABC):
     @abstractmethod
-    def __init__(self, seed: int, agent_id:str, policy: Callable[[list[dict]], str], *args, **kwargs):
+    def __init__(
+        self,
+        seed: int,
+        agent_id: str,
+        agent_name: str,
+        agent_policy: Callable[[list[dict]], str],
+        *args,
+        **kwargs,
+    ):
         """
         Initialize the agent state.
         """
         self.seed = seed
         self.agent_id = agent_id
+        self.agent_name = agent_name
         self.policy = policy
         self.rng = default_rng(self.seed)
         raise NotImplementedError
 
-    async def act(self, observation) ->  Tuple[Any, AgentActLog]:
+    async def act(self, observation) -> Tuple[Any, AgentActLog]:
         """
         Query (possibly multiple times) a policy (or possibly a pool of policies) to
         obtain the action of the agent.
@@ -45,8 +56,8 @@ class Agent(ABC):
             step_info
         """
         raise NotImplementedError
-    
-    def get_safe_copy(self):    
+
+    def get_safe_copy(self):
         """
         Return copy of the agent object that is decorrelated from the original object.
         """
