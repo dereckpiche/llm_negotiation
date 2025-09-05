@@ -1,7 +1,6 @@
 defaults:
     - base.yaml
 
-
 experiment:
     name: "tas_no_regex"
     method: generate_and_train
@@ -47,7 +46,6 @@ models:
     base_llm:
         init_args:
             model_name: Qwen/Qwen3-8B
-            enable_thinking: False
             regex_max_attempts: 3
 
 trainers:

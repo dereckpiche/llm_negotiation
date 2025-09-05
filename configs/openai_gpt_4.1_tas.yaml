@@ -1,0 +1,13 @@
+defaults:
+  - tas_no_regex.yaml
+  - openai_faceoff.yaml
+
+experiment:
+    name: openai_gpt_4.1_tas
+
+models:
+    openai_llm:
+        init_args:
+            use_reasoning: false
+            model: gpt-4.1 # https://platform.openai.com/docs/pricing
+            sleep_between_requests: 10 # this is to avoid rate limiting

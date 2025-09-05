@@ -4,13 +4,11 @@ hydra:
     job:
         chdir: false
 
-defaults:
-    - tas.yaml
 
 experiment:
     name: openai_faceoff
     nb_epochs: 1
-    nb_matches_per_iteration: 1
+    nb_matches_per_iteration: 64
     train: false
 
 markov_games:
@@ -25,9 +23,10 @@ models:
     openai_llm:
         class: LargeLanguageModelOpenAI
         init_args:
-            use_reasoning: true
+            use_reasoning: false
+            sleep_between_requests: 0
             llm_id: openai_llm
-            model: o3-mini # https://platform.openai.com/docs/pricing
+            model: gpt-4.1 # https://platform.openai.com/docs/pricing
             base_url: https://api.openai.com/v1
             timeout_s: 6000.0
             regex_max_attempts: 3

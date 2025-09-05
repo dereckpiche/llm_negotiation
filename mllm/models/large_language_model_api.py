@@ -25,6 +25,7 @@ class LargeLanguageModelOpenAI:
         regex_max_attempts: int = 10,
         sampling_params: Optional[Dict[str, Any]] = None,
         output_directory: Optional[str] = None,
+        sleep_between_requests: float = 0.0,
     ) -> None:
         self.llm_id = llm_id
         self.model = model
@@ -139,6 +140,7 @@ class LargeLanguageModelOpenAI:
             **self.sampling_params,
         )
         policy_output = self.extract_output_from_response(resp)
+        await asyncio.sleep(self.sleep_between_requests)
         return policy_output
 
     def shutdown(self) -> None:
