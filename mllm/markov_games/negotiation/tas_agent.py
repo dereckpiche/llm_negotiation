@@ -18,7 +18,7 @@ class TrustAndSplitAgent(NegotiationAgent):
             "Protocol:\n"
             "1. At the start of the round, one agent begins the conversation. The starting role alternates each round.\n"
             "2. Agents exchange a short chat ({quota_messages_per_agent_per_round} messages per round per agent) to negotiate how to split the 10 coins.\n"
-            "   - Use this chat to communicate your private per-coin value to make informed proposals.\n"
+            "   - You are allowed to use this chat to communicate your private per-coin value to make informed proposals.\n"
             "3. After the chat, both agents simultaneously propose how many coins they keep.\n"
             "4. If the total sum of proposals is less than or equal to 10, both agents receive their proposals.\n"
             "5. If the total sum of proposals exceeds 10, the coins are allocated proportionally.\n"
