@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import argparse
-from pathlib import Path
-from typing import Any, Dict, List
-
-from statistics_runner import run_stats_functional
+from typing import Dict
 
 from mllm.markov_games.rollout_tree import SimulationStepLog
 
 
-def metric_greed(sl: SimulationStepLog) -> Dict[str, float] | None:
+def split_greed(sl: SimulationStepLog) -> Dict[str, float] | None:
     info = sl.info or {}
     if not info or not info.get("is_last_timestep_in_round"):
         return None
@@ -25,7 +21,7 @@ def metric_greed(sl: SimulationStepLog) -> Dict[str, float] | None:
     return out
 
 
-def metric_efficiency(sl: SimulationStepLog) -> Dict[str, float] | None:
+def split_efficiency(sl: SimulationStepLog) -> Dict[str, float] | None:
     info = sl.info or {}
     if not info or not info.get("is_last_timestep_in_round"):
         return None
@@ -46,41 +42,3 @@ def metric_efficiency(sl: SimulationStepLog) -> Dict[str, float] | None:
         return None
     # Efficiency is a global metric; emit same value for a special key "all"
     return {"all": achieved / max_reward}
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Compute negotiation statistics fast")
-    parser.add_argument(
-        "data_root", type=str, help="Path to folder containing iteration_* subfolders"
-    )
-    parser.add_argument(
-        "--outfile",
-        type=str,
-        default=None,
-        help="Optional output filename inside statistics/",
-    )
-    parser.add_argument(
-        "--format",
-        type=str,
-        default="json",
-        choices=["json", "jsonl"],
-        help="Output format: json (dict of lists) or jsonl",
-    )
-    args = parser.parse_args()
-
-    metrics = {
-        "avg_greed": metric_greed,
-        "avg_efficiency": metric_efficiency,
-    }
-    out = run_stats_functional(
-        Path(args.data_root),
-        "negotiation",
-        metrics,
-        args.outfile,
-        output_format=args.format,
-    )
-    print(str(out))
-
-
-if __name__ == "__main__":
-    main()
