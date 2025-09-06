@@ -1,14 +1,15 @@
 defaults:
     - base.yaml
 
+lora_count: 10
 experiment:
     name: "ipd_prev_ad_align_qwen2.5_7b_noregex_no_normalizing_buffer_seed0"
     base_seed: 0
     nb_epochs: 2000
-    nb_matches_per_iteration: 4
     agent_buffer: true
-    agent_buffer_recent_k: 5
-    checkpoint_every_n_iterations: 2
+    keep_agent_buffer_count: ${lora_count}
+    agent_buffer_recent_k: 50
+    checkpoint_every_n_iterations: 10
 
 trainers:
     agent_trainer:
@@ -99,8 +100,10 @@ models:
             inference_backend_init_kwargs:
                 enforce_eager: True
                 gpu_memory_utilization: 0.5
-                max_loras: 10
-                max_cpu_loras : 10
+                max_loras: ${lora_count}
+                max_cpu_loras : ${lora_count}
+                enable_sleep_mode: False
+                enable_lora: True
 
 train_on_which_data:
     agent_trainer: ${agent_ids}

@@ -189,10 +189,6 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         # -----------------------------------------------------------------
         for llm in llms_dict.values():
             await llm.toggle_eval_mode()
-        # Get dictionnary of functionnal-like callable policies (only for inference)
-        policies = {}
-        for llm_id, llm in llms_dict.items():
-            policies.update(llm.get_inference_policies())
 
         # Set folders and seeds
         env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
@@ -203,48 +199,74 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
             crn_rng.integers(0, 1e9, 1)[0] for _ in range(nb_matches // seed_group_size)
         ]  # common random number seeds
         os.makedirs(it_folder, exist_ok=True)
+
+        # Get dictionnary of functionnal-like callable policies (only for inference)
+        policies = {}
+        for llm_id, llm in llms_dict.items():
+            policies.update(llm.get_inference_policies())
+
+        policy_ids = list(policies.keys())
+        buffer_policy_ids = [
+            policy_id for policy_id in policy_ids if "buffer" in policy_id
+        ]
+        logger.info(
+            f"Inference policies count is regular policies {len(policy_ids) - len(buffer_policy_ids)} and buffer policies {len(buffer_policy_ids)}"
+        )
+        if (
+            cfg["experiment"].get("agent_buffer_recent_k", -1) != -1
+            and len(buffer_policy_ids) > 0
+        ):
+            buffer_policy_ids = sorted(
+                buffer_policy_ids,
+                key=lambda x: int(re.search(r"iter_(\d+)", x).group(1)),
+                reverse=True,
+            )[: cfg["experiment"]["agent_buffer_recent_k"]]
+        if len(buffer_policy_ids) > 0:
+            env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
+            buffer_rng = copy.deepcopy(env_rng)
+            buffer_policy_ids = buffer_rng.choice(
+                buffer_policy_ids,
+                size=min(
+                    len(buffer_policy_ids),
+                    cfg["experiment"].get("keep_agent_buffer_count", 10),
+                ),
+                replace=False,
+            ).tolist()
+
         generation_start_time = time.time()
 
         # Create new markov games
         markov_games = []
+        agent_ids = set()
+        agent_ids.update([agent_config.agent_id for agent_config in agent_configs])
         for match_number in range(nb_matches):
-            env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
-            match_rng = copy.deepcopy(env_rng)
 
-            def agent_configs_per_match(agent_configs, match_number, match_rng):
+            def agent_configs_per_match(agent_configs, match_number):
                 new_agent_configs = []
                 for index, agent_config in enumerate(agent_configs):
                     if (match_number % len(agent_configs)) == index:
                         new_agent_configs.append(agent_config)
-                    else:
-                        # take_buffer_agent = match_rng.choice([True, False])
-                        take_buffer_agent = True
+                    elif len(buffer_policy_ids) > 0:
+                        take_buffer_agent = buffer_rng.choice([True, False])
                         if take_buffer_agent:
                             buffer_agent_config = copy.deepcopy(agent_config)
                             buffer_agent_config.agent_id = (
-                                f"buffer_{agent_config.agent_id}"
+                                f"{agent_config.agent_id}_buffer"
                             )
-                            policy_ids = list(policies.keys())
-                            buffer_policy_ids = [
+                            agent_ids.add(buffer_agent_config.agent_id)
+                            buffer_agent_policy_ids = [
                                 policy_id
-                                for policy_id in policy_ids
-                                if "buffer" in policy_id
-                                and agent_config.policy_id in policy_id
+                                for policy_id in buffer_policy_ids
+                                if agent_config.policy_id in policy_id
                             ]
-                            buffer_policy_ids = sorted(
-                                buffer_policy_ids,
-                                key=lambda x: int(re.search(r"iter_(\d+)", x).group(1)),
-                                reverse=True,
-                            )[: cfg["experiment"]["agent_buffer_recent_k"]]
-                            buffer_agent_config.policy_id = match_rng.choice(
-                                buffer_policy_ids
+                            buffer_agent_config.policy_id = buffer_rng.choice(
+                                buffer_agent_policy_ids
                             )
-                            if buffer_agent_config.policy_id is None:
-                                new_agent_configs.append(agent_config)
-                            else:
-                                new_agent_configs.append(buffer_agent_config)
+                            new_agent_configs.append(buffer_agent_config)
                         else:
                             new_agent_configs.append(agent_config)
+                    else:
+                        new_agent_configs.append(agent_config)
                 return new_agent_configs
 
             markov_game_config = MarkovGameConfig(
@@ -252,9 +274,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
                 seed=int(crn_seeds[match_number // seed_group_size]),
                 simulation_class_name=cfg["markov_games"]["simulation_class_name"],
                 simulation_init_args=cfg["markov_games"]["simulation_init_args"],
-                agent_configs=agent_configs_per_match(
-                    agent_configs, match_number, match_rng
-                )
+                agent_configs=agent_configs_per_match(agent_configs, match_number)
                 if cfg["experiment"].get("agent_buffer", False)
                 else agent_configs,
             )
@@ -287,6 +307,9 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
                     rollout_tree.model_dump(), f, protocol=pickle.HIGHEST_PROTOCOL
                 )
 
+        logger.info(
+            f"agents played in iteration {iteration} are {', '.join(list(agent_ids))}"
+        )
         generation_end_time = time.time()
 
         # Process raw data into training data using the specified functions for each agent
@@ -307,7 +330,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         # Send advantage packets to other trainers
         all_advantage_packets = []
         for trainer_id, trainer in trainers.items():
-            for agent_id in ["Alice", "Bob", "buffer_Alice", "buffer_Bob"]:
+            for agent_id in agent_ids:
                 agent_id_roots = [
                     root for root in rollout_trees if agent_id in root.agent_ids
                 ]
@@ -336,10 +359,6 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
             )
             trainer.export_trainer_states()
 
-        # Export all HF adapters weights (needed for vLLM inference)
-        for llm in llms_dict.values():
-            llm.export_adapters()
-
         training_end_time = time.time()
 
         # Checkpoint all adapters
@@ -355,6 +374,9 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
                         checkpoint_indicator=f"iter_{iteration}"
                     )
 
+        # Export all HF adapters weights (needed for vLLM inference)
+        for llm in llms_dict.values():
+            llm.export_adapters()
         iteration_end_time = time.time()
 
         # Timing calculations

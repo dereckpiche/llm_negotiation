@@ -314,7 +314,8 @@ class LeanLocalLLM:
                 self.past_agent_adapter_paths[
                     f"{agent_adapter_dir}_buffer"
                 ] = os.path.join(export_path, adapter_id)
-                self.past_agent_adapter_ids.append(agent_adapter_dir)
+                self.past_agent_adapter_ids.append(f"{agent_adapter_dir}_buffer")
+                self.weights_got_updated[f"{agent_adapter_dir}_buffer"] = False
                 self.hf_adapters[adapter_id].save_pretrained(export_path)
 
     def short_id_generator(self) -> str:

@@ -754,6 +754,9 @@ class BaseTrainer(ABC):
         concat_rollout_ids = []
         concat_agent_ids = []
         for agent_id, trajectory_batch in self.training_data.items():
+            concat_crn_ids.append(trajectory_batch.crn_ids)
+            concat_rollout_ids.append(trajectory_batch.rollout_ids)
+            concat_agent_ids.extend(trajectory_batch.agent_ids)
             if "buffer" in agent_id:
                 continue
             tokenwise_batch_credits = get_tokenwise_credits(
@@ -771,24 +774,17 @@ class BaseTrainer(ABC):
             else:
                 self.policy_gradient_data.append(policy_gradient_data)
 
-            concat_crn_ids.append(trajectory_batch.crn_ids)
-            concat_rollout_ids.append(trajectory_batch.rollout_ids)
-            concat_agent_ids.extend(trajectory_batch.agent_ids)
-
         self.tokenwise_tally = ContextualizedTokenwiseTally(
             tokenizer=self.tokenizer,
             paths=self.debug_path_list,
         )
 
         # Register row ids once in the same order used to build policy_gradient_data
-        try:
-            self.tally.add_row_ids(
-                crn_ids=torch.cat(concat_crn_ids),
-                rollout_ids=torch.cat(concat_rollout_ids),
-                agent_ids=concat_agent_ids,
-            )
-        except Exception:
-            pass
+        self.tally.add_row_ids(
+            crn_ids=torch.cat(concat_crn_ids),
+            rollout_ids=torch.cat(concat_rollout_ids),
+            agent_ids=concat_agent_ids,
+        )
 
     def train(self) -> None:
         """
