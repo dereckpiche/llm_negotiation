@@ -1,14 +1,9 @@
 # To quickly check if code still runs
-
-defaults:
-    - tas_rps.yaml
-
 experiment:
     name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
-    nb_epochs: 2
-    nb_matches_per_iteration: 2
-    seed_group_size: 2
 
+defaults:
+    - no_press_naive.yaml
 
 markov_games:
     simulation_class_name: TrustAndSplitRPSSimulation
