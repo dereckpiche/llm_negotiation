@@ -176,7 +176,7 @@ class TrainerAdAlign(BaseTrainer):
         batch_timesteps = []
         batch_state_ends_mask = []
         batch_rewards = []
-
+        batch_reasoning_limits = []
         # For alternative actions rollouts
         batch_branching_time_steps = []
         alternative_batch_input_ids = []
@@ -184,6 +184,7 @@ class TrainerAdAlign(BaseTrainer):
         alternative_batch_timesteps = []
         alternative_batch_state_ends_mask = []
         alternative_batch_rewards = []
+        alternative_batch_reasoning_limits = []
         jT_list = []
 
         try:
@@ -207,12 +208,18 @@ class TrainerAdAlign(BaseTrainer):
                 action_mask,
                 timesteps,
                 state_ends_mask,
-            ) = process_training_chat(tokenizer=self.tokenizer, chat_history=main_chat)
+                reasoning_limit_tuples,
+            ) = process_training_chat(
+                tokenizer=self.tokenizer,
+                chat_history=main_chat,
+                use_qwen_reasoning_mask=self.use_qwen_reasoning_mask,
+            )
             batch_input_ids.append(input_ids)
             batch_action_mask.append(action_mask)
             batch_timesteps.append(timesteps)
             batch_state_ends_mask.append(state_ends_mask)
             batch_rewards.append(main_rewards)
+            batch_reasoning_limits.append(reasoning_limit_tuples)
             jT = main_rewards.numel()  # TODO: better than this
             jT_list.append(jT)
             if A > 0:
@@ -236,7 +243,9 @@ class TrainerAdAlign(BaseTrainer):
                         timesteps,
                         state_ends_mask,
                     ) = process_training_chat(
-                        tokenizer=self.tokenizer, chat_history=chat
+                        tokenizer=self.tokenizer,
+                        chat_history=chat,
+                        use_qwen_reasoning_mask=self.use_qwen_reasoning_mask,
                     )
                     alternative_batch_input_ids.append(input_ids)
                     alternative_batch_action_mask.append(action_mask)
@@ -259,6 +268,7 @@ class TrainerAdAlign(BaseTrainer):
             batch_timesteps=batch_timesteps,
             batch_state_ends_mask=batch_state_ends_mask,
             batch_rewards=batch_rewards,
+            batch_reasoning_limits=batch_reasoning_limits,
         )
         # Get Advantages & Train Critic
         with resource_logger_context(

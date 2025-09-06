@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Tuple
 from mllm.markov_games.agent import Agent
 from mllm.markov_games.negotiation.nego_simulation import Message, NegotiationObs, Split
 from mllm.markov_games.rollout_tree import AgentActLog, ChatTurn
+from mllm.models.inference_backend import PolicyOutput
 
 
 @dataclass
@@ -124,15 +125,19 @@ class NegotiationAgent(Agent):
                 prompt=[c.dict() for c in self.state.chat_history],
                 regex=return_regex,
             )
+            assert isinstance(
+                policy_output, PolicyOutput
+            ), f"Policy output is not a PolicyOutput: {policy_output}"
             self.state.chat_history.append(
                 ChatTurn(
                     agent_id=self.agent_id,
                     role="assistant",
-                    content=policy_output,
+                    content=policy_output.content,
+                    reasoning_content=policy_output.reasoning_content,
                     is_state_end=False,
                 )
             )
-            action = Message(message=policy_output)
+            action = Message(message=policy_output.content)
             self.state.nb_messages_sent_this_round += 1
 
         elif must_send_split:
@@ -141,15 +146,19 @@ class NegotiationAgent(Agent):
                 prompt=[c.dict() for c in self.state.chat_history],
                 regex=return_regex,
             )
+            assert isinstance(
+                policy_output, PolicyOutput
+            ), f"Policy output is not a PolicyOutput: {policy_output}"
             self.state.chat_history.append(
                 ChatTurn(
                     agent_id=self.agent_id,
                     role="assistant",
-                    content=policy_output,
+                    content=policy_output.content,
+                    reasoning_content=policy_output.reasoning_content,
                     is_state_end=False,
                 )
             )
-            action = self.get_split_action(policy_output, observation)
+            action = self.get_split_action(policy_output.content, observation)
         else:
             action = None
 

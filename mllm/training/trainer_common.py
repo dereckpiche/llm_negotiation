@@ -67,6 +67,7 @@ class BaseTrainer(ABC):
         ######################################################################
         entropy_coeff: float,
         kl_coeff: float,
+        use_qwen_reasoning_mask: bool,
         gradient_clipping: Union[float, None],
         restrict_tokens: Union[list[str], None],
         mini_batch_size: int,
@@ -149,8 +150,6 @@ class BaseTrainer(ABC):
             self.policy_optimizer.load_state_dict(
                 torch.load(self.policy_optimizer_path)
             )
-
-        # Load critic optimizer state if it exists
         self.critic_optimizer_path = os.path.join(
             self.save_path, "critic_optimizer_state.pt"
         )
@@ -176,6 +175,7 @@ class BaseTrainer(ABC):
         self.whiten_advantages = whiten_advantages
         self.whiten_advantages_time_step_wise = whiten_advantages_time_step_wise
         self.use_rloo = use_rloo
+        self.use_qwen_reasoning_mask = use_qwen_reasoning_mask
         self.skip_discounted_state_visitation = skip_discounted_state_visitation
         self.use_gae_lambda_annealing = use_gae_lambda_annealing
         self.gae_lambda_annealing_limit = gae_lambda_annealing_limit
@@ -294,14 +294,18 @@ class BaseTrainer(ABC):
                 training_mb = training_batch[mb : mb + mb_size]
                 training_mb = training_mb.get_padded_tensors()
                 training_mb.to(self.device)
-                tokens_mb, action_mask_mb, credits_mb = (
+                tokens_mb, action_mask_mb, credits_mb, causal_reasoning_mask_mb = (
                     training_mb.batch_input_ids,
                     training_mb.batch_action_mask,
                     training_mb.batch_credits,
+                    training_mb.batch_causal_reasoning_mask,
                 )
 
                 # Next token prediction
                 contexts_mb = tokens_mb[:, :-1]
+                causal_reasoning_mask_mb = causal_reasoning_mask_mb[
+                    :, :-1, :-1
+                ]  # TODO: verify
                 shifted_contexts_mb = tokens_mb[:, 1:]
                 action_mask_mb = action_mask_mb[:, 1:]
                 credits_mb = credits_mb[:, 1:]
@@ -322,8 +326,24 @@ class BaseTrainer(ABC):
                     )
 
                 # Forward pass + cast to FP-32 for higher prec.
-                # TODO: create attention mask if not relying on default (assume causal llm)
-                logits = self.policy(input_ids=contexts_mb)[0]  # (B, S, V)
+                if self.use_qwen_reasoning_mask:
+                    try:
+                        causal_reasoning_mask_mb = causal_reasoning_mask_mb.unsqueeze(
+                            1
+                        )  # (B, 1, S, S) -- to broadcast over attention heads
+                        logits = self.policy(
+                            input_ids=contexts_mb,
+                            attention_mask=causal_reasoning_mask_mb,
+                        )[
+                            0
+                        ]  # (B, S, V)
+                    except Exception as e:
+                        print(
+                            f"Attn implementation not supported with reasoning mask. Should be 'eager' or 'flex_attention'."
+                        )
+                        raise e
+                else:
+                    logits = self.policy(input_ids=contexts_mb)[0]  # (B, S, V)
 
                 # Mask non-restricted tokens
                 if self.restrict_tokens is not None:
@@ -554,6 +574,7 @@ class BaseTrainer(ABC):
                     tokens_mb,
                     state_ends_mask_mb,
                     timestep_counts,
+                    causal_reasoning_mask_mb,
                 ) = trajectory_mb.get_padded_tensors_for_critic()
 
                 # critic causal attention up to end flags
@@ -757,6 +778,7 @@ class BaseTrainer(ABC):
                 batch_input_ids=trajectory_batch.batch_input_ids,
                 batch_action_mask=trajectory_batch.batch_action_mask,
                 batch_credits=tokenwise_batch_credits,
+                batch_reasoning_limits=trajectory_batch.batch_reasoning_limits,
             )
             if self.policy_gradient_data is None:
                 self.policy_gradient_data = policy_gradient_data

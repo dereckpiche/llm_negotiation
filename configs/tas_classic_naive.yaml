@@ -1,7 +1,6 @@
 defaults:
     - base.yaml
 
-
 experiment:
     name: "tas_no_regex"
     method: generate_and_train

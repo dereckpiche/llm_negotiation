@@ -101,6 +101,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
     # Init llms + llm adapters
     llms_dict = {}
     for llm_id, model_config in cfg["models"].items():
+        if model_config is None: continue
         model_class: LeanLocalLLM | LargeLanguageModelOpenAI = globals()[
             model_config["class"]
         ]  # TODO: Add server llm
@@ -119,69 +120,70 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         if isinstance(llm, LeanLocalLLM):
             adapter_modules[llm_id] = llm.get_adapter_modules()
 
-    # Scalar Critics
-    critics = {}
-    for critic_id, critic_config in cfg["critics"].items():
-        critic_module_pointer = critic_config["module_pointer"]
-        critic_adapter = get_from_nested_dict(adapter_modules, critic_module_pointer)
-        critics[critic_id] = ScalarCritic(critic_adapter)
+    if cfg["experiment"]["train"]:
+        # Scalar Critics
+        critics = {}
+        for critic_id, critic_config in cfg["critics"].items():
+            critic_module_pointer = critic_config["module_pointer"]
+            critic_adapter = get_from_nested_dict(adapter_modules, critic_module_pointer)
+            critics[critic_id] = ScalarCritic(critic_adapter)
 
-    trainable_modules = {**adapter_modules, **critics}
+        trainable_modules = {**adapter_modules, **critics}
 
-    # Init optimizers
-    optimizers = {}
-    for optimizer_id, optimizer_config in cfg["optimizers"].items():
-        optimizer_module_pointer = optimizer_config["module_pointer"]
-        module = get_from_nested_dict(trainable_modules, optimizer_module_pointer)
-        optimizer_class: torch.optim.Adam | torch.optim.SGD = eval(
-            optimizer_config["optimizer_class_name"]
-        )
-        init_args = optimizer_config["init_args"]
-        optimizers[optimizer_id] = optimizer_class(module.parameters(), **init_args)
-
-    # Init trainers
-    trainers = {}
-    for trainer_id, trainer_config in cfg["trainers"].items():
-        trainer_class = eval(trainer_config["class"])
-        module_pointers = trainer_config["module_pointers"]
-        tokenizer = llms_dict[module_pointers["policy"][0]].tokenizer
-        policy = get_from_nested_dict(adapter_modules, module_pointers["policy"])
-        policy_optimizer = get_from_nested_dict(
-            optimizers, module_pointers["policy_optimizer"]
-        )
-        if module_pointers.get("critic", False):
-            critic = get_from_nested_dict(critics, module_pointers["critic"])
-        else:
-            critic = None
-        if module_pointers.get("critic_optimizer", False):
-            critic_optimizer = get_from_nested_dict(
-                optimizers, module_pointers["critic_optimizer"]
+        # Init optimizers
+        optimizers = {}
+        for optimizer_id, optimizer_config in cfg["optimizers"].items():
+            optimizer_module_pointer = optimizer_config["module_pointer"]
+            module = get_from_nested_dict(trainable_modules, optimizer_module_pointer)
+            optimizer_class: torch.optim.Adam | torch.optim.SGD = eval(
+                optimizer_config["optimizer_class_name"]
             )
-        else:
-            critic_optimizer = None
-        trainer: TrainerAdAlign | TrainerNaive | TrainerSumRewards = trainer_class(
-            policy=policy,
-            policy_optimizer=policy_optimizer,
-            critic=critic,
-            critic_optimizer=critic_optimizer,
-            tokenizer=tokenizer,
-            lr_scheduler=None,  # TODO add
-            critic_lr_scheduler=None,  # TODO add
-            save_path=os.path.join(output_directory, trainer_id),
-            **trainer_config["kwargs"],
-        )
-        trainers[trainer_id] = trainer
+            init_args = optimizer_config["init_args"]
+            optimizers[optimizer_id] = optimizer_class(module.parameters(), **init_args)
 
-        # Stuff common across iterations
-        agent_configs = []
-        for agent_config_ in cfg["markov_games"]["agents"].values():
-            agent_config = AgentConfig(**agent_config_)
-            agent_configs.append(agent_config)
-        nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
-        seed_group_size = cfg["experiment"].get("seed_group_size", 1)
-        assert (
-            nb_matches % seed_group_size == 0
-        ), "nb_matches must be divisible by seed_group_size"
+        # Init trainers
+        trainers = {}
+        for trainer_id, trainer_config in cfg["trainers"].items():
+            trainer_class = eval(trainer_config["class"])
+            module_pointers = trainer_config["module_pointers"]
+            tokenizer = llms_dict[module_pointers["policy"][0]].tokenizer
+            policy = get_from_nested_dict(adapter_modules, module_pointers["policy"])
+            policy_optimizer = get_from_nested_dict(
+                optimizers, module_pointers["policy_optimizer"]
+            )
+            if module_pointers.get("critic", False):
+                critic = get_from_nested_dict(critics, module_pointers["critic"])
+            else:
+                critic = None
+            if module_pointers.get("critic_optimizer", False):
+                critic_optimizer = get_from_nested_dict(
+                    optimizers, module_pointers["critic_optimizer"]
+                )
+            else:
+                critic_optimizer = None
+            trainer: TrainerAdAlign | TrainerNaive | TrainerSumRewards = trainer_class(
+                policy=policy,
+                policy_optimizer=policy_optimizer,
+                critic=critic,
+                critic_optimizer=critic_optimizer,
+                tokenizer=tokenizer,
+                lr_scheduler=None,  # TODO add
+                critic_lr_scheduler=None,  # TODO add
+                save_path=os.path.join(output_directory, trainer_id),
+                **trainer_config["kwargs"],
+            )
+            trainers[trainer_id] = trainer
+
+    # Stuff common across iterations
+    agent_configs = []
+    for agent_config_ in cfg["markov_games"]["agents"].values():
+        agent_config = AgentConfig(**agent_config_)
+        agent_configs.append(agent_config)
+    nb_matches = cfg["experiment"]["nb_matches_per_iteration"]
+    seed_group_size = cfg["experiment"].get("seed_group_size", 1)
+    assert (
+        nb_matches % seed_group_size == 0
+    ), "nb_matches must be divisible by seed_group_size"
 
     for iteration in range(
         cfg["experiment"]["start_epoch"], cfg["experiment"]["nb_epochs"]

@@ -27,6 +27,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import AutoModelForCausalLMWithValueHead
 
 from mllm.models.adapter_training_wrapper import AdapterWrapper
+from mllm.models.inference_backend import PolicyOutput
 from mllm.models.inference_backend_dummy import DummyInferenceBackend
 from mllm.models.inference_backend_sglang import SGLangOfflineBackend
 from mllm.models.inference_backend_vllm import VLLMAsyncBackend
@@ -51,11 +52,11 @@ class LeanLocalLLM:
         hf_kwargs: dict = {},
         adapter_configs: dict = {},
         output_directory: str = "./models/",
+        max_thinking_characters: int = 0,
         inference_backend: Literal["vllm", "sglang", "dummy"] = "vllm",
         inference_backend_sampling_params: dict = {},
         inference_backend_init_kwargs: dict = {},
         initial_adapter_paths: dict[str, str] | None = None,
-        enable_thinking: bool = None,
         regex_max_attempts: int = -1,
     ):
         self.inference_backend_name = inference_backend
@@ -65,7 +66,8 @@ class LeanLocalLLM:
         self.model_name = model_name
         self.adapter_configs = adapter_configs
         self.adapter_ids = list(adapter_configs.keys())
-        self.enable_thinking = enable_thinking
+        self.enable_thinking = max_thinking_characters > 0
+        self.max_thinking_characters = max_thinking_characters
         self.regex_max_attempts = regex_max_attempts
 
         # Optional user-specified initial adapter weight locations (local or HF Hub)
@@ -201,37 +203,54 @@ class LeanLocalLLM:
         self.currently_loaded_adapter_id = adapter_id
         self.weights_got_updated[adapter_id] = False
 
-    def _make_prompt_text(self, prompt: list[dict]) -> str:
-        # Chat templating
-        if self.enable_thinking is not None:
-            prompt_text = self.tokenizer.apply_chat_template(
-                prompt,
-                tokenize=False,
-                add_generation_prompt=True,
-                enable_thinking=self.enable_thinking,
-            )
-        else:
-            prompt_text = self.tokenizer.apply_chat_template(
-                prompt, tokenize=False, add_generation_prompt=True
-            )
-        return prompt_text
+    async def generate(
+        self, prompt: list[dict], regex: str | None = None
+    ) -> PolicyOutput:
+        """
+        TOWRITE
+        """
 
-    async def generate(self, prompt: list[dict], regex: str | None = None) -> str:
+        if self.enable_thinking:
+            # REQUIRED <think>...</think> block with exact line breaks:
+            #   \n<think>...</think>\n\n
+            # No extra characters allowed between </think>\n\n and the core output.
+            think_block = (
+                rf"\n<think>\n[\s\S]{{1,{self.max_thinking_characters}}}</think>\n\n"
+            )
+
+            if regex:
+                core = regex
+                if core.startswith("^"):
+                    core = core[1:]
+                if core.endswith("$"):
+                    core = core[:-1]
+                # Require think_block, then the core, across the entire string.
+                regex = rf"^{think_block}(?:{core})$"
+            else:
+                # Require think_block, then capture the entire final output.
+                regex = rf"^{think_block}(.*)$"
+
+        prompt_text = self.tokenizer.apply_chat_template(
+            prompt,
+            tokenize=False,
+            enable_thinking=self.enable_thinking,
+            add_generation_prompt=True,
+        )
+
         if self.regex_max_attempts != -1 and regex is not None:
-            prompt_text_beginning = self._make_prompt_text(prompt)
             pattern = re.compile(regex)
             for i in range(self.regex_max_attempts):
-                prompt_text = self._make_prompt_text(prompt)
-                response = await self.inference_backend.generate(
+                policy_output: PolicyOutput = await self.inference_backend.generate(
                     prompt_text=prompt_text
                 )
-                if pattern.fullmatch(response):
-                    return response
+                if pattern.fullmatch(policy_output.content):
+                    return policy_output
                 logger.warning(
-                    f"Response {response} did not match regex: {regex}, retry {i + 1}/{self.regex_max_attempts}"
+                    f"Response {policy_output.content} did not match regex: {regex}, retry {i + 1}/{self.regex_max_attempts}"
                 )
                 prompt = [
                     *prompt,
+                    {"role": "assistant", "content": policy_output.content},
                     {
                         "role": "user",
                         "content": (
@@ -239,12 +258,17 @@ class LeanLocalLLM:
                         ),
                     },
                 ]
-            logger.warning(f"Falling back to using regex")
+                prompt_text = self.tokenizer.apply_chat_template(
+                    prompt,
+                    tokenize=False,
+                    enable_thinking=self.enable_thinking,
+                    add_generation_prompt=True,
+                )
+            logger.warning(f"Sending policy output that might not match regex.")
             return await self.inference_backend.generate(
-                prompt_text=prompt_text_beginning, regex=regex
+                prompt_text=prompt_text, regex=regex
             )
         else:
-            prompt_text = self._make_prompt_text(prompt)
             return await self.inference_backend.generate(
                 prompt_text=prompt_text, regex=regex
             )
@@ -257,11 +281,6 @@ class LeanLocalLLM:
         # New version of the adapters available
         for adapter_id in self.adapter_ids:
             self.weights_got_updated[adapter_id] = True
-
-        # import random
-        # self.save_path = self.save_path + str(random.randint(1,500))
-        # print(f"Save path: {self.save_path}")
-        # self.adapter_paths = {adapter_id:os.path.join(self.save_path, adapter_id) for adapter_id in self.adapter_ids}
 
         adapter_id = self.adapter_ids[0]
         self.hf_adapters[adapter_id].save_pretrained(self.save_path)

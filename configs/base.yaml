@@ -28,6 +28,7 @@ models:
             llm_id: base_llm
             model_name: Qwen/Qwen3-4B-Instruct-2507 #  Qwen/Qwen3-4B-Instruct-2507, Qwen/Qwen2.5-7B-Instruct
             inference_backend: vllm # vllm, dummy
+            max_thinking_characters: 0
             hf_kwargs:
                 device_map: "auto"
                 torch_dtype: "bfloat16"
@@ -94,6 +95,7 @@ trainers:
             restrict_tokens: null
             mini_batch_size: 4
             use_gradient_checkpointing: True
+            use_qwen_reasoning_mask: False
             temperature: ${temperature}
             device: "cuda:0"
             use_gae: False

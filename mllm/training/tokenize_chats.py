@@ -1,7 +1,16 @@
+"""
+https://github.com/huggingface/transformers/blob/v4.53.3/src/transformers/tokenization_utils_base.py#L1519
+"""
+
 import torch
 from transformers import AutoTokenizer
 
-from mllm.training.training_data_utils import TrainingChatTurn, TrajectoryBatch
+from mllm.training.training_data_utils import (
+    ReasoningLimits,
+    TrainingChatTurn,
+    TrajectoryBatch,
+)
+from mllm.utils.tiny_utils import find_subsequence
 
 
 def get_chat_dicts(chat: list[TrainingChatTurn]) -> list[dict]:
@@ -30,12 +39,8 @@ custom_qwen_template = """
                 {%- set content = content.split('</think>')[-1].lstrip('\n') %}
             {%- endif %}
         {%- endif %}
-        {%- if loop.index0 > ns.last_query_index %}
-            {%- if reasoning_content %}
-                {{- '<|im_start|>' + message.role + '\n<think>\n' + reasoning_content.strip('\n') + '\n</think>\n\n' + content.lstrip('\n') }}
-            {%- else %}
-                {{- '<|im_start|>' + message.role + '\n' + content }}
-            {%- endif %}
+        {%- if reasoning_content %}
+            {{- '<|im_start|>' + message.role + '\n<think>\n' + reasoning_content.strip('\n') + '\n</think>\n\n' + content.lstrip('\n') }}
         {%- else %}
             {{- '<|im_start|>' + message.role + '\n' + content }}
         {%- endif %}
@@ -51,15 +56,50 @@ custom_qwen_template = """
 """
 
 
+def get_qwen_reasoning_limit_tuple(
+    tokenizer: AutoTokenizer, chat_turn: TrainingChatTurn
+) -> ReasoningLimits:
+    """ """
+    encoded = tokenizer.apply_chat_template(
+        [chat_turn], return_tensors=None, chat_template=custom_qwen_template
+    )
+    if chat_turn.role != "assistant" or chat_turn.reasoning_content is None:
+        return None
+    open_reasoning_ids = tokenizer.encode("\n<think>\n", add_special_tokens=False)
+    close_reasoning_ids = tokenizer.encode("</think>\n\n", add_special_tokens=False)
+    reasoning_start = find_subsequence(encoded, open_reasoning_ids)
+    reasoning_end = find_subsequence(encoded, close_reasoning_ids) + len(
+        close_reasoning_ids
+    )
+    if reasoning_start == -1 or reasoning_end == -1 or reasoning_end < reasoning_start:
+        import pdb
+
+        pdb.set_trace()
+    assert (
+        reasoning_start != -1
+        and reasoning_end != -1
+        and reasoning_end >= reasoning_start
+    ), f"Expected to find reasoning content in the assistant turn {tokenizer.decode(encoded)}"
+    content_end = len(encoded)
+    return ReasoningLimits(reasoning_start, reasoning_end, content_end)
+
+
 def process_training_chat(
     tokenizer: AutoTokenizer,
     chat_history: list[TrainingChatTurn],
-) -> tuple[torch.IntTensor, torch.BoolTensor, torch.IntTensor, torch.BoolTensor]:
+    use_qwen_reasoning_mask: bool = False,
+) -> tuple[
+    torch.IntTensor,
+    torch.BoolTensor,
+    torch.IntTensor,
+    torch.BoolTensor,
+    list[ReasoningLimits],
+]:
     """Tokenize a single training chat and build aligned per-token masks.
 
     Given an ordered list of `TrainingChatTurn`, this function tokenizes each
     turn independently using the tokenizer's chat template, then concatenates
-    all resulting token sequences. It also constructs three parallel 1D masks
+    all resulting token sequences. It also constructs four parallel 1D masks
     that align with the concatenated tokens:
 
     - input_ids: token ids for the entire chat, turn by turn
@@ -69,6 +109,7 @@ def process_training_chat(
       `time_step`
     - state_ends_mask: True for the last token of any turn where
       `is_state_end` is True, otherwise False
+    - reasoning_limit_tuples: list of tuples (start, end) of the reasoning blocks
 
     Important details:
     - Each turn is passed as a single-message list to
@@ -88,17 +129,26 @@ def process_training_chat(
         chat_history: Ordered list of `TrainingChatTurn` forming one dialogue.
 
     Returns:
-        A tuple of four 1D tensors, all of equal length N (the total number of
+        A tuple of five 1D tensors, all of equal length N (the total number of
         tokens across all turns), in the following order:
         - input_ids (LongTensor)
         - action_mask (BoolTensor)
         - timesteps (FloatTensor as implemented; see note above)
         - state_ends_mask (BoolTensor)
+        - reasoning_limit_tuples (list[tuple[int, int]])
     """
     state_ends_mask = []
     input_ids = []
     action_mask = []
     timesteps = []
+    reasoning_limit_tuples = []
+    token_counter = 0
+    chat_template = None
+
+    if use_qwen_reasoning_mask:
+        assert tokenizer.model_type == "QwenForCausalLM"
+        chat_template = custom_qwen_template
+
     for train_chat_turn in chat_history:
         is_state_end = train_chat_turn.is_state_end
         time_step = train_chat_turn.time_step
@@ -106,23 +156,36 @@ def process_training_chat(
         chat_turn = {
             "role": train_chat_turn.role,
             "content": train_chat_turn.content,
+            "reasoning_content": train_chat_turn.reasoning_content,
         }
         chat_turn_ids = tokenizer.apply_chat_template(
-            [chat_turn], return_tensors="pt", chat_template=custom_qwen_template
+            [chat_turn], return_tensors="pt", chat_template=chat_template
         ).flatten()
         nb_chat_turns_ids = chat_turn_ids.numel()
         state_ends_mask.append(torch.zeros(nb_chat_turns_ids, dtype=torch.bool))
         if is_state_end:
             state_ends_mask[-1][-1] = True  # last token is state end
+
+        if use_qwen_reasoning_mask:
+            # Handle Qwen-specific reasoning mask
+            reasoning_limit_tuple = get_qwen_reasoning_limit_tuple(
+                tokenizer, train_chat_turn
+            )
+            assert reasoning_limit_tuple is not None
+            reasoning_limit_tuple.reasoning_start += token_counter
+            reasoning_limit_tuple.reasoning_end += token_counter
+            reasoning_limit_tuple.content_end += token_counter
+            reasoning_limit_tuples.append(reasoning_limit_tuple)
+
         input_ids.append(chat_turn_ids)
         action_mask.append(torch.ones(nb_chat_turns_ids, dtype=torch.bool))
         if not is_action:
             action_mask[-1] = action_mask[-1] * False
         timesteps.append(torch.ones(nb_chat_turns_ids) * time_step)
+        token_counter += nb_chat_turns_ids
 
     input_ids = torch.cat(input_ids)
     action_mask = torch.cat(action_mask)
     timesteps = torch.cat(timesteps)
     state_ends_mask = torch.cat(state_ends_mask)
-
-    return (input_ids, action_mask, timesteps, state_ends_mask)
+    return (input_ids, action_mask, timesteps, state_ends_mask, reasoning_limit_tuples)

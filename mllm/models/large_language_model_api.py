@@ -1,19 +1,28 @@
 from __future__ import annotations
 
+import asyncio
+import copy
 import os
 import re
+import random
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, OpenAIError
+import backoff
+from mllm.models.inference_backend import PolicyOutput
 
+
+# TODO: Get this automatically from OpenAI
+reasoning_models = ["gpt-5-mini", "gpt-5", "o1-mini", "o1", "o1-pro", "o3-mini", "o3", "o3-pro", "o4-mini", "o4", "o4-pro"]
 
 class LargeLanguageModelOpenAI:
     """Tiny async wrapper for OpenAI Chat Completions."""
 
     def __init__(
         self,
-        llm_id: str,
-        model: str,
+        llm_id: str= "",
+        model: str= "gpt-4.1-mini",
+        use_reasoning: bool=False,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         timeout_s: float = 300.0,
@@ -23,6 +32,9 @@ class LargeLanguageModelOpenAI:
     ) -> None:
         self.llm_id = llm_id
         self.model = model
+        self.use_reasoning = use_reasoning
+        if model in reasoning_models:
+            self.use_reasoning = True
         key = api_key or os.getenv("OPENAI_API_KEY")
         if not key:
             raise RuntimeError(
@@ -35,6 +47,11 @@ class LargeLanguageModelOpenAI:
 
         # Sampling/default request params set at init
         self.sampling_params = sampling_params
+        if use_reasoning:
+            self.sampling_params["reasoning"] = {
+                "effort": "medium",
+                "summary": "detailed",
+            }
         self.regex_max_attempts = max(1, int(regex_max_attempts))
 
     def get_inference_policies(self) -> Dict[str, Callable]:
@@ -43,45 +60,77 @@ class LargeLanguageModelOpenAI:
         }
 
     async def prepare_adapter_for_inference(self, *args: Any, **kwargs: Any) -> None:
+        await asyncio.sleep(0)
         pass
 
     async def toggle_eval_mode(self, *args: Any, **kwargs: Any) -> None:
+        await asyncio.sleep(0)
         pass
 
     async def toggle_training_mode(self, *args: Any, **kwargs: Any) -> None:
+        await asyncio.sleep(0)
         pass
 
     async def export_adapters(self, *args: Any, **kwargs: Any) -> None:
+        await asyncio.sleep(0)
         pass
 
     async def checkpoint_all_adapters(self, *args: Any, **kwargs: Any) -> None:
+        await asyncio.sleep(0)
         pass
 
+    def extract_output_from_response(self, resp: Response) -> PolicyOutput:
+        if self.use_reasoning:
+            summary = resp.output[0].summary
+            if summary != []:
+                reasoning_content = summary[0].text
+                reasoning_content = f"OpenAI Reasoning Summary: {reasoning_content}"
+            else:
+                reasoning_content = None
+            content = resp.output[1].content[0].text
+
+        else:
+            reasoning_content = None
+            content = resp.output[0].content[0].text
+
+        return PolicyOutput(
+            content=content,
+            reasoning_content=reasoning_content,
+        )
+
+    @backoff.on_exception(backoff.expo, Exception, max_time=10**10, max_tries=10**10)
     async def generate(
         self,
         prompt: list[dict],
         regex: Optional[str] = None,
-    ) -> str:
+    ) -> PolicyOutput:
+
+        # Remove any non-role/content keys from the prompt else openai will error
+        prompt = [{"role": p["role"], "content": p["content"]} for p in prompt]
+
+        # if self.sleep_between_requests:
+        #     await self.wait_random_time()
+
         # If regex is required, prime the model and validate client-side
         if regex:
-            # constraint_msg = {
-            #     "role": "system",
-            #     "content": (
-            #         f"Output must match this regex exactly: {regex} \n"
-            #         "Return only the matching string, with no quotes or extra text."
-            #     ),
-            # }
-            # prompt = [constraint_msg, *prompt]
+            constraint_msg = {
+                "role": "user",
+                "content": (
+                    f"Output must match this regex exactly: {regex} \n"
+                    "Return only the matching string, with no quotes or extra text."
+                ),
+            }
+            prompt = [constraint_msg, *prompt]
             pattern = re.compile(regex)
             for _ in range(self.regex_max_attempts):
-                resp = await self.client.chat.completions.create(
+                resp = await self.client.responses.create(
                     model=self.model,
-                    messages=prompt,
+                    input=prompt,
                     **self.sampling_params,
                 )
-                text = (resp.choices[0].message.content or "").strip()
-                if pattern.fullmatch(text):
-                    return text
+                policy_output = self.extract_output_from_response(resp)
+                if pattern.fullmatch(policy_output.content):
+                    return policy_output
                 prompt = [
                     *prompt,
                     {
@@ -91,15 +140,16 @@ class LargeLanguageModelOpenAI:
                         ),
                     },
                 ]
-            return text
+            return policy_output
 
         # Simple, unconstrained generation
-        resp = await self.client.chat.completions.create(
+        resp = await self.client.responses.create(
             model=self.model,
-            messages=prompt,
+            input=prompt,
             **self.sampling_params,
         )
-        return resp.choices[0].message.content
+        policy_output = self.extract_output_from_response(resp)
+        return policy_output
 
     def shutdown(self) -> None:
         self.client = None

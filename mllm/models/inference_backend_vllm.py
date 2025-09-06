@@ -1,4 +1,5 @@
 import asyncio
+import re
 from typing import Optional
 
 from transformers import AutoTokenizer
@@ -6,7 +7,7 @@ from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
 from vllm.lora.request import LoRARequest
 from vllm.sampling_params import GuidedDecodingParams, RequestOutputKind
 
-from mllm.models.inference_backend import LLMInferenceBackend
+from mllm.models.inference_backend import LLMInferenceBackend, PolicyOutput
 from mllm.utils.short_id_gen import generate_short_id
 
 
@@ -55,7 +56,9 @@ class VLLMAsyncBackend(LLMInferenceBackend):
         # No explicit close call; engine stops when process exits.
         pass
 
-    async def generate(self, prompt_text: str, regex: Optional[str] = None) -> str:
+    async def generate(
+        self, prompt_text: str, regex: Optional[str] = None
+    ) -> PolicyOutput:
         # Build SamplingParams correctly
 
         guided = GuidedDecodingParams(regex=regex) if regex else None
@@ -66,13 +69,28 @@ class VLLMAsyncBackend(LLMInferenceBackend):
         )
 
         request_id = f"req-{asyncio.get_running_loop().time()}"
-        results = self.engine.generate(
+        result_generator = self.engine.generate(
             prompt_text,
             sp,  # SamplingParams(...)
             request_id,
             lora_request=self.current_lora_request,
         )
 
-        async for out in results:  # with FINAL_ONLY this runs once
-            res = out.outputs[0].text
-        return res
+        async for out in result_generator:  # with FINAL_ONLY this runs once
+            res = out
+
+        raw_text = res.outputs[0].text
+
+        content = raw_text
+        reasoning_content = None
+
+        if regex:
+            # Strict split: require \n<think>...</think>\n\n before final content
+            m = re.match(
+                r"^\n<think>\n([\s\S]*?)</think>\n\n(.*)$", raw_text, flags=re.DOTALL
+            )
+            if m:
+                reasoning_content = m.group(1)
+                content = m.group(2)
+
+        return PolicyOutput(content=content, reasoning_content=reasoning_content)
