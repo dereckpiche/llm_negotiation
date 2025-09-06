@@ -1,8 +1,8 @@
 defaults:
-    - tas.yaml
+    - tas_classic_naive.yaml
 
 experiment:
-    name: "tas_coop"
+    name: "tas_no_regex_sum_of_rewards_lr3e6"
 
 trainers:
     agent_trainer:

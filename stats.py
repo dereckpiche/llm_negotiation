@@ -329,38 +329,14 @@ def _resolve_metric_function(
     Returns (metric_name, callable)
     """
     metric_name = spec
-    # Support comma-separated user input by trimming
-    metric_name = metric_name.strip().strip(",")
-
-    # Fully-qualified module:function
-    if ":" in metric_name:
-        module_name, func_name = metric_name.split(":", 1)
-        mod = importlib.import_module(module_name)
-        fn = getattr(mod, func_name)
-        return func_name, fn
-
     # Search default modules
     for mod_name in search_modules:
         try:
             mod = importlib.import_module(mod_name)
         except Exception:
             continue
-        # Prefer metric_{name}
-        cand = f"metric_{metric_name}"
-        if hasattr(mod, cand):
-            return metric_name, getattr(mod, cand)
         if hasattr(mod, metric_name):
             return metric_name, getattr(mod, metric_name)
-
-    # Fallback to locally defined metrics in this module
-    local_cand = f"metric_{metric_name}"
-    fn = globals().get(local_cand)
-    if callable(fn):
-        return metric_name, fn
-    fn2 = globals().get(metric_name)
-    if callable(fn2):
-        return metric_name, fn2
-
     raise ValueError(
         f"Could not resolve metric '{spec}'. Provide module:function or ensure it exists in {search_modules}."
     )
