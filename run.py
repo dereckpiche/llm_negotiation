@@ -307,10 +307,18 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         # Send advantage packets to other trainers
         all_advantage_packets = []
         for trainer_id, trainer in trainers.items():
-            trainer.set_trajectory_data(
-                rollout_trees=rollout_trees,
-                agent_ids=cfg["train_on_which_data"][trainer_id],
-            )
+            for agent_id in ["Alice", "Bob", "buffer_Alice", "buffer_Bob"]:
+                agent_id_roots = [
+                    root for root in rollout_trees if agent_id in root.agent_ids
+                ]
+                trainer.set_agent_trajectory_data(
+                    agent_id=agent_id,
+                    roots=agent_id_roots,
+                )
+            # trainer.set_trajectory_data(
+            #     rollout_trees=rollout_trees,
+            #     agent_ids=cfg["train_on_which_data"][trainer_id],
+            # )
             advantage_packets = trainer.share_advantage_data()
             all_advantage_packets.extend(advantage_packets)
 

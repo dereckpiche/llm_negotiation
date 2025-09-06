@@ -102,6 +102,9 @@ models:
                 max_loras: 10
                 max_cpu_loras : 10
 
+train_on_which_data:
+    agent_trainer: ${agent_ids}
+
 # optimizers:
 #     agent_optimizer:
 #         module_pointer: ["base_llm", "agent_adapter"]

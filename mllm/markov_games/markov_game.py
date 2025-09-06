@@ -67,6 +67,9 @@ class MarkovGame(object):
     def get_crn_id(self) -> int:
         return self.crn_id
 
+    def get_agent_ids(self) -> List[AgentId]:
+        return list(self.agent_ids)
+
     async def get_action_of_agent_without_side_effects(
         self, agent_id: AgentId
     ) -> Tuple[Any, AgentActLog]:

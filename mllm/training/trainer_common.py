@@ -534,12 +534,18 @@ class BaseTrainer(ABC):
         batch_size = trajectories.rollout_ids.shape[0]
         # self.tally.add_metric(path=["discounted_returns"], metric=rewards)
         batch_rewards = trajectories.batch_rewards
+        agent_id = trajectories.agent_ids[0]
         self.tally.add_metric(path=["batch_rewards"], metric=batch_rewards)
         ######################################
         # use critic for advantage estimation
         ######################################
         if self.use_gae:
-            self.critic.train()
+            if "buffer" in agent_id:
+                self.critic.eval()
+                training = False
+            else:
+                self.critic.train()
+                training = True
             advantages = []
             # critic_loss_scaling_factor comes learning single critic for two agents
             normalization_factor = (
@@ -630,20 +636,20 @@ class BaseTrainer(ABC):
                     lambda_coef=annealed_lambda,
                 )  # (B, max_jT)
                 self.tally.add_metric(path=["mb_gae_advantages"], metric=gae_advantages)
+                if training:
+                    targets = (
+                        gae_advantages.to(dtype=dtype) + det_vals_estimate_mb[:, :-1]
+                    )  # (B, max_jT) # A(s, a, b) + V(s) = Q(s, a, b)
+                    self.tally.add_metric(path=["mb_targets_critic"], metric=targets)
 
-                targets = (
-                    gae_advantages.to(dtype=dtype) + det_vals_estimate_mb[:, :-1]
-                )  # (B, max_jT) # A(s, a, b) + V(s) = Q(s, a, b)
-                self.tally.add_metric(path=["mb_targets_critic"], metric=targets)
-
-                loss = F.huber_loss(
-                    input=vals_estimate_mb,
-                    target=targets,
-                )
-                self.tally.add_metric(path=["mb_critic_loss"], metric=loss.item())
-                # Accumulate gradient
-                loss /= normalization_factor
-                self.accelerator.backward(loss)
+                    loss = F.huber_loss(
+                        input=vals_estimate_mb,
+                        target=targets,
+                    )
+                    self.tally.add_metric(path=["mb_critic_loss"], metric=loss.item())
+                    # Accumulate gradient
+                    loss /= normalization_factor
+                    self.accelerator.backward(loss)
 
                 # Get jagged back using timestep_counts
                 advantages.extend(
@@ -722,13 +728,13 @@ class BaseTrainer(ABC):
         pass
 
     def set_trajectory_data(
-        self, rollout_trees: list[RolloutTreeRootNode], agent_ids: list[str]
+        self, roots: list[RolloutTreeRootNode], agent_ids: list[str]
     ) -> None:
         """
         TOWRITE
         """
         for agent_id in agent_ids:
-            self.set_agent_trajectory_data(agent_id, rollout_trees)
+            self.set_agent_trajectory_data(agent_id, roots)
 
     @abstractmethod
     def share_advantage_data(self) -> list[AdvantagePacket]:
@@ -748,6 +754,8 @@ class BaseTrainer(ABC):
         concat_rollout_ids = []
         concat_agent_ids = []
         for agent_id, trajectory_batch in self.training_data.items():
+            if "buffer" in agent_id:
+                continue
             tokenwise_batch_credits = get_tokenwise_credits(
                 batch_timesteps=trajectory_batch.batch_timesteps,
                 batch_credits=trajectory_batch.batch_credits,
