@@ -4,33 +4,37 @@ import asyncio
 import copy
 import os
 import re
+import random
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
-from openai import AsyncOpenAI
-
+from openai import AsyncOpenAI, OpenAIError
+import backoff
 from mllm.models.inference_backend import PolicyOutput
 
+
+# TODO: Get this automatically from OpenAI
+reasoning_models = ["gpt-5-mini", "gpt-5", "o1-mini", "o1", "o1-pro", "o3-mini", "o3", "o3-pro", "o4-mini", "o4", "o4-pro"]
 
 class LargeLanguageModelOpenAI:
     """Tiny async wrapper for OpenAI Chat Completions."""
 
     def __init__(
         self,
-        use_reasoning: bool,
-        llm_id: str,
-        model: str,
+        llm_id: str= "",
+        model: str= "gpt-4.1-mini",
+        use_reasoning: bool=False,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         timeout_s: float = 300.0,
         regex_max_attempts: int = 10,
         sampling_params: Optional[Dict[str, Any]] = None,
         output_directory: Optional[str] = None,
-        sleep_between_requests: float = 0.0,
     ) -> None:
         self.llm_id = llm_id
         self.model = model
         self.use_reasoning = use_reasoning
-
+        if model in reasoning_models:
+            self.use_reasoning = True
         key = api_key or os.getenv("OPENAI_API_KEY")
         if not key:
             raise RuntimeError(
@@ -94,13 +98,18 @@ class LargeLanguageModelOpenAI:
             reasoning_content=reasoning_content,
         )
 
+    @backoff.on_exception(backoff.expo, Exception, max_time=10**10, max_tries=10**10)
     async def generate(
         self,
         prompt: list[dict],
         regex: Optional[str] = None,
     ) -> PolicyOutput:
+
         # Remove any non-role/content keys from the prompt else openai will error
         prompt = [{"role": p["role"], "content": p["content"]} for p in prompt]
+
+        # if self.sleep_between_requests:
+        #     await self.wait_random_time()
 
         # If regex is required, prime the model and validate client-side
         if regex:
@@ -140,7 +149,6 @@ class LargeLanguageModelOpenAI:
             **self.sampling_params,
         )
         policy_output = self.extract_output_from_response(resp)
-        await asyncio.sleep(self.sleep_between_requests)
         return policy_output
 
     def shutdown(self) -> None:

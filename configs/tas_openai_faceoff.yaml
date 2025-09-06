@@ -1,18 +1,21 @@
+defaults:
+  - base.yaml
+  - tas_no_regex.yaml
+
 hydra:
     run:
         dir: "${oc.env:SCRATCH}/llm_negotiation/${now:%Y_%m}/${experiment.name}"
     job:
         chdir: false
 
-
 experiment:
-    name: openai_faceoff
+    name: tas_openai_faceoff_${models.openai_llm.init_args.model}
     nb_epochs: 1
     nb_matches_per_iteration: 64
     train: false
+    seed_group_size: 1
 
 markov_games:
-
     agents:
         0:
             policy_id: openai_llm
@@ -24,19 +27,16 @@ models:
         class: LargeLanguageModelOpenAI
         init_args:
             use_reasoning: false
-            sleep_between_requests: 0
             llm_id: openai_llm
-            model: gpt-4.1 # https://platform.openai.com/docs/pricing
+            model: gpt-5 # https://platform.openai.com/docs/pricing
             base_url: https://api.openai.com/v1
             timeout_s: 6000.0
             regex_max_attempts: 3
             sampling_params:
                 temperature: 1.0
                 top_p: 1.0
+    base_llm: null
 
-    base_llm:
-        init_args:
-            inference_backend: dummy
 
 train_on_which_data:
     agent_trainer: []
