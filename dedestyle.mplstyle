@@ -113,7 +113,7 @@ axes.prop_cycle: cycler('color', ['ef8323', '0eb224', 'f235df', '3587f2']) + cyc
 
 
 # ===== SCATTER PLOT ENHANCEMENTS =====
-scatter.marker: o   
+scatter.marker: o
 scatter.edgecolors: white
 
 # ===== HISTOGRAM STYLING =====
@@ -149,5 +149,3 @@ boxplot.flierprops.markeredgecolor: C0392B
 # Contour plot styling
 contour.negative_linestyle: dashed
 contour.corner_mask: True
-
-

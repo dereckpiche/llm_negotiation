@@ -1,32 +1,14 @@
 # To quickly check if code still runs
-
-defaults:
-    - tas_rps.yaml
-
 experiment:
     name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
-    nb_epochs: 2
-    nb_matches_per_iteration: 2
-    seed_group_size: 2
 
+defaults:
+    - no_press_naive.yaml
 
-markov_games:
-    simulation_class_name: TrustAndSplitRPSSimulation
-    simulation_init_args:
-        agent_ids: ${agent_ids} 
-        nb_of_rounds: 10
-        quota_messages_per_agent_per_round: 1
-    runner_method_name: LinearRunner
-
-models:
-    base_llm:
-        class: LeanLocalLLM
+optimizers:
+    agent_optimizer:
+        module_pointer: ["base_llm", "agent_adapter"]
+        optimizer_class_name: torch.optim.Adam
         init_args:
-            llm_id: base_llm
-            model_name: "Qwen/Qwen3-4B-Instruct-2507" # Qwen/Qwen3-4B-Instruct-2507
-            inference_backend: vllm
-trainers:
-    agent_trainer:
-        class: TrainerSumRewards
-        kwargs:
-            enable_tokenwise_logging: True
+            lr: 1e-4
+            weight_decay: 0.0
