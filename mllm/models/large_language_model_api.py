@@ -22,7 +22,6 @@ class LargeLanguageModelOpenAI:
         self,
         llm_id: str= "",
         model: str= "gpt-4.1-mini",
-        use_reasoning: bool=False,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         timeout_s: float = 300.0,
@@ -32,9 +31,6 @@ class LargeLanguageModelOpenAI:
     ) -> None:
         self.llm_id = llm_id
         self.model = model
-        self.use_reasoning = use_reasoning
-        if model in reasoning_models:
-            self.use_reasoning = True
         key = api_key or os.getenv("OPENAI_API_KEY")
         if not key:
             raise RuntimeError(
@@ -47,7 +43,8 @@ class LargeLanguageModelOpenAI:
 
         # Sampling/default request params set at init
         self.sampling_params = sampling_params
-        if use_reasoning:
+        self.use_reasoning = model in reasoning_models
+        if self.use_reasoning:
             self.sampling_params["reasoning"] = {
                 "effort": "medium",
                 "summary": "detailed",

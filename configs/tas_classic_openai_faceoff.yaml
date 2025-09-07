@@ -1,0 +1,39 @@
+defaults:
+  - base.yaml
+  - tas_classic_naive.yaml
+
+
+experiment:
+    name: tas_classic_openai_faceoff_${models.openai_llm.init_args.model}
+    nb_epochs: 1
+    nb_matches_per_iteration: 64
+    train: false
+    seed_group_size: 1
+
+
+markov_games:
+    simulation_init_args:
+            nb_of_rounds: 10
+    agents:
+        0:
+            policy_id: openai_llm
+        1:
+            policy_id: openai_llm
+
+models:
+    openai_llm:
+        class: LargeLanguageModelOpenAI
+        init_args:
+            llm_id: openai_llm
+            model: gpt-4.1 # https://platform.openai.com/docs/pricing
+            base_url: https://api.openai.com/v1
+            timeout_s: 6000.0
+            regex_max_attempts: 3
+            sampling_params:
+                temperature: 1.0
+                top_p: 1.0
+    base_llm: null
+
+
+train_on_which_data:
+    agent_trainer: []
