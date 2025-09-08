@@ -1,22 +1,18 @@
 import torch
 
-from mllm.training.tally_basic import Tally
 
-
-def whiten_advantages(advantages: torch.Tensor, tally: Tally = Tally()) -> torch.Tensor:
+def whiten_advantages(advantages: torch.Tensor) -> torch.Tensor:
     """
     Whitens the advantages.
     """
     whitened_advantages = advantages - torch.mean(advantages) / (
         torch.std(advantages) + 1e-9
     )
-    tally.add_metric(path=["whitened_advantages"], metric=whitened_advantages)
     return whitened_advantages
 
 
 def whiten_advantages_time_step_wise(
     advantages: torch.Tensor,  # (B, T)
-    tally: Tally = Tally(),
 ) -> torch.Tensor:
     """
     Whitens the advantages.
@@ -25,15 +21,11 @@ def whiten_advantages_time_step_wise(
     whitened_advantages_time_step_wise = advantages - advantages.mean(
         dim=0, keepdim=True
     ) / (advantages.std(dim=0, keepdim=True) + 1e-9)
-    tally.add_metric(
-        path=["whitened_advantages_time_step_wise"],
-        metric=whitened_advantages_time_step_wise,
-    )
     return whitened_advantages_time_step_wise
 
 
 def get_discounted_state_visitation_credits(
-    credits: torch.Tensor, discount_factor: float, tally: Tally = Tally()  # (B, T)
+    credits: torch.Tensor, discount_factor: float  # (B, T)
 ) -> torch.Tensor:
     """
     Computes discounted state visitation credits for a sequence of credits.
@@ -41,17 +33,12 @@ def get_discounted_state_visitation_credits(
     return credits * (
         discount_factor ** torch.arange(credits.shape[1], device=credits.device)
     )
-    tally.add_metric(
-        path=["discounted_state_visitation_credits"],
-        metric=discounted_state_visitation_credits,
-    )
 
 
 def get_discounted_returns(
     rewards: torch.Tensor,  # (B, T)
     discount_factor: float,
     reward_normalizing_constant: float,
-    tally: Tally = Tally(),
 ) -> torch.Tensor:
     """
     Computes Monte Carlo discounted returns for a sequence of rewards.
@@ -70,11 +57,10 @@ def get_discounted_returns(
     for t in reversed(range(T)):
         accumulator = rewards[:, t] + discount_factor * accumulator
         discounted_returns[:, t] = accumulator
-    tally.add_metric(path=["monte_carlo_discounted_returns"], metric=discounted_returns)
     return discounted_returns
 
 
-def get_rloo_credits(credits: torch.Tensor, tally: Tally = Tally()):  # (B, S)
+def get_rloo_credits(credits: torch.Tensor):  # (B, S)
     assert credits.dim() == 2, "Wrong dimensions."
     rloo_baselines = torch.zeros_like(credits)
     n = credits.shape[0]
@@ -82,8 +68,6 @@ def get_rloo_credits(credits: torch.Tensor, tally: Tally = Tally()):  # (B, S)
         return credits, rloo_baselines
     rloo_baselines = (torch.sum(credits, dim=0, keepdim=True) - credits) / (n - 1)
     rloo_credits = credits - rloo_baselines
-    tally.add_metric(path=["rloo_credits"], metric=rloo_credits)
-    tally.add_metric(path=["rloo_baselines"], metric=rloo_baselines)
     return rloo_credits, rloo_baselines
 
 
@@ -175,7 +159,6 @@ def get_advantage_alignment_credits(
     mean_normalize_ad_align: bool = False,
     whiten_adalign_advantages: bool = False,
     whiten_adalign_advantages_time_step_wise: bool = False,
-    tally: Tally = Tally(),
 ) -> torch.Tensor:
     """
     Calculate the advantage alignment credits with vectorization, as described in https://arxiv.org/abs/2406.14662.
@@ -206,6 +189,7 @@ def get_advantage_alignment_credits(
     Returns:
         torch.Tensor: The advantage alignment credits.
     """
+
     assert a1.dim() == a2.dim() == 2, "Advantages must be of shape (B, S)"
     if a1_alternative is not None:
         assert (
@@ -214,15 +198,13 @@ def get_advantage_alignment_credits(
         B, T, A = a1_alternative.shape
     assert a1.shape == a2.shape, "Not the same shape"
 
-    tally.add_metric(path=["regular_advantages"], metric=a1)
-    tally.add_metric(path=["regular_advantages_other"], metric=a2)
-    if a1_alternative is not None:
-        tally.add_metric(path=["alternative_advantages"], metric=a1_alternative)
+    sub_tensors = {}
 
     if use_old_ad_align:
         ad_align_weights = get_advantage_alignment_weights(
             advantages=a1, exclude_k_equals_t=exclude_k_equals_t, gamma=gamma
         )
+        sub_tensors["ad_align_weights_old"] = ad_align_weights
         if exclude_k_equals_t:
             ad_align_weights = gamma * ad_align_weights
     else:
@@ -242,9 +224,8 @@ def get_advantage_alignment_credits(
             exclude_k_equals_t=exclude_k_equals_t,
             gamma=gamma,
         )
+        sub_tensors["ad_align_weights"] = ad_align_weights
 
-    # Log raw weights before further processing
-    tally.add_metric(path=["raw_advantage_alignment_weights"], metric=ad_align_weights)
 
     # Use sign
     if use_sign:
@@ -253,19 +234,10 @@ def get_advantage_alignment_credits(
         negative_signs = ad_align_weights < 0
         ad_align_weights[positive_signs] = 1
         ad_align_weights[negative_signs] = -1
-        tally.add_metric(
-            path=["ad_align_weights_ratio_positive_signs"],
-            metric=positive_signs.sum() / ad_align_weights.size,
-        )
-        tally.add_metric(
-            path=["ad_align_weights_ratio_negative_signs"],
-            metric=negative_signs.sum() / ad_align_weights.size,
-        )
+        sub_tensors["ad_align_weights_sign"] = ad_align_weights
         # (rest are 0)
 
-        tally.add_metric(
-            path=["ad_align_weights_after_using_sign"], metric=ad_align_weights
-        )
+
 
     ###################
     # Process weights
@@ -284,62 +256,45 @@ def get_advantage_alignment_credits(
         clipping_ratio = (
             torch.sum(upper_mask) + torch.sum(lower_mask)
         ) / upper_mask.size
+        sub_tensors["clipped_ad_align_weights"] = ad_align_weights
 
-        tally.add_metric(path=["ad_align_clipping_ratio"], metric=clipping_ratio)
 
-        tally.add_metric(
-            path=["ad_align_weights_after_clipping"], metric=ad_align_weights
-        )
 
     # 1/1+t Regularization
     if use_time_regularization:
         t_values = torch.arange(1, T + 1)
         ad_align_weights = ad_align_weights / t_values
-        tally.add_metric(
-            path=["ad_align_weights_after_1_over_t_reg"], metric=ad_align_weights
-        )
+        sub_tensors["time_regularized_ad_align_weights"] = ad_align_weights
 
     # Use coop on t=0
     if force_coop_first_step:
         ad_align_weights[:, 0] = 1
-        tally.add_metric(
-            path=["ad_align_weights_after_force_coop_first_step"],
-            metric=ad_align_weights,
-        )
-
+        sub_tensors["coop_first_step_ad_align_weights"] = ad_align_weights
     # # Normalize alignment terms (across same time step)
     # if use_variance_regularization_in_ad_align:
     #     # TODO: verify
     #     reg_coef = torch.std(a1[:, -1]) / (torch.std(opp_shaping_terms[:, -1]) + 1e-9)
     #     opp_shaping_terms *= reg_coef
-    #     tally.add_metric(
-    #         path=["opp_shaping_terms_after_var_reg"], metric=opp_shaping_terms
-    #     )
 
     ####################################
     # Compose elements together
     ####################################
 
     opp_shaping_terms = beta * ad_align_weights * a2
+    sub_tensors["ad_align_opp_shaping_terms"] = opp_shaping_terms
 
-    tally.add_metric(path=["ad_align_opp_shaping_terms"], metric=opp_shaping_terms)
 
     credits = a1 + opp_shaping_terms
-
     if mean_normalize_ad_align:
-        tally.add_metric(path=["ad_align_credits_before_mean"], metric=credits)
         credits = credits - credits.mean(dim=0)
+        sub_tensors["mean_normalized_ad_align_weights"] = credits
     if whiten_adalign_advantages:
-        tally.add_metric(path=["ad_align_credits_before_whiten"], metric=credits)
         credits = (credits - credits.mean()) / (credits.std() + 1e-9)
+        sub_tensors["whitened_ad_align_weights"] = credits
     if whiten_adalign_advantages_time_step_wise:
-        tally.add_metric(
-            path=["ad_align_credits_before_whiten_time_step_wise"], metric=credits
-        )
         credits = (credits - credits.mean(dim=0, keepdim=True)) / (
             credits.std(dim=0, keepdim=True) + 1e-9
         )
+        sub_tensors["whitened_ad_align_weights_time_step_wise"] = credits
 
-    tally.add_metric(path=["final_advantage_alignment_credits"], metric=credits)
-
-    return credits
+    return credits, sub_tensors

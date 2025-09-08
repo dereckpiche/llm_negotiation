@@ -17,6 +17,7 @@ from mllm.training.credit_methods import (
     get_discounted_state_visitation_credits,
 )
 from mllm.training.tally_basic import Tally
+from mllm.training.tally_rollout import RolloutTallyItem, RolloutTally
 from mllm.training.tally_tokenwise import ContextualizedTokenwiseTally
 from mllm.training.tokenize_chats import process_training_chat
 from mllm.training.trainer_common import BaseTrainer
@@ -410,7 +411,7 @@ class TrainerAdAlign(BaseTrainer):
                 )
 
                 # Create training batch data
-                credits = get_advantage_alignment_credits(
+                credits, sub_tensors = get_advantage_alignment_credits(
                     a1=padded_main_advantages,
                     a1_alternative=padded_alternative_advantages,
                     a2=padded_co_agent_advantages,
@@ -427,14 +428,17 @@ class TrainerAdAlign(BaseTrainer):
                     mean_normalize_ad_align=self.mean_normalize_ad_align,
                     whiten_adalign_advantages=self.whiten_adalign_advantages,
                     whiten_adalign_advantages_time_step_wise=self.whiten_adalign_advantages_time_step_wise,
-                    tally=self.tally,
                 )
-
+                self.rollout_tally.add_metric(path=["ad_align_credits"], rollout_tally_item=RolloutTallyItem(crn_ids=agent_data.main_data.crn_ids, rollout_ids=agent_data.main_data.rollout_ids, agent_ids=agent_data.main_data.agent_ids, metric_matrix=sub_tensors["ad_align_weights_old"]))
+                for key, value in sub_tensors.items():
+                    self.rollout_tally.add_metric(path=[key], rollout_tally_item=RolloutTallyItem(crn_ids=agent_data.main_data.crn_ids, rollout_ids=agent_data.main_data.rollout_ids, agent_ids=agent_data.main_data.agent_ids, metric_matrix=value))
+                
                 if not self.skip_discounted_state_visitation:
                     credits = get_discounted_state_visitation_credits(
                         credits,
                         self.discount_factor,
                     )
+                    self.rollout_tally.add_metric(path=["discounted_state_visitation_credits"], rollout_tally_item=RolloutTallyItem(crn_ids=agent_data.main_data.crn_ids, rollout_ids=agent_data.main_data.rollout_ids, agent_ids=agent_data.main_data.agent_ids, metric_matrix=sub_tensors["discounted_state_visitation_credits"]))
 
                 # Slice back to jagged
                 advantage_alignment_credits = [
