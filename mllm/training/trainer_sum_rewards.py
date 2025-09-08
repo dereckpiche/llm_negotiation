@@ -90,12 +90,14 @@ class TrainerSumRewards(TrainerNaive):
 
                 # Create training batch data
                 sum_of_ad_credits = padded_main_advantages + padded_co_agent_advantages
+                self.rollout_tally.add_metric(path=["sum_of_ad_credits"], rollout_tally_item=RolloutTallyItem(crn_ids=agent_data.main_data.crn_ids, rollout_ids=agent_data.main_data.rollout_ids, agent_ids=agent_data.main_data.agent_ids, metric_matrix=sum_of_ad_credits))
 
                 if not self.skip_discounted_state_visitation:
                     sum_of_ad_credits = get_discounted_state_visitation_credits(
                         sum_of_ad_credits,
                         self.discount_factor,
                     )
+                    self.rollout_tally.add_metric(path=["discounted_state_visitation_credits"], rollout_tally_item=RolloutTallyItem(crn_ids=agent_data.main_data.crn_ids, rollout_ids=agent_data.main_data.rollout_ids, agent_ids=agent_data.main_data.agent_ids, metric_matrix=sub_tensors["discounted_state_visitation_credits"]))
 
                 # Slice back to jagged and convert to tokenwise credits
                 sum_of_ad_credits = [
