@@ -197,6 +197,7 @@ def get_advantage_alignment_credits(
         ), "Alternative advantages must be of shape (B, S, A)"
         B, T, A = a1_alternative.shape
     assert a1.shape == a2.shape, "Not the same shape"
+    B, T = a1.shape
 
     sub_tensors = {}
 
