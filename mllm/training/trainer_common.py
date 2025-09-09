@@ -574,9 +574,13 @@ class BaseTrainer(ABC):
                         ),
                     ),
                 )
-
                 # critic causal attention up to end flags
-                vals_estimate_full = self.critic(tokens_mb)
+                if training:
+                    vals_estimate_full = self.critic(tokens_mb)
+                else:
+                    with torch.no_grad():
+                        vals_estimate_full = self.critic(tokens_mb)
+
                 # if vals_estimate_full.dim() == 3:
                 #     vals_estimate_full = vals_estimate_full.squeeze(-1)
 
@@ -685,6 +689,11 @@ class BaseTrainer(ABC):
                     # Accumulate gradient
                     loss /= normalization_factor
                     self.accelerator.backward(loss)
+                    del loss
+                    del targets
+                    del vals_estimate_mb
+                del trajectory_mb
+                del vals_estimate_full
 
                 # Get jagged back using timestep_counts
                 advantages.extend(
@@ -833,6 +842,7 @@ class BaseTrainer(ABC):
             else:
                 self.policy_gradient_data.append(policy_gradient_data)
 
+        self.training_data = {}
         self.tokenwise_tally = ContextualizedTokenwiseTally(
             tokenizer=self.tokenizer,
             paths=self.debug_path_list,

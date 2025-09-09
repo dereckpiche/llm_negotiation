@@ -51,6 +51,7 @@ def init_markov_game_components(
     TOWRITE
     """
     agents = {}
+    agent_names = []
     for agent_config in config.agent_configs:
         agent_id = agent_config.agent_id
         agent_name = agent_config.agent_name
@@ -63,9 +64,11 @@ def init_markov_game_components(
             **agent_config.init_kwargs,
         )
         agents[agent_id] = agent
+        agent_names.append(agent_name)
     simulation = eval(config.simulation_class_name)(
         seed=config.seed,
         agent_ids=list(agents.keys()),
+        agent_names=agent_names,
         **config.simulation_init_args,
     )
     markov_game = MarkovGame(

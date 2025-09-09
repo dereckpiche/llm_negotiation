@@ -239,9 +239,12 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         markov_games = []
         agent_ids = set()
         agent_ids.update([agent_config.agent_id for agent_config in agent_configs])
+        agent_configs_dict_seed_group = {}
         for match_number in range(nb_matches):
 
             def agent_configs_per_match(agent_configs, match_number):
+                if match_number in agent_configs_dict_seed_group:
+                    return agent_configs_dict_seed_group[match_number]
                 new_agent_configs = []
                 for index, agent_config in enumerate(agent_configs):
                     if (match_number % len(agent_configs)) == index:
@@ -267,6 +270,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
                             new_agent_configs.append(agent_config)
                     else:
                         new_agent_configs.append(agent_config)
+                agent_configs_dict_seed_group[match_number] = new_agent_configs
                 return new_agent_configs
 
             markov_game_config = MarkovGameConfig(
@@ -274,7 +278,9 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
                 seed=int(crn_seeds[match_number // seed_group_size]),
                 simulation_class_name=cfg["markov_games"]["simulation_class_name"],
                 simulation_init_args=cfg["markov_games"]["simulation_init_args"],
-                agent_configs=agent_configs_per_match(agent_configs, match_number)
+                agent_configs=agent_configs_per_match(
+                    agent_configs, match_number // seed_group_size
+                )
                 if cfg["experiment"].get("agent_buffer", False)
                 else agent_configs,
             )
