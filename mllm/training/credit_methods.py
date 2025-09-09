@@ -5,7 +5,7 @@ def whiten_advantages(advantages: torch.Tensor) -> torch.Tensor:
     """
     Whitens the advantages.
     """
-    whitened_advantages = advantages - torch.mean(advantages) / (
+    whitened_advantages = (advantages - torch.mean(advantages)) / (
         torch.std(advantages) + 1e-9
     )
     return whitened_advantages
@@ -18,9 +18,9 @@ def whiten_advantages_time_step_wise(
     Whitens the advantages.
     """
     assert advantages.dim() == 2, "Wrong dimensions."
-    whitened_advantages_time_step_wise = advantages - advantages.mean(
+    whitened_advantages_time_step_wise = (advantages - advantages.mean(
         dim=0, keepdim=True
-    ) / (advantages.std(dim=0, keepdim=True) + 1e-9)
+    )) / (advantages.std(dim=0, keepdim=True) + 1e-9)
     return whitened_advantages_time_step_wise
 
 
