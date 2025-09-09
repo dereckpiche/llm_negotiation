@@ -67,6 +67,7 @@ class BaseTrainer(ABC):
         critic_lr_scheduler: Union[torch.optim.lr_scheduler.LRScheduler, None],
         ######################################################################
         entropy_coeff: float,
+        entropy_topk: int,
         kl_coeff: float,
         gradient_clipping: Union[float, None],
         restrict_tokens: Union[list[str], None],
@@ -167,6 +168,7 @@ class BaseTrainer(ABC):
             )
         self.device = self.accelerator.device
         self.entropy_coeff = entropy_coeff
+        self.entropy_topk = entropy_topk
         self.kl_coeff = kl_coeff
         self.gradient_clipping = gradient_clipping
         self.restrict_tokens = restrict_tokens
@@ -397,15 +399,22 @@ class BaseTrainer(ABC):
                 # Entropy Regularization
                 # -------------------------------------------------
                 if self.entropy_coeff != 0.0:
-                    token_entropy_terms = -F.softmax(logits, dim=-1) * F.log_softmax(
-                        logits, dim=-1
-                    )
-                    # (B, S, T)
-                    # We only take the entropy of actions
-                    token_entropy_terms *= action_mask_mb[:, :, None]
+
+                    # Only apply entropy on distribution defined over most probable tokens
+                    if self.entropy_topk is not None:
+                        top_k_indices = torch.topk(logits, k=self.entropy_topk, dim=-1).indices
+                        entropy_logits = logits.gather(dim=-1, index=top_k_indices)
+                    else:
+                        entropy_logits = logits
+
+                    token_entropy_terms = -F.softmax(entropy_logits, dim=-1) * F.log_softmax(
+                        entropy_logits, dim=-1
+                    ) # (B, S, T)
+                    token_entropy_terms *= action_mask_mb[:, :, None] # we only take the entropy of actions
                     mb_entropy = token_entropy_terms.sum(dim=-1)
+
                     if self.enable_tokenwise_logging:
-                        self.tally.add_contextualized_token_metrics(
+                        self.tokenwise_tally.add_data(
                             metric_id="entropy",
                             metrics=mb_entropy,
                         )
@@ -421,12 +430,6 @@ class BaseTrainer(ABC):
                         path=["loss_mb_total", "entropy_mb_total"],
                         metric=mb_entropy.item(),
                     )
-
-                    # if self.enable_tokenwise_logging:
-                    #     self.tally.add_metric(
-                    #         path=["gradient_term_magnitudes", "entropy"],
-                    #         metric=self.get_gradient_magnitude(loss_term=mb_entropy),
-                    #     )
                     loss += mb_entropy
 
                 # -------------------------------------------------
