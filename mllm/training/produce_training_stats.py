@@ -1,4 +1,5 @@
 import copy
+import csv
 import gc
 import json
 import logging
@@ -9,8 +10,6 @@ import re
 import subprocess
 import sys
 import time
-import torch
-import csv
 from datetime import datetime
 from statistics import mean
 
@@ -18,6 +17,7 @@ import hydra
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import torch
 from omegaconf import OmegaConf
 
 
@@ -193,7 +193,6 @@ def render_rt_tally_pkl_to_csvs(pkl_path: str, outdir: str):
     os.makedirs(outdir, exist_ok=True)
     trainer_id = os.path.basename(pkl_path).replace(".rt_tally.pkl", "")
     for path_list, rollout_tally_items in get_leaf_items(array_tally):
-
         # Create file and initiate writer
         path_part = ".".join(_sanitize_filename_part(p) for p in path_list)
         filename = f"{trainer_id}__{path_part}.render.csv"
@@ -202,13 +201,19 @@ def render_rt_tally_pkl_to_csvs(pkl_path: str, outdir: str):
         # Write metric rows to CSV
         with open(out_path, "w", newline="") as f:
             writer = csv.writer(f)
-            
+
             # Write header row - need to determine metric column count from first rollout_tally_item
             first_item = rollout_tally_items[0]
-            metric_cols = first_item.metric_matrix.shape[1] if first_item.metric_matrix.ndim > 1 else 1
-            header = ["agent_id", "crn_id", "rollout_id"] + [f"t_{i}" for i in range(metric_cols)]
+            metric_cols = (
+                first_item.metric_matrix.shape[1]
+                if first_item.metric_matrix.ndim > 1
+                else 1
+            )
+            header = ["agent_id", "crn_id", "rollout_id"] + [
+                f"t_{i}" for i in range(metric_cols)
+            ]
             writer.writerow(header)
-            
+
             for rollout_tally_item in rollout_tally_items:
                 crn_ids = rollout_tally_item.crn_ids
                 rollout_ids = rollout_tally_item.rollout_ids
@@ -217,14 +222,77 @@ def render_rt_tally_pkl_to_csvs(pkl_path: str, outdir: str):
                 for i in range(metric_matrix.shape[0]):
                     row_vals = metric_matrix[i].reshape(-1)
                     # Convert row_vals to a list to avoid numpy concatenation issues
-                    row_vals = row_vals.tolist() if hasattr(row_vals, 'tolist') else list(row_vals)
+                    row_vals = (
+                        row_vals.tolist()
+                        if hasattr(row_vals, "tolist")
+                        else list(row_vals)
+                    )
                     row_prefix = [
-                            agent_ids[i],
-                            crn_ids[i],
-                            rollout_ids[i],
-                        ]
+                        agent_ids[i],
+                        crn_ids[i],
+                        rollout_ids[i],
+                    ]
                     writer.writerow(row_prefix + row_vals)
 
+
+def render_tally_pkl_to_csvs(pkl_path: str, outdir: str):
+    with open(pkl_path, "rb") as f:
+        payload = pickle.load(f)
+    # Backward compatibility: older tallies stored the dict directly
+    if isinstance(payload, dict) and "array_tally" in payload:
+        array_tally = payload.get("array_tally", {})
+        rowmeta = payload.get("rowmeta", {})
+        row_ids = payload.get("row_ids", [])
+    else:
+        array_tally = payload
+        rowmeta = {}
+        row_ids = []
+    os.makedirs(outdir, exist_ok=True)
+    trainer_id = os.path.basename(pkl_path).replace(".tally.pkl", "")
+    for path_list, array_list in get_leaf_items(array_tally):
+        # Build datapoints by expanding element-wise: vectors → 1 row, matrices → per-row
+        datapoints = []
+        for item in array_list:
+            # Normalize item
+            if isinstance(item, (int, float)):
+                arr = np.asarray([item])
+            else:
+                arr = np.asarray(item)
+            # Numeric arrays
+            if arr.ndim == 0:
+                datapoints.append(arr.reshape(1))
+            elif arr.ndim == 1:
+                datapoints.append(arr)
+            else:
+                for i in range(arr.shape[0]):
+                    datapoints.append(arr[i].reshape(-1))
+        # Build filename
+        path_part = ".".join(_sanitize_filename_part(p) for p in path_list)
+        filename = f"{trainer_id}__{path_part}.render.csv"
+        out_path = os.path.join(outdir, filename)
+        # Write CSV
+        with open(out_path, "w", newline="") as f:
+            import csv
+
+            writer = csv.writer(f)
+            # Determine max length after expansion for header
+            max_len = 0
+            for r in datapoints:
+                max_len = max(max_len, int(np.asarray(r).size))
+            for i, r in enumerate(datapoints):
+                r_arr = np.asarray(r)
+                if r_arr.size < max_len:
+                    pad = np.empty((max_len - r_arr.size,), dtype=r_arr.dtype)
+                    if pad.dtype == object:
+                        pad[:] = ""
+                    else:
+                        pad[:] = np.nan
+                    r_arr = np.concatenate([r_arr, pad])
+                row_vals = [
+                    x if not isinstance(x, (np.floating, np.integer)) else x.item()
+                    for x in r_arr
+                ]
+                writer.writerow(row_vals)
 
 
 def render_iteration_trainer_stats(iteration_dir: str, outdir: str | None = None):
@@ -235,3 +303,6 @@ def render_iteration_trainer_stats(iteration_dir: str, outdir: str | None = None
         if fname.endswith(".rt_tally.pkl"):
             pkl_path = os.path.join(input_dir, fname)
             render_rt_tally_pkl_to_csvs(pkl_path=pkl_path, outdir=output_dir)
+        elif fname.endswith(".tally.pkl"):
+            pkl_path = os.path.join(input_dir, fname)
+            render_tally_pkl_to_csvs(pkl_path=pkl_path, outdir=output_dir)
