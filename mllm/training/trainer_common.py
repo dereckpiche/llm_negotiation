@@ -535,6 +535,7 @@ class BaseTrainer(ABC):
 
         mb_size = self.mini_batch_size
         batch_size = trajectories.rollout_ids.shape[0]
+        agent_id = trajectories.agent_ids[0]
         # self.tally.add_metric(path=["discounted_returns"], metric=rewards)
         batch_rewards = trajectories.batch_rewards
 
