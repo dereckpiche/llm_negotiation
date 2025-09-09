@@ -21,10 +21,12 @@ class DummyInferenceBackend(LLMInferenceBackend):
     ) -> None:
         pass
 
-    def toggle_training_mode(self) -> None:
+    async def toggle_training_mode(self) -> None:
+        await asyncio.sleep(0)
         pass
 
-    def toggle_eval_mode(self) -> None:
+    async def toggle_eval_mode(self) -> None:
+        await asyncio.sleep(0)
         pass
 
     def shutdown(self) -> None:

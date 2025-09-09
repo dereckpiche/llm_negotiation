@@ -9,7 +9,36 @@ import torch
 from transformers import AutoTokenizer
 
 
-class Tally:
+class RolloutTallyItem:
+    def __init__(self, crn_ids: list[str], rollout_ids: list[str], agent_ids: list[str], metric_matrix: torch.Tensor): 
+        """
+        Initializes the RolloutTallyItem object.
+
+        Args:
+            crn_ids (list[str]): List of CRN IDs.
+            rollout_ids (list[str]): List of rollout IDs.
+            agent_ids (list[str]): List of agent IDs.
+            metric_matrix (torch.Tensor): Metric matrix.
+        """
+        if isinstance(crn_ids, torch.Tensor):
+            crn_ids = crn_ids.detach().cpu().numpy()
+        if isinstance(rollout_ids, torch.Tensor):
+            rollout_ids = rollout_ids.detach().cpu().numpy()
+        if isinstance(agent_ids, torch.Tensor):
+            agent_ids = agent_ids.detach().cpu().numpy()
+        self.crn_ids = crn_ids
+        self.rollout_ids = rollout_ids
+        self.agent_ids = agent_ids
+        metric_matrix = metric_matrix.detach().cpu()
+        assert 0 < metric_matrix.ndim <= 2, "Metric matrix must have less than or equal to 2 dimensions"
+        if metric_matrix.ndim == 1:
+            metric_matrix = metric_matrix.reshape(1, -1)
+        # Convert to float32 if tensor is in BFloat16 format (not supported by numpy)
+        if metric_matrix.dtype == torch.bfloat16:
+            metric_matrix = metric_matrix.float()
+        self.metric_matrix = metric_matrix.numpy()
+
+class RolloutTally:
     """
     Tally is a utility class for collecting and storing training metrics.
     It supports adding metrics at specified paths and saving them to disk.
@@ -17,21 +46,21 @@ class Tally:
 
     def __init__(self):
         """
-        Initializes the Tally object.
+        Initializes the RolloutTally object.
 
         Args:
             tokenizer (AutoTokenizer): Tokenizer for converting token IDs to strings.
             max_context_length (int, optional): Maximum context length for contextualized metrics. Defaults to 30.
         """
         # Array-preserving structure (leaf lists hold numpy arrays / scalars)
-        self.array_tally = {}
+        self.metrics = {}
+        # Global ordered list of sample identifiers (crn_id, rollout_id) added in the order samples are processed
 
     def reset(self):
         """
         Resets the base and contextualized tallies to empty dictionaries.
         """
-        self.array_tally = {}
-        self.sample_row_ids = []
+        self.metrics = {}
 
     def get_from_nested_dict(self, dictio: dict, path: str):
         """
@@ -62,46 +91,25 @@ class Tally:
             dictio = dictio.setdefault(sp, {})
         dictio[path[-1]] = value
 
+
     def add_metric(
-        self, path: str, metric: Union[float, int, np.ndarray, torch.Tensor, list]
+        self, path: list[str], rollout_tally_item: RolloutTallyItem
     ):
         """
         Adds a metric to the base tally at the specified path.
 
         Args:
             path (list): List of keys representing the path in the base tally.
-            metric (float|int|str|np.ndarray|dict): The metric value to add.
+            rollout_tally_item (RolloutTallyItem): The rollout tally item to add.
         """
-        metric = deepcopy(metric)
-
-        # Array-only: accept numbers, tensors, numpy arrays, lists (will convert). No strings.
-        allowed_types = (float, int, np.ndarray, torch.Tensor, list)
-        assert isinstance(metric, allowed_types), "Metric of incorrect type"
-
-        # Prepare array-preserving representation only
-        array_metric = metric
-
-        if isinstance(metric, torch.Tensor):
-            if metric.dim() == 0:
-                array_metric = np.asarray(metric.item())
-            else:
-                array_metric = metric.to(torch.float32).detach().cpu().numpy()
-
-        if isinstance(array_metric, (float, int, np.number)):
-            array_metric = np.asarray(array_metric)
-        elif isinstance(array_metric, list):
-            # convert lists to numpy arrays; may be object dtype for ragged
-            try:
-                array_metric = np.asarray(array_metric)
-            except Exception:
-                array_metric = np.array(array_metric, dtype=object)
+        rollout_tally_item = deepcopy(rollout_tally_item)
 
         # Update array-preserving tally
-        array_list = self.get_from_nested_dict(dictio=self.array_tally, path=path)
+        array_list = self.get_from_nested_dict(dictio=self.metrics, path=path)
         if array_list is None:
-            self.set_at_path(dictio=self.array_tally, path=path, value=[array_metric])
+            self.set_at_path(dictio=self.metrics, path=path, value=[rollout_tally_item])
         else:
-            array_list.append(array_metric)
+            array_list.append(rollout_tally_item)
 
 
     def save(self, identifier: str, folder: str):
@@ -121,8 +129,8 @@ class Tally:
         try:
             import pickle
 
-            pkl_path = os.path.join(folder, f"{identifier}.tally.pkl")
-            payload = {"array_tally": self.array_tally}
+            pkl_path = os.path.join(folder, f"{identifier}.rt_tally.pkl")
+            payload = {"metrics": self.metrics}
             with open(pkl_path, "wb") as f:
                 pickle.dump(payload, f, protocol=pickle.HIGHEST_PROTOCOL)
         except Exception:

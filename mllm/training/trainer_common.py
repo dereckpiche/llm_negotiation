@@ -30,6 +30,7 @@ from mllm.training.credit_methods import (
     whiten_advantages_time_step_wise,
 )
 from mllm.training.tally_basic import Tally
+from mllm.training.tally_rollout import RolloutTally, RolloutTallyItem
 from mllm.training.tally_tokenwise import ContextualizedTokenwiseTally
 from mllm.training.tokenize_chats import *
 from mllm.training.tokenize_chats import process_training_chat
@@ -193,7 +194,9 @@ class BaseTrainer(ABC):
         self.training_data: dict = {}
         self.debug_path_list: list[str] = []
         self.policy_gradient_data = None
-        self.tokenwise_tally = None
+        self.tally = Tally()
+        self.tokenwise_tally: Union[ContextualizedTokenwiseTally, None] = None
+        self.rollout_tally = RolloutTally()
 
     def mask_non_restricted_token_logits(self, logits: torch.Tensor) -> torch.Tensor:
         """
@@ -534,8 +537,7 @@ class BaseTrainer(ABC):
         batch_size = trajectories.rollout_ids.shape[0]
         # self.tally.add_metric(path=["discounted_returns"], metric=rewards)
         batch_rewards = trajectories.batch_rewards
-        agent_id = trajectories.agent_ids[0]
-        self.tally.add_metric(path=["batch_rewards"], metric=batch_rewards)
+
         ######################################
         # use critic for advantage estimation
         ######################################
@@ -561,6 +563,17 @@ class BaseTrainer(ABC):
                     state_ends_mask_mb,
                     timestep_counts,
                 ) = trajectory_mb.get_padded_tensors_for_critic()
+                self.rollout_tally.add_metric(
+                    path=["batch_rewards"],
+                    rollout_tally_item=RolloutTallyItem(
+                        crn_ids=trajectory_mb.crn_ids,
+                        rollout_ids=trajectory_mb.rollout_ids,
+                        agent_ids=trajectory_mb.agent_ids,
+                        metric_matrix=pad_sequence(
+                            rewards_mb, batch_first=True, padding_value=0.0
+                        ),
+                    ),
+                )
 
                 # critic causal attention up to end flags
                 vals_estimate_full = self.critic(tokens_mb)
@@ -593,8 +606,14 @@ class BaseTrainer(ABC):
                 # )
 
                 det_vals_estimate_mb = vals_estimate_mb.detach()  # (B, max_jT)
-                self.tally.add_metric(
-                    path=["mb_value_estimates_critic"], metric=det_vals_estimate_mb
+                self.rollout_tally.add_metric(
+                    path=["mb_value_estimates_critic"],
+                    rollout_tally_item=RolloutTallyItem(
+                        crn_ids=trajectory_mb.crn_ids,
+                        rollout_ids=trajectory_mb.rollout_ids,
+                        agent_ids=trajectory_mb.agent_ids,
+                        metric_matrix=det_vals_estimate_mb,
+                    ),
                 )
 
                 # Append a 0 value to the end of the value estimates
@@ -635,12 +654,28 @@ class BaseTrainer(ABC):
                     discount_factor=self.discount_factor,
                     lambda_coef=annealed_lambda,
                 )  # (B, max_jT)
-                self.tally.add_metric(path=["mb_gae_advantages"], metric=gae_advantages)
+                self.rollout_tally.add_metric(
+                    path=["mb_gae_advantages"],
+                    rollout_tally_item=RolloutTallyItem(
+                        crn_ids=trajectory_mb.crn_ids,
+                        rollout_ids=trajectory_mb.rollout_ids,
+                        agent_ids=trajectory_mb.agent_ids,
+                        metric_matrix=gae_advantages,
+                    ),
+                )
                 if training:
                     targets = (
                         gae_advantages.to(dtype=dtype) + det_vals_estimate_mb[:, :-1]
                     )  # (B, max_jT) # A(s, a, b) + V(s) = Q(s, a, b)
-                    self.tally.add_metric(path=["mb_targets_critic"], metric=targets)
+                    self.rollout_tally.add_metric(
+                        path=["mb_targets_critic"],
+                        rollout_tally_item=RolloutTallyItem(
+                            crn_ids=trajectory_mb.crn_ids,
+                            rollout_ids=trajectory_mb.rollout_ids,
+                            agent_ids=trajectory_mb.agent_ids,
+                            metric_matrix=targets,
+                        ),
+                    )
 
                     loss = F.huber_loss(
                         input=vals_estimate_mb,
@@ -664,11 +699,19 @@ class BaseTrainer(ABC):
             padded_rewards = pad_sequence(
                 batch_rewards, batch_first=True, padding_value=0.0
             )
+            self.rollout_tally.add_metric(
+                path=["mb_rewards"],
+                rollout_tally_item=RolloutTallyItem(
+                    crn_ids=trajectories.crn_ids,
+                    rollout_ids=trajectories.rollout_ids,
+                    agent_ids=trajectories.agent_ids,
+                    metric_matrix=padded_rewards,
+                ),
+            )
             padded_advantages = get_discounted_returns(
                 rewards=padded_rewards,
                 discount_factor=self.discount_factor,
                 reward_normalizing_constant=self.reward_normalizing_constant,
-                tally=self.tally,
             )  # no baseline for now
             if self.use_rloo:
                 is_grouped_by_rng = (
@@ -679,14 +722,19 @@ class BaseTrainer(ABC):
                     for crn_id in trajectories.crn_ids.unique():
                         rng_mask = trajectories.crn_ids == crn_id
                         rng_advantages = padded_advantages[rng_mask]
-                        rng_advantages, _ = get_rloo_credits(
-                            credits=rng_advantages, tally=self.tally
-                        )
+                        rng_advantages, _ = get_rloo_credits(credits=rng_advantages)
                         padded_advantages[rng_mask] = rng_advantages
                 else:
-                    padded_advantages, _ = get_rloo_credits(
-                        credits=padded_advantages, tally=self.tally
-                    )
+                    padded_advantages, _ = get_rloo_credits(credits=padded_advantages)
+                self.rollout_tally.add_metric(
+                    path=["mb_rloo_advantages"],
+                    rollout_tally_item=RolloutTallyItem(
+                        crn_ids=trajectories.crn_ids,
+                        rollout_ids=trajectories.rollout_ids,
+                        agent_ids=trajectories.agent_ids,
+                        metric_matrix=padded_advantages,
+                    ),
+                )
             advantages = [
                 padded_advantages[i, : lengths[i]]
                 for i in range(padded_advantages.shape[0])
@@ -698,7 +746,16 @@ class BaseTrainer(ABC):
                 advantages, batch_first=True, padding_value=0.0
             )
             whitened_padded_advantages = whiten_advantages_time_step_wise(
-                padded_advantages, tally=self.tally
+                padded_advantages
+            )
+            self.rollout_tally.add_metric(
+                path=["mb_whitened_advantages_time_step_wise"],
+                rollout_tally_item=RolloutTallyItem(
+                    crn_ids=trajectories.crn_ids,
+                    rollout_ids=trajectories.rollout_ids,
+                    agent_ids=trajectories.agent_ids,
+                    metric_matrix=whitened_padded_advantages,
+                ),
             )
             advantages = [
                 whitened_padded_advantages[i, : lengths[i]].flatten()
@@ -708,7 +765,16 @@ class BaseTrainer(ABC):
         if self.whiten_advantages:
             lengths = [len(c) for c in advantages]
             whitened_advantages = whiten_advantages(
-                torch.stack(advantages, dim=0).flatten(), tally=self.tally
+                torch.stack(advantages, dim=0).flatten()
+            )
+            self.rollout_tally.add_metric(
+                path=["mb_whitened_advantages"],
+                rollout_tally_item=RolloutTallyItem(
+                    crn_ids=trajectories.crn_ids,
+                    rollout_ids=trajectories.rollout_ids,
+                    agent_ids=trajectories.agent_ids,
+                    metric_matrix=whitened_advantages,
+                ),
             )
             advantages = torch.split(
                 tensor=whitened_advantages, split_size_or_sections=lengths
@@ -749,14 +815,7 @@ class BaseTrainer(ABC):
         Already set earlier # TODO: make it separate and clean
         """
         self.policy_gradient_data = None
-        # Track row id order aligned with concatenation
-        concat_crn_ids = []
-        concat_rollout_ids = []
-        concat_agent_ids = []
         for agent_id, trajectory_batch in self.training_data.items():
-            concat_crn_ids.append(trajectory_batch.crn_ids)
-            concat_rollout_ids.append(trajectory_batch.rollout_ids)
-            concat_agent_ids.extend(trajectory_batch.agent_ids)
             if "buffer" in agent_id:
                 continue
             tokenwise_batch_credits = get_tokenwise_credits(
@@ -777,13 +836,6 @@ class BaseTrainer(ABC):
         self.tokenwise_tally = ContextualizedTokenwiseTally(
             tokenizer=self.tokenizer,
             paths=self.debug_path_list,
-        )
-
-        # Register row ids once in the same order used to build policy_gradient_data
-        self.tally.add_row_ids(
-            crn_ids=torch.cat(concat_crn_ids),
-            rollout_ids=torch.cat(concat_rollout_ids),
-            agent_ids=concat_agent_ids,
         )
 
     def train(self) -> None:
@@ -818,8 +870,10 @@ class BaseTrainer(ABC):
         self.tokenwise_tally.save(
             path=os.path.join(folder, f"{identifier}_tokenwise.csv")
         )
+        self.rollout_tally.save(identifier=identifier, folder=folder)
         self.tally.reset()
         self.tokenwise_tally = None
+        self.rollout_tally.reset()
         self.debug_path_list = []
 
     def export_optimizer_states(self) -> None:

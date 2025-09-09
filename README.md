@@ -14,16 +14,8 @@
 It is recommended to use python version `3.11` and `CUDA 12.4`.
 
 ```bash
-module unload python
-module load anaconda/3
-conda create -n venv python=3.11
-conda activate venv
-module load cudatoolkit/12.4
-pip install torch==2.7.1
-pip install psutil
-pip install flash_attn --no-build-isolation
-pip install "sglang[all]>=0.4.10.post2"
 pip install -r requirements.txt
+pip install flash_attn --no-build-isolation
 cd path/to/repo
 pip install -e .
 ```
