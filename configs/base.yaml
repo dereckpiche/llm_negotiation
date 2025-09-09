@@ -89,6 +89,7 @@ trainers:
             critic_optimizer: critic_optimizer
         kwargs:
             entropy_coeff: 0.0
+            entropy_topk: null
             kl_coeff: 0.0
             gradient_clipping: 1.0
             restrict_tokens: null

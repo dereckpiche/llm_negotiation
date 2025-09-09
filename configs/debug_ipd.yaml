@@ -5,7 +5,7 @@ defaults:
 
 experiment:
     name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
-    nb_epochs: 2
+    nb_epochs: 10
     nb_matches_per_iteration: 8
     reinit_matches_each_it: true
     checkpoint_every_n_iterations: 1e5
@@ -31,8 +31,7 @@ models:
         init_args:
             llm_id: base_llm
             model_name: "Qwen/Qwen2-0.5B" # Qwen/Qwen3-4B-Instruct-2507
-            inference_backend: vllm
-            enable_eager_mode: true
+            inference_backend: dummy
 optimizers:
     critic_optimizer:
         module_pointer: agent_critic
@@ -43,17 +42,18 @@ optimizers:
 trainers:
     agent_trainer:
         kwargs:
-            use_gae: True
+            entropy_coeff: 0.1
+            entropy_topk: 20
             use_gae_lambda_annealing: True
             whiten_advantages: True
             whiten_advantages_time_step_wise: True
             gae_lambda_annealing_limit: 0.92
             gae_lambda_annealing_method: "sigmoid_annealing"
             gae_lambda_annealing_method_params: {temperature: 15}
-            entropy_coeff: 0.0
             kl_coeff: 0.0
             gradient_clipping: 1.0
             mini_batch_size: 4
             use_gradient_checkpointing: True
             temperature: ${temperature}
             device: "cuda:0"
+            enable_tokenwise_logging: True
