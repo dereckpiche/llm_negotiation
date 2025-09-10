@@ -566,8 +566,6 @@ class BaseTrainer(ABC):
 
                 # critic causal attention up to end flags
                 vals_estimate_full = self.critic(tokens_mb)
-                # if vals_estimate_full.dim() == 3:
-                #     vals_estimate_full = vals_estimate_full.squeeze(-1)
 
                 # Select only positions where states end, per sample → list of (jT,)
                 B = tokens_mb.shape[0]
@@ -585,14 +583,7 @@ class BaseTrainer(ABC):
                 ).to(
                     dtype=dtype
                 )  # (B, S)
-                # self.tally.add_metric(path=["mb_rewards"], metric=rewards_mb)
-                # # Only for tallying
-                # get_discounted_returns(
-                #     rewards=rewards_mb,
-                #     discount_factor=self.discount_factor,
-                #     reward_normalizing_constant=self.reward_normalizing_constant,
-                #     tally=self.tally,
-                # )
+               
 
                 det_vals_estimate_mb = vals_estimate_mb.detach()  # (B, max_jT)
                 self.rollout_tally.add_metric(path=["mb_value_estimates_critic"], rollout_tally_item=RolloutTallyItem(crn_ids=trajectory_mb.crn_ids, rollout_ids=trajectory_mb.rollout_ids, agent_ids=trajectory_mb.agent_ids, metric_matrix=det_vals_estimate_mb))
@@ -644,10 +635,11 @@ class BaseTrainer(ABC):
                 self.rollout_tally.add_metric(path=["mb_targets_critic"], rollout_tally_item=RolloutTallyItem(crn_ids=trajectory_mb.crn_ids, rollout_ids=trajectory_mb.rollout_ids, agent_ids=trajectory_mb.agent_ids  , metric_matrix=targets))
 
 
-                loss = F.huber_loss(
+                loss = F.mse_loss(
                     input=vals_estimate_mb,
                     target=targets,
                 )
+                logger.info(f"Critic loss: {loss.item()}")
                 self.tally.add_metric(path=["mb_critic_loss"], metric=loss.item())
                 # Accumulate gradient
                 loss /= normalization_factor

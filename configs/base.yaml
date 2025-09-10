@@ -55,8 +55,8 @@ models:
                     target_modules: all-linear
                 critic_adapter:
                     task_type: CAUSAL_LM
-                    r: 32
-                    lora_alpha: 64
+                    r: 128
+                    lora_alpha: 128
                     lora_dropout: 0.0
                     target_modules: all-linear
 
