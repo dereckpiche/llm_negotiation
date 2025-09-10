@@ -38,11 +38,13 @@ class NoPressAgent(NegotiationAgent):
         return r"^$"  # No messages allowed
 
     def get_split_regex(self, observation: NoPressObs) -> str:
-        return r"<coins_to_self> ?(10|[0-9]) ?</coins_to_self>"
+        return r"<coins_to_self>\s*(10|[0-9])\s*</coins_to_self>"
 
     def get_split_action(self, policy_output: str, observation: NoPressObs) -> Split:
         import re as _re
 
-        m = _re.search(r"<coins_to_self> ?(10|[0-9]) ?</coins_to_self>", policy_output)
+        m = _re.search(
+            r"<coins_to_self>\s*(10|[0-9])\s*</coins_to_self>", policy_output
+        )
         coins_int = int(m.group(1)) if m else int(policy_output)
         return Split(items_given_to_self={"coins": coins_int})

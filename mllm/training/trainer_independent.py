@@ -92,9 +92,9 @@ class TrainerNaive(BaseTrainer):
         batch_advantages: torch.FloatTensor = (
             self.get_advantages_with_critic_gradient_accumulation(trajectory_batch)
         )
-        # if self.critic_optimizer is not None:
-        #     self.critic_optimizer.step()
-        #     self.critic_optimizer.zero_grad()
+        if self.critic_optimizer is not None:
+            self.critic_optimizer.step()
+            self.critic_optimizer.zero_grad()
 
         trajectory_batch.batch_credits = batch_advantages
 

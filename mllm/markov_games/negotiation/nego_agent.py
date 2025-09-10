@@ -22,13 +22,11 @@ class NegotiationAgent(Agent):
         self,
         seed: int,
         agent_id: str,
-        agent_name: str,
         policy: Callable[[List[Dict]], str],
         goal: str,
     ):
         self.seed = seed
         self.agent_id = agent_id
-        self.agent_name = agent_name
         self.policy = policy
         self.goal = goal
         self.state = NegotiationAgentState(
@@ -74,9 +72,7 @@ class NegotiationAgent(Agent):
         is_intro = round_nb == 0 and self.state.chat_counter == 0
         if is_intro:
             prompt_parts.append(
-                self.intro_prompt.format(
-                    goal=self.goal, agent=self.agent_name, **obs_ctx
-                )
+                self.intro_prompt.format(goal=self.goal, agent=self.agent_id, **obs_ctx)
             )
 
         # New round

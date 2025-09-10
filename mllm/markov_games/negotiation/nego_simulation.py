@@ -47,7 +47,7 @@ class NegotiationObs:
     last_message: str
     quota_messages_per_agent_per_round: int
     current_agent: AgentId
-    other_agent: str
+    other_agent: AgentId
     quantities: Dict[str, int]
     item_types: List[str]
     value: float
@@ -94,7 +94,6 @@ class NegotiationSimulation(Simulation):
     def __init__(
         self,
         agent_ids: List[AgentId],
-        agent_names: List[str],
         seed: int,
         nb_of_rounds: int,
         quota_messages_per_agent_per_round: int,
@@ -103,10 +102,6 @@ class NegotiationSimulation(Simulation):
         self.seed = seed
         self.rng = default_rng(self.seed)
         self.agent_ids = list(agent_ids)
-        self.agent_names = agent_names
-        self.agent_id_to_name = {
-            agent_id: agent_name for agent_id, agent_name in zip(agent_ids, agent_names)
-        }
         self.nb_of_rounds = int(nb_of_rounds)
         self.quota_messages_per_agent_per_round = int(
             quota_messages_per_agent_per_round
@@ -138,6 +133,7 @@ class NegotiationSimulation(Simulation):
         a0, a1 = self.agent_ids[0], self.agent_ids[1]
         action = actions.get(current_agent)
 
+
         # Split phase: require both splits in the same timestep
         if self.state.split_phase:
             action_a0 = actions.get(a0)
@@ -166,9 +162,7 @@ class NegotiationSimulation(Simulation):
             self.state.round_nb += 1
             self._starting_agent_index = 1 - self._starting_agent_index
             self.state.current_agent = self.agent_ids[self._starting_agent_index]
-            self.state.other_agent = self.agent_id_to_name[
-                self._other(self.state.current_agent)
-            ]
+            self.state.other_agent = self._other(self.state.current_agent)
             self.set_new_round_of_variant()  # variant specific
             self.state.previous_splits = copy.deepcopy(self.state.splits)
             self.state.previous_points = copy.deepcopy(rewards)
@@ -176,7 +170,9 @@ class NegotiationSimulation(Simulation):
             self.state.splits = {agent_id: None for agent_id in self.agent_ids}
             self.state.nb_messages_sent = {agent_id: 0 for agent_id in self.agent_ids}
             is_last_timestep_in_round = True
+            self.state.other_agent = self._other(self.state.current_agent)
             done = self.state.round_nb >= self.nb_of_rounds
+            
 
         # Message phase
         elif isinstance(action, Message):
@@ -198,9 +194,9 @@ class NegotiationSimulation(Simulation):
             rewards = {agent_id: 0.0 for agent_id in self.agent_ids}
             info = {"type": "message"}
 
-        info[
-            "is_last_timestep_in_round"
-        ] = is_last_timestep_in_round  # Used later to group round timesteps if needed
+            
+
+        info["is_last_timestep_in_round"] = is_last_timestep_in_round # Used later to group round timesteps if needed
         return done, SimulationStepLog(rewards=rewards, info=info)
 
     def get_obs(self):

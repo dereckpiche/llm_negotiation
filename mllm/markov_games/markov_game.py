@@ -17,7 +17,6 @@ import asyncio
 import copy
 import json
 import os
-from dataclasses import dataclass
 from typing import Any, List, Literal, Optional, Tuple
 
 from transformers.models.idefics2 import Idefics2Config
@@ -25,6 +24,7 @@ from transformers.models.idefics2 import Idefics2Config
 from mllm.markov_games.agent import Agent
 from mllm.markov_games.rollout_tree import AgentActLog, StepLog
 from mllm.markov_games.simulation import Simulation
+from dataclasses import dataclass
 
 AgentId = str
 
@@ -35,26 +35,25 @@ class AgentAndActionSafeCopy:
     action_info: AgentActLog
     agent_after_action: type[Agent]
 
-
 class MarkovGame(object):
     def __init__(
         self,
         id: int,
-        agents: dict[AgentId, type[Agent]],
         simulation: type[Simulation],
+        agents: dict[AgentId, type[Agent]],
         crn_id: int,
     ):
         """
         Args:
+            simulation:
+                Simulation object. Example: IPDSimulation
             agents:
             output_path:
                 Path where the step infos are saved.
-            simulation:
-                Simulation object. Example: IPDSimulation
         """
+        self.simulation = simulation
         self.agents = agents
         self.agent_ids = self.agents.keys()
-        self.simulation = simulation
         self.simulation_step_log = None
         self.agent_step_logs = {agent_id: None for agent_id in self.agent_ids}
         self.actions = {}
@@ -66,9 +65,6 @@ class MarkovGame(object):
 
     def get_crn_id(self) -> int:
         return self.crn_id
-
-    def get_agent_ids(self) -> List[AgentId]:
-        return list(self.agent_ids)
 
     async def get_action_of_agent_without_side_effects(
         self, agent_id: AgentId
@@ -96,18 +92,14 @@ class MarkovGame(object):
                 self.get_action_of_agent_without_side_effects(agent_id)
             )
             tasks.append(task)
-        agent_and_action_safe_copies: list[
-            AgentAndActionSafeCopy
-        ] = await asyncio.gather(*tasks)
+        agent_and_action_safe_copies: list[AgentAndActionSafeCopy] = await asyncio.gather(*tasks)
         return {
             agent_id: agent_and_action_safe_copy
-            for agent_id, agent_and_action_safe_copy in zip(
-                self.agent_ids, agent_and_action_safe_copies
-            )
+            for agent_id, agent_and_action_safe_copy in zip(self.agent_ids, agent_and_action_safe_copies)
         }
 
     def set_action_and_agent_after_action_manually(
-        self,
+        self,   
         agent_id: AgentId,
         agent_action_safe_copy: AgentAndActionSafeCopy,
     ):
@@ -181,7 +173,7 @@ class MarkovGame(object):
         """
         TOWRITE
         """
-
+        
         new_markov_game = copy.copy(self)
         new_simulation = self.simulation.get_safe_copy()
         new_agents = {

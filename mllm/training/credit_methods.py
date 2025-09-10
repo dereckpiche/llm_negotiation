@@ -18,9 +18,9 @@ def whiten_advantages_time_step_wise(
     Whitens the advantages.
     """
     assert advantages.dim() == 2, "Wrong dimensions."
-    whitened_advantages_time_step_wise = (
-        advantages - advantages.mean(dim=0, keepdim=True)
-    ) / (advantages.std(dim=0, keepdim=True) + 1e-9)
+    whitened_advantages_time_step_wise = (advantages - advantages.mean(
+        dim=0, keepdim=True
+    )) / (advantages.std(dim=0, keepdim=True) + 1e-9)
     return whitened_advantages_time_step_wise
 
 
@@ -204,7 +204,7 @@ def get_advantage_alignment_credits(
         ad_align_weights = get_advantage_alignment_weights(
             advantages=a1, exclude_k_equals_t=exclude_k_equals_t, gamma=gamma
         )
-        sub_tensors["ad_align_weights_prev"] = ad_align_weights
+        sub_tensors["ad_align_weights_old"] = ad_align_weights
         if exclude_k_equals_t:
             ad_align_weights = gamma * ad_align_weights
     else:
@@ -226,6 +226,7 @@ def get_advantage_alignment_credits(
         )
         sub_tensors["ad_align_weights"] = ad_align_weights
 
+
     # Use sign
     if use_sign:
         assert beta == 1.0, "beta should be 1.0 when using sign"
@@ -235,6 +236,8 @@ def get_advantage_alignment_credits(
         ad_align_weights[negative_signs] = -1
         sub_tensors["ad_align_weights_sign"] = ad_align_weights
         # (rest are 0)
+
+
 
     ###################
     # Process weights
@@ -254,6 +257,8 @@ def get_advantage_alignment_credits(
             torch.sum(upper_mask) + torch.sum(lower_mask)
         ) / upper_mask.size
         sub_tensors["clipped_ad_align_weights"] = ad_align_weights
+
+
 
     # 1/1+t Regularization
     if use_time_regularization:
@@ -278,18 +283,18 @@ def get_advantage_alignment_credits(
     opp_shaping_terms = beta * ad_align_weights * a2
     sub_tensors["ad_align_opp_shaping_terms"] = opp_shaping_terms
 
+
     credits = a1 + opp_shaping_terms
     if mean_normalize_ad_align:
         credits = credits - credits.mean(dim=0)
-        sub_tensors["mean_normalized_ad_align_credits"] = credits
+        sub_tensors["mean_normalized_ad_align_weights"] = credits
     if whiten_adalign_advantages:
         credits = (credits - credits.mean()) / (credits.std() + 1e-9)
-        sub_tensors["whitened_ad_align_credits"] = credits
+        sub_tensors["whitened_ad_align_weights"] = credits
     if whiten_adalign_advantages_time_step_wise:
         credits = (credits - credits.mean(dim=0, keepdim=True)) / (
             credits.std(dim=0, keepdim=True) + 1e-9
         )
-        sub_tensors["whitened_ad_align_credits_time_step_wise"] = credits
-    sub_tensors["final_ad_align_credits"] = credits
+        sub_tensors["whitened_ad_align_weights_time_step_wise"] = credits
 
     return credits, sub_tensors
