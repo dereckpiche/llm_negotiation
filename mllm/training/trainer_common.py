@@ -399,18 +399,23 @@ class BaseTrainer(ABC):
                 # Entropy Regularization
                 # -------------------------------------------------
                 if self.entropy_coeff != 0.0:
-
                     # Only apply entropy on distribution defined over most probable tokens
                     if self.entropy_topk is not None:
-                        top_k_indices = torch.topk(logits, k=self.entropy_topk, dim=-1).indices
+                        top_k_indices = torch.topk(
+                            logits, k=self.entropy_topk, dim=-1
+                        ).indices
                         entropy_logits = logits.gather(dim=-1, index=top_k_indices)
                     else:
                         entropy_logits = logits
 
-                    token_entropy_terms = -F.softmax(entropy_logits, dim=-1) * F.log_softmax(
+                    token_entropy_terms = -F.softmax(
                         entropy_logits, dim=-1
-                    ) # (B, S, T)
-                    token_entropy_terms *= action_mask_mb[:, :, None] # we only take the entropy of actions
+                    ) * F.log_softmax(
+                        entropy_logits, dim=-1
+                    )  # (B, S, T)
+                    token_entropy_terms *= action_mask_mb[
+                        :, :, None
+                    ]  # we only take the entropy of actions
                     mb_entropy = token_entropy_terms.sum(dim=-1)
 
                     if self.enable_tokenwise_logging:
@@ -777,9 +782,7 @@ class BaseTrainer(ABC):
 
         if self.whiten_advantages:
             lengths = [len(c) for c in advantages]
-            whitened_advantages = whiten_advantages(
-                torch.stack(advantages, dim=0).flatten()
-            )
+            whitened_advantages = whiten_advantages(torch.stack(advantages, dim=0))
             self.rollout_tally.add_metric(
                 path=["mb_whitened_advantages"],
                 rollout_tally_item=RolloutTallyItem(
@@ -789,9 +792,10 @@ class BaseTrainer(ABC):
                     metric_matrix=whitened_advantages,
                 ),
             )
-            advantages = torch.split(
-                tensor=whitened_advantages, split_size_or_sections=lengths
-            )
+            advantages = [
+                whitened_advantages[i, : lengths[i]]
+                for i in range(whitened_advantages.shape[0])
+            ]
 
         self.trainer_annealing_state.annealing_step_counter += 1
 
