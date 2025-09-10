@@ -65,6 +65,7 @@ markov_games:
     agents:
         0:
             agent_id: ${agent_0_id}
+            agent_name: Alice
             agent_class_name: IPDAgent
             policy_id: base_llm/agent_adapter
             init_kwargs:
@@ -72,6 +73,7 @@ markov_games:
 
         1:
             agent_id: ${agent_1_id}
+            agent_name: Bob
             agent_class_name: IPDAgent
             policy_id: base_llm/agent_adapter
             init_kwargs:

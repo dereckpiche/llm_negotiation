@@ -588,6 +588,7 @@ class BaseTrainer(ABC):
                 #     vals_estimate_full = vals_estimate_full.squeeze(-1)
 
                 # Select only positions where states end, per sample → list of (jT,)
+                import pdb; pdb.set_trace()
                 B = tokens_mb.shape[0]
                 vals_list = [
                     vals_estimate_full[b][state_ends_mask_mb[b]] for b in range(B)
@@ -603,14 +604,6 @@ class BaseTrainer(ABC):
                 ).to(
                     dtype=dtype
                 )  # (B, S)
-                # self.tally.add_metric(path=["mb_rewards"], metric=rewards_mb)
-                # # Only for tallying
-                # get_discounted_returns(
-                #     rewards=rewards_mb,
-                #     discount_factor=self.discount_factor,
-                #     reward_normalizing_constant=self.reward_normalizing_constant,
-                #     tally=self.tally,
-                # )
 
                 det_vals_estimate_mb = vals_estimate_mb.detach()  # (B, max_jT)
                 self.rollout_tally.add_metric(
@@ -688,6 +681,7 @@ class BaseTrainer(ABC):
                         input=vals_estimate_mb,
                         target=targets,
                     )
+                    logger.info(f"Critic loss: {loss.item()}")
                     self.tally.add_metric(path=["mb_critic_loss"], metric=loss.item())
                     # Accumulate gradient
                     loss /= normalization_factor
