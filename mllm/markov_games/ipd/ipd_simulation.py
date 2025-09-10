@@ -48,6 +48,7 @@ class IPD(Simulation):
     def __init__(
         self,
         agent_ids: List[str],
+        agent_names: List[str],
         seed: int,
         rounds_per_game: int,
         reward: float,  # Both cooperate
@@ -58,6 +59,7 @@ class IPD(Simulation):
         defect_actions: List[str],
     ):
         self.agent_ids = agent_ids
+        self.agent_names = agent_names
         self.seed = seed
         self.rounds_per_game = rounds_per_game
         self.reward = reward

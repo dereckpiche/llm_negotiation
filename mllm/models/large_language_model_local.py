@@ -78,6 +78,20 @@ class LeanLocalLLM:
             adapter_id: os.path.join(self.save_path, adapter_id)
             for adapter_id in self.adapter_ids
         }
+        checkpoints_dir = os.path.join(self.output_directory, "checkpoints")
+        self.past_agent_adapter_paths = {}
+        if os.path.isdir(checkpoints_dir):
+            for dirname in os.listdir(checkpoints_dir):
+                dirpath = os.path.join(checkpoints_dir, dirname)
+                if os.path.isdir(dirpath):
+                    self.past_agent_adapter_paths[f"{dirname}_buffer"] = os.path.join(
+                        dirpath, "agent_adapter"
+                    )
+            logger.info(
+                f"Loaded {len(self.past_agent_adapter_paths)} past agent adapters from checkpoints directory."
+            )
+        self.past_agent_adapter_ids = list(self.past_agent_adapter_paths.keys())
+
         # ID management for tracking adapter versions
         self.adapter_train_ids = {
             adapter_id: self.short_id_generator() for adapter_id in self.adapter_ids
@@ -91,6 +105,9 @@ class LeanLocalLLM:
         self.weights_got_updated: dict[AdapterID, bool] = {
             adapter_id: False for adapter_id in self.adapter_ids
         }
+        self.weights_got_updated.update(
+            {adapter_id: False for adapter_id in self.past_agent_adapter_ids}
+        )
         self.current_lora_request = None
         self.currently_loaded_adapter_id = None
 
@@ -149,7 +166,7 @@ class LeanLocalLLM:
         elif inference_backend == "vllm":
             self.inference_backend = VLLMAsyncBackend(
                 model_name=self.model_name,
-                adapter_paths=self.adapter_paths,
+                # adapter_paths=self.adapter_paths,
                 tokenizer=self.tokenizer,
                 engine_init_kwargs=inference_backend_init_kwargs,
                 sampling_params=inference_backend_sampling_params,
@@ -165,6 +182,16 @@ class LeanLocalLLM:
         """
         policies = {}
         for adapter_id in self.adapter_ids:
+            # define policy func
+            async def policy(
+                prompt: list[dict], regex: str | None = None, _adapter_id=adapter_id
+            ):
+                self.prepare_adapter_for_inference(adapter_id=_adapter_id)
+                response = await self.generate(prompt, regex)
+                return response
+
+            policies[self.llm_id + "/" + adapter_id] = policy
+        for adapter_id in self.past_agent_adapter_ids:
             # define policy func
             async def policy(
                 prompt: list[dict], regex: str | None = None, _adapter_id=adapter_id
@@ -196,7 +223,11 @@ class LeanLocalLLM:
 
     def prepare_adapter_for_inference(self, adapter_id: AdapterID) -> None:
         self.inference_backend.prepare_adapter(
-            adapter_id, weights_got_updated=self.weights_got_updated[adapter_id]
+            adapter_id,
+            adapter_path=self.adapter_paths.get(
+                adapter_id, self.past_agent_adapter_paths.get(adapter_id, None)
+            ),
+            weights_got_updated=self.weights_got_updated[adapter_id],
         )
         self.currently_loaded_adapter_id = adapter_id
         self.weights_got_updated[adapter_id] = False
@@ -257,6 +288,8 @@ class LeanLocalLLM:
         # New version of the adapters available
         for adapter_id in self.adapter_ids:
             self.weights_got_updated[adapter_id] = True
+        for adapter_id in self.past_agent_adapter_ids:
+            self.weights_got_updated[adapter_id] = True
 
         # import random
         # self.save_path = self.save_path + str(random.randint(1,500))
@@ -274,11 +307,16 @@ class LeanLocalLLM:
         output_dir = os.path.join(self.output_directory, "checkpoints")
         os.makedirs(output_dir, exist_ok=True)
         date_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        export_path = os.path.join(
-            output_dir, f"{adapter_id}-{checkpoint_indicator}-{date_str}"
-        )
+        agent_adapter_dir = f"{adapter_id}-{checkpoint_indicator}-{date_str}"
+        export_path = os.path.join(output_dir, agent_adapter_dir)
         for adapter_id in self.adapter_ids:
-            self.hf_adapters[adapter_id].save_pretrained(export_path)
+            if "agent" in adapter_id:
+                self.past_agent_adapter_paths[
+                    f"{agent_adapter_dir}_buffer"
+                ] = os.path.join(export_path, adapter_id)
+                self.past_agent_adapter_ids.append(f"{agent_adapter_dir}_buffer")
+                self.weights_got_updated[f"{agent_adapter_dir}_buffer"] = False
+                self.hf_adapters[adapter_id].save_pretrained(export_path)
 
     def short_id_generator(self) -> str:
         """
