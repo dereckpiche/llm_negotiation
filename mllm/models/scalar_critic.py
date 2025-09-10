@@ -15,9 +15,12 @@ class ScalarCritic(nn.Module):
         super().__init__()
         self.critic_adapter = critic_adapter
         hidden_size = self.critic_adapter.shared_llm.config.hidden_size
-        self.value_head = nn.Sequential(nn.Linear(hidden_size, 128), nn.ReLU(), nn.Linear(128, 128), nn.ReLU(), nn.Linear(128, 1)).to(
+        self.value_head = nn.Linear(hidden_size, 1).to(
             dtype=critic_adapter.dtype,
             device=critic_adapter.device)
+        # self.value_head = nn.Sequential(nn.Linear(hidden_size, 128), nn.ReLU(), nn.Linear(128, 128), nn.ReLU(), nn.Linear(128, 1)).to(
+        #     dtype=critic_adapter.dtype,
+        #     device=critic_adapter.device)
 
     def forward(self,
                 input_ids,

@@ -1,10 +1,10 @@
 # To quickly check if code still runs
 
 defaults:
-    - ipd.yaml
+    - no_press_deterministic_naive.yaml
 
 experiment:
-    name: "ipd_${now:%Y-%m-%d___%H-%M-%S}_value_debug"
+    name: "tas_rps_${now:%Y-%m-%d___%H-%M-%S}_value_debug"
     nb_epochs: 1000
     nb_matches_per_iteration: 16
     reinit_matches_each_it: true
@@ -18,9 +18,7 @@ agent_0_id: Alice
 agent_1_id: Bob
 agent_ids: ["Alice", "Bob"]
 
-markov_games:
-    simulation_init_args:
-        rounds_per_game: 10
+
 
 
 temperature: 1.0

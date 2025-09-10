@@ -1,5 +1,5 @@
 defaults:
-    - no_press.yaml
+    - no_press_naive.yaml
 
 
 experiment:

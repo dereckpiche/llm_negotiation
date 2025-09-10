@@ -634,7 +634,6 @@ class BaseTrainer(ABC):
                 )  # (B, max_jT) # A(s, a, b) + V(s) = Q(s, a, b)
                 self.rollout_tally.add_metric(path=["mb_targets_critic"], rollout_tally_item=RolloutTallyItem(crn_ids=trajectory_mb.crn_ids, rollout_ids=trajectory_mb.rollout_ids, agent_ids=trajectory_mb.agent_ids  , metric_matrix=targets))
 
-
                 loss = F.mse_loss(
                     input=vals_estimate_mb,
                     target=targets,
