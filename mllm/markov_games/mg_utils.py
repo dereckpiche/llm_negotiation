@@ -1,7 +1,7 @@
+import asyncio
+import copy
 from collections.abc import Callable
 from dataclasses import dataclass
-import copy
-import asyncio
 
 from mllm.markov_games.ipd.ipd_agent import IPDAgent
 from mllm.markov_games.ipd.ipd_simulation import IPD
@@ -14,21 +14,22 @@ from mllm.markov_games.negotiation.tas_agent import TrustAndSplitAgent
 from mllm.markov_games.negotiation.tas_rps_agent import TrustAndSplitRPSAgent
 from mllm.markov_games.negotiation.tas_rps_simulation import TrustAndSplitRPSSimulation
 from mllm.markov_games.negotiation.tas_simulation import TrustAndSplitSimulation
-
-from mllm.markov_games.markov_game import MarkovGame
-from mllm.markov_games.rollout_tree import RolloutTreeRootNode, StepLog, RolloutTreeBranchNode
-from mllm.markov_games.rollout_tree import AgentActLog
+from mllm.markov_games.rollout_tree import (
+    AgentActLog,
+    RolloutTreeBranchNode,
+    RolloutTreeNode,
+    RolloutTreeRootNode,
+    StepLog,
+)
 from mllm.markov_games.simulation import SimulationStepLog
-from mllm.markov_games.rollout_tree import RolloutTreeNode
 
 AgentId = str
 
 
-
-
 @dataclass
 class AgentConfig:
-    agent_id: int
+    agent_id: str
+    agent_name: str
     agent_class_name: str
     policy_id: str
     init_kwargs: dict
@@ -49,29 +50,31 @@ def init_markov_game_components(
     """
     TOWRITE
     """
-    simulation = eval(config.simulation_class_name)(
-        seed=config.seed,
-        **config.simulation_init_args,
-    )
     agents = {}
+    agent_names = []
     for agent_config in config.agent_configs:
         agent_id = agent_config.agent_id
+        agent_name = agent_config.agent_name
         agent_class = eval(agent_config.agent_class_name)
         agent = agent_class(
             seed=config.seed,
             agent_id=agent_id,
+            agent_name=agent_name,
             policy=policies[agent_config.policy_id],
             **agent_config.init_kwargs,
         )
         agents[agent_id] = agent
+        agent_names.append(agent_name)
+    simulation = eval(config.simulation_class_name)(
+        seed=config.seed,
+        agent_ids=list(agents.keys()),
+        agent_names=agent_names,
+        **config.simulation_init_args,
+    )
     markov_game = MarkovGame(
         id=config.id,
         crn_id=config.seed,
-        simulation=simulation,
         agents=agents,
+        simulation=simulation,
     )
     return markov_game
-
-
-
-

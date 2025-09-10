@@ -17,7 +17,7 @@ from mllm.training.credit_methods import (
     get_discounted_state_visitation_credits,
 )
 from mllm.training.tally_basic import Tally
-from mllm.training.tally_rollout import RolloutTallyItem, RolloutTally
+from mllm.training.tally_rollout import RolloutTally, RolloutTallyItem
 from mllm.training.tally_tokenwise import ContextualizedTokenwiseTally
 from mllm.training.tokenize_chats import process_training_chat
 from mllm.training.trainer_common import BaseTrainer
@@ -364,87 +364,105 @@ class TrainerAdAlign(BaseTrainer):
         logger.info(f"Receiving advantage packets.")
 
         assert (
-            2 >= len(advantage_packets) > 0
+            len(advantage_packets) > 0
         ), "At least one advantage packet must be provided."
 
         for agent_id, agent_data in self.training_data.items():
-            for co_agent_packet in advantage_packets:
-                co_agent_id = co_agent_packet.agent_id
-                if agent_id == co_agent_id:
-                    continue
-                agent_rollout_ids = agent_data.main_data.rollout_ids
-                agent_advantages = agent_data.main_advantages
-                co_agent_advantages = co_agent_packet.main_advantages
-                co_agent_rollout_ids = co_agent_packet.rollout_ids
-                B = len(agent_advantages)
-                # Get co-agent advantages in the right order
-                permutation = []
-                for id in agent_rollout_ids:
-                    permutation.append(
-                        torch.where(id == co_agent_rollout_ids)[0].item()
-                    )
-                co_agent_advantages = [co_agent_advantages[i] for i in permutation]
-                assert all(
-                    a.shape[0] == b.shape[0]
-                    for a, b in zip(co_agent_advantages, agent_advantages)
-                ), "Number of advantages must match for advantage alignment."
+            coagent_advantage_packets = [
+                packet for packet in advantage_packets if packet.agent_id != agent_id
+            ]
+            agent_rollout_ids = agent_data.main_data.rollout_ids
+            agent_advantages = agent_data.main_advantages
+            co_agent_advantages = []
+            for rollout_id in agent_rollout_ids:
+                for co_agent_packet in coagent_advantage_packets:
+                    if rollout_id in co_agent_packet.rollout_ids:
+                        index = torch.where(rollout_id == co_agent_packet.rollout_ids)[
+                            0
+                        ].item()
+                        co_agent_advantages.append(
+                            co_agent_packet.main_advantages[index]
+                        )
+                        # assumes that its two player game, with one co-agent
+                        break
+            assert len(co_agent_advantages) == len(agent_advantages)
+            B = len(agent_advantages)
+            assert all(
+                a.shape[0] == b.shape[0]
+                for a, b in zip(co_agent_advantages, agent_advantages)
+            ), "Number of advantages must match for advantage alignment."
 
-                # Get padded tensors (advantage alignment is invariant to padding)
-                lengths = torch.tensor(
-                    [len(t) for t in agent_advantages],
-                    device=self.device,
-                    dtype=torch.long,
-                )
-                padded_main_advantages = pad_sequence(
-                    agent_advantages, batch_first=True, padding_value=0.0
-                )
-                if agent_data.alternative_advantages:
-                    padded_alternative_advantages = pad_sequence(
-                        agent_data.alternative_advantages,
-                        batch_first=True,
-                        padding_value=0.0,
-                    )  # (B, P, A)
-                else:
-                    padded_alternative_advantages = None
-                padded_co_agent_advantages = pad_sequence(
-                    co_agent_advantages, batch_first=True, padding_value=0.0
+            # Get padded tensors (advantage alignment is invariant to padding)
+            lengths = torch.tensor(
+                [len(t) for t in agent_advantages],
+                device=self.device,
+                dtype=torch.long,
+            )
+            padded_main_advantages = pad_sequence(
+                agent_advantages, batch_first=True, padding_value=0.0
+            )
+            if agent_data.alternative_advantages:
+                padded_alternative_advantages = pad_sequence(
+                    agent_data.alternative_advantages,
+                    batch_first=True,
+                    padding_value=0.0,
+                )  # (B, P, A)
+            else:
+                padded_alternative_advantages = None
+            padded_co_agent_advantages = pad_sequence(
+                co_agent_advantages, batch_first=True, padding_value=0.0
+            )
+
+            # Create training batch data
+            credits, sub_tensors = get_advantage_alignment_credits(
+                a1=padded_main_advantages,
+                a1_alternative=padded_alternative_advantages,
+                a2=padded_co_agent_advantages,
+                beta=self.ad_align_beta,
+                gamma=self.discount_factor,
+                exclude_k_equals_t=self.ad_align_exclude_k_equals_t,
+                use_sign=self.ad_align_use_sign,
+                clipping=self.ad_align_clipping,
+                force_coop_first_step=self.ad_align_force_coop_first_step,
+                use_old_ad_align=self.use_old_ad_align,
+                use_time_regularization=self.use_time_regularization,
+                rloo_branch=self.rloo_branch,
+                reuse_baseline=self.reuse_baseline,
+                mean_normalize_ad_align=self.mean_normalize_ad_align,
+                whiten_adalign_advantages=self.whiten_adalign_advantages,
+                whiten_adalign_advantages_time_step_wise=self.whiten_adalign_advantages_time_step_wise,
+            )
+            for key, value in sub_tensors.items():
+                self.rollout_tally.add_metric(
+                    path=[key],
+                    rollout_tally_item=RolloutTallyItem(
+                        crn_ids=agent_data.main_data.crn_ids,
+                        rollout_ids=agent_data.main_data.rollout_ids,
+                        agent_ids=agent_data.main_data.agent_ids,
+                        metric_matrix=value,
+                    ),
                 )
 
-                # Create training batch data
-                credits, sub_tensors = get_advantage_alignment_credits(
-                    a1=padded_main_advantages,
-                    a1_alternative=padded_alternative_advantages,
-                    a2=padded_co_agent_advantages,
-                    beta=self.ad_align_beta,
-                    gamma=self.discount_factor,
-                    exclude_k_equals_t=self.ad_align_exclude_k_equals_t,
-                    use_sign=self.ad_align_use_sign,
-                    clipping=self.ad_align_clipping,
-                    force_coop_first_step=self.ad_align_force_coop_first_step,
-                    use_old_ad_align=self.use_old_ad_align,
-                    use_time_regularization=self.use_time_regularization,
-                    rloo_branch=self.rloo_branch,
-                    reuse_baseline=self.reuse_baseline,
-                    mean_normalize_ad_align=self.mean_normalize_ad_align,
-                    whiten_adalign_advantages=self.whiten_adalign_advantages,
-                    whiten_adalign_advantages_time_step_wise=self.whiten_adalign_advantages_time_step_wise,
+            if not self.skip_discounted_state_visitation:
+                credits = get_discounted_state_visitation_credits(
+                    credits,
+                    self.discount_factor,
                 )
-                self.rollout_tally.add_metric(path=["ad_align_credits"], rollout_tally_item=RolloutTallyItem(crn_ids=agent_data.main_data.crn_ids, rollout_ids=agent_data.main_data.rollout_ids, agent_ids=agent_data.main_data.agent_ids, metric_matrix=sub_tensors["ad_align_weights_old"]))
-                for key, value in sub_tensors.items():
-                    self.rollout_tally.add_metric(path=[key], rollout_tally_item=RolloutTallyItem(crn_ids=agent_data.main_data.crn_ids, rollout_ids=agent_data.main_data.rollout_ids, agent_ids=agent_data.main_data.agent_ids, metric_matrix=value))
-                
-                if not self.skip_discounted_state_visitation:
-                    credits = get_discounted_state_visitation_credits(
-                        credits,
-                        self.discount_factor,
-                    )
-                    self.rollout_tally.add_metric(path=["discounted_state_visitation_credits"], rollout_tally_item=RolloutTallyItem(crn_ids=agent_data.main_data.crn_ids, rollout_ids=agent_data.main_data.rollout_ids, agent_ids=agent_data.main_data.agent_ids, metric_matrix=sub_tensors["discounted_state_visitation_credits"]))
+                self.rollout_tally.add_metric(
+                    path=["discounted_state_visitation_credits"],
+                    rollout_tally_item=RolloutTallyItem(
+                        crn_ids=agent_data.main_data.crn_ids,
+                        rollout_ids=agent_data.main_data.rollout_ids,
+                        agent_ids=agent_data.main_data.agent_ids,
+                        metric_matrix=sub_tensors[
+                            "discounted_state_visitation_credits"
+                        ],
+                    ),
+                )
 
-                # Slice back to jagged
-                advantage_alignment_credits = [
-                    credits[i, : lengths[i]] for i in range(B)
-                ]
-                # Replace stored training data for this agent by the concrete trajectory batch
-                # and attach the computed credits for policy gradient.
-                self.training_data[agent_id] = agent_data.main_data
-                self.training_data[agent_id].batch_credits = advantage_alignment_credits
+            # Slice back to jagged
+            advantage_alignment_credits = [credits[i, : lengths[i]] for i in range(B)]
+            # Replace stored training data for this agent by the concrete trajectory batch
+            # and attach the computed credits for policy gradient.
+            self.training_data[agent_id] = agent_data.main_data
+            self.training_data[agent_id].batch_credits = advantage_alignment_credits

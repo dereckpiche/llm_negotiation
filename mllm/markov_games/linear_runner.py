@@ -16,7 +16,8 @@ async def LinearRunner(
     terminated = False
     root = RolloutTreeRootNode(
         id=markov_game.get_id(),
-        crn_id=markov_game.get_crn_id()
+        crn_id=markov_game.get_crn_id(),
+        agent_ids=markov_game.get_agent_ids(),
     )
     previous_node = root
     while not terminated:
@@ -27,4 +28,3 @@ async def LinearRunner(
         time_step += 1
 
     return root
-    

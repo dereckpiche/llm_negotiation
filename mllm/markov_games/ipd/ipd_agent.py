@@ -27,6 +27,7 @@ class IPDAgentState:
 class IPDAgent(Agent):
     seed: int
     agent_id: str
+    agent_name: str
     policy: Callable[[List[Dict]], str]
     intro_prompt: str  # Introduction prompt explaining the game rules
     goal_prompt: str  # Prompt explaining the agent's goal
