@@ -89,6 +89,7 @@ class BaseTrainer(ABC):
         enable_tokenwise_logging: bool,
         save_path: str,
         reward_normalizing_constant: float = 1.0,
+        critic_loss_type: Literal["mse", "huber"] = "huber",
     ):
         """
         Initialize the REINFORCE trainer with reward shaping for multi-agent or single-agent training.
@@ -192,6 +193,7 @@ class BaseTrainer(ABC):
         self.enable_tokenwise_logging = enable_tokenwise_logging
         self.reward_normalizing_constant = reward_normalizing_constant
         self.pg_loss_normalization = pg_loss_normalization
+        self.critic_loss_type = critic_loss_type
         # Common containers used by all trainers
         self.training_data: dict = {}
         self.debug_path_list: list[str] = []
@@ -572,17 +574,6 @@ class BaseTrainer(ABC):
                     state_ends_mask_mb,
                     timestep_counts,
                 ) = trajectory_mb.get_padded_tensors_for_critic()
-                self.rollout_tally.add_metric(
-                    path=["batch_rewards"],
-                    rollout_tally_item=RolloutTallyItem(
-                        crn_ids=trajectory_mb.crn_ids,
-                        rollout_ids=trajectory_mb.rollout_ids,
-                        agent_ids=trajectory_mb.agent_ids,
-                        metric_matrix=pad_sequence(
-                            rewards_mb, batch_first=True, padding_value=0.0
-                        ),
-                    ),
-                )
                 # critic causal attention up to end flags
                 if training:
                     vals_estimate_full = self.critic(tokens_mb)
@@ -609,6 +600,17 @@ class BaseTrainer(ABC):
                 ).to(
                     dtype=dtype
                 )  # (B, S)
+                if self.reward_normalizing_constant != 1.0:
+                    rewards_mb /= self.reward_normalizing_constant
+                self.rollout_tally.add_metric(
+                    path=["batch_rewards"],
+                    rollout_tally_item=RolloutTallyItem(
+                        crn_ids=trajectory_mb.crn_ids,
+                        rollout_ids=trajectory_mb.rollout_ids,
+                        agent_ids=trajectory_mb.agent_ids,
+                        metric_matrix=rewards_mb,
+                    ),
+                )
                 # self.tally.add_metric(path=["mb_rewards"], metric=rewards_mb)
                 # # Only for tallying
                 # get_discounted_returns(
@@ -689,11 +691,16 @@ class BaseTrainer(ABC):
                             metric_matrix=targets,
                         ),
                     )
-
-                    loss = F.huber_loss(
-                        input=vals_estimate_mb,
-                        target=targets,
-                    )
+                    if self.critic_loss_type == "mse":
+                        loss = F.mse_loss(
+                            input=vals_estimate_mb,
+                            target=targets,
+                        )
+                    elif self.critic_loss_type == "huber":
+                        loss = F.huber_loss(
+                            input=vals_estimate_mb,
+                            target=targets,
+                        )
                     self.tally.add_metric(path=["mb_critic_loss"], metric=loss.item())
                     # Accumulate gradient
                     loss /= normalization_factor
@@ -717,6 +724,8 @@ class BaseTrainer(ABC):
             padded_rewards = pad_sequence(
                 batch_rewards, batch_first=True, padding_value=0.0
             )
+            if self.reward_normalizing_constant != 1.0:
+                padded_rewards /= self.reward_normalizing_constant
             self.rollout_tally.add_metric(
                 path=["mb_rewards"],
                 rollout_tally_item=RolloutTallyItem(
@@ -729,7 +738,6 @@ class BaseTrainer(ABC):
             padded_advantages = get_discounted_returns(
                 rewards=padded_rewards,
                 discount_factor=self.discount_factor,
-                reward_normalizing_constant=self.reward_normalizing_constant,
             )  # no baseline for now
             if self.use_rloo:
                 is_grouped_by_rng = (
@@ -758,16 +766,21 @@ class BaseTrainer(ABC):
                 for i in range(padded_advantages.shape[0])
             ]
 
-        if self.whiten_advantages_time_step_wise:
+        if self.whiten_advantages_time_step_wise or self.whiten_advantages:
             lengths = [len(c) for c in advantages]
             padded_advantages = pad_sequence(
                 advantages, batch_first=True, padding_value=0.0
             )
-            whitened_padded_advantages = whiten_advantages_time_step_wise(
-                padded_advantages
-            )
+            if self.whiten_advantages_time_step_wise:
+                whitened_padded_advantages = whiten_advantages_time_step_wise(
+                    padded_advantages
+                )
+                path = ["mb_whitened_advantages_time_step_wise"]
+            elif self.whiten_advantages:
+                whitened_padded_advantages = whiten_advantages(padded_advantages)
+                path = ["mb_whitened_advantages"]
             self.rollout_tally.add_metric(
-                path=["mb_whitened_advantages_time_step_wise"],
+                path=path,
                 rollout_tally_item=RolloutTallyItem(
                     crn_ids=trajectories.crn_ids,
                     rollout_ids=trajectories.rollout_ids,
@@ -776,25 +789,8 @@ class BaseTrainer(ABC):
                 ),
             )
             advantages = [
-                whitened_padded_advantages[i, : lengths[i]].flatten()
+                whitened_padded_advantages[i, : lengths[i]]
                 for i in range(whitened_padded_advantages.shape[0])
-            ]
-
-        if self.whiten_advantages:
-            lengths = [len(c) for c in advantages]
-            whitened_advantages = whiten_advantages(torch.stack(advantages, dim=0))
-            self.rollout_tally.add_metric(
-                path=["mb_whitened_advantages"],
-                rollout_tally_item=RolloutTallyItem(
-                    crn_ids=trajectories.crn_ids,
-                    rollout_ids=trajectories.rollout_ids,
-                    agent_ids=trajectories.agent_ids,
-                    metric_matrix=whitened_advantages,
-                ),
-            )
-            advantages = [
-                whitened_advantages[i, : lengths[i]]
-                for i in range(whitened_advantages.shape[0])
             ]
 
         self.trainer_annealing_state.annealing_step_counter += 1
