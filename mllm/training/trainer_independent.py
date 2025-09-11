@@ -39,6 +39,14 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
 
+@dataclass
+class TrainingData:
+    agent_id: str
+    main_data: TrajectoryBatch
+    # list-of-tensors: per rollout advantages with length jT
+    main_advantages: list[torch.FloatTensor] | None = None
+
+
 class TrainerNaive(BaseTrainer):
     def set_agent_trajectory_data(
         self, agent_id: str, roots: list[RolloutTreeRootNode]
@@ -92,11 +100,6 @@ class TrainerNaive(BaseTrainer):
         batch_advantages: torch.FloatTensor = (
             self.get_advantages_with_critic_gradient_accumulation(trajectory_batch)
         )
-        # if self.critic_optimizer is not None:
-        #     self.critic_optimizer.step()
-        #     self.critic_optimizer.zero_grad()
-
-        trajectory_batch.batch_credits = batch_advantages
 
         # Discount state visitation (the mathematically correct way)
         if not self.skip_discounted_state_visitation:
@@ -106,13 +109,19 @@ class TrainerNaive(BaseTrainer):
                     self.discount_factor,
                 ).squeeze(0)
 
-        self.training_data[agent_id] = trajectory_batch
+        self.training_data[agent_id] = TrainingData(
+            agent_id=agent_id,
+            main_data=trajectory_batch,
+            main_advantages=batch_advantages,
+        )
 
     def receive_advantage_data(self, advantage_packets: list[AdvantagePacket]):
         """
         This trainer ignores the advantages of the other trainers.
         """
-        pass
+        for agent_id, agent_data in self.training_data.items():
+            self.training_data[agent_id] = agent_data.main_data
+            self.training_data[agent_id].batch_credits = agent_data.main_advantages
 
     def share_advantage_data(self) -> list[AdvantagePacket]:
         """
@@ -126,8 +135,8 @@ class TrainerNaive(BaseTrainer):
             advantage_packets.append(
                 AdvantagePacket(
                     agent_id=agent_id,
-                    rollout_ids=agent_data.rollout_ids,
-                    main_advantages=agent_data.batch_credits,
+                    rollout_ids=agent_data.main_data.rollout_ids,
+                    main_advantages=agent_data.main_advantages,
                 )
             )
         return advantage_packets

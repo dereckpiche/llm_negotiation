@@ -600,8 +600,6 @@ class BaseTrainer(ABC):
                 ).to(
                     dtype=dtype
                 )  # (B, S)
-                if self.reward_normalizing_constant != 1.0:
-                    rewards_mb /= self.reward_normalizing_constant
                 self.rollout_tally.add_metric(
                     path=["batch_rewards"],
                     rollout_tally_item=RolloutTallyItem(
@@ -611,6 +609,8 @@ class BaseTrainer(ABC):
                         metric_matrix=rewards_mb,
                     ),
                 )
+                if self.reward_normalizing_constant != 1.0:
+                    rewards_mb /= self.reward_normalizing_constant
                 # self.tally.add_metric(path=["mb_rewards"], metric=rewards_mb)
                 # # Only for tallying
                 # get_discounted_returns(
@@ -724,8 +724,6 @@ class BaseTrainer(ABC):
             padded_rewards = pad_sequence(
                 batch_rewards, batch_first=True, padding_value=0.0
             )
-            if self.reward_normalizing_constant != 1.0:
-                padded_rewards /= self.reward_normalizing_constant
             self.rollout_tally.add_metric(
                 path=["mb_rewards"],
                 rollout_tally_item=RolloutTallyItem(
@@ -735,6 +733,8 @@ class BaseTrainer(ABC):
                     metric_matrix=padded_rewards,
                 ),
             )
+            if self.reward_normalizing_constant != 1.0:
+                padded_rewards /= self.reward_normalizing_constant
             padded_advantages = get_discounted_returns(
                 rewards=padded_rewards,
                 discount_factor=self.discount_factor,

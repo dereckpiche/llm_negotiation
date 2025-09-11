@@ -194,6 +194,8 @@ def get_advantage_alignment_credits(
             a1_alternative.dim() == 3
         ), "Alternative advantages must be of shape (B, S, A)"
         B, T, A = a1_alternative.shape
+    else:
+        B, T = a1.shape
     assert a1.shape == a2.shape, "Not the same shape"
 
     sub_tensors = {}
@@ -255,7 +257,7 @@ def get_advantage_alignment_credits(
 
     # 1/1+t Regularization
     if use_time_regularization:
-        t_values = torch.arange(1, T + 1)
+        t_values = torch.arange(1, T + 1).to(ad_align_weights.device)
         ad_align_weights = ad_align_weights / t_values
         sub_tensors["time_regularized_ad_align_weights"] = ad_align_weights
 
