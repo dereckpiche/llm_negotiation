@@ -47,4 +47,4 @@ def split_efficiency(sl: SimulationStepLog) -> Dict[str, float] | None:
     if not max_reward:
         return None
     # Efficiency is a global metric; emit same value for a special key "all"
-    return {"all": achieved / max_reward}
+    return {"all_agents": achieved / max_reward}

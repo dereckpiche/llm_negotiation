@@ -1,29 +1,25 @@
 from __future__ import annotations
 
+import argparse
+import importlib
+import json
+import os
 import pickle
+import shutil
+import sys
+import urllib.error
+import urllib.request
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import List
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from mllm.markov_games.rollout_tree import RolloutTreeRootNode
 
-
-def find_iteration_folders(global_folder):
-    """Find all iteration_* folders within the global folder structure."""
-    global_path = Path(global_folder)
-
-    iteration_folders = []
-
-    for item in global_path.glob("iteration_*"):
-        if item.is_dir():
-            iteration_folders.append(item)
-
-    for seed_dir in global_path.glob("seed_*/"):
-        if seed_dir.is_dir():
-            for item in seed_dir.glob("iteration_*"):
-                if item.is_dir():
-                    iteration_folders.append(item)
-
-    return sorted(iteration_folders)
+# Optional progress bar
+try:
+    from tqdm import tqdm  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    tqdm = None
 
 
 def gather_rollout_trees(iteration_folder):
@@ -46,13 +42,6 @@ def get_rollout_trees(global_folder) -> List[List[RolloutTreeRootNode]]:
         rollout_trees.append(gather_rollout_trees(iteration_folder))
     return rollout_trees
 
-
-import argparse
-import glob
-import os
-import re
-import shutil
-from pathlib import Path
 
 from mllm.markov_games.gather_and_export_utils import *
 from mllm.training.produce_training_stats import render_iteration_trainer_stats
@@ -88,11 +77,6 @@ def process_single_folder(
 
     for i, f in enumerate(files, 1):
         print(f"  [{i}/{len(files)}] {f.name}")
-        export_rewards_to_csv(
-            path=f,
-            outdir=output_path,
-            first_file=True if i == 1 else False,
-        )
         export_chat_logs(
             path=f,
             outdir=output_path,
@@ -111,28 +95,459 @@ def process_single_folder(
     return True
 
 
-def find_iteration_folders(global_folder, from_iteration=0):
-    """Find all iteration_* folders within the global folder structure."""
-    global_path = Path(global_folder)
+def find_iteration_folders(
+    global_folder: str | Path,
+    from_iteration: int = 0,
+    last_iteration: Optional[int] = None,
+) -> List[Path]:
+    """Find all iteration_* folders within the folder or under seed_*.
 
-    # Look for iteration_* folders in all subdirectories
-    iteration_folders = []
+    Filters by numeric iteration index (parsed from folder suffix) using
+    from_iteration (inclusive) and last_iteration (inclusive) if provided.
+    Works whether global_folder is a seed directory or a parent containing seeds.
+    """
+    base = Path(global_folder)
 
-    # Search in the global folder itself
-    for item in global_path.glob("iteration_*"):
+    candidates: List[Path] = []
+
+    # Search in the folder itself
+    for item in base.glob("iteration_*"):
         if item.is_dir():
-            iteration_folders.append(item)
+            candidates.append(item)
 
     # Search in seed_* subdirectories
-    for seed_dir in global_path.glob("seed_*/"):
+    for seed_dir in base.glob("seed_*/"):
         if seed_dir.is_dir():
             for item in seed_dir.glob("iteration_*"):
                 if item.is_dir():
-                    iteration_folders.append(item)
+                    candidates.append(item)
 
-    return sorted(iteration_folders, key=lambda path: int(path.name.split("_")[-1]))[
-        from_iteration:
-    ]
+    # Parse numeric iteration indices and filter
+    def parse_idx(p: Path) -> Optional[int]:
+        name = p.name
+        try:
+            return int(name.split("_")[-1])
+        except Exception:
+            return None
+
+    filtered: List[tuple[int, Path]] = []
+    for p in candidates:
+        idx = parse_idx(p)
+        if idx is None:
+            continue
+        if idx < from_iteration:
+            continue
+        if (last_iteration is not None) and (idx > last_iteration):
+            continue
+        filtered.append((idx, p))
+
+    # Sort numerically by idx
+    filtered.sort(key=lambda t: t[0])
+    return [p for (_idx, p) in filtered]
+
+
+def discover_metric_functions(module_name: str) -> Dict[str, Callable[[Any], Any]]:
+    """Import a statistics module and return all public callables as metrics.
+
+    Assumes every method in the stats module is a metric function.
+    """
+    mod = importlib.import_module(module_name)
+    metrics: Dict[str, Callable[[Any], Any]] = {}
+    for attr_name in dir(mod):
+        if attr_name.startswith("_"):
+            continue
+        try:
+            attr = getattr(mod, attr_name)
+        except Exception:
+            continue
+        if callable(attr):
+            metrics[attr_name] = attr
+    return metrics
+
+
+# -----------------------------
+# Inlined stats engine (from stats.py)
+# -----------------------------
+
+
+def _iterate_main_nodes_fast(root: dict) -> Iterator[dict]:
+    """Iterate main trajectory nodes from a raw dict-serialized rollout tree."""
+    current = root.get("child") if isinstance(root, dict) else None
+    while current is not None:
+        if isinstance(current, dict) and ("step_log" in current):
+            yield current
+            current = current.get("child")
+        elif isinstance(current, dict) and ("main_child" in current):
+            current = current.get("main_child")
+        else:
+            break
+
+
+class _SlView:
+    __slots__ = ("rewards", "info")
+
+    def __init__(self, rewards, info):
+        self.rewards = rewards
+        self.info = info
+
+
+def iterate_main_simulation_logs_fast(root: dict) -> Iterator[_SlView]:
+    for node in _iterate_main_nodes_fast(root):
+        sl = (node.get("step_log") or {}).get("simulation_step_log") or {}
+        yield _SlView(sl.get("rewards", {}), sl.get("info"))
+
+
+def stream_rollout_files(iteration_folder: Path) -> Iterator[Path]:
+    for p in iteration_folder.rglob("*.rt.pkl"):
+        if p.is_file():
+            yield p
+
+
+def load_root(path: Path) -> dict:
+    """Load rollout tree as raw dict without Pydantic validation (fast)."""
+    with open(path, "rb") as f:
+        data = pickle.load(f)
+    return data
+
+
+def _compute_record_for_file(
+    pkl_path: str,
+    iteration_name: str,
+    metrics_items: List[Tuple[str, Callable[[Any], Optional[Dict[str, float]]]]],
+):
+    root = load_root(Path(pkl_path))
+    agg: Dict[str, Dict[str, List[float]]] = {m: {} for m, _ in metrics_items}
+    for sl in iterate_main_simulation_logs_fast(root):
+        for mname, fn in metrics_items:
+            vals = None
+            try:
+                vals = fn(sl)
+            except Exception:
+                vals = None
+            if not vals:
+                continue
+            for aid, v in vals.items():
+                if v is None:
+                    continue
+                lst = agg[mname].setdefault(str(aid), [])
+                try:
+                    lst.append(float(v))
+                except Exception:
+                    continue
+
+    # finalize averages per metric/agent for this rollout
+    result: Dict[str, Dict[str, float]] = {}
+    for mname, _ in metrics_items:
+        result[mname] = {}
+        for aid, vals in agg[mname].items():
+            result[mname][aid] = (sum(vals) / len(vals)) if vals else None
+
+    mgid = root.get("id") if isinstance(root, dict) else None
+    crn_id = root.get("crn_id") if isinstance(root, dict) else None
+    return {
+        "mgid": mgid,
+        "crn_id": crn_id,
+        "iteration": iteration_name,
+        "stats": result,
+    }
+
+
+def run_stats_functional(
+    data_root: Path,
+    game_name: str,
+    metrics: Dict[str, Callable[[Any], Optional[Dict[str, float]]]],
+    jobs: Optional[int] = None,
+    from_iteration: int = 0,
+    last_iteration: Optional[int] = None,
+) -> Path:
+    data_root = Path(data_root)
+    outfile = data_root / "statistics.json"
+    if outfile.exists():
+        outfile.unlink()
+
+    # Ensure deterministic ordering of iterations (numeric sort) and apply range filters
+    all_iteration_folders = list(find_iteration_folders(str(data_root)))
+    parsed: List[Tuple[int, str]] = []
+    for p in all_iteration_folders:
+        try:
+            idx = int(Path(p).name.split("_")[-1])
+        except Exception:
+            continue
+        if idx < from_iteration:
+            continue
+        if last_iteration is not None and idx > last_iteration:
+            continue
+        parsed.append((idx, str(p)))
+    parsed.sort(key=lambda t: t[0])
+    iteration_folders = [p for (_idx, p) in parsed]
+
+    records: List[Dict[str, Any]] = []
+
+    # Prepare tasks across all iterations to use a single process pool
+    metrics_items = list(metrics.items())
+    max_workers = jobs or max(1, (os.cpu_count() or 2))
+    tasks: List[Tuple[str, str]] = []  # (pkl_path, iteration_name)
+    for iteration_folder in iteration_folders:
+        iteration_name = Path(iteration_folder).name
+        files = sorted(
+            (p for p in stream_rollout_files(Path(iteration_folder))),
+            key=lambda x: str(x),
+        )
+        for p in files:
+            tasks.append((str(p), iteration_name))
+
+    # Sort tasks deterministically by (iteration_name, path)
+    tasks.sort(key=lambda t: (t[1], t[0]))
+
+    total_rollouts = len(tasks)
+    pbar = (
+        tqdm(total=total_rollouts, desc="Rollouts", dynamic_ncols=True)
+        if (tqdm and hasattr(sys.stderr, "isatty") and sys.stderr.isatty())
+        else None
+    )
+    processed = 0
+    if max_workers > 1 and total_rollouts > 1:
+        with ProcessPoolExecutor(max_workers=max_workers) as ex:
+            futures_map = {}
+            for idx, (p, it) in enumerate(tasks):
+                fut = ex.submit(_compute_record_for_file, p, it, metrics_items)
+                futures_map[fut] = idx
+            results: List[Optional[Dict[str, Any]]] = [None] * total_rollouts
+            for fut in as_completed(futures_map.keys()):
+                idx = futures_map[fut]
+                results[idx] = fut.result()
+                if pbar is not None:
+                    pbar.update(1)
+                else:
+                    processed += 1
+                    print(f"Rollouts: {processed}/{total_rollouts}", flush=True)
+        records = [rec for rec in results if rec is not None]
+    else:
+        for p, it in tasks:
+            rec = _compute_record_for_file(p, it, metrics_items)
+            records.append(rec)
+            if pbar is not None:
+                pbar.update(1)
+            else:
+                processed += 1
+                print(f"Rollouts: {processed}/{total_rollouts}", flush=True)
+    if pbar is not None:
+        pbar.close()
+
+    # Write per-iteration averages (across mgids) as JSON
+    def write_iteration_avgs(records_list: List[Dict[str, Any]]):
+        by_iter: Dict[str, List[Dict[str, Any]]] = {}
+        iteration_order: List[str] = []
+        for r in records_list:
+            it = str(r.get("iteration"))
+            if it not in by_iter:
+                by_iter[it] = []
+                iteration_order.append(it)
+            by_iter[it].append(r)
+
+        iteration_order = sorted(iteration_order)
+
+        metric_names: set[str] = set()
+        agent_keys_per_metric: Dict[str, set[str]] = {}
+        for r in records_list:
+            stats = r.get("stats", {}) or {}
+            for mname, val in stats.items():
+                metric_names.add(mname)
+                if isinstance(val, dict):
+                    s = agent_keys_per_metric.setdefault(mname, set())
+                    for ak in val.keys():
+                        s.add(str(ak))
+
+        iter_avgs: Dict[str, Dict[str, Dict[str, float]]] = {}
+        for it_name, recs in by_iter.items():
+            iter_avgs[it_name] = {}
+            for mname in metric_names:
+                iter_avgs[it_name][mname] = {}
+                agent_cols = sorted(agent_keys_per_metric.get(mname, set()))
+                for ak in agent_cols:
+                    vals: List[float] = []
+                    for r in recs:
+                        stats = (r.get("stats") or {}).get(mname)
+                        if (
+                            isinstance(stats, dict)
+                            and ak in stats
+                            and stats[ak] is not None
+                        ):
+                            try:
+                                vals.append(float(stats[ak]))
+                            except Exception:
+                                pass
+                    iter_avgs[it_name][mname][ak] = (
+                        (sum(vals) / len(vals)) if vals else None
+                    )
+
+        metric_first: Dict[str, Dict[str, List[float]]] = {}
+        for mname in sorted(metric_names):
+            metric_first[mname] = {}
+            agent_cols = sorted(agent_keys_per_metric.get(mname, set()))
+            for ak in agent_cols:
+                series: List[float] = []
+                for it in iteration_order:
+                    series.append(iter_avgs.get(it, {}).get(mname, {}).get(ak))
+                metric_first[mname][ak] = series
+
+            # Derive "all_agents" if appropriate
+            keys_present = sorted(metric_first[mname].keys())
+            has_all_agents = "all_agents" in keys_present
+            has_all = "all" in keys_present
+            non_agg_agents = [a for a in keys_present if a not in ("all", "all_agents")]
+
+            if not has_all_agents:
+                if non_agg_agents:
+                    all_series: List[float] = []
+                    for idx in range(len(iteration_order)):
+                        vals: List[float] = []
+                        for ak in non_agg_agents:
+                            v = metric_first[mname].get(
+                                ak, [None] * len(iteration_order)
+                            )[idx]
+                            if v is not None:
+                                try:
+                                    vals.append(float(v))
+                                except Exception:
+                                    pass
+                        all_series.append(sum(vals) / len(vals) if vals else None)
+                    metric_first[mname]["all_agents"] = all_series
+                elif has_all:
+                    # Mirror 'all' into 'all_agents' when only aggregate exists
+                    metric_first[mname]["all_agents"] = list(
+                        metric_first[mname].get("all", [])
+                    )
+
+        with open(outfile, "w", encoding="utf-8") as f:
+            json.dump(metric_first, f, ensure_ascii=False)
+
+    write_iteration_avgs(records)
+
+    return outfile
+
+
+def compute_stats_and_stage(
+    data_root: Path,
+    game_kind: str,
+    metrics: Dict[str, Callable[[Any], Any]],
+    jobs: Optional[int],
+    from_iteration: int,
+    last_iteration: Optional[int],
+) -> Path:
+    """Compute statistics.json at data_root and copy to 0_stats/statistics.json."""
+    out_path = run_stats_functional(
+        data_root,
+        game_kind,
+        metrics,
+        jobs=jobs,
+        from_iteration=from_iteration,
+        last_iteration=last_iteration,
+    )
+
+    stats_dir = data_root / "0_stats"
+    stats_dir.mkdir(parents=True, exist_ok=True)
+    staged = stats_dir / "statistics.json"
+    try:
+        if staged.exists():
+            staged.unlink()
+    except Exception:
+        pass
+    shutil.copy2(out_path, staged)
+    return out_path
+
+
+def _sanitize_filename(name: str) -> str:
+    safe = "".join(c if c.isalnum() or c in ("-", "_", ".") else "_" for c in name)
+    return safe or "metric"
+
+
+STYLE_URL = "https://raw.githubusercontent.com/dereckpiche/DedeStyle/refs/heads/main/dedestyle.mplstyle"
+
+
+def plot_statistics_json(seed_root: Path) -> None:
+    """Generate plots from statistics.json into seed_root/0_stats/.render.
+
+    Expects statistics.json structure: {metric: {agent: [series...]}}.
+    """
+    stats_json_path = seed_root / "statistics.json"
+    if not stats_json_path.exists():
+        print(f"No statistics.json found at {stats_json_path}")
+        return
+
+    try:
+        # Use non-interactive backend for headless render
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt  # type: ignore
+        import matplotlib.style as mplstyle  # type: ignore
+    except Exception as e:
+        print(f"Matplotlib not available for plots: {e}")
+        return
+
+    with open(stats_json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    stats_dir = seed_root / "0_stats"
+    render_dir = stats_dir / "plots.render."
+    render_dir.mkdir(parents=True, exist_ok=True)
+
+    # Attempt to download and apply the custom style
+    style_path = stats_dir / "dedestyle.mplstyle"
+    try:
+        # Download only if missing or empty
+        if (not style_path.exists()) or (style_path.stat().st_size == 0):
+            with urllib.request.urlopen(STYLE_URL, timeout=10) as resp:
+                content = resp.read()
+            with open(style_path, "wb") as sf:
+                sf.write(content)
+        mplstyle.use(str(style_path))
+    except Exception as e:
+        print(f"Could not apply style from {STYLE_URL}: {e}")
+
+    # For each metric, plot each agent's series
+    for metric_name, agent_to_series in sorted((data or {}).items()):
+        if not isinstance(agent_to_series, dict):
+            continue
+        # Build x axis by series length (assume all agents same length; if not, use max)
+        max_len = 0
+        for series in agent_to_series.values():
+            try:
+                max_len = max(max_len, len(series) if series is not None else 0)
+            except Exception:
+                continue
+        if max_len == 0:
+            continue
+        x = list(range(max_len))
+
+        fig, ax = plt.subplots(figsize=(8, 4.5))
+        for agent_name in sorted(agent_to_series.keys()):
+            series = agent_to_series.get(agent_name)
+            if not isinstance(series, list) or len(series) == 0:
+                continue
+            # Pad/truncate to x length; matplotlib treats None as gaps
+            y = list(series[:max_len])
+            if len(y) < max_len:
+                y = y + [None] * (max_len - len(y))
+            try:
+                ax.plot(x, y, label=str(agent_name), linewidth=2, markersize=3)
+            except Exception:
+                # Best-effort plotting
+                continue
+
+        ax.set_title(str(metric_name))
+        ax.set_xlabel("Iteration Index")
+        ax.set_ylabel("Value")
+        ax.legend(loc="best", fontsize=8)
+        ax.grid(True, alpha=0.3)
+        fig.tight_layout()
+
+        out_file = render_dir / f"{_sanitize_filename(metric_name)}.render.png"
+        try:
+            fig.savefig(out_file, dpi=150)
+        finally:
+            plt.close(fig)
 
 
 def clean_render_artifacts(base_path: Path) -> int:
@@ -184,137 +599,152 @@ def clean_render_artifacts(base_path: Path) -> int:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Process negotiation game rollout files for analysis"
+        description="Compute stats, generate plots, and render artifacts for Markov games",
     )
     parser.add_argument(
         "path",
         nargs="?",
-        help="Positional path to the global experiment folder (equivalent to --global-folder PATH)",
+        help="Experiment root or seed folder containing iteration_* (default: .)",
     )
-    parser.add_argument(
-        "--folders", nargs="+", help="List of specific folders to process"
+    # Game selection
+    g = parser.add_mutually_exclusive_group(required=True)
+    g.add_argument("--ipd", action="store_true", help="Use IPD statistics module")
+    g.add_argument(
+        "--nego", action="store_true", help="Use Negotiation statistics module"
     )
+
+    # Optional controls
     parser.add_argument(
-        "--global-folder",
-        default=".",
-        help="Global folder containing iteration_* subdirectories (default: current directory)",
-    )
-    parser.add_argument(
-        "--output-dir",
-        help="Output directory (if not specified, files are created in input folders)",
-    )
-    parser.add_argument(
-        "--per-agent",
-        action="store_true",
-        default=True,
-        help="Also write per-agent transcripts (default: True)",
-    )
-    parser.add_argument(
-        "--no-per-agent",
-        action="store_false",
-        dest="per_agent",
-        help="Don't write per-agent transcripts",
-    )
-    parser.add_argument(
-        "--include-state-end",
-        action="store_true",
-        default=False,
-        help="Annotate <STATE_END> on lines (default: False)",
-    )
-    parser.add_argument(
-        "--sim-csv",
-        action="store_true",
-        default=True,
-        help="Export simulation infos to CSV (default: True)",
-    )
-    parser.add_argument(
-        "--no-sim-csv",
-        action="store_false",
-        dest="sim_csv",
-        help="Don't export simulation infos to CSV",
-    )
-    parser.add_argument(
-        "--recursive",
-        action="store_true",
-        default=False,
-        help="Search subfolders for JSON files (default: False)",
+        "--jobs", type=int, default=None, help="Parallel workers for stats"
     )
     parser.add_argument(
         "--from-iteration",
         type=int,
         default=0,
-        help="Start processing from a specific iteration (default: 0)",
+        help="Start at iteration index (inclusive)",
+    )
+    parser.add_argument(
+        "--last-iteration",
+        type=int,
+        default=None,
+        help="Stop at iteration index (inclusive)",
     )
     parser.add_argument(
         "--clean",
         action="store_true",
-        help="Remove all files/directories with '.render.' in their name under the given path(s) and exit",
+        help="Delete all '.render.' artifacts under path and exit",
+    )
+
+    # Rendering options
+    parser.add_argument(
+        "--per-agent",
+        action="store_true",
+        default=True,
+        help="Write per-agent transcripts",
+    )
+    parser.add_argument(
+        "--no-per-agent",
+        action="store_false",
+        dest="per_agent",
+        help="Disable per-agent transcripts",
+    )
+    parser.add_argument(
+        "--include-state-end",
+        action="store_true",
+        default=False,
+        help="Annotate <STATE_END> on lines",
+    )
+    parser.add_argument(
+        "--sim-csv",
+        action="store_true",
+        default=True,
+        help="Export simulation infos to CSV",
+    )
+    parser.add_argument(
+        "--no-sim-csv",
+        action="store_false",
+        dest="sim_csv",
+        help="Do not export simulation infos to CSV",
     )
 
     args = parser.parse_args()
 
-    # Positional path, if provided, takes precedence over --global-folder
-    effective_global_folder = args.path if args.path else args.global_folder
+    data_root = Path(args.path or ".").resolve()
 
-    # Handle cleaning mode first
     if args.clean:
-        target_paths = []
-        if effective_global_folder:
-            target_paths.append(Path(effective_global_folder))
-        if args.folders:
-            target_paths.extend([Path(p) for p in args.folders])
-        if not target_paths:
-            target_paths = [Path(".")]
-
-        total_removed = 0
-        for base in target_paths:
-            print(f"Cleaning under: {base}")
-            total_removed += clean_render_artifacts(base)
-
-        print(
-            f"Cleaning complete. Removed {total_removed} item(s) containing '.render.'"
-        )
+        print(f"Cleaning under: {data_root}")
+        removed = clean_render_artifacts(data_root)
+        print(f"Cleaning complete. Removed {removed} item(s) containing '.render.'")
         return
 
-    folders_to_process = []
+    # 1) Discover metrics based on game kind
+    if args.ipd:
+        stats_mod = "mllm.markov_games.ipd.ipd_statistics"
+        game_kind = "ipd"
+    else:
+        stats_mod = "mllm.markov_games.negotiation.negotiation_statistics"
+        game_kind = "negotiation"
 
-    if effective_global_folder:
-        # Find all iteration_* folders in the global folder
+    metrics = discover_metric_functions(stats_mod)
+    if not metrics:
+        print(f"No metrics discovered in {stats_mod}. Aborting.")
+        return
+
+    # Determine seed folders: if path itself looks like a seed (contains iteration_*), use it; else use all seed_*
+    seeds: List[Path] = []
+    has_iterations_here = any((data_root.glob("iteration_*")))
+    if has_iterations_here:
+        seeds = [data_root]
+    else:
+        seeds = sorted(
+            [p for p in data_root.glob("seed_*/") if p.is_dir()], key=lambda p: str(p)
+        )
+        if not seeds:
+            print(
+                f"No seed folders found under {data_root} and no iterations at root. Nothing to do."
+            )
+            return
+
+    for seed_root in seeds:
+        print(f"Computing statistics.json for seed: {seed_root}")
+        stats_out = compute_stats_and_stage(
+            data_root=seed_root,
+            game_kind=game_kind,
+            metrics=metrics,
+            jobs=args.jobs,
+            from_iteration=args.from_iteration,
+            last_iteration=args.last_iteration,
+        )
+        print(f"Wrote: {stats_out}")
+
+        print("Generating plots in 0_stats/.render. ...")
+        plot_statistics_json(seed_root)
+
         iteration_folders = find_iteration_folders(
-            effective_global_folder, args.from_iteration
+            seed_root,
+            from_iteration=args.from_iteration,
+            last_iteration=args.last_iteration,
         )
         if not iteration_folders:
-            print(f"No iteration_* folders found in {effective_global_folder}")
-            return
-        folders_to_process.extend(iteration_folders)
+            print(f"No iteration_* folders found under {seed_root}")
+            continue
+        print(f"Found {len(iteration_folders)} iteration folders under {seed_root}")
+
+        successful_count = 0
+        for folder in iteration_folders:
+            if process_single_folder(
+                folder,
+                None,
+                per_agent=args.per_agent,
+                include_state_end=args.include_state_end,
+                sim_csv=args.sim_csv,
+                recursive=False,
+            ):
+                successful_count += 1
+
         print(
-            f"Found {len(iteration_folders)} iteration folders in {effective_global_folder}"
+            f"Seed {seed_root.name}: processed {successful_count}/{len(iteration_folders)} iteration folders."
         )
-
-    if args.folders:
-        # Add specified folders
-        folders_to_process.extend([Path(f) for f in args.folders])
-
-    if not folders_to_process:
-        print("No folders to process.")
-        return
-
-    # Process each folder
-    successful_count = 0
-    for folder in folders_to_process:
-        if process_single_folder(
-            folder,
-            args.output_dir,
-            per_agent=args.per_agent,
-            include_state_end=args.include_state_end,
-            sim_csv=args.sim_csv,
-            recursive=args.recursive,
-        ):
-            successful_count += 1
-
-    print(
-        f"\nProcessing complete. Successfully processed {successful_count}/{len(folders_to_process)} folders."
-    )
 
 
 if __name__ == "__main__":

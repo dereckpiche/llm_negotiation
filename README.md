@@ -51,11 +51,6 @@ python run.py --config-name your-config
 
 To add render files to your output folder, use
 ```bash
-python render.py path-to-your-experiment-output-folder/seed_x
+python render.py --simulation_name path
 ```
-
-To create a statistics file in your output folder, use
-```bash
-python stats.py path-to-your-experiment-output-folder/seed_x your/stat/name/1 your/stat/name/2
-```
-the available statistics are game specific and can be found in game_folder/game_name_statistics.py.
+Example: `python render.py --nego tas_rps_ad_align_coop_push_32_games_beta_3`.
