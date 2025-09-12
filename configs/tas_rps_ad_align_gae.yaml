@@ -3,6 +3,7 @@ defaults:
 
 lora_count: 30
 experiment:
+    nb_epochs: 2000
     name: "tas_rps_ad_align_gae"
     agent_buffer: true
     keep_agent_buffer_count: ${lora_count}
@@ -94,5 +95,6 @@ trainers:
             reuse_baseline: False
             reward_normalizing_constant: 100.0
             use_gae: True
+            use_rloo: False
             gae_lambda_annealing_limit: 0.96
             whiten_advantages: False

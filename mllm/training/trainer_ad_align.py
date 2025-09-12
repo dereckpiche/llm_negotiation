@@ -419,7 +419,7 @@ class TrainerAdAlign(BaseTrainer):
                 a1_alternative=padded_alternative_advantages,
                 a2=padded_co_agent_advantages,
                 beta=self.ad_align_beta,
-                gamma=self.discount_factor,
+                gamma=self.ad_align_gamma,
                 exclude_k_equals_t=self.ad_align_exclude_k_equals_t,
                 use_sign=self.ad_align_use_sign,
                 clipping=self.ad_align_clipping,
