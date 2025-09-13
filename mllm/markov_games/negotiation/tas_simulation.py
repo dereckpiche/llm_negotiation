@@ -97,7 +97,7 @@ class TrustAndSplitSimulation(NegotiationSimulation):
             last_message=self.state.last_message,
             quota_messages_per_agent_per_round=self.quota_messages_per_agent_per_round,
             current_agent=self.state.current_agent,
-            other_agent=other_id,
+            other_agent=self.agent_id_to_name[other_id],
             quantities={"coins": 10},
             item_types=self.item_types,
             value=self.state.values[agent_id],

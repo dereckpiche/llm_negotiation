@@ -166,9 +166,6 @@ class NegotiationSimulation(Simulation):
             self.state.round_nb += 1
             self._starting_agent_index = 1 - self._starting_agent_index
             self.state.current_agent = self.agent_ids[self._starting_agent_index]
-            self.state.other_agent = self.agent_id_to_name[
-                self._other(self.state.current_agent)
-            ]
             self.set_new_round_of_variant()  # variant specific
             self.state.previous_splits = copy.deepcopy(self.state.splits)
             self.state.previous_points = copy.deepcopy(rewards)
