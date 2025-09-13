@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Optional
 
-import sglang as sgl
+# import sglang as sgl
 
 from mllm.models.inference_backend import LLMInferenceBackend
 
