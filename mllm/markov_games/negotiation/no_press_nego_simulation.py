@@ -1,6 +1,6 @@
 import copy
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Literal, Tuple
 
 from mllm.markov_games.negotiation.nego_simulation import (
     NegotiationObs,
@@ -26,27 +26,26 @@ class NoPressObs(NegotiationObs):
 class NoPressSimulation(NegotiationSimulation):
     def __init__(
         self,
-        deterministic: bool,
+        game_type: Literal["10-1-exclusive", "10-1-ties", "1-to-20"] = "1-to-20",
         *args,
         **kwargs,
     ):
-        self.deterministic = deterministic
+        self.game_type = game_type
         super().__init__(*args, **kwargs)
 
     def _sample_values(self) -> Dict[AgentId, float]:
-        v = float(int(self.rng.choice([1, 10])))
-        return {self.agent_ids[0]: v, self.agent_ids[1]: 10.0 if v == 1.0 else 1.0}
+        if self.game_type == "10-1-exclusive":
+            v = float(int(self.rng.choice([1, 10])))
+            return {self.agent_ids[0]: v, self.agent_ids[1]: 10.0 if v == 1.0 else 1.0}
+        elif self.game_type == "10-1-ties":
+            return {aid: float(int(self.rng.choice([1, 10]))) for aid in self.agent_ids}
+        elif self.game_type == "1-to-20":
+            return {aid: float(int(self.rng.integers(1, 21))) for aid in self.agent_ids}
 
     def set_new_round_of_variant(self):
         self.state.previous_values = copy.deepcopy(self.state.values)
         self.state.quantities = {"coins": 10.0}
-        if self.deterministic:
-            self.state.values = {
-                aid: 1.0 if aid == self.state.current_agent else 10.0
-                for aid in self.agent_ids
-            }
-        else:
-            self.state.values = self._sample_values()
+        self.state.values = self._sample_values()
         self.state.split_phase = True
 
     def get_info_of_variant(
@@ -102,7 +101,7 @@ class NoPressSimulation(NegotiationSimulation):
             last_message="",
             quota_messages_per_agent_per_round=self.quota_messages_per_agent_per_round,
             current_agent=self.state.current_agent,
-            other_agent=other_id,
+            other_agent=self.agent_id_to_name[other_id],
             quantities={"coins": 10},
             item_types=self.item_types,
             value=self.state.values[agent_id],
@@ -119,12 +118,7 @@ class NoPressSimulation(NegotiationSimulation):
 
     def reset(self):
         start_agent = self.agent_ids[self._starting_agent_index]
-        if self.deterministic:
-            values = {
-                aid: 1.0 if aid == start_agent else 10.0 for aid in self.agent_ids
-            }
-        else:
-            values = self._sample_values()
+        values = self._sample_values()
         self.state = NoPressState(
             round_nb=0,
             last_message="",

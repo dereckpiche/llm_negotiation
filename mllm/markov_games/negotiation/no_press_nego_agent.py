@@ -18,8 +18,8 @@ class NoPressAgent(NegotiationAgent):
             "Setup:\n"
             "1. The game consists of multiple independent rounds.\n"
             "2. In each round, there are 10 coins to split between the two agents.\n"
-            "3. Each round, both agents are randomly assigned a value of either 1 or 10 per coin.\n"
-            "4. You can observe values of both agents.\n"
+            "3. Both agents are assigned a per-coin value between 1 and 20 (inclusive) in each round.\n"
+            "4. You can observe per-coin values of both agents.\n"
             "5. Because assignments are random, both agents are equally likely to have same expected per-coin value.\n"
             "\n"
             "Protocol:\n"
@@ -30,9 +30,24 @@ class NoPressAgent(NegotiationAgent):
             "7. The points are accumulated across rounds.\n"
             "Your goal: {goal}\n"
         )
-        self.new_round_prompt = "In this round, your per-coin value is {value} and {other_agent}'s per-coin value is {other_value}."
-        self.last_round_prompt = "In the last round, your per-coin value was {last_value_agent} and {other_agent}'s per-coin value was {last_value_coagent}.\nYou proposed {last_split_agent} coins and earned {last_points_agent} points, while {other_agent} proposed {last_split_coagent} coins and earned {last_points_coagent} points."
-        self.send_split_prompt = "Respond with <coins_to_self> X </coins_to_self> where X is the number of coins you propose for yourself, between 0 and 10 inclusive."
+        self.new_round_prompt = (
+            "A new round begins\n"
+            "Your per-coin value is {value} and {other_agent}'s per-coin value is {other_value}."
+        )
+        self.last_round_prompt = (
+            "Round summary:\n"
+            "   - Your value per coin: {last_value_agent}\n"
+            "   - {other_agent}'s value per coin: {last_value_coagent}\n"
+            "   - You proposed: {last_split_agent} coins\n"
+            "   - You earned: {last_points_agent} points\n"
+            "   - {other_agent} proposed: {last_split_coagent} coins\n"
+            "   - {other_agent} earned: {last_points_coagent} points\n"
+            "   - Round complete.\n"
+        )
+        self.send_split_prompt = (
+            "Submit your proposal\n"
+            "Respond with <coins_to_self> x </coins_to_self> where x is an integer in [0, 10]."
+        )
 
     def get_message_regex(self, observation: NoPressObs) -> str:
         return r"^$"  # No messages allowed
