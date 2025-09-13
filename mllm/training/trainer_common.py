@@ -297,6 +297,7 @@ class BaseTrainer(ABC):
 
             # Gradient accumulation for each mini-batch
             for mb in range(0, nb_rollouts, mb_size):
+                logger.info(f"Processing mini-batch {mb} of {nb_rollouts}")
                 loss = 0.0
                 training_mb = training_batch[mb : mb + mb_size]
                 training_mb = training_mb.get_padded_tensors()

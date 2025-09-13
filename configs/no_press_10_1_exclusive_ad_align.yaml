@@ -1,0 +1,7 @@
+defaults:
+    - no_press_10_1_ties_ad_align.yaml
+
+
+markov_games:
+    simulation_init_args:
+        game_type: "10-1-exclusive"

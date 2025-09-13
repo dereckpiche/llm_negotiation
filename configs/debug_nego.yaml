@@ -1,0 +1,12 @@
+# To quickly check if code still runs
+experiment:
+    name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
+
+defaults:
+    - no_press_10_1_ties_naive.yaml
+
+
+trainers:
+    agent_trainer:
+        kwargs:
+            enable_tokenwise_logging: True

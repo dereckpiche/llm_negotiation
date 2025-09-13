@@ -89,8 +89,8 @@ class ContextualizedTokenwiseTally:
         Add a single 'context' column (list[str]) for valid steps.
 
         Expects `contexts` with shape (B, S): token id at each timestep.
-        For each valid timestep t, we use the last N tokens BEFORE t:
-            window = contexts[i, max(0, t-N) : t]
+        For each valid timestep t, we use the last N tokens up to and including t:
+            window = contexts[i, max(0, t - N + 1) : t + 1]
         The list is left-padded with "" to always be length N.
         """
         self._ensure_ready()
@@ -126,8 +126,8 @@ class ContextualizedTokenwiseTally:
             # build context windows
             ctx_token_lists = []
             for t in idx_list:
-                start = max(0, t - N)
-                window_ids = contexts_cpu[i, start:t].tolist()  # tokens BEFORE t
+                start = max(0, t - N + 1)
+                window_ids = contexts_cpu[i, start : t + 1].tolist()
                 window_toks = self.tids_to_str([int(x) for x in window_ids])
                 if len(window_toks) < N:
                     window_toks = [""] * (N - len(window_toks)) + window_toks

@@ -17,7 +17,10 @@ class DummyInferenceBackend(LLMInferenceBackend):
         pass
 
     def prepare_adapter(
-        self, adapter_id: Optional[str], weights_got_updated: bool
+        self,
+        adapter_id: Optional[str],
+        weights_got_updated: bool,
+        adapter_path: Optional[str] = None,
     ) -> None:
         pass
 
