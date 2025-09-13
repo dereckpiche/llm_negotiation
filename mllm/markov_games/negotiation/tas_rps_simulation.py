@@ -62,35 +62,56 @@ class TrustAndSplitRPSObs(NegotiationObs):
 class TrustAndSplitRPSSimulation(NegotiationSimulation):
     def __init__(
         self,
+        alternating_hands: bool = False,
         *args,
         **kwargs,
     ):
+        self.alternating_hands = alternating_hands
         super().__init__(*args, **kwargs)
 
     def _sample_hands_and_values(
         self,
+        alternate_hands: bool = False,
     ) -> Tuple[Dict[AgentId, str], Dict[AgentId, float]]:
-        # Assign different hands to each agent
         hands = ["rock", "paper", "scissors"]
-        hand1, hand2 = self.rng.choice(hands, size=2, replace=False)
+        if alternate_hands:
+            previous_hands = list(self.state.previous_hands.values())
+            hand1, hand2 = self.rng.choice(hands, size=2, replace=False)
+            winner = _get_rps_winner(hand1, hand2)
+            loser = hand1 if winner == hand2 else hand2
+            previous_winner = _get_rps_winner(previous_hands[0], previous_hands[1])
+            agent_hands, values = {}, {}
+            for agent_id in self.agent_ids:
+                if self.state.previous_hands[agent_id] == previous_winner:
+                    agent_hands[agent_id] = loser
+                    values[agent_id] = 1.0
+                else:
+                    agent_hands[agent_id] = winner
+                    values[agent_id] = 10.0
+            return agent_hands, values
+        else:
+            # Assign different hands to each agent
+            hand1, hand2 = self.rng.choice(hands, size=2, replace=False)
 
-        agent_hands = {self.agent_ids[0]: hand1, self.agent_ids[1]: hand2}
+            agent_hands = {self.agent_ids[0]: hand1, self.agent_ids[1]: hand2}
 
-        # Determine winner and assign values
-        winner = _get_rps_winner(hand1, hand2)
-        values = {}
-        for agent_id in self.agent_ids:
-            if agent_hands[agent_id] == winner:
-                values[agent_id] = 10.0  # Winner gets value 10
-            else:
-                values[agent_id] = 1.0  # Loser gets value 1
+            # Determine winner and assign values
+            winner = _get_rps_winner(hand1, hand2)
+            values = {}
+            for agent_id in self.agent_ids:
+                if agent_hands[agent_id] == winner:
+                    values[agent_id] = 10.0  # Winner gets value 10
+                else:
+                    values[agent_id] = 1.0  # Loser gets value 1
 
-        return agent_hands, values
+            return agent_hands, values
 
     def set_new_round_of_variant(self):
         self.state.previous_values = copy.deepcopy(self.state.values)
         self.state.previous_hands = copy.deepcopy(self.state.hands)
-        new_hands, new_values = self._sample_hands_and_values()
+        new_hands, new_values = self._sample_hands_and_values(
+            alternate_hands=self.alternating_hands
+        )
         self.state.hands = new_hands
         self.state.values = new_values
         # Quantities are constant in TAS
