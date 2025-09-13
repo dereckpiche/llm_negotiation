@@ -49,6 +49,12 @@ In order to launch a policy gradient training loop, use
 python run.py --config-name your-config
 ```
 
+Sometimes, OOM error happen stochastically. In order for your run to automatically rerun upon error, use
+
+```bash
+bash run.bash your-usual-args
+```
+
 To add render files to your output folder, use
 ```bash
 python render.py --simulation_name path

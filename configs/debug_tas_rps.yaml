@@ -3,12 +3,18 @@ experiment:
     name: "debug_${now:%Y-%m-%d___%H-%M-%S}"
 
 defaults:
-    - no_press_naive.yaml
+    - tas_rps_ad_align.yaml
 
-optimizers:
-    agent_optimizer:
-        module_pointer: ["base_llm", "agent_adapter"]
-        optimizer_class_name: torch.optim.Adam
+models:
+    base_llm:
         init_args:
-            lr: 1e-4
-            weight_decay: 0.0
+            model_name: Qwen/Qwen3-8B
+            enable_thinking: False
+            regex_max_atstempts: 3
+            inference_backend_init_kwargs:
+                enforce_eager: False
+                gpu_memory_utilization: 0.99
+                max_loras: ${lora_count}
+                max_cpu_loras : ${lora_count}
+                enable_sleep_mode: True
+                enable_lora: True
