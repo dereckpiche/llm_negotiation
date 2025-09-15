@@ -391,34 +391,6 @@ def run_stats_functional(
                     series.append(iter_avgs.get(it, {}).get(mname, {}).get(ak))
                 metric_first[mname][ak] = series
 
-            # Derive "all_agents" if appropriate
-            keys_present = sorted(metric_first[mname].keys())
-            has_all_agents = "all_agents" in keys_present
-            has_all = "all" in keys_present
-            non_agg_agents = [a for a in keys_present if a not in ("all", "all_agents")]
-
-            if not has_all_agents:
-                if non_agg_agents:
-                    all_series: List[float] = []
-                    for idx in range(len(iteration_order)):
-                        vals: List[float] = []
-                        for ak in non_agg_agents:
-                            v = metric_first[mname].get(
-                                ak, [None] * len(iteration_order)
-                            )[idx]
-                            if v is not None:
-                                try:
-                                    vals.append(float(v))
-                                except Exception:
-                                    pass
-                        all_series.append(sum(vals) / len(vals) if vals else None)
-                    metric_first[mname]["all_agents"] = all_series
-                elif has_all:
-                    # Mirror 'all' into 'all_agents' when only aggregate exists
-                    metric_first[mname]["all_agents"] = list(
-                        metric_first[mname].get("all", [])
-                    )
-
         with open(outfile, "w", encoding="utf-8") as f:
             json.dump(metric_first, f, ensure_ascii=False)
 
@@ -531,14 +503,13 @@ def plot_statistics_json(seed_root: Path) -> None:
             if len(y) < max_len:
                 y = y + [None] * (max_len - len(y))
             try:
-                ax.plot(x, y, label=str(agent_name), linewidth=2, markersize=3)
+                ax.plot(x, y, label=str(agent_name), linewidth=1.0, markersize=2.0)
             except Exception:
                 # Best-effort plotting
                 continue
 
-        ax.set_title(str(metric_name))
         ax.set_xlabel("Iteration Index")
-        ax.set_ylabel("Value")
+        ax.set_ylabel(str(metric_name))
         ax.legend(loc="best", fontsize=8)
         ax.grid(True, alpha=0.3)
         fig.tight_layout()
