@@ -22,6 +22,7 @@ def test_get_assistant_actions_mask_and_score():
         token_ids,
         rewards,
         action_mask,
+        entropy_mask,
         credit_mask,
         state_end_flags
     ) = process_training_chat(
@@ -29,7 +30,7 @@ def test_get_assistant_actions_mask_and_score():
         chat_history=chat)
 
     decoded = tokenizer.convert_ids_to_tokens(token_ids.tolist())
-    df = {"Tokens": decoded, "Action Mask": action_mask, "Credit Mask": credit_mask, "State End Flags": state_end_flags}
+    df = {"Tokens": decoded, "Action Mask": action_mask, "Credit Mask": credit_mask, "State End Flags": state_end_flags, "Entropy Mask": entropy_mask}
     df = pd.DataFrame(df)
     print(df.to_string())
     print(rewards)

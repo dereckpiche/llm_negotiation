@@ -1,3 +1,4 @@
+import regex
 import torch
 from transformers import AutoTokenizer
 
@@ -54,6 +55,7 @@ custom_qwen_template = """
 def process_training_chat(
     tokenizer: AutoTokenizer,
     chat_history: list[TrainingChatTurn],
+    entropy_mask_regex: str | None = None,
 ) -> tuple[torch.IntTensor, torch.BoolTensor, torch.IntTensor, torch.BoolTensor]:
     """Tokenize a single training chat and build aligned per-token masks.
 
@@ -99,6 +101,7 @@ def process_training_chat(
     input_ids = []
     action_mask = []
     timesteps = []
+    entropy_mask = []
     for train_chat_turn in chat_history:
         is_state_end = train_chat_turn.is_state_end
         time_step = train_chat_turn.time_step
@@ -107,6 +110,12 @@ def process_training_chat(
             "role": train_chat_turn.role,
             "content": train_chat_turn.content,
         }
+        if entropy_mask_regex is not None:
+            is_entropy_mask_true = (
+                regex.search(entropy_mask_regex, train_chat_turn.content) is not None
+            )
+        else:
+            is_entropy_mask_true = True
         chat_turn_ids = tokenizer.apply_chat_template(
             [chat_turn], return_tensors="pt", chat_template=custom_qwen_template
         ).flatten()
@@ -118,11 +127,16 @@ def process_training_chat(
         action_mask.append(torch.ones(nb_chat_turns_ids, dtype=torch.bool))
         if not is_action:
             action_mask[-1] = action_mask[-1] * False
+        entropy_mask.append(torch.ones(nb_chat_turns_ids, dtype=torch.bool))
+        if not is_entropy_mask_true:
+            entropy_mask[-1] = entropy_mask[-1] * False
         timesteps.append(torch.ones(nb_chat_turns_ids) * time_step)
 
     input_ids = torch.cat(input_ids)
     action_mask = torch.cat(action_mask)
+    entropy_mask = torch.cat(entropy_mask)
     timesteps = torch.cat(timesteps)
     state_ends_mask = torch.cat(state_ends_mask)
 
-    return (input_ids, action_mask, timesteps, state_ends_mask)
+
+    return (input_ids, action_mask, entropy_mask, timesteps, state_ends_mask)

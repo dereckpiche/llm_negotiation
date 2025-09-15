@@ -68,6 +68,7 @@ class BaseTrainer(ABC):
         ######################################################################
         entropy_coeff: float,
         entropy_topk: int,
+        entropy_mask_regex: Union[str, None],
         kl_coeff: float,
         gradient_clipping: Union[float, None],
         restrict_tokens: Union[list[str], None],
@@ -170,6 +171,7 @@ class BaseTrainer(ABC):
         self.device = self.accelerator.device
         self.entropy_coeff = entropy_coeff
         self.entropy_topk = entropy_topk
+        self.entropy_mask_regex = entropy_mask_regex
         self.kl_coeff = kl_coeff
         self.gradient_clipping = gradient_clipping
         self.restrict_tokens = restrict_tokens
@@ -302,9 +304,10 @@ class BaseTrainer(ABC):
                 training_mb = training_batch[mb : mb + mb_size]
                 training_mb = training_mb.get_padded_tensors()
                 training_mb.to(self.device)
-                tokens_mb, action_mask_mb, credits_mb = (
+                tokens_mb, action_mask_mb, entropy_mask_mb, credits_mb = (
                     training_mb.batch_input_ids,
                     training_mb.batch_action_mask,
+                    training_mb.batch_entropy_mask,
                     training_mb.batch_credits,
                 )
 
@@ -312,16 +315,21 @@ class BaseTrainer(ABC):
                 contexts_mb = tokens_mb[:, :-1]
                 shifted_contexts_mb = tokens_mb[:, 1:]
                 action_mask_mb = action_mask_mb[:, 1:]
+                entropy_mask_mb = entropy_mask_mb[:, 1:]
                 credits_mb = credits_mb[:, 1:]
 
                 if self.enable_tokenwise_logging:
                     self.tokenwise_tally.set_action_mask(action_mask=action_mask_mb)
                     self.tokenwise_tally.set_range(range=(mb, mb + mb_size))
                     self.tokenwise_tally.add_contexts(contexts=contexts_mb)
-                    self.tokenwise_tally.add_data(
+                    self.tokenwise_tally.add_data(  
                         metric_id="next_token",
                         metrics=shifted_contexts_mb,
                         to_tids=True,
+                    )
+                    self.tokenwise_tally.add_data(
+                        metric_id="entropy_mask",
+                        metrics=entropy_mask_mb,
                     )
 
                 if self.enable_tokenwise_logging:
@@ -416,9 +424,8 @@ class BaseTrainer(ABC):
                     ) * F.log_softmax(
                         entropy_logits, dim=-1
                     )  # (B, S, T)
-                    token_entropy_terms *= action_mask_mb[
-                        :, :, None
-                    ]  # we only take the entropy of actions
+                    token_entropy_terms *= action_mask_mb[:, :, None] * entropy_mask_mb[:, :, None]  # only get loss on specific action tokens
+
                     mb_entropy = token_entropy_terms.sum(dim=-1)
 
                     if self.enable_tokenwise_logging:
@@ -840,6 +847,7 @@ class BaseTrainer(ABC):
                 rollout_ids=trajectory_batch.rollout_ids,
                 batch_input_ids=trajectory_batch.batch_input_ids,
                 batch_action_mask=trajectory_batch.batch_action_mask,
+                batch_entropy_mask=trajectory_batch.batch_entropy_mask,
                 batch_credits=tokenwise_batch_credits,
             )
             if self.policy_gradient_data is None:
