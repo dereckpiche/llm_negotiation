@@ -115,7 +115,7 @@ def process_training_chat(
                 regex.search(entropy_mask_regex, train_chat_turn.content) is not None
             )
         else:
-            is_entropy_mask_true = False
+            is_entropy_mask_true = True
         chat_turn_ids = tokenizer.apply_chat_template(
             [chat_turn], return_tensors="pt", chat_template=custom_qwen_template
         ).flatten()
@@ -134,7 +134,9 @@ def process_training_chat(
 
     input_ids = torch.cat(input_ids)
     action_mask = torch.cat(action_mask)
+    entropy_mask = torch.cat(entropy_mask)
     timesteps = torch.cat(timesteps)
     state_ends_mask = torch.cat(state_ends_mask)
 
-    return (input_ids, action_mask, timesteps, state_ends_mask)
+
+    return (input_ids, action_mask, entropy_mask, timesteps, state_ends_mask)

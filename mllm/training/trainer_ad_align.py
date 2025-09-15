@@ -174,6 +174,7 @@ class TrainerAdAlign(BaseTrainer):
         batch_crn_ids = []
         batch_input_ids = []
         batch_action_mask = []
+        batch_entropy_mask = []
         batch_timesteps = []
         batch_state_ends_mask = []
         batch_rewards = []
@@ -182,6 +183,7 @@ class TrainerAdAlign(BaseTrainer):
         batch_branching_time_steps = []
         alternative_batch_input_ids = []
         alternative_batch_action_mask = []
+        alternative_batch_entropy_mask = []
         alternative_batch_timesteps = []
         alternative_batch_state_ends_mask = []
         alternative_batch_rewards = []
@@ -206,11 +208,13 @@ class TrainerAdAlign(BaseTrainer):
             (
                 input_ids,
                 action_mask,
+                entropy_mask,
                 timesteps,
                 state_ends_mask,
-            ) = process_training_chat(tokenizer=self.tokenizer, chat_history=main_chat)
+            ) = process_training_chat(tokenizer=self.tokenizer, chat_history=main_chat, entropy_mask_regex=self.entropy_mask_regex)
             batch_input_ids.append(input_ids)
             batch_action_mask.append(action_mask)
+            batch_entropy_mask.append(entropy_mask)
             batch_timesteps.append(timesteps)
             batch_state_ends_mask.append(state_ends_mask)
             batch_rewards.append(main_rewards)
@@ -234,13 +238,15 @@ class TrainerAdAlign(BaseTrainer):
                     (
                         input_ids,
                         action_mask,
+                        entropy_mask,
                         timesteps,
                         state_ends_mask,
                     ) = process_training_chat(
-                        tokenizer=self.tokenizer, chat_history=chat
+                        tokenizer=self.tokenizer, chat_history=chat, entropy_mask_regex=self.entropy_mask_regex
                     )
                     alternative_batch_input_ids.append(input_ids)
                     alternative_batch_action_mask.append(action_mask)
+                    alternative_batch_entropy_mask.append(entropy_mask)
                     alternative_batch_timesteps.append(timesteps)
                     alternative_batch_state_ends_mask.append(state_ends_mask)
                     alternative_batch_rewards.append(rewards)
@@ -257,6 +263,7 @@ class TrainerAdAlign(BaseTrainer):
             agent_ids=[agent_id] * len(batch_rollout_ids),
             batch_input_ids=batch_input_ids,
             batch_action_mask=batch_action_mask,
+            batch_entropy_mask=batch_entropy_mask,
             batch_timesteps=batch_timesteps,
             batch_state_ends_mask=batch_state_ends_mask,
             batch_rewards=batch_rewards,
@@ -284,6 +291,7 @@ class TrainerAdAlign(BaseTrainer):
                     agent_ids=[agent_id] * (A * sum_jT),
                     batch_input_ids=alternative_batch_input_ids,
                     batch_action_mask=alternative_batch_action_mask,
+                    batch_entropy_mask=alternative_batch_entropy_mask,
                     batch_timesteps=alternative_batch_timesteps,
                     batch_state_ends_mask=alternative_batch_state_ends_mask,
                     batch_rewards=alternative_batch_rewards,
