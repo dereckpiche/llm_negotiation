@@ -48,8 +48,8 @@ temperature: 1.0
 models:
     base_llm:
         init_args:
-            model_name: Qwen/Qwen3-4B-Instruct-2507
-            # enable_thiking: False
+            model_name: Qwen/Qwen3-8B
+            enable_thinking: False
             regex_max_attempts: 3
             inference_backend_init_kwargs:
                 enforce_eager: False
