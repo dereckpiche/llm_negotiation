@@ -114,6 +114,7 @@ class TrajectoryBatch:
     batch_action_mask: list[torch.BoolTensor]  # List[(jS,)]
     batch_timesteps: list[torch.IntTensor]  # List[(jS,)]
     batch_state_ends_mask: list[torch.BoolTensor]  # List[(jS,)]
+    batch_entropy_mask: Optional[list[torch.BoolTensor]]  # List[(jS,)]
     batch_rewards: list[torch.FloatTensor]  # List[(jT,)]
     batch_credits: Optional[list[torch.FloatTensor]] = None  # List[(jS,)]
 
@@ -134,6 +135,7 @@ class TrajectoryBatch:
             == len(self.batch_timesteps)
             == len(self.batch_state_ends_mask)
             == len(self.batch_rewards)
+            == len(self.batch_entropy_mask)
             == B
         ), "Jagged lists must all have length equal to batch size."
 
@@ -186,6 +188,8 @@ class TrajectoryBatch:
                 batch_timesteps=self.batch_timesteps[key],
                 batch_state_ends_mask=self.batch_state_ends_mask[key],
                 batch_rewards=self.batch_rewards[key],
+                batch_entropy_mask=self.batch_entropy_mask[key],
+                batch_credits=self.batch_credits[key] if self.batch_credits else None,
             )
 
     def __len__(self):
@@ -199,6 +203,10 @@ class TrajectoryBatch:
         self.batch_timesteps = [t.to(device) for t in self.batch_timesteps]
         self.batch_state_ends_mask = [t.to(device) for t in self.batch_state_ends_mask]
         self.batch_rewards = [t.to(device) for t in self.batch_rewards]
+        self.batch_entropy_mask = [t.to(device) for t in self.batch_entropy_mask]
+        self.batch_credits = (
+            [t.to(device) for t in self.batch_credits] if self.batch_credits else None
+        )
 
     def get_padded_tensors_for_critic(self):
         """
@@ -246,6 +254,7 @@ class TrainingBatch:
     batch_input_ids: list[torch.LongTensor]  # List[(jS,)]
     batch_action_mask: list[torch.BoolTensor]  # List[(jS,)]
     batch_credits: list[torch.FloatTensor]  # List[(jS,)]
+    batch_entropy_mask: Optional[list[torch.BoolTensor]]  # List[(jS,)]
 
     def __post_init__(self):
         # Put everything in the right device
@@ -258,6 +267,7 @@ class TrainingBatch:
             len(self.batch_input_ids)
             == len(self.batch_action_mask)
             == len(self.batch_credits)
+            == len(self.batch_entropy_mask)
             == self.rollout_ids.shape[0]
         ), "Jagged lists must all have length equal to batch size."
         for inp, mask, cred in zip(
@@ -274,6 +284,7 @@ class TrainingBatch:
                 batch_input_ids=self.batch_input_ids[key],
                 batch_action_mask=self.batch_action_mask[key],
                 batch_credits=self.batch_credits[key],
+                batch_entropy_mask=self.batch_entropy_mask[key],
             )
 
     def __len__(self):
@@ -284,6 +295,7 @@ class TrainingBatch:
         self.batch_input_ids = [t.to(device) for t in self.batch_input_ids]
         self.batch_action_mask = [t.to(device) for t in self.batch_action_mask]
         self.batch_credits = [t.to(device) for t in self.batch_credits]
+        self.batch_entropy_mask = [t.to(device) for t in self.batch_entropy_mask]
 
     def get_padded_tensors(self, padding: float = 0.0):
         """
@@ -302,8 +314,15 @@ class TrainingBatch:
             self.batch_credits, batch_first=True, padding_value=float(padding)
         )
 
+        padded_entropy_mask = pad_sequence(
+            self.batch_entropy_mask, batch_first=True, padding_value=False
+        )
+
         return PaddedTensorTrainingBatch(
-            padded_batch_input_ids, padded_batch_action_mask, padded_batch_credits
+            padded_batch_input_ids,
+            padded_batch_action_mask,
+            padded_batch_credits,
+            padded_entropy_mask,
         )
 
     def append(self, other: "TrainingBatch"):
@@ -311,6 +330,7 @@ class TrainingBatch:
         self.batch_input_ids.extend(other.batch_input_ids)
         self.batch_action_mask.extend(other.batch_action_mask)
         self.batch_credits.extend(other.batch_credits)
+        self.batch_entropy_mask.extend(other.batch_entropy_mask)
 
 
 timestep = int

@@ -68,6 +68,7 @@ class BaseTrainer(ABC):
         ######################################################################
         entropy_coeff: float,
         entropy_topk: int,
+        entropy_mask_regex: Union[str, None],
         kl_coeff: float,
         gradient_clipping: Union[float, None],
         restrict_tokens: Union[list[str], None],
@@ -302,10 +303,11 @@ class BaseTrainer(ABC):
                 training_mb = training_batch[mb : mb + mb_size]
                 training_mb = training_mb.get_padded_tensors()
                 training_mb.to(self.device)
-                tokens_mb, action_mask_mb, credits_mb = (
+                tokens_mb, action_mask_mb, credits_mb, entropy_mask_mb = (
                     training_mb.batch_input_ids,
                     training_mb.batch_action_mask,
                     training_mb.batch_credits,
+                    training_mb.batch_entropy_mask,
                 )
 
                 # Next token prediction
@@ -313,6 +315,7 @@ class BaseTrainer(ABC):
                 shifted_contexts_mb = tokens_mb[:, 1:]
                 action_mask_mb = action_mask_mb[:, 1:]
                 credits_mb = credits_mb[:, 1:]
+                entropy_mask_mb = entropy_mask_mb[:, 1:]
 
                 if self.enable_tokenwise_logging:
                     self.tokenwise_tally.set_action_mask(action_mask=action_mask_mb)
@@ -322,6 +325,10 @@ class BaseTrainer(ABC):
                         metric_id="next_token",
                         metrics=shifted_contexts_mb,
                         to_tids=True,
+                    )
+                    self.tokenwise_tally.add_data(
+                        metric_id="entropy_mask",
+                        metrics=entropy_mask_mb,
                     )
 
                 if self.enable_tokenwise_logging:
