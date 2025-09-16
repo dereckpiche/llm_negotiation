@@ -453,11 +453,7 @@ class BaseTrainer(ABC):
                 # KL-DIVERGENCE
                 # -------------------------------------------------
                 if self.kl_coeff != 0.0:
-                    with torch.no_grad():
-                        with self.policy.disable_adapter():
-                            ref_model_logits = self.policy(
-                                input_ids=contexts_mb,  # attention_mask=attention_mask
-                            )[0]
+                    ref_model_logits = self.policy.get_base_model_logits(contexts_mb)
                     ref_model_logits = ref_model_logits / self.temperature
                     # (B, S, V)
                     ref_model_logits = self.mask_non_restricted_token_logits(
@@ -479,29 +475,23 @@ class BaseTrainer(ABC):
                         - (ref_model_action_log_probs - action_log_probs)
                         - 1
                     )
-
+                    kl_div *= action_mask_mb # We only care about KLD of action tokens
+                    kl_div *= self.kl_coeff
                     if self.enable_tokenwise_logging:
-                        self.tally.add_contextualized_token_metrics(
-                            metric_id="kl",
+                        self.tokenwise_tally.add_data(
+                            metric_id="kl_divergence",
                             metrics=kl_div,
                         )
 
-                    # We only care about KLD of action tokens
-                    kl_div *= action_mask_mb
-                    mb_kl = kl_div.sum()
-
-                    mb_kl *= self.kl_coeff
-
+                    if self.pg_loss_normalization == "batch":
+                        nb_act_tokens = action_mask_mb.sum()
+                        mb_kl = kl_div.sum() / nb_act_tokens
+                    else:
+                        mb_kl = kl_div.sum()
                     self.tally.add_metric(
-                        path=["mb_kl_loss_terms"], metric=mb_kl.item()
+                        path=["loss_mb_total", "kl_mb_total"],
+                        metric=mb_kl.item(),
                     )
-
-                    if self.enable_tokenwise_logging:
-                        self.tally.add_metric(
-                            path=["gradient_term_magnitudes", "kl"],
-                            metric=self.get_gradient_magnitude(loss_term=mb_kl),
-                        )
-
                     loss += mb_kl
 
                 # Accumulate gradient
