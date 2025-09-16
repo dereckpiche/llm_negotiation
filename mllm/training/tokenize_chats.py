@@ -103,6 +103,12 @@ def process_training_chat(
         is_state_end = train_chat_turn.is_state_end
         time_step = train_chat_turn.time_step
         is_action = train_chat_turn.role == "assistant"
+
+        # Remove exploration prompts from training data
+        for exploration_prompt in exploration_prompts_to_remove:
+            if exploration_prompt in train_chat_turn.content:
+                train_chat_turn.content = train_chat_turn.content.replace(exploration_prompt, "")
+
         chat_turn = {
             "role": train_chat_turn.role,
             "content": train_chat_turn.content,
