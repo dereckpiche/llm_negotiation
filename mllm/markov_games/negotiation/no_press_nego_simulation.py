@@ -28,10 +28,12 @@ class NoPressSimulation(NegotiationSimulation):
     def __init__(
         self,
         game_type: Literal["10-1-exclusive", "10-1-ties", "1-to-20"] = "1-to-20",
+        same_round_value: bool = True,
         *args,
         **kwargs,
     ):
         self.game_type = game_type
+        self.same_round_value = same_round_value
         super().__init__(*args, **kwargs)
 
     def _sample_values(self) -> Dict[AgentId, dict]:
@@ -53,7 +55,7 @@ class NoPressSimulation(NegotiationSimulation):
                     for aid in self.agent_ids:
                         values[aid][item] = int(self.rng.integers(1, 21))
             agent_values = [sum(v.values()) for v in values.values()]
-            if len(set(agent_values)) == 1:
+            if len(set(agent_values)) == 1 or not self.same_round_value:
                 break
         return values
 
