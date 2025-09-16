@@ -211,7 +211,7 @@ class TrainerAdAlign(BaseTrainer):
                 entropy_mask,
                 timesteps,
                 state_ends_mask,
-            ) = process_training_chat(tokenizer=self.tokenizer, chat_history=main_chat, entropy_mask_regex=self.entropy_mask_regex)
+            ) = process_training_chat(tokenizer=self.tokenizer, chat_history=main_chat, entropy_mask_regex=self.entropy_mask_regex, exploration_prompts_to_remove=self.exploration_prompts_to_remove)
             batch_input_ids.append(input_ids)
             batch_action_mask.append(action_mask)
             batch_entropy_mask.append(entropy_mask)
@@ -242,7 +242,7 @@ class TrainerAdAlign(BaseTrainer):
                         timesteps,
                         state_ends_mask,
                     ) = process_training_chat(
-                        tokenizer=self.tokenizer, chat_history=chat, entropy_mask_regex=self.entropy_mask_regex
+                        tokenizer=self.tokenizer, chat_history=chat, entropy_mask_regex=self.entropy_mask_regex, exploration_prompts_to_remove=self.exploration_prompts_to_remove
                     )
                     alternative_batch_input_ids.append(input_ids)
                     alternative_batch_action_mask.append(action_mask)

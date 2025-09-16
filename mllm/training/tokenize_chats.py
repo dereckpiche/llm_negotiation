@@ -56,6 +56,7 @@ def process_training_chat(
     tokenizer: AutoTokenizer,
     chat_history: list[TrainingChatTurn],
     entropy_mask_regex: str | None = None,
+    exploration_prompts_to_remove: list[str] = [],
 ) -> tuple[torch.IntTensor, torch.BoolTensor, torch.IntTensor, torch.BoolTensor]:
     """Tokenize a single training chat and build aligned per-token masks.
 
