@@ -16,6 +16,7 @@ import httpx
 import requests
 import torch
 import torch.nn as nn
+
 # from sglang.utils import (
 #     launch_server_cmd,
 #     print_highlight,
@@ -55,6 +56,7 @@ class LeanLocalLLM:
         inference_backend_sampling_params: dict = {},
         inference_backend_init_kwargs: dict = {},
         initial_adapter_paths: dict[str, str] | None = None,
+        initial_buffer_paths: list[str] | None = None,
         enable_thinking: bool = None,
         regex_max_attempts: int = -1,
     ):
@@ -67,6 +69,7 @@ class LeanLocalLLM:
         self.adapter_ids = list(adapter_configs.keys())
         self.enable_thinking = enable_thinking
         self.regex_max_attempts = regex_max_attempts
+        self.initial_buffer_paths = initial_buffer_paths
 
         # Optional user-specified initial adapter weight locations (local or HF Hub)
         # Format: {adapter_id: path_or_repo_id}
@@ -89,6 +92,23 @@ class LeanLocalLLM:
                     )
             logger.info(
                 f"Loaded {len(self.past_agent_adapter_paths)} past agent adapters from checkpoints directory."
+            )
+        if self.initial_buffer_paths is not None:
+            previous_count = len(self.past_agent_adapter_paths)
+            for path in self.initial_buffer_paths:
+                if os.path.isdir(path):
+                    for dirname in os.listdir(path):
+                        dirpath = os.path.join(path, dirname)
+                        if os.path.isdir(dirpath):
+                            self.past_agent_adapter_paths[
+                                f"{dirname}_buffer"
+                            ] = os.path.join(dirpath, "agent_adapter")
+                else:
+                    logger.warning(
+                        f"Initial buffer path {path} does not exist or is not a directory."
+                    )
+            logger.info(
+                f"Loaded {len(self.past_agent_adapter_paths) - previous_count} past agent adapters from user-specified initial buffer paths."
             )
         self.past_agent_adapter_ids = list(self.past_agent_adapter_paths.keys())
 
