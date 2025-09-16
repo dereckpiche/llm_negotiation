@@ -38,7 +38,6 @@ class TrustAndSplitSimulation(NegotiationSimulation):
         return {aid: float(int(self.rng.integers(1, 21))) for aid in self.agent_ids}
 
     def set_new_round_of_variant(self):
-        self.state.previous_values = copy.deepcopy(self.state.values)
         self.state.values = self._sample_values()
         self.state.quantities = {"coins": 10}
         self.state.split_phase = False
@@ -55,7 +54,7 @@ class TrustAndSplitSimulation(NegotiationSimulation):
 
     def get_rewards(self, splits: Dict[AgentId, Split]) -> Dict[AgentId, float]:
         return compute_tas_style_rewards(
-            self.agent_ids, self.state.values, splits, 10.0
+            self.agent_ids, self.state.values, splits, self.state.quantities
         )
 
     def get_obs(self):

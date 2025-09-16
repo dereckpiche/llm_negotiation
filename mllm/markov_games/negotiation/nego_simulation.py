@@ -32,11 +32,11 @@ class NegotiationState:
     last_message: str
     current_agent: AgentId
     quantities: Dict[str, int]
-    values: Dict[AgentId, float]
+    values: Dict[AgentId, Dict[str, float]]
     splits: Dict[AgentId, Split | None]
     nb_messages_sent: Dict[AgentId, int]
-    previous_values: Dict[AgentId, float] | None
-    previous_splits: Dict[AgentId, Split | None] | None
+    previous_values: Dict[AgentId, Dict[str, float]] | None
+    previous_splits: Dict[AgentId, Dict[str, int] | None] | None
     previous_points: Dict[AgentId, float] | None
     split_phase: bool
 
@@ -50,13 +50,13 @@ class NegotiationObs:
     other_agent: str
     quantities: Dict[str, int]
     item_types: List[str]
-    value: float
+    value: Dict[str, int]
     split_phase: bool
-    last_split_agent: int | None
-    last_value_agent: float | None
+    last_split_agent: Dict[str, int] | None
+    last_value_agent: Dict[str, int] | None
     last_points_agent: float | None
-    last_split_coagent: int | None
-    last_value_coagent: float | None
+    last_split_coagent: Dict[str, int] | None
+    last_value_coagent: Dict[str, int] | None
     last_points_coagent: float | None
 
 
@@ -64,7 +64,7 @@ def compute_tas_style_rewards(
     agent_ids: List[AgentId],
     values: Dict[AgentId, float],
     splits: Dict[AgentId, Split],
-    max_coins: int,
+    quantities: Dict[str, int],
 ) -> Dict[AgentId, float]:
     """
     TAS-like reward computation: if sum of proposed coins exceeds max_coins,
@@ -72,21 +72,29 @@ def compute_tas_style_rewards(
     Rewards are quantity_kept * per-coin value for each agent.
     """
     a0, a1 = agent_ids[0], agent_ids[1]
-    coins_to_self_0 = int(
-        (splits[a0].items_given_to_self.get("coins", 0))
-        if splits[a0] is not None
-        else 0
-    )
-    coins_to_self_1 = int(
-        (splits[a1].items_given_to_self.get("coins", 0))
-        if splits[a1] is not None
-        else 0
-    )
-    denom = max(int(max_coins), coins_to_self_0 + coins_to_self_1)
-    q0 = float(max_coins) * float(coins_to_self_0) / float(denom)
-    q1 = float(max_coins) * float(coins_to_self_1) / float(denom)
-    r0 = q0 * float(values[a0])
-    r1 = q1 * float(values[a1])
+    r0, r1 = 0.0, 0.0
+
+    for item in quantities:
+        max_item = quantities[item]
+        item_to_self_0 = int(
+            (splits[a0].items_given_to_self.get(item, 0))
+            if splits[a0] is not None
+            else 0
+        )
+        item_to_self_1 = int(
+            (splits[a1].items_given_to_self.get(item, 0))
+            if splits[a1] is not None
+            else 0
+        )
+        denom = max(int(max_item), item_to_self_0 + item_to_self_1)
+        q0 = float(max_item) * float(item_to_self_0) / float(denom)
+        q1 = float(max_item) * float(item_to_self_1) / float(denom)
+        if type(values[a0]) is float:
+            r0 += q0 * float(values[a0])
+            r1 += q1 * float(values[a1])
+        else:
+            r0 += q0 * float(values[a0][item])
+            r1 += q1 * float(values[a1][item])
     return {a0: r0, a1: r1}
 
 
@@ -166,10 +174,11 @@ class NegotiationSimulation(Simulation):
             self.state.round_nb += 1
             self._starting_agent_index = 1 - self._starting_agent_index
             self.state.current_agent = self.agent_ids[self._starting_agent_index]
-            self.set_new_round_of_variant()  # variant specific
+            self.state.previous_values = copy.deepcopy(self.state.values)
             self.state.previous_splits = copy.deepcopy(self.state.splits)
             self.state.previous_points = copy.deepcopy(rewards)
             self.state.last_message = ""
+            self.set_new_round_of_variant()  # variant specific
             self.state.splits = {agent_id: None for agent_id in self.agent_ids}
             self.state.nb_messages_sent = {agent_id: 0 for agent_id in self.agent_ids}
             is_last_timestep_in_round = True

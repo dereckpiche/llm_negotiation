@@ -104,7 +104,23 @@ class NegotiationAgent(Agent):
         # Prompt to give split
         must_send_split = not must_send_message and observation.split_phase
         if must_send_split:
-            prompt_parts.append(self.send_split_prompt.format(**obs_ctx))
+            var_names = ["x", "y", "z", "w"]  # Extend as needed
+            items_str = ", ".join(
+                [
+                    f"{var_names[i]} {item}"
+                    for i, item in enumerate(obs_ctx["quantities"].keys())
+                ]
+            )
+            ranges_str = ", ".join(
+                [
+                    f"{var_names[i]}: 0-{obs_ctx['quantities'][item]}"
+                    for i, item in enumerate(obs_ctx["quantities"].keys())
+                ]
+            )
+            proposal_style = f"Proposal: {items_str} where {ranges_str}."
+            prompt_parts.append(
+                self.send_split_prompt.format(proposal_style=proposal_style, **obs_ctx)
+            )
 
         # Append one ChatTurn with is_state_end=True
         user_prompt = "\n".join(prompt_parts)
