@@ -91,6 +91,7 @@ class BaseTrainer(ABC):
         save_path: str,
         reward_normalizing_constant: float = 1.0,
         critic_loss_type: Literal["mse", "huber"] = "huber",
+        exploration_prompts_to_remove: list[str] = [],
     ):
         """
         Initialize the REINFORCE trainer with reward shaping for multi-agent or single-agent training.
@@ -196,6 +197,7 @@ class BaseTrainer(ABC):
         self.reward_normalizing_constant = reward_normalizing_constant
         self.pg_loss_normalization = pg_loss_normalization
         self.critic_loss_type = critic_loss_type
+        self.exploration_prompts_to_remove = exploration_prompts_to_remove
         # Common containers used by all trainers
         self.training_data: dict = {}
         self.debug_path_list: list[str] = []
