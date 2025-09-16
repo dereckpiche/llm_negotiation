@@ -1,0 +1,33 @@
+defaults:
+  - no_press_10_1_ties_ad_align.yaml
+
+# To quickly check if code still runs
+experiment:
+  name: "no_press_10_1_ties_naive_prompt_exploration"
+
+common_agent_kwargs: &common_agent_kwargs
+  goal: "Maximize your total points over the whole game."
+  exploration_prompts: [
+    "In this round, you are a welfare maximizing agent. Maximize the sum of your own round points and the other agent's round points.",
+    "In this round, you are a greedy agent. Maximize your own round points regardless of the other agent's round points."
+  ]
+  exploration_prompt_probs: [0.2, 0.2]
+
+markov_games:
+    agents:
+        0:
+            agent_id: ${agent_0_id}
+            agent_name: Alice
+            agent_class_name: NoPressAgent
+            policy_id: base_llm/agent_adapter
+            init_kwargs:
+                <<: *common_agent_kwargs
+
+        1:
+            agent_id: ${agent_1_id}
+            agent_name: Bob
+            agent_class_name: NoPressAgent
+            policy_id: base_llm/agent_adapter
+            init_kwargs:
+                <<: *common_agent_kwargs
+

@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Tuple
 from mllm.markov_games.agent import Agent
 from mllm.markov_games.negotiation.nego_simulation import Message, NegotiationObs, Split
 from mllm.markov_games.rollout_tree import AgentActLog, ChatTurn
-
+import numpy as np
 
 @dataclass
 class NegotiationAgentState:
@@ -25,12 +25,23 @@ class NegotiationAgent(Agent):
         agent_name: str,
         policy: Callable[[List[Dict]], str],
         goal: str,
+        exploration_prompts: List[str] = [],
+        exploration_prompt_probs: List[float] = [],
     ):
         self.seed = seed
         self.agent_id = agent_id
         self.agent_name = agent_name
         self.policy = policy
         self.goal = goal
+        self.exploration_prompts_toggled = len(exploration_prompts) > 0
+        if self.exploration_prompts_toggled:
+            exploration_prompts = copy.deepcopy(exploration_prompts)
+            exploration_prompts.append(None)
+            self.exploration_prompts = exploration_prompts
+            self.exploration_prompt_probs = np.array(exploration_prompt_probs)
+            assert self.exploration_prompt_probs.sum() <= 1
+            assert np.all(self.exploration_prompt_probs >= 0)
+            self.exploration_prompt_probs = np.append(self.exploration_prompt_probs, 1 - self.exploration_prompt_probs.sum())
         self.state = NegotiationAgentState(
             round_nb=0, nb_messages_sent_this_round=0, chat_counter=0, chat_history=[]
         )
@@ -86,8 +97,12 @@ class NegotiationAgent(Agent):
             if not is_intro:
                 prompt_parts.append(self.last_round_prompt.format(**obs_ctx))
             prompt_parts.append(self.new_round_prompt.format(**obs_ctx))
+            if self.exploration_prompts_toggled:
+                exploration_prompt = self.exploration_prompts[np.random.choice(len(self.exploration_prompts), p=self.exploration_prompt_probs)]
+                if exploration_prompt is not None:
+                    prompt_parts.append(exploration_prompt)
             self.state.round_nb = round_nb
-
+            
         # Wait for message
         if not is_our_turn and not observation.split_phase:
             prompt_parts.append(self.wait_for_message_prompt.format(**obs_ctx))
@@ -172,6 +187,7 @@ class NegotiationAgent(Agent):
             action = self.get_split_action(policy_output, observation)
         else:
             action = None
+
 
         agent_step_log = AgentActLog(
             chat_turns=self.state.chat_history[self.state.chat_counter :], info=None

@@ -56,6 +56,7 @@ def process_training_chat(
     tokenizer: AutoTokenizer,
     chat_history: list[TrainingChatTurn],
     entropy_mask_regex: str | None = None,
+    exploration_prompts_to_remove: list[str] = [],
 ) -> tuple[torch.IntTensor, torch.BoolTensor, torch.IntTensor, torch.BoolTensor]:
     """Tokenize a single training chat and build aligned per-token masks.
 
@@ -106,6 +107,12 @@ def process_training_chat(
         is_state_end = train_chat_turn.is_state_end
         time_step = train_chat_turn.time_step
         is_action = train_chat_turn.role == "assistant"
+
+        # Remove exploration prompts from training data
+        for exploration_prompt in exploration_prompts_to_remove:
+            if exploration_prompt in train_chat_turn.content:
+                train_chat_turn.content = train_chat_turn.content.replace(exploration_prompt, "")
+
         chat_turn = {
             "role": train_chat_turn.role,
             "content": train_chat_turn.content,

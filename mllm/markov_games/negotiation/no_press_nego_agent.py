@@ -32,6 +32,7 @@ class NoPressAgent(NegotiationAgent):
         )
         self.new_round_prompt = (
             "A new round begins\n"
+            "The quantities of items to split are {quantities}.\n"
             "Your per-item values are {value} and {other_agent}'s per-item values are  {other_value}."
         )
         self.last_round_prompt = (
