@@ -10,17 +10,19 @@ def split_greed(sl: SimulationStepLog) -> Dict[str, float] | None:
     if not info or not info.get("is_last_timestep_in_round"):
         return None
     quantities = info.get("quantities") or {}
-    denom = float(quantities.get("coins", 1.0)) or 1.0
     splits = info.get("splits") or {}
     out: Dict[str, float] = {}
+    item_keys = list(quantities.keys())
     for aid in sl.rewards.keys():
         if "buffer" in str(aid):
             return None
     for aid, split in splits.items():
-        try:
-            out[str(aid)] = float(split["items_given_to_self"]["coins"]) / denom
-        except Exception:
-            continue
+        agent_greed = []
+        for item in item_keys:
+            if item in split["items_given_to_self"]:
+                denom = float(quantities[item])
+                agent_greed.append(float(split["items_given_to_self"][item]) / denom)
+        out[str(aid)] = sum(agent_greed) / len(agent_greed) if agent_greed else 0.0
     return out
 
 
@@ -29,22 +31,19 @@ def split_efficiency(sl: SimulationStepLog) -> Dict[str, float] | None:
     if not info or not info.get("is_last_timestep_in_round"):
         return None
     quantities = info.get("quantities") or {}
-    denom = float(quantities.get("coins", 1.0)) or 1.0
     values = info.get("values") or {}
-    if not values:
+    if not values or not quantities:
         return None
-    try:
-        max_val = max(float(v) for v in values.values())
-    except Exception:
-        return None
-    if not denom or not max_val:
-        return None
+    item_keys = list(values.values())[0].keys()
+    max_vals, max_quantities = [], []
+    for item in item_keys:
+        max_val = max(float(agent_vals[item]) for agent_vals in values.values())
+        max_vals.append(max_val)
+        max_quantities.append(quantities[item])
     for aid in sl.rewards.keys():
         if "buffer" in str(aid):
             return None
-    achieved = sum(float(v) for v in (sl.rewards or {}).values())
-    max_reward = denom * max_val
-    if not max_reward:
-        return None
+    achieved = sum(float(v) for v in sl.rewards.values())
+    max_reward = sum(d * v for d, v in zip(max_quantities, max_vals))
     # Efficiency is a global metric; emit same value for a special key "all"
     return {"all_agents": achieved / max_reward}
