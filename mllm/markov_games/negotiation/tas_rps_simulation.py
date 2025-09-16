@@ -107,7 +107,6 @@ class TrustAndSplitRPSSimulation(NegotiationSimulation):
             return agent_hands, values
 
     def set_new_round_of_variant(self):
-        self.state.previous_values = copy.deepcopy(self.state.values)
         self.state.previous_hands = copy.deepcopy(self.state.hands)
         new_hands, new_values = self._sample_hands_and_values(
             alternate_hands=self.alternating_hands
@@ -131,7 +130,9 @@ class TrustAndSplitRPSSimulation(NegotiationSimulation):
         }
 
     def get_rewards(self, splits: Dict[AgentId, Split]) -> Dict[AgentId, float]:
-        return compute_tas_style_rewards(self.agent_ids, self.state.values, splits, 10)
+        return compute_tas_style_rewards(
+            self.agent_ids, self.state.values, splits, self.state.quantities
+        )
 
     def get_obs_agent(self, agent_id):
         """Returns observation for agent_id"""
