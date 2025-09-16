@@ -62,6 +62,7 @@ class TrainerNaive(BaseTrainer):
         crn_ids = []  # common random number id
         batch_input_ids = []
         batch_action_mask = []
+        batch_entropy_mask = []
         batch_timesteps = []
         batch_state_ends_mask = []
         batch_rewards = []
@@ -76,11 +77,14 @@ class TrainerNaive(BaseTrainer):
             (
                 input_ids,
                 action_mask,
+                entropy_mask, 
                 timesteps,
                 state_ends_mask,
-            ) = process_training_chat(tokenizer=self.tokenizer, chat_history=chat)
+
+            ) = process_training_chat(tokenizer=self.tokenizer, chat_history=chat, entropy_mask_regex=self.entropy_mask_regex)
             batch_input_ids.append(input_ids)
             batch_action_mask.append(action_mask)
+            batch_entropy_mask.append(entropy_mask)
             batch_timesteps.append(timesteps)
             batch_state_ends_mask.append(state_ends_mask)
             batch_rewards.append(rewards)
@@ -91,6 +95,7 @@ class TrainerNaive(BaseTrainer):
             agent_ids=[agent_id] * len(rollout_ids),
             batch_input_ids=batch_input_ids,
             batch_action_mask=batch_action_mask,
+            batch_entropy_mask=batch_entropy_mask,
             batch_timesteps=batch_timesteps,
             batch_state_ends_mask=batch_state_ends_mask,
             batch_rewards=batch_rewards,
