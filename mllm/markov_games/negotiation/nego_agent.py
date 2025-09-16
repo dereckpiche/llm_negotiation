@@ -59,12 +59,19 @@ class NegotiationAgent(Agent):
         pass
 
     async def act(self, observation: NegotiationObs) -> Tuple[Any, AgentActLog]:
+        def dict_to_str(d: dict) -> str:
+            return ", ".join(f"{k}={v}" for k, v in d.items())
+
         is_our_turn = observation.current_agent == self.agent_id
         action: Any = None
         round_nb = observation.round_nb
 
         prompt_parts: List[str] = []
         obs_ctx = vars(observation)
+        obs_ctx_formmated = obs_ctx.copy()
+        for key in obs_ctx_formmated:
+            if isinstance(obs_ctx_formmated[key], dict):
+                obs_ctx_formmated[key] = dict_to_str(obs_ctx_formmated[key])
 
         #######################################
         # build user prompt
@@ -75,7 +82,7 @@ class NegotiationAgent(Agent):
         if is_intro:
             prompt_parts.append(
                 self.intro_prompt.format(
-                    goal=self.goal, agent=self.agent_name, **obs_ctx
+                    goal=self.goal, agent=self.agent_name, **obs_ctx_formmated
                 )
             )
 
@@ -84,22 +91,24 @@ class NegotiationAgent(Agent):
         if is_new_round or is_intro:
             self.state.nb_messages_sent_this_round = 0
             if not is_intro:
-                prompt_parts.append(self.last_round_prompt.format(**obs_ctx))
-            prompt_parts.append(self.new_round_prompt.format(**obs_ctx))
+                prompt_parts.append(self.last_round_prompt.format(**obs_ctx_formmated))
+            prompt_parts.append(self.new_round_prompt.format(**obs_ctx_formmated))
             self.state.round_nb = round_nb
 
         # Wait for message
         if not is_our_turn and not observation.split_phase:
-            prompt_parts.append(self.wait_for_message_prompt.format(**obs_ctx))
+            prompt_parts.append(
+                self.wait_for_message_prompt.format(**obs_ctx_formmated)
+            )
 
         # Get last message
         if is_our_turn and not is_new_round and not is_intro:
-            prompt_parts.append(self.last_message_prompt.format(**obs_ctx))
+            prompt_parts.append(self.last_message_prompt.format(**obs_ctx_formmated))
 
         # Prompt to send message
         must_send_message = not observation.split_phase and is_our_turn
         if must_send_message:
-            prompt_parts.append(self.send_message_prompt.format(**obs_ctx))
+            prompt_parts.append(self.send_message_prompt.format(**obs_ctx_formmated))
 
         # Prompt to give split
         must_send_split = not must_send_message and observation.split_phase
@@ -119,7 +128,9 @@ class NegotiationAgent(Agent):
             )
             proposal_style = f"Proposal: {items_str} where {ranges_str}."
             prompt_parts.append(
-                self.send_split_prompt.format(proposal_style=proposal_style, **obs_ctx)
+                self.send_split_prompt.format(
+                    proposal_style=proposal_style, **obs_ctx_formmated
+                )
             )
 
         # Append one ChatTurn with is_state_end=True

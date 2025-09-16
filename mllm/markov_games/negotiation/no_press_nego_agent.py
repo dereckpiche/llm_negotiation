@@ -31,20 +31,22 @@ class NoPressAgent(NegotiationAgent):
             "Your goal: {goal}\n"
         )
         self.new_round_prompt = (
-            "A new round begins\n"
+            "A New Round Begins\n"
+            "The items to split are {quantities}.\n"
             "Your per-item values are {value} and {other_agent}'s per-item values are  {other_value}."
         )
         self.last_round_prompt = (
-            "Round summary:\n"
+            "Last Round Summary:\n"
+            "   - Items to split: {last_quantities}\n"
             "   - Your per-item values: {last_value_agent}\n"
             "   - {other_agent}'s per-item values: {last_value_coagent}\n"
             "   - You proposed: {last_split_agent}\n"
             "   - You earned: {last_points_agent} points\n"
             "   - {other_agent} proposed: {last_split_coagent}\n"
             "   - {other_agent} earned: {last_points_coagent} points\n"
-            "   - Round complete.\n"
+            "   - Round Complete.\n"
         )
-        self.send_split_prompt = "Submit your proposal\n" "Respond as {proposal_style}"
+        self.send_split_prompt = "Submit Your Proposal\n" "Respond as {proposal_style}"
 
     def get_message_regex(self, observation: NoPressObs) -> str:
         return r"^$"  # No messages allowed
@@ -74,6 +76,19 @@ class NoPressAgent(NegotiationAgent):
                 ]
             )
             inner_regex = rf"(?i)(10|[0-9])\s*({item_pattern})"
+
+            def normalize_item_name(item_str):
+                for orig in items:
+                    if item_str.lower() == orig.lower():
+                        return orig
+                    if orig.endswith("s") and item_str.lower() == orig[:-1].lower():
+                        return orig
+                    if (
+                        not orig.endswith("s")
+                        and item_str.lower() == orig.lower() + "s"
+                    ):
+                        return orig
+
             for num, item in _re.findall(inner_regex, m.group(1)):
-                items_given_to_self[item.lower()] = int(num)
+                items_given_to_self[normalize_item_name(item)] = int(num)
         return Split(items_given_to_self=items_given_to_self)

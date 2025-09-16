@@ -38,6 +38,7 @@ class NegotiationState:
     previous_values: Dict[AgentId, Dict[str, float]] | None
     previous_splits: Dict[AgentId, Dict[str, int] | None] | None
     previous_points: Dict[AgentId, float] | None
+    previous_quantities: Dict[str, int] | None
     split_phase: bool
 
 
@@ -58,6 +59,7 @@ class NegotiationObs:
     last_split_coagent: Dict[str, int] | None
     last_value_coagent: Dict[str, int] | None
     last_points_coagent: float | None
+    last_quantities: Dict[str, int] | None
 
 
 def compute_tas_style_rewards(
@@ -179,6 +181,7 @@ class NegotiationSimulation(Simulation):
             self.state.current_agent = self.agent_ids[self._starting_agent_index]
             self.state.previous_values = copy.deepcopy(self.state.values)
             self.state.previous_splits = copy.deepcopy(self.state.splits)
+            self.state.previous_quantities = copy.deepcopy(self.state.quantities)
             self.state.previous_points = copy.deepcopy(rewards)
             self.state.last_message = ""
             self.set_new_round_of_variant()  # variant specific
