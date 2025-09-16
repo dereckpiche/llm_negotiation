@@ -119,7 +119,10 @@ class NegotiationSimulation(Simulation):
         self.quota_messages_per_agent_per_round = int(
             quota_messages_per_agent_per_round
         )
-        self.item_types = item_types or ["coins"]
+        if item_types is not None:
+            self.item_types = [item.lower() for item in item_types]
+        else:
+            self.item_types = ["coins"]
         self.state: NegotiationState | None = None
         self._starting_agent_index = self.rng.choice([0, 1])
         self.reset()
