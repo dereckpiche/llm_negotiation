@@ -1,0 +1,19 @@
+# To quickly check if code still runs
+experiment:
+    name: "human_alice_${now:%Y-%m-%d___%H-%M-%S}"
+    nb_epochs: 1
+    nb_matches_per_iteration: 1
+    seed_group_size: 1
+    train: false
+
+defaults:
+    - no_press_10_1_ties_ad_align.yaml
+
+
+markov_games:
+  agents:
+      0:
+          agent_name: Alice
+          policy_id: human_policy
+
+

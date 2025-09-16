@@ -8,6 +8,7 @@ from mllm.markov_games.ipd.ipd_simulation import IPD
 from mllm.markov_games.markov_game import MarkovGame
 from mllm.markov_games.negotiation.dond_agent import DealNoDealAgent
 from mllm.markov_games.negotiation.dond_simulation import DealNoDealSimulation
+from mllm.markov_games.negotiation.nego_hard_coded_policies import HardCodedNegoWelfareMaximizingPolicy, HardCodedNegoGreedyPolicy
 from mllm.markov_games.negotiation.no_press_nego_agent import NoPressAgent
 from mllm.markov_games.negotiation.no_press_nego_simulation import NoPressSimulation
 from mllm.markov_games.negotiation.tas_agent import TrustAndSplitAgent

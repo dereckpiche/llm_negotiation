@@ -34,6 +34,7 @@ from mllm.markov_games.mg_utils import (
 from mllm.markov_games.run_markov_games import run_markov_games
 from mllm.models.large_language_model_api import LargeLanguageModelOpenAI
 from mllm.models.large_language_model_local import LeanLocalLLM
+from mllm.models.human_policy import get_human_policies
 
 # from mllm.models.large_language_model_server import ServerLLM
 from mllm.models.scalar_critic import ScalarCritic
@@ -204,6 +205,8 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         policies = {}
         for llm_id, llm in llms_dict.items():
             policies.update(llm.get_inference_policies())
+        # Add human-in-the-loop policy
+        policies.update(get_human_policies())
 
         policy_ids = list(policies.keys())
         buffer_policy_ids = [
