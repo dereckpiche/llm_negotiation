@@ -1,4 +1,4 @@
-
+import torch
 import torch.nn as nn
 import logging
 from typing import Union
@@ -69,6 +69,15 @@ class AdapterWrapper(nn.Module):
         params = [p for p in self.shared_llm.parameters() if p.requires_grad]
 
         return params
+
+    def get_base_model_logits(self, contexts):
+        """
+        Run the base model (without adapter) in inference mode, without tracking gradients.
+        This is useful to get reference logits for KL-divergence computation.
+        """
+        with torch.no_grad():
+            with self.shared_llm.disable_adapter():
+                return self.shared_llm(input_ids=contexts)[0]
 
     def forward(self, *args, **kwargs):
         self.shared_llm.set_adapter(self.adapter_id)
