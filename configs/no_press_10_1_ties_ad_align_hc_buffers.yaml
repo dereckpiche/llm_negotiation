@@ -3,12 +3,18 @@ defaults:
 
 experiment:
     name: "no_press_10_1_ties_ad_align_hc_buffers"
-    prob_hard_coded_buffer_agent: 1.0
+    prob_hard_coded_buffer_agent: 0.5
     base_seed: 42
 
+common_agent_kwargs: &common_agent_kwargs
+  goal: "Maximize your total points over the whole game."
+  exploration_prompts: [
+    "In this round, you are a welfare maximizing agent. Maximize the sum of your own round points and the other agent's round points.",
+    "In this round, you are a greedy agent. Maximize your own round points regardless of the other agent's round points.",
+  ]
+  exploration_prompt_probs: [0.1, 0.1]
 
 markov_games:
-
 
     hard_coded_buffer_agents:
         0:
