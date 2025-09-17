@@ -1,0 +1,20 @@
+defaults:
+    - no_press_10_1_ties_ad_align.yaml
+
+experiment:
+    name: "no_press_10_1_ties_ad_align_hc_buffers"
+    prob_hard_coded_buffer_agent: 1.0
+    base_seed: 42
+
+
+markov_games:
+
+
+    hard_coded_buffer_agents:
+        0:
+            agent_id: AutoGreedy
+            agent_class_name: HardCodedNegoGreedyPolicy
+
+        1:
+            agent_id: AutoCooperative
+            agent_class_name: HardCodedNegoWelfareMaximizingPolicy

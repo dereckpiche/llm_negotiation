@@ -32,9 +32,9 @@ from mllm.markov_games.mg_utils import (
     init_markov_game_components,
 )
 from mllm.markov_games.run_markov_games import run_markov_games
+from mllm.models.human_policy import get_human_policies
 from mllm.models.large_language_model_api import LargeLanguageModelOpenAI
 from mllm.models.large_language_model_local import LeanLocalLLM
-from mllm.models.human_policy import get_human_policies
 
 # from mllm.models.large_language_model_server import ServerLLM
 from mllm.models.scalar_critic import ScalarCritic
@@ -208,12 +208,19 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         # Add human-in-the-loop policy
         policies.update(get_human_policies())
 
+        # Get buffer polices
         policy_ids = list(policies.keys())
         buffer_policy_ids = [
             policy_id for policy_id in policy_ids if "buffer" in policy_id
         ]
+        human_policy_ids = [
+            policy_id for policy_id in policy_ids if "human" in policy_id
+        ]
         logger.info(
-            f"Inference policies count is regular policies {len(policy_ids) - len(buffer_policy_ids)} and buffer policies {len(buffer_policy_ids)}"
+            f"Inference policies count is regular policies {len(policy_ids) - len(buffer_policy_ids) - len(human_policy_ids)} and buffer policies {len(buffer_policy_ids)} and human policies {len(human_policy_ids)}."
+        )
+        logger.info(
+            f"Hard coded buffer agents are set to {cfg['markov_games'].get('hard_coded_buffer_agents', False)} with prob {cfg['experiment'].get('prob_hard_coded_buffer_agent', 0)}"
         )
         if (
             cfg["experiment"].get("agent_buffer_recent_k", -1) != -1
@@ -224,9 +231,9 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
                 key=lambda x: int(re.search(r"iter_(\d+)", x).group(1)),
                 reverse=True,
             )[: cfg["experiment"]["agent_buffer_recent_k"]]
+        env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
+        buffer_rng = copy.deepcopy(env_rng)
         if len(buffer_policy_ids) > 0:
-            env_rng = np.random.default_rng(env_rng.integers(0, 1e9))
-            buffer_rng = copy.deepcopy(env_rng)
             buffer_policy_ids = buffer_rng.choice(
                 buffer_policy_ids,
                 size=min(
@@ -250,11 +257,50 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
                     return agent_configs_dict_seed_group[match_number]
                 new_agent_configs = []
                 for index, agent_config in enumerate(agent_configs):
+                    buffer_networks_are_available = len(buffer_policy_ids) > 0
+                    buffer_hard_coded_agents_are_available = cfg["markov_games"].get(
+                        "hard_coded_buffer_agents", False
+                    )
+                    buffer_agents_are_available = (
+                        buffer_networks_are_available
+                        or buffer_hard_coded_agents_are_available
+                    )
+                    take_buffer_agent = (
+                        buffer_agents_are_available and buffer_rng.choice([True, False])
+                    )
+
                     if (match_number % len(agent_configs)) == index:
                         new_agent_configs.append(agent_config)
-                    elif len(buffer_policy_ids) > 0:
-                        take_buffer_agent = buffer_rng.choice([True, False])
-                        if take_buffer_agent:
+
+                    elif take_buffer_agent:
+                        use_hard_coded = buffer_hard_coded_agents_are_available and (
+                            buffer_rng.random()
+                            < cfg["experiment"].get("prob_hard_coded_buffer_agent", 0)
+                        )
+
+                        # use hard coded buffer agent
+                        if use_hard_coded:
+                            hc_buffer_config = copy.deepcopy(
+                                buffer_rng.choice(
+                                    list(
+                                        cfg["markov_games"][
+                                            "hard_coded_buffer_agents"
+                                        ].values()
+                                    )
+                                )
+                            )
+                            hc_agent_config = copy.deepcopy(agent_config)
+                            hc_agent_config.agent_id = (
+                                f"{hc_buffer_config['agent_id']}_buffer"
+                            )
+                            hc_agent_config.agent_class_name = hc_buffer_config[
+                                "agent_class_name"
+                            ]
+                            agent_ids.add(hc_agent_config.agent_id)
+                            new_agent_configs.append(hc_agent_config)
+
+                        # use buffer network
+                        else:
                             buffer_agent_config = copy.deepcopy(agent_config)
                             buffer_agent_config.agent_id = (
                                 f"{agent_config.agent_id}_buffer"
@@ -269,8 +315,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
                                 buffer_agent_policy_ids
                             )
                             new_agent_configs.append(buffer_agent_config)
-                        else:
-                            new_agent_configs.append(agent_config)
+
                     else:
                         new_agent_configs.append(agent_config)
                 agent_configs_dict_seed_group[match_number] = new_agent_configs
