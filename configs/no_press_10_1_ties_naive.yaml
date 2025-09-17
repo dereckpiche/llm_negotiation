@@ -78,7 +78,7 @@ optimizers:
 trainers:
     agent_trainer:
         kwargs:
-            discount_factor: 1.0
+            discount_factor: 0.9
             use_gradient_checkpointing: False
             mini_batch_size: 1
             reward_normalizing_constant: 100.0
