@@ -3,8 +3,10 @@ defaults:
 
 experiment:
     name: "no_press_10_1_ties_ad_align"
+    nb_epochs: 3000
     agent_buffer: true
     checkpoint_every_n_iterations: 10
+
 
 trainers:
     agent_trainer:

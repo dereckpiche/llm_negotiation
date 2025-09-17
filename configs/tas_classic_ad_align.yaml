@@ -1,23 +1,11 @@
 defaults:
-    - base.yaml
+    - tas_classic_10_1_ties_naive.yaml
 
-lora_count: 30
 experiment:
-    nb_epochs: 2000
-    name: "tas_classic_ad_align"
+    name: "tas_classic_10_1_ties_ad_align"
+    nb_epochs: 3000
     agent_buffer: true
-    keep_agent_buffer_count: ${lora_count}
-    agent_buffer_recent_k: -1
     checkpoint_every_n_iterations: 10
-    seed_group_size: 8
-
-common_agent_kwargs: &common_agent_kwargs
-    goal: "Maximize your total points over the whole game."
-    num_message_chars: 500
-
-agent_0_id: Alice
-agent_1_id: Bob
-agent_ids: ["Alice", "Bob"]
 
 markov_games:
     group_by_round: True # This will merge all timesteps of a round into a single timestep
@@ -78,11 +66,6 @@ trainers:
     agent_trainer:
         class: TrainerAdAlign
         kwargs:
-            discount_factor: 1.0
-            use_gradient_checkpointing: False
-            mini_batch_size: 1
-
-            # ad align
             ad_align_force_coop_first_step: False
             ad_align_clipping: null
             ad_align_gamma: 1.0
@@ -94,4 +77,3 @@ trainers:
             use_rloo: True
             rloo_branch: False
             reuse_baseline: False
-            reward_normalizing_constant: 200.0

@@ -3,8 +3,8 @@ defaults:
 
 lora_count: 30
 experiment:
-    nb_epochs: 1000
     name: "no_press_10_1_ties_naive"
+    nb_epochs: 1000
     agent_buffer: false
     keep_agent_buffer_count: ${lora_count}
     agent_buffer_recent_k: -1
@@ -82,3 +82,4 @@ trainers:
             use_gradient_checkpointing: False
             mini_batch_size: 1
             reward_normalizing_constant: 100.0
+            kl_coeff: 0.01

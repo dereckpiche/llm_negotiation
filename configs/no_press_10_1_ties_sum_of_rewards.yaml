@@ -1,8 +1,8 @@
 defaults:
-    - tas_classic_naive.yaml
+    - no_press_10_1_ties_naive.yaml
 
 experiment:
-    name: "tas_no_regex_sum_of_rewards_lr3e6"
+    name: "no_press_10_1_ties_sum_of_rewards"
 
 trainers:
     agent_trainer:

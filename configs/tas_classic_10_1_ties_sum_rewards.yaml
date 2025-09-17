@@ -1,0 +1,9 @@
+defaults:
+    - tas_classic_10_1_ties_naive.yaml
+
+experiment:
+    name: "tas_classic_10_1_ties_sum_of_rewards"
+
+trainers:
+    agent_trainer:
+        class: TrainerSumRewards
