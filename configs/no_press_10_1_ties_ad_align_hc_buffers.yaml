@@ -3,13 +3,13 @@ defaults:
 
 experiment:
     name: "no_press_10_1_ties_ad_align_hc_buffers"
-    prob_hard_coded_buffer_agent: 1.0  
-    random_seed: 42
+    prob_hard_coded_buffer_agent: 1.0
+    base_seed: 42
 
 
 markov_games:
 
-    
+
     hard_coded_buffer_agents:
         0:
             agent_id: AutoGreedy
@@ -18,5 +18,3 @@ markov_games:
         1:
             agent_id: AutoCooperative
             agent_class_name: HardCodedNegoWelfareMaximizingPolicy
-
-
