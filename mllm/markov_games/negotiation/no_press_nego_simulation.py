@@ -60,7 +60,7 @@ class NoPressSimulation(NegotiationSimulation):
         return values
 
     def _sample_quantities(self) -> Dict[str, int]:
-        return {item: 10 for item in self.item_types}
+        return {item.lower(): 10 for item in self.item_types}
 
     def set_new_round_of_variant(self):
         self.state.quantities = self._sample_quantities()
@@ -130,6 +130,7 @@ class NoPressSimulation(NegotiationSimulation):
             last_value_coagent=last_value_coagent,
             last_points_coagent=last_points_coagent,
             other_value=self.state.values[other_id],
+            last_quantities=self.state.previous_quantities,
         )
         return obs
 
@@ -149,5 +150,6 @@ class NoPressSimulation(NegotiationSimulation):
             split_phase=True,
             previous_splits=None,
             previous_points=None,
+            previous_quantities=None,
         )
         return self.get_obs()
