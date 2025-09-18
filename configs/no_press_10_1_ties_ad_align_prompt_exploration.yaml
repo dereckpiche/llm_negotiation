@@ -3,7 +3,7 @@ defaults:
 
 # To quickly check if code still runs
 experiment:
-  name: "no_press_10_1_ties_naive_prompt_exploration"
+  name: "no_press_10_1_ties_ad_align_prompt_exploration"
 
 common_agent_kwargs: &common_agent_kwargs
   goal: "Maximize your total points over the whole game."
@@ -30,4 +30,3 @@ markov_games:
             policy_id: base_llm/agent_adapter
             init_kwargs:
                 <<: *common_agent_kwargs
-
