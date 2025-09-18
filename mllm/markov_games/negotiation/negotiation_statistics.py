@@ -5,6 +5,14 @@ from typing import Dict
 from mllm.markov_games.rollout_tree import SimulationStepLog
 
 
+def avg_reward(sl: SimulationStepLog) -> Dict[str, float]:
+    for aid in sl.rewards.keys():
+        if "buffer" in str(aid):
+            return None
+    # One value per agent at each step
+    return {aid: float(v) for aid, v in (sl.rewards or {}).items()}
+
+
 def split_greed(sl: SimulationStepLog) -> Dict[str, float] | None:
     info = sl.info or {}
     if not info or not info.get("is_last_timestep_in_round"):

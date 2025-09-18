@@ -1,3 +1,7 @@
+defaults:
+    - no_press_10_1_ties_ad_align_hc_buffers.yaml
+
+
 # To quickly check if code still runs
 experiment:
     name: "debug_nego_${now:%Y-%m-%d___%H-%M-%S}"
@@ -27,7 +31,6 @@ markov_games:
 
 models:
     base_llm:
-        class: LeanLocalLLM
         init_args:
             llm_id: base_llm
             enable_thinking: False
