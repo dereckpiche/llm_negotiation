@@ -38,6 +38,6 @@ class DummyInferenceBackend(LLMInferenceBackend):
     async def generate(self, prompt_text: str, regex: Optional[str] = None) -> str:
         if regex:
             # Create random string that respects the regex
-            return rstr.xeger(regex)
+            txt =  rstr.xeger(regex)
         else:
             return "I am a dummy backend without a regex."

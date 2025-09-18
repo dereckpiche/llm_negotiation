@@ -249,77 +249,83 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         markov_games = []
         agent_ids = set()
         agent_ids.update([agent_config.agent_id for agent_config in agent_configs])
-        agent_configs_dict_seed_group = {}
+
+        buffer_networks_are_available = len(buffer_policy_ids) > 0
+        buffer_hard_coded_agents_are_available = cfg["markov_games"].get(
+            "hard_coded_buffer_agents", False
+        )
+        buffer_agents_are_available = (
+            buffer_networks_are_available
+            or buffer_hard_coded_agents_are_available
+        )
+        # decide which seed groups will have half buffer agents if using agent buffer
+        chooses_buffer = lambda: bool(buffer_rng.random() < cfg["experiment"].get("prob_group_has_half_buffer", 0.5))
+        seed_groups_with_buffer = [seed for seed in crn_seeds if chooses_buffer()] if buffer_agents_are_available else []
+
         for match_number in range(nb_matches):
 
             def agent_configs_per_match(agent_configs, match_number):
-                if match_number in agent_configs_dict_seed_group:
-                    return agent_configs_dict_seed_group[match_number]
-                new_agent_configs = []
+                match_seed = crn_seeds[match_number // seed_group_size]
+                use_buffer = match_seed in seed_groups_with_buffer
+
+                # Use real agents only
+                if not use_buffer:
+                    return agent_configs
+                
+                # Find real agent & buffer agent pair 
+                real_and_buffer_agent_configs = []
                 for index, agent_config in enumerate(agent_configs):
-                    buffer_networks_are_available = len(buffer_policy_ids) > 0
-                    buffer_hard_coded_agents_are_available = cfg["markov_games"].get(
-                        "hard_coded_buffer_agents", False
-                    )
-                    buffer_agents_are_available = (
-                        buffer_networks_are_available
-                        or buffer_hard_coded_agents_are_available
-                    )
-                    take_buffer_agent = (
-                        buffer_agents_are_available and buffer_rng.choice([True, False])
-                    )
 
+                    # add real agent
                     if (match_number % len(agent_configs)) == index:
-                        new_agent_configs.append(agent_config)
+                        real_and_buffer_agent_configs.append(agent_config)
+                    
 
-                    elif take_buffer_agent:
-                        use_hard_coded = buffer_hard_coded_agents_are_available and (
-                            buffer_rng.random()
-                            < cfg["experiment"].get("prob_hard_coded_buffer_agent", 0)
-                        )
+                    use_hard_coded = buffer_hard_coded_agents_are_available and (
+                        buffer_rng.random()
+                        < cfg["experiment"].get("prob_hard_coded_buffer_agent", 0)
+                    )
 
-                        # use hard coded buffer agent
-                        if use_hard_coded:
-                            hc_buffer_config = copy.deepcopy(
-                                buffer_rng.choice(
-                                    list(
-                                        cfg["markov_games"][
-                                            "hard_coded_buffer_agents"
-                                        ].values()
-                                    )
+                    # use hard coded buffer agent
+                    if use_hard_coded:
+                        hc_buffer_config = copy.deepcopy(
+                            buffer_rng.choice(
+                                list(
+                                    cfg["markov_games"][
+                                        "hard_coded_buffer_agents"
+                                    ].values()
                                 )
                             )
-                            hc_agent_config = copy.deepcopy(agent_config)
-                            hc_agent_config.agent_id = (
-                                f"{hc_buffer_config['agent_id']}_buffer"
-                            )
-                            hc_agent_config.agent_class_name = hc_buffer_config[
-                                "agent_class_name"
-                            ]
-                            agent_ids.add(hc_agent_config.agent_id)
-                            new_agent_configs.append(hc_agent_config)
+                        )
+                        hc_agent_config = copy.deepcopy(agent_config)
+                        hc_agent_config.agent_id = (
+                            f"{hc_buffer_config['agent_id']}_buffer"
+                        )
+                        hc_agent_config.agent_class_name = hc_buffer_config[
+                            "agent_class_name"
+                        ]
+                        agent_ids.add(hc_agent_config.agent_id)
+                        real_and_buffer_agent_configs.append(hc_agent_config)
 
-                        # use buffer network
-                        else:
-                            buffer_agent_config = copy.deepcopy(agent_config)
-                            buffer_agent_config.agent_id = (
-                                f"{agent_config.agent_id}_buffer"
-                            )
-                            agent_ids.add(buffer_agent_config.agent_id)
-                            buffer_agent_policy_ids = [
-                                policy_id
-                                for policy_id in buffer_policy_ids
-                                if agent_config.policy_id in policy_id
-                            ]
-                            buffer_agent_config.policy_id = buffer_rng.choice(
-                                buffer_agent_policy_ids
-                            )
-                            new_agent_configs.append(buffer_agent_config)
-
+                    # use buffer network
                     else:
-                        new_agent_configs.append(agent_config)
-                agent_configs_dict_seed_group[match_number] = new_agent_configs
-                return new_agent_configs
+                        buffer_agent_config = copy.deepcopy(agent_config)
+                        buffer_agent_config.agent_id = (
+                            f"{agent_config.agent_id}_buffer"
+                        )
+                        agent_ids.add(buffer_agent_config.agent_id)
+                        buffer_agent_policy_ids = [
+                            policy_id
+                            for policy_id in buffer_policy_ids
+                            if agent_config.policy_id in policy_id
+                        ]
+                        buffer_agent_config.policy_id = buffer_rng.choice(
+                            buffer_agent_policy_ids
+                        )
+                        real_and_buffer_agent_configs.append(buffer_agent_config)
+
+                # return buffer agent and real agent pair
+                return real_and_buffer_agent_configs
 
             markov_game_config = MarkovGameConfig(
                 id=iteration * nb_matches + match_number,
@@ -327,10 +333,8 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
                 simulation_class_name=cfg["markov_games"]["simulation_class_name"],
                 simulation_init_args=cfg["markov_games"]["simulation_init_args"],
                 agent_configs=agent_configs_per_match(
-                    agent_configs, match_number // seed_group_size
-                )
-                if cfg["experiment"].get("agent_buffer", False)
-                else agent_configs,
+                    agent_configs, match_number
+                ) 
             )
             markov_game = init_markov_game_components(
                 config=markov_game_config, policies=policies
