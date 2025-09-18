@@ -261,7 +261,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
         # decide which seed groups will have half buffer agents if using agent buffer
         chooses_buffer = lambda: bool(buffer_rng.random() < cfg["experiment"].get("prob_group_has_half_buffer", 0.5))
         seed_groups_with_buffer = [seed for seed in crn_seeds if chooses_buffer()] if buffer_agents_are_available else []
-
+        real_agent_configs = copy.deepcopy(agent_configs)
         for match_number in range(nb_matches):
 
             def agent_configs_per_match(agent_configs, match_number):
@@ -270,12 +270,12 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
 
                 # Use real agents only
                 if not use_buffer:
-                    return agent_configs
+                    return real_agent_configs
                 
                 # Find real agent & buffer agent pair 
                 real_and_buffer_agent_configs = []
                 
-                real_agent_config = buffer_rng.choice(agent_configs)
+                real_agent_config = buffer_rng.choice(real_agent_configs)
                 real_and_buffer_agent_configs.append(copy.deepcopy(real_agent_config))
 
                 use_hard_coded = (not buffer_networks_are_available) or (
@@ -295,17 +295,18 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
                         )
                     )
                     hc_agent_config = copy.deepcopy(agent_config)
-                    hc_agent_config.agent_id = f"{hc_buffer_config['agent_id']}_buffer"
+                    hc_agent_config.agent_id = f"agent_id_buffer"
                     hc_agent_config.agent_class_name = hc_buffer_config[
                         "agent_class_name"
                     ]
+                    agent_ids.add(hc_agent_config.agent_id)
                     real_and_buffer_agent_configs.append(hc_agent_config)
 
                 # use buffer network
                 else:
                     buffer_agent_config = copy.deepcopy(agent_config)
                     buffer_agent_config.agent_id = (
-                        f"buffer_agent"
+                        f"agent_id_buffer"
                     )
                     buffer_agent_policy_ids = [
                         policy_id
@@ -315,6 +316,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
                     buffer_agent_config.policy_id = buffer_rng.choice(
                         buffer_agent_policy_ids
                     )
+                    agent_ids.add(buffer_agent_config.agent_id)
                     real_and_buffer_agent_configs.append(buffer_agent_config)
 
                 # return buffer agent and real agent pair
@@ -332,6 +334,7 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
                 config=markov_game_config, policies=policies
             )
             markov_games.append(markov_game)
+
 
         # Generate rollouts raw data asynchronously
         runner = eval(cfg["markov_games"]["runner_method_name"])
