@@ -273,9 +273,9 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
                         new_agent_configs.append(agent_config)
 
                     elif take_buffer_agent:
-                        use_hard_coded = not buffer_networks_are_available or (
-                            buffer_hard_coded_agents_are_available
-                            and (
+                        use_hard_coded = buffer_hard_coded_agents_are_available and (
+                            not buffer_networks_are_available
+                            or (
                                 buffer_rng.random()
                                 < cfg["experiment"].get(
                                     "prob_hard_coded_buffer_agent", 0
