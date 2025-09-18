@@ -2,7 +2,7 @@
 experiment:
     name: "debug_nego_${now:%Y-%m-%d___%H-%M-%S}"
     nb_epochs: 20
-    nb_matches_per_iteration: 32
+    nb_matches_per_iteration: 16
     train: true
 
 defaults:
@@ -12,7 +12,7 @@ defaults:
 markov_games:
 
     simulation_init_args:
-        nb_of_rounds: 2
+        nb_of_rounds: 1
 
     hard_coded_buffer_agents:
         0:
@@ -32,7 +32,7 @@ models:
             llm_id: base_llm
             enable_thinking: False
             model_name: "Qwen/Qwen3-4B-Instruct-2507" # Qwen/Qwen3-4B-Instruct-2507
-            inference_backend: dummy
+            inference_backend: vllm
 
 
 
@@ -40,5 +40,4 @@ trainers:
     agent_trainer:
         kwargs:
             enable_tokenwise_logging: True
-            use_gradient_checkpointing: True
             
