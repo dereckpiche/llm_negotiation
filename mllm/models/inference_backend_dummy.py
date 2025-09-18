@@ -39,5 +39,6 @@ class DummyInferenceBackend(LLMInferenceBackend):
         if regex:
             # Create random string that respects the regex
             txt =  rstr.xeger(regex)
+            return txt
         else:
             return "I am a dummy backend without a regex."

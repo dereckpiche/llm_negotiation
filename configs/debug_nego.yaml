@@ -2,7 +2,7 @@
 experiment:
     name: "debug_nego_${now:%Y-%m-%d___%H-%M-%S}"
     nb_epochs: 20
-    nb_matches_per_iteration: 64
+    nb_matches_per_iteration: 32
     train: true
 
 defaults:
@@ -32,7 +32,7 @@ models:
             llm_id: base_llm
             enable_thinking: False
             model_name: "Qwen/Qwen3-4B-Instruct-2507" # Qwen/Qwen3-4B-Instruct-2507
-            inference_backend: vllm
+            inference_backend: dummy
 
 
 

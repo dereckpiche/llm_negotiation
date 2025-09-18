@@ -274,67 +274,59 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
                 
                 # Find real agent & buffer agent pair 
                 real_and_buffer_agent_configs = []
-                for index, agent_config in enumerate(agent_configs):
+                
+                real_agent_config = buffer_rng.choice(agent_configs)
+                real_and_buffer_agent_configs.append(copy.deepcopy(real_agent_config))
 
-                    # add real agent
-                    if (match_number % len(agent_configs)) == index:
-                        real_and_buffer_agent_configs.append(agent_config)
-                    
+                use_hard_coded = (not buffer_networks_are_available) or (
+                    buffer_rng.random()
+                    < cfg["experiment"].get("prob_hard_coded_buffer_agent", 0)
+                )
 
-                    use_hard_coded = buffer_hard_coded_agents_are_available and (
-                        buffer_rng.random()
-                        < cfg["experiment"].get("prob_hard_coded_buffer_agent", 0)
-                    )
-
-                    # use hard coded buffer agent
-                    if use_hard_coded:
-                        hc_buffer_config = copy.deepcopy(
-                            buffer_rng.choice(
-                                list(
-                                    cfg["markov_games"][
-                                        "hard_coded_buffer_agents"
-                                    ].values()
-                                )
+                # use hard coded buffer agent
+                if use_hard_coded:
+                    hc_buffer_config = copy.deepcopy(
+                        buffer_rng.choice(
+                            list(
+                                cfg["markov_games"][
+                                    "hard_coded_buffer_agents"
+                                ].values()
                             )
                         )
-                        hc_agent_config = copy.deepcopy(agent_config)
-                        hc_agent_config.agent_id = (
-                            f"{hc_buffer_config['agent_id']}_buffer"
-                        )
-                        hc_agent_config.agent_class_name = hc_buffer_config[
-                            "agent_class_name"
-                        ]
-                        agent_ids.add(hc_agent_config.agent_id)
-                        real_and_buffer_agent_configs.append(hc_agent_config)
+                    )
+                    hc_agent_config = copy.deepcopy(agent_config)
+                    hc_agent_config.agent_id = f"{hc_buffer_config['agent_id']}_buffer"
+                    hc_agent_config.agent_class_name = hc_buffer_config[
+                        "agent_class_name"
+                    ]
+                    real_and_buffer_agent_configs.append(hc_agent_config)
 
-                    # use buffer network
-                    else:
-                        buffer_agent_config = copy.deepcopy(agent_config)
-                        buffer_agent_config.agent_id = (
-                            f"{agent_config.agent_id}_buffer"
-                        )
-                        agent_ids.add(buffer_agent_config.agent_id)
-                        buffer_agent_policy_ids = [
-                            policy_id
-                            for policy_id in buffer_policy_ids
-                            if agent_config.policy_id in policy_id
-                        ]
-                        buffer_agent_config.policy_id = buffer_rng.choice(
-                            buffer_agent_policy_ids
-                        )
-                        real_and_buffer_agent_configs.append(buffer_agent_config)
+                # use buffer network
+                else:
+                    buffer_agent_config = copy.deepcopy(agent_config)
+                    buffer_agent_config.agent_id = (
+                        f"buffer_agent"
+                    )
+                    buffer_agent_policy_ids = [
+                        policy_id
+                        for policy_id in buffer_policy_ids
+                        if agent_config.policy_id in policy_id
+                    ]
+                    buffer_agent_config.policy_id = buffer_rng.choice(
+                        buffer_agent_policy_ids
+                    )
+                    real_and_buffer_agent_configs.append(buffer_agent_config)
 
                 # return buffer agent and real agent pair
                 return real_and_buffer_agent_configs
 
+            agent_configs_for_match = agent_configs_per_match(agent_configs, match_number)
             markov_game_config = MarkovGameConfig(
                 id=iteration * nb_matches + match_number,
                 seed=int(crn_seeds[match_number // seed_group_size]),
                 simulation_class_name=cfg["markov_games"]["simulation_class_name"],
                 simulation_init_args=cfg["markov_games"]["simulation_init_args"],
-                agent_configs=agent_configs_per_match(
-                    agent_configs, match_number
-                ) 
+                agent_configs=agent_configs_for_match
             )
             markov_game = init_markov_game_components(
                 config=markov_game_config, policies=policies
