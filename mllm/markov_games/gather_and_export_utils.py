@@ -546,12 +546,12 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         .chat-turn.agent-alice.role-assistant .message-box { border-color: #0eb224; }
         .chat-turn.agent-bob.role-assistant .message-box { border-color: #ef8323; }
         /* Tie badge and seam to agent color for a cohesive capsule, assistants only */
-    .chat-turn.agent-alice.role-assistant .agent-badge { border-color: #0eb224; background: linear-gradient(90deg, rgba(14,178,36,0.10), #ffffff 55%); }
+    .chat-turn.agent-alice.role-assistant .agent-badge { border-color: #0eb224; background: rgba(14,178,36,0.08); }
         .chat-turn.agent-alice.role-assistant .agent-badge::after { border-right-color: #0eb224; }
         .chat-turn.agent-alice.role-assistant .turn-content::before { border-left-color: #0eb224; border-top-color: #0eb224; }
         .chat-turn.agent-alice.role-assistant .message-box { border-color: #0eb224; }
 
-    .chat-turn.agent-bob.role-assistant .agent-badge { border-color: #ef8323; background: linear-gradient(90deg, rgba(239,131,35,0.12), #ffffff 55%); }
+    .chat-turn.agent-bob.role-assistant .agent-badge { border-color: #ef8323; background: rgba(239,131,35,0.10); }
         .chat-turn.agent-bob.role-assistant .agent-badge::after { border-right-color: #ef8323; }
         .chat-turn.agent-bob.role-assistant .turn-content::before { border-left-color: #ef8323; border-top-color: #ef8323; }
         .chat-turn.agent-bob.role-assistant .message-box { border-color: #ef8323; }
@@ -875,7 +875,6 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             badge_inner = (
                 f'{emoji} <span class="agent-name">{name}</span>'
                 f' <span class="sep"> • </span><span class="reward">Reward ⚑ = {reward_val}</span>'
-                f' <span class="sep"> • </span> 💬 '
             )
         else:
             # For user messages, show "User of {Agent ID}" in the badge
@@ -902,7 +901,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         html_parts.append(
             f'<div class="chat-turn {agent_class} {role_class}{collapsed_class}" data-time-step="{turn.time_step}">'
             f'<div class="turn-content {agent_class} {role_class}">{ts_badge_html}{badge}'
-            f'<span class="message-box">{reasoning_html}<span class="main-content">{collapsed_text}</span></span>'
+            f'<span class="message-box">{reasoning_html}<span class="main-content">💬 {collapsed_text}</span></span>'
             f'<span class="message-placeholder">(...)</span>'
             f"</div>"
             f"</div>"
@@ -956,7 +955,6 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
                     badge_inner = (
                         f'{emoji} <span class="agent-name">{name}</span>'
                         f' <span class="sep"> • </span><span class="reward">Reward ⚑ : {reward_val}</span>'
-                        f' <span class="sep"> • </span> 💬 '
                     )
                 else:
                     name = "User of " + _html_mod.escape(turn.agent_id)
@@ -966,7 +964,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
                 html_parts.append(
                     f'<div class="chat-turn {agent_class} {role_class}{collapsed_class}" data-time-step="{turn.time_step}">'
                     f'<div class="turn-content {agent_class} {role_class}">{ts_badge_html}{badge}'
-                    f'<span class="message-box">{reasoning_html}<span class="main-content">{collapsed_text}</span></span>'
+                    f'<span class="message-box">{reasoning_html}<span class="main-content">💬 {collapsed_text}</span></span>'
                     f'<span class="message-placeholder">(...)</span>'
                     f"</div></div>"
                 )
