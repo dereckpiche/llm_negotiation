@@ -549,19 +549,21 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            background: #fff9c6; /* slightly brighter */
+            background: linear-gradient(90deg, #fffce8 0%, #fffefc 70%); /* light airy gradient */
             color: var(--reward-color);
-            font-weight: 600;
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-            font-size: 11px;
-            line-height: 1; /* exact, so flex centers vertically */
-            padding: 0 4px; /* thinner capsule */
-            min-height: 14px; /* ensure consistent capsule height */
-            border-radius: 5px;
-            border: 1px solid #e3cb37;
-            margin: 0 4px; /* spacing from separators */
+            font-weight: 500;
+            font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+            font-size: 10.5px;
+            letter-spacing: 0.15px;
+            line-height: 1; /* tight */
+            padding: 0 4px; /* ultra thin */
+            height: 13px; /* fixed slim height */
+            border-radius: 4px;
+            border: 1px solid #f4e6a8; /* soft border */
+            margin: 0 4px;
             vertical-align: middle;
-            box-shadow: 0 1px 0 rgba(0,0,0,0.03) inset;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.6) inset, 0 1px 2px rgba(0,0,0,0.05);
+            backdrop-filter: blur(2px);
         }
         .message-placeholder { display: none; color: #7f8c8d; font-style: italic; }
         .chat-turn.collapsed .message-box { color: transparent; font-size: 0; display: inline-block; }
