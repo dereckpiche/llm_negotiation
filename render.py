@@ -4,6 +4,7 @@ import argparse
 import importlib
 import json
 import os
+import math
 import pickle
 import shutil
 import sys
@@ -11,6 +12,7 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
+import textwrap
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from mllm.markov_games.rollout_tree import RolloutTreeRootNode
@@ -216,31 +218,32 @@ def _compute_record_for_file(
     metrics_items: List[Tuple[str, Callable[[Any], Optional[Dict[str, float]]]]],
 ):
     root = load_root(Path(pkl_path))
-    agg: Dict[str, Dict[str, List[float]]] = {m: {} for m, _ in metrics_items}
+    # Ultra-minimal aggregation: call metric, stash raw (coerced) values per agent.
+    agg: Dict[str, Dict[str, List[Any]]] = {m: {} for m, _ in metrics_items}
     for sl in iterate_main_simulation_logs_fast(root):
         for mname, fn in metrics_items:
-            vals = None
             try:
                 vals = fn(sl)
             except Exception:
-                vals = None
-            if not vals:
                 continue
-            for aid, v in vals.items():
-                if v is None:
-                    continue
-                lst = agg[mname].setdefault(str(aid), [])
-                try:
-                    lst.append(float(v))
-                except Exception:
-                    continue
+            if isinstance(vals, dict):
+                for aid, v in vals.items():
+                    agg[mname].setdefault(str(aid), []).append(v)
 
     # finalize averages per metric/agent for this rollout
-    result: Dict[str, Dict[str, float]] = {}
+    result: Dict[str, Dict[str, Optional[float]]] = {}
     for mname, _ in metrics_items:
         result[mname] = {}
         for aid, vals in agg[mname].items():
-            result[mname][aid] = (sum(vals) / len(vals)) if vals else None
+            nums = [
+                float(v)
+                for v in vals
+                if isinstance(v, (int, float))
+                and not isinstance(v, bool)
+                and v is not None
+                and not (isinstance(v, float) and math.isnan(v))
+            ]
+            result[mname][aid] = (sum(nums) / len(nums)) if nums else None
 
     mgid = root.get("id") if isinstance(root, dict) else None
     crn_id = root.get("crn_id") if isinstance(root, dict) else None
@@ -368,15 +371,20 @@ def run_stats_functional(
                     vals: List[float] = []
                     for r in recs:
                         stats = (r.get("stats") or {}).get(mname)
-                        if (
-                            isinstance(stats, dict)
-                            and ak in stats
-                            and stats[ak] is not None
-                        ):
-                            try:
-                                vals.append(float(stats[ak]))
-                            except Exception:
-                                pass
+                        if not isinstance(stats, dict):
+                            continue
+                        if ak not in stats:
+                            continue
+                        val = stats[ak]
+                        if val is None or isinstance(val, bool):
+                            continue
+                        try:
+                            fval = float(val)
+                        except Exception:
+                            continue
+                        if math.isnan(fval):
+                            continue
+                        vals.append(fval)
                     iter_avgs[it_name][mname][ak] = (
                         (sum(vals) / len(vals)) if vals else None
                     )
@@ -392,7 +400,7 @@ def run_stats_functional(
                 metric_first[mname][ak] = series
 
         with open(outfile, "w", encoding="utf-8") as f:
-            json.dump(metric_first, f, ensure_ascii=False)
+            json.dump(metric_first, f, ensure_ascii=False, indent=2)
 
     write_iteration_avgs(records)
 
@@ -508,8 +516,16 @@ def plot_statistics_json(seed_root: Path) -> None:
                 # Best-effort plotting
                 continue
 
-        ax.set_xlabel("Iteration Index")
-        ax.set_ylabel(str(metric_name))
+        ax.set_xlabel("gradient_steps")
+        # Force integer ticks for discrete gradient steps
+        try:
+            from matplotlib.ticker import MaxNLocator  # type: ignore
+            ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+        except Exception:
+            pass
+        # Show metric name as title instead of y-axis label
+        ax.set_title(str(metric_name))
+        ax.set_ylabel("")
         ax.legend(loc="best", fontsize=8)
         ax.grid(True, alpha=0.3)
         fig.tight_layout()

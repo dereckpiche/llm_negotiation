@@ -12,33 +12,6 @@ def avg_reward(sl: SimulationStepLog) -> Dict[str, float]:
     # One value per agent at each step
     return {aid: float(v) for aid, v in (sl.rewards or {}).items()}
 
-
-def split_greed(sl: SimulationStepLog) -> Dict[str, float] | None:
-    info = sl.info or {}
-    if not info or not info.get("is_last_timestep_in_round"):
-        return None
-    quantities = info.get("quantities") or {}
-    splits = info.get("splits") or {}
-    out: Dict[str, float] = {}
-    item_keys = list(quantities.keys())
-    for aid in sl.rewards.keys():
-        if "buffer" in str(aid):
-            return None
-    # get total items proposed for each category
-    totals = {item: 0 for item in item_keys}
-    for _, split in splits.items():
-        for item in item_keys:
-            totals[item] += float(split["items_given_to_self"][item])
-    # compute greed per agent
-    for aid, split in splits.items():
-        agent_greed = []
-        for item in item_keys:
-            if item in split["items_given_to_self"]:
-                denom = max(float(quantities[item]), float(totals[item]))
-                agent_greed.append(float(split["items_given_to_self"][item]) / denom)
-        out[str(aid)] = sum(agent_greed) / len(agent_greed) if agent_greed else 0.0
-    return out
-
 def split_efficiency(sl: SimulationStepLog) -> Dict[str, float] | None:
     info = sl.info or {}
     if not info or not info.get("is_last_timestep_in_round"):
@@ -60,3 +33,69 @@ def split_efficiency(sl: SimulationStepLog) -> Dict[str, float] | None:
     max_reward = sum(d * v for d, v in zip(max_quantities, max_vals))
     # Efficiency is a global metric; emit same value for a special key "all"
     return {"all_agents": achieved / max_reward}
+
+
+def average_proposal_when_agent_values_item_lower(sl: SimulationStepLog) -> Dict[str, float | None] | None:
+    info = sl.info or {}
+    if not info or not info.get("is_last_timestep_in_round"):
+        return None
+    quantities = info.get("quantities") or {}
+    splits = info.get("splits") or {}
+    values = info.get("values") or {}
+    agent_ids = list(sl.rewards.keys())
+    for aid in agent_ids:
+        if "buffer" in str(aid):
+            return None
+    agent_0_prop_when_lower = []
+    agent_1_prop_when_lower = []
+    for item in quantities.keys():
+        if float(values[agent_ids[0]][item]) < float(values[agent_ids[1]][item]):
+            agent_0_prop_when_lower.append(splits[agent_ids[0]]["items_given_to_self"][item])
+        elif float(values[agent_ids[0]][item]) > float(values[agent_ids[1]][item]):
+            agent_1_prop_when_lower.append(splits[agent_ids[1]]["items_given_to_self"][item])
+    # Compute simple averages; if no qualifying items for an agent leave value as None.
+    out: Dict[str, float | None] = {}
+    out[str(agent_ids[0])] = (
+        sum(agent_0_prop_when_lower) / len(agent_0_prop_when_lower)
+        if agent_0_prop_when_lower
+        else None
+    )
+    out[str(agent_ids[1])] = (
+        sum(agent_1_prop_when_lower) / len(agent_1_prop_when_lower)
+        if agent_1_prop_when_lower
+        else None
+    )
+    return out
+
+
+def average_proposal_when_agent_values_item_higher(sl: SimulationStepLog) -> Dict[str, float | None] | None:
+    info = sl.info or {}
+    if not info or not info.get("is_last_timestep_in_round"):
+        return None
+    quantities = info.get("quantities") or {}
+    splits = info.get("splits") or {}
+    values = info.get("values") or {}
+    agent_ids = list(sl.rewards.keys())
+    for aid in agent_ids:
+        if "buffer" in str(aid):
+            return None
+    agent_0_prop_when_lower = []
+    agent_1_prop_when_lower = []
+    for item in quantities.keys():
+        if float(values[agent_ids[0]][item]) > float(values[agent_ids[1]][item]):
+            agent_0_prop_when_lower.append(splits[agent_ids[0]]["items_given_to_self"][item])
+        elif float(values[agent_ids[0]][item]) < float(values[agent_ids[1]][item]):
+            agent_1_prop_when_lower.append(splits[agent_ids[1]]["items_given_to_self"][item])
+    # Compute simple averages; if no qualifying items for an agent leave value as None.
+    out: Dict[str, float | None] = {}
+    out[str(agent_ids[0])] = (
+        sum(agent_0_prop_when_lower) / len(agent_0_prop_when_lower)
+        if agent_0_prop_when_lower
+        else None
+    )
+    out[str(agent_ids[1])] = (
+        sum(agent_1_prop_when_lower) / len(agent_1_prop_when_lower)
+        if agent_1_prop_when_lower
+        else None
+    )
+    return out
