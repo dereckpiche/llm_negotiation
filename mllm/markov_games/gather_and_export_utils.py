@@ -431,13 +431,11 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
     .split-resizer { width:4px; cursor: col-resize; flex:0 0 auto; align-self: stretch; position: relative; background: linear-gradient(90deg, rgba(224,230,235,0), var(--accent-muted-2) 30%, var(--accent-muted-2) 70%, rgba(224,230,235,0)); border-radius:2px; transition: background .15s ease, width .15s ease; }
     .split-resizer:hover { background: linear-gradient(90deg, rgba(224,230,235,0), var(--accent-muted) 35%, var(--accent-muted) 65%, rgba(224,230,235,0)); }
     .split-resizer.dragging { background: linear-gradient(90deg, rgba(224,230,235,0), var(--accent-muted) 25%, var(--accent-muted) 75%, rgba(224,230,235,0)); }
-    details.reasoning-block { display:inline-block; vertical-align:baseline; margin-right:4px; }
-    details.reasoning-block > summary { list-style:none; cursor:pointer; display:inline; }
-    details.reasoning-block > summary::-webkit-details-marker { display:none; }
-    .reasoning-toggle { cursor:pointer; opacity:0.65; user-select:none; }
-    .reasoning-toggle:hover { opacity:1; }
-    .reasoning-content { display:inline; font-size:0.8em; font-style:italic; color:#555; white-space:pre-wrap; margin-left:2px; }
-    details.reasoning-block:not([open]) .reasoning-content { display:none; }
+    /* Inline reasoning (removed toggle to prevent layout shift on click) */
+    .reasoning-inline { display:inline; font-size:0.8em; font-style:italic; color:#555; white-space:pre-wrap; margin-right:4px; cursor:pointer; position:relative; }
+    .reasoning-inline .reasoning-text { display:inline; }
+    .reasoning-inline.collapsed .reasoning-text { display:none; }
+    .reasoning-inline.collapsed::after { content:'(...)'; font-style:italic; color:#777; margin-left:4px; }
     .message-box .main-content { white-space:normal; }
         /* tighten spacing */
         .split-col .group-divider { margin:4px 0 2px 0; }
@@ -644,8 +642,8 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "  let currentRangeEnd = null;\n"
         "  let strongHideOn = false;\n"
         "  document.body.addEventListener('click', function(e){\n"
-    "    if (e.target.closest('.ts-badge')) { return; }\n"
-    "    if (e.target.closest('details.reasoning-block')) { return; }\n"
+        "    if (e.target.closest('.ts-badge')) { return; }\n"
+    "    const r = e.target.closest('.reasoning-inline'); if (r) { e.stopPropagation(); r.classList.toggle('collapsed'); return; }\n"
         "    const turn = e.target.closest('.chat-turn');\n"
         "    if (turn) { e.stopPropagation(); turn.classList.toggle('collapsed'); }\n"
         "  });\n"
@@ -898,12 +896,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         reasoning_html = ""
         if turn.reasoning_content:
             escaped_reasoning = html.escape(turn.reasoning_content)
-            reasoning_html = (
-                '<details class="reasoning-block" title="Toggle reasoning">'
-                '<summary class="reasoning-toggle">💭</summary>'
-                f'<div class="reasoning-content">{escaped_reasoning}</div>'
-                '</details>'
-            )
+            reasoning_html = f'<span class="reasoning-inline"><span class="reasoning-icon">💭</span> <span class="reasoning-text">{escaped_reasoning}</span></span>'
         collapsed_text = re.sub(r"\s+", " ", escaped_content).strip()
 
         html_parts.append(
@@ -948,12 +941,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
                 reasoning_html = ""
                 if turn.reasoning_content:
                     esc_reasoning = _html_mod.escape(turn.reasoning_content)
-                    reasoning_html = (
-                        '<details class="reasoning-block" title="Toggle reasoning">'
-                        '<summary class="reasoning-toggle">💭</summary>'
-                        f'<div class="reasoning-content">{esc_reasoning}</div>'
-                        '</details>'
-                    )
+                    reasoning_html = f'<span class=\"reasoning-inline\"><span class=\"reasoning-icon\">💭</span> <span class=\"reasoning-text\">{esc_reasoning}</span></span>'
                 collapsed_text = re.sub(r"\s+", " ", esc_content).strip()
                 if turn.role == "assistant":
                     name = _html_mod.escape(turn.agent_id)
