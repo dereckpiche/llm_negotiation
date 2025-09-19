@@ -553,7 +553,8 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             align-items: center;
             gap: 8px;
             width: 100%;
-            margin: 8px 0 2px 0;
+            margin: 8px 0 4px 0;
+            position: relative;
         }
         .group-divider::before,
         .group-divider::after {
@@ -572,6 +573,13 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             color: var(--muted-text);
             background: var(--bg);
             box-shadow: var(--inset-shadow);
+            position: relative;
+            z-index: 1;
+        }
+        /* Enhance contrast for print / export */
+        body.split-mode .group-divider::before,
+        body.split-mode .group-divider::after {
+            background: linear-gradient(90deg, rgba(224,230,235,0), var(--accent-muted) 25%, var(--accent-muted) 75%, rgba(224,230,235,0));
         }
         .chat-turn .turn-content { position: relative; }
         .chat-turn .turn-content::before {
@@ -624,6 +632,14 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "          if (el.classList.contains('chat-turn')) {\n"
         "            const disp = getComputedStyle(el).display;\n"
         "            if (disp !== 'none') { anyVisible = true; break; }\n"
+        "          } else if (el.classList.contains('split-wrapper')) {\n"
+        "            // Search descendants for any visible chat-turn\n"
+        "            const turns = Array.from(el.querySelectorAll('.chat-turn'));\n"
+        "            for (const tEl of turns) {\n"
+        "              const disp2 = getComputedStyle(tEl).display;\n"
+        "              if (disp2 !== 'none') { anyVisible = true; break; }\n"
+        "            }\n"
+        "            if (anyVisible) break;\n"
         "          }\n"
         "          el = el.nextElementSibling;\n"
         "        }\n"
@@ -664,8 +680,56 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "    }\n"
         "    for (const flow of activeFlows()) {\n"
         "      if (flow.id === 'flow-split') {\n"
-        "        const cols = flow.querySelectorAll('.split-col');\n"
-        "        cols.forEach(col => groupContainer(col, n));\n"
+        "        // Snapshot original turns once to avoid drift on repeated grouping\n"
+        "        const getOriginalTurns = () => {\n"
+        "          if (!flow.dataset.origData) {\n"
+        "            const data = [];\n"
+        "            const cols0 = flow.querySelectorAll('.split-col');\n"
+        "            cols0.forEach(col => {\n"
+        "              const agent = col.getAttribute('data-agent') || '';\n"
+        "              col.querySelectorAll(':scope > .chat-turn').forEach(el => {\n"
+        "                const t = parseInt(el.getAttribute('data-time-step')||'0',10);\n"
+        "                data.push({agent, time:t, html: el.outerHTML});\n"
+        "              });\n"
+        "            });\n"
+        "            flow.dataset.origData = JSON.stringify(data);\n"
+        "          }\n"
+        "          return JSON.parse(flow.dataset.origData);\n"
+        "        };\n"
+        "        const original = getOriginalTurns();\n"
+        "        const agents = Array.from(new Set(original.map(o => o.agent))).sort();\n"
+        "        const groups = new Map();\n"
+        "        original.forEach(o => {\n"
+        "          const g = n && n > 0 ? Math.floor(o.time / n) : 0;\n"
+        "          if (!groups.has(g)) groups.set(g, new Map());\n"
+        "          const gm = groups.get(g);\n"
+        "          if (!gm.has(o.agent)) gm.set(o.agent, []);\n"
+        "          gm.get(o.agent).push(o);\n"
+        "        });\n"
+        "        flow.innerHTML = '';\n"
+        "        const sorted = Array.from(groups.keys()).sort((a,b)=>a-b);\n"
+        "        sorted.forEach(g => {\n"
+        "          const div = document.createElement('div');\n"
+        "          div.className = 'group-divider';\n"
+        "          const label = document.createElement('span');\n"
+        "          label.className = 'group-label';\n"
+        "          label.textContent = `Round ${g+1}`;\n"
+        "          div.appendChild(label);\n"
+        "          flow.appendChild(div);\n"
+        "          const wrapper = document.createElement('div');\n"
+        "          wrapper.className = 'split-wrapper';\n"
+        "          agents.forEach(agent => {\n"
+        "            const colDiv = document.createElement('div');\n"
+        "            colDiv.className = 'split-col';\n"
+        "            colDiv.setAttribute('data-agent', agent);\n"
+        "            (groups.get(g).get(agent) || []).forEach(o => { colDiv.insertAdjacentHTML('beforeend', o.html); });\n"
+        "            wrapper.appendChild(colDiv);\n"
+        "          });\n"
+        "          flow.appendChild(wrapper);\n"
+        "        });\n"
+        "        flow.classList.toggle('hide-ts-badges', n === 1);\n"
+        "        flow.classList.toggle('strong-hide', strongHideOn);\n"
+        "        document.body.classList.add('split-mode');\n"
         "      } else {\n"
         "        groupContainer(flow, n);\n"
         "      }\n"
