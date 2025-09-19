@@ -420,10 +420,15 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             line-height: 1.6;
         }
         .messages-flow { display: block; }
-        .split-wrapper { display: flex; gap: 4px; align-items: flex-start; }
+        .split-wrapper { display: flex; gap: 4px; align-items: flex-start; position: relative; }
         .split-col { flex:1 1 0; min-width:0; }
-    /* In split view keep same inline density as linear view */
-    .split-col .chat-turn { display: inline; }
+        /* In split view keep same inline density as linear view */
+        .split-col .chat-turn { display: inline; }
+        .split-wrapper.resizing { user-select: none; }
+        .split-resizer { width:6px; cursor: col-resize; background: linear-gradient(var(--accent-muted-2), var(--accent-muted-2)); border-radius:3px; flex:0 0 auto; align-self: stretch; position: relative; }
+        .split-resizer::after { content:""; position:absolute; inset:0; background:linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,0.06), rgba(0,0,0,0)); border-radius:3px; opacity:0.55; }
+        .split-resizer:hover::after { opacity:0.85; }
+        .split-resizer.dragging { background: var(--accent-muted); }
         /* tighten spacing */
         .split-col .group-divider { margin:4px 0 2px 0; }
         .toolbar {
@@ -725,6 +730,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "            (groups.get(g).get(agent) || []).forEach(o => { colDiv.insertAdjacentHTML('beforeend', o.html); });\n"
         "            wrapper.appendChild(colDiv);\n"
         "          });\n"
+        "          if (wrapper.children.length === 2) { const res = document.createElement('div'); res.className='split-resizer'; wrapper.insertBefore(res, wrapper.children[1]); }\n"
         "          flow.appendChild(wrapper);\n"
         "        });\n"
         "        flow.classList.toggle('hide-ts-badges', n === 1);\n"
@@ -735,7 +741,25 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "      }\n"
         "    }\n"
         "    applyRangeFilter();\n"
+        "    initSplitResizers();\n"
         "  }\n"
+        "  function initSplitResizers() {\n"
+        "    const wrappers = document.querySelectorAll('#flow-split .split-wrapper');\n"
+        "    wrappers.forEach(wrap => {\n"
+        "      const resizer = wrap.querySelector('.split-resizer');\n"
+        "      if (!resizer || resizer.dataset.bound) return; resizer.dataset.bound='1';\n"
+        "      const cols = wrap.querySelectorAll('.split-col'); if (cols.length !== 2) return; const c0=cols[0], c1=cols[1];\n"
+        "      c0.style.flex=c1.style.flex='1 1 0'; c0.style.width=c1.style.width='';\n"
+        "      requestAnimationFrame(()=>{ const w0=c0.scrollWidth,w1=c1.scrollWidth,total=w0+w1||1; let p0=w0/total,p1=w1/total; const minP=0.25,maxP=0.75; if(p0<minP){p0=minP;p1=1-p0;} else if(p0>maxP){p0=maxP;p1=1-p0;} c0.style.flex='0 0 '+(p0*100).toFixed(2)+'%'; c1.style.flex='0 0 '+(p1*100).toFixed(2)+'%'; });\n"
+        "      let dragging=false,startX=0,startP0=0;\n"
+        "      const onDown=e=>{ dragging=true; startX=e.clientX; wrap.classList.add('resizing'); resizer.classList.add('dragging'); const rect=wrap.getBoundingClientRect(); const w=rect.width; const c0Rect=c0.getBoundingClientRect(); startP0=c0Rect.width/w; document.body.style.cursor='col-resize'; e.preventDefault(); };\n"
+        "      const onMove=e=>{ if(!dragging)return; const rect=wrap.getBoundingClientRect(); const w=rect.width; let delta=(e.clientX-startX)/w; let newP0=startP0+delta; const minP=0.15,maxP=0.85; if(newP0<minP)newP0=minP; if(newP0>maxP)newP0=maxP; c0.style.flex='0 0 '+(newP0*100).toFixed(2)+'%'; c1.style.flex='0 0 '+((1-newP0)*100).toFixed(2)+'%'; };\n"
+        "      const onUp=()=>{ if(!dragging)return; dragging=false; wrap.classList.remove('resizing'); resizer.classList.remove('dragging'); document.body.style.cursor=''; };\n"
+        "      resizer.addEventListener('mousedown', onDown); window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);\n"
+        "      resizer.addEventListener('dblclick', e=>{ if(e.shiftKey){ c0.style.flex=c1.style.flex='1 1 0'; requestAnimationFrame(()=>{ const w0=c0.scrollWidth,w1=c1.scrollWidth,total=w0+w1||1; let p0=w0/total,p1=w1/total; const minP=0.25,maxP=0.75; if(p0<minP){p0=minP;p1=1-p0;} else if(p0>maxP){p0=maxP;p1=1-p0;} c0.style.flex='0 0 '+(p0*100).toFixed(2)+'%'; c1.style.flex='0 0 '+(p1*100).toFixed(2)+'%'; }); } else { c0.style.flex='0 0 50%'; c1.style.flex='0 0 50%'; } });\n"
+        "    });\n"
+        "  }\n"
+        "  initSplitResizers();\n"
         "  const input = document.getElementById('group-size');\n"
         "  const btn = document.getElementById('apply-grouping');\n"
         "  if (btn && input) {\n"
