@@ -387,6 +387,8 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
     # Prepare ordering: sort by (time_step, original_index) to keep stable order within same step
     indexed_turns = list(enumerate(chat_turns))
     indexed_turns.sort(key=lambda t: (t[1].time_step, t[0]))
+    assistant_agents = sorted({t.agent_id for t in chat_turns if t.role == "assistant"})
+    enable_split_view = len(assistant_agents) == 2
 
     # CSS styles (simplified layout; no time-step or agent-column backgrounds)
     css = """
@@ -417,9 +419,13 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             font-size: var(--font-size);
             line-height: 1.6;
         }
-        .messages-flow {
-            display: block; /* behave like a text container */
-        }
+        .messages-flow { display: block; }
+        .split-wrapper { display: flex; gap: 4px; align-items: flex-start; }
+        .split-col { flex:1 1 0; min-width:0; }
+    /* In split view keep same inline density as linear view */
+    .split-col .chat-turn { display: inline; }
+        /* tighten spacing */
+        .split-col .group-divider { margin:4px 0 2px 0; }
         .toolbar {
             display: flex;
             align-items: center;
@@ -588,77 +594,82 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         css,
         "<script>\n"
         "document.addEventListener('DOMContentLoaded', function() {\n"
-        "  const flow = document.querySelector('.messages-flow');\n"
+        "  const linearFlow = document.getElementById('flow-linear');\n"
+        "  const splitFlow = document.getElementById('flow-split');\n"
+        "  let splitViewOn = false;\n"
+        "  function activeFlows() { return [splitViewOn && splitFlow ? splitFlow : null, linearFlow].filter(Boolean).filter(f => f.style.display !== 'none'); }\n"
         "  // State for range filtering and strong hide\n"
         "  let currentRangeStart = null;\n"
         "  let currentRangeEnd = null;\n"
         "  let strongHideOn = false;\n"
-        "  // Toggle collapse per message\n"
         "  document.body.addEventListener('click', function(e){\n"
         "    if (e.target.closest('.ts-badge')) { return; }\n"
         "    const turn = e.target.closest('.chat-turn');\n"
         "    if (turn) { e.stopPropagation(); turn.classList.toggle('collapsed'); }\n"
         "  });\n"
-        "  // Grouping logic\n"
         "  function applyRangeFilter() {\n"
-        "    const turns = Array.from(flow.querySelectorAll('.chat-turn'));\n"
-        "    for (const el of turns) {\n"
-        "      const t = parseInt(el.getAttribute('data-time-step') || '0', 10);\n"
-        "      const afterStart = (currentRangeStart === null) || (t >= currentRangeStart);\n"
-        "      const beforeEnd = (currentRangeEnd === null) || (t <= currentRangeEnd);\n"
-        "      el.style.display = (afterStart && beforeEnd) ? '' : 'none';\n"
-        "    }\n"
-        "    // Hide group headers that have no visible turns in their section\n"
-        "    const dividers = Array.from(flow.querySelectorAll('.group-divider'));\n"
-        "    for (const d of dividers) {\n"
-        "      let anyVisible = false;\n"
-        "      let el = d.nextElementSibling;\n"
-        "      while (el && !el.classList.contains('group-divider')) {\n"
-        "        if (el.classList.contains('chat-turn')) {\n"
-        "          const disp = getComputedStyle(el).display;\n"
-        "          if (disp !== 'none') { anyVisible = true; break; }\n"
-        "        }\n"
-        "        el = el.nextElementSibling;\n"
+        "    for (const flow of activeFlows()) {\n"
+        "      const turns = Array.from(flow.querySelectorAll('.chat-turn'));\n"
+        "      for (const el of turns) {\n"
+        "        const t = parseInt(el.getAttribute('data-time-step') || '0', 10);\n"
+        "        const afterStart = (currentRangeStart === null) || (t >= currentRangeStart);\n"
+        "        const beforeEnd = (currentRangeEnd === null) || (t <= currentRangeEnd);\n"
+        "        el.style.display = (afterStart && beforeEnd) ? '' : 'none';\n"
         "      }\n"
-        "      d.style.display = anyVisible ? '' : 'none';\n"
+        "      const dividers = Array.from(flow.querySelectorAll('.group-divider'));\n"
+        "      for (const d of dividers) {\n"
+        "        let anyVisible = false;\n"
+        "        let el = d.nextElementSibling;\n"
+        "        while (el && !el.classList.contains('group-divider')) {\n"
+        "          if (el.classList.contains('chat-turn')) {\n"
+        "            const disp = getComputedStyle(el).display;\n"
+        "            if (disp !== 'none') { anyVisible = true; break; }\n"
+        "          }\n"
+        "          el = el.nextElementSibling;\n"
+        "        }\n"
+        "        d.style.display = anyVisible ? '' : 'none';\n"
+        "      }\n"
         "    }\n"
         "  }\n"
         "  function applyGrouping(n) {\n"
-        "    // Remove existing group dividers\n"
-        "    Array.from(flow.querySelectorAll('.group-divider')).forEach(el => el.remove());\n"
-        "    if (!n || n <= 0) { return; }\n"
-        "    const turns = Array.from(flow.querySelectorAll('.chat-turn'));\n"
-        "    if (turns.length === 0) return;\n"
-        "    // Re-append in order with dividers\n"
-        "    const items = Array.from(flow.children).filter(el => !el.classList.contains('group-divider'));\n"
-        "    const frag = document.createDocumentFragment();\n"
-        "    let lastGroup = -1;\n"
-        "    for (const el of items) {\n"
-        "      if (!el.classList.contains('chat-turn')) { frag.appendChild(el); continue; }\n"
-        "      const t = parseInt(el.getAttribute('data-time-step') || '0', 10);\n"
-        "      const g = Math.floor(t / n);\n"
-        "      if (g !== lastGroup) {\n"
-        "        const div = document.createElement('div');\n"
-        "        div.className = 'group-divider';\n"
-        "        const label = document.createElement('span');\n"
-        "        label.className = 'group-label';\n"
-        "        const start = g * n;\n"
-        "        const end = start + n - 1;\n"
-        "        const roundIndex = g + 1;\n"
-        "        label.textContent = `Round ${roundIndex}`;\n"
-        "        div.appendChild(label);\n"
-        "        frag.appendChild(div);\n"
-        "        lastGroup = g;\n"
+        "    function groupContainer(container, n) {\n"
+        "      Array.from(container.querySelectorAll(':scope > .group-divider')).forEach(el => el.remove());\n"
+        "      if (!n || n <= 0) { return; }\n"
+        "      const turns = Array.from(container.querySelectorAll(':scope > .chat-turn'));\n"
+        "      if (turns.length === 0) return;\n"
+        "      const items = Array.from(container.children).filter(el => !el.classList.contains('group-divider'));\n"
+        "      const frag = document.createDocumentFragment();\n"
+        "      let lastGroup = -1;\n"
+        "      for (const el of items) {\n"
+        "        if (!el.classList.contains('chat-turn')) { frag.appendChild(el); continue; }\n"
+        "        const t = parseInt(el.getAttribute('data-time-step') || '0', 10);\n"
+        "        const g = Math.floor(t / n);\n"
+        "        if (g !== lastGroup) {\n"
+        "          const div = document.createElement('div');\n"
+        "          div.className = 'group-divider';\n"
+        "          const label = document.createElement('span');\n"
+        "          label.className = 'group-label';\n"
+        "          const roundIndex = g + 1;\n"
+        "          label.textContent = `Round ${roundIndex}`;\n"
+        "          div.appendChild(label);\n"
+        "          frag.appendChild(div);\n"
+        "          lastGroup = g;\n"
+        "        }\n"
+        "        frag.appendChild(el);\n"
         "      }\n"
-        "      frag.appendChild(el);\n"
+        "      container.innerHTML = '';\n"
+        "      container.appendChild(frag);\n"
+        "      container.classList.toggle('hide-ts-badges', n === 1);\n"
+        "      container.classList.toggle('strong-hide', strongHideOn);\n"
         "    }\n"
-        "    flow.innerHTML = '';\n"
-        "    flow.appendChild(frag);\n"
-        "    // Hide timestep badges when grouping is 1\n"
-        "    flow.classList.toggle('hide-ts-badges', n === 1);\n"
-        "    // Keep strong hide state\n"
-        "    flow.classList.toggle('strong-hide', strongHideOn);\n"
-        "    // Re-apply range filter after regrouping\n"
+        "    for (const flow of activeFlows()) {\n"
+        "      if (flow.id === 'flow-split') {\n"
+        "        const cols = flow.querySelectorAll('.split-col');\n"
+        "        cols.forEach(col => groupContainer(col, n));\n"
+        "      } else {\n"
+        "        groupContainer(flow, n);\n"
+        "      }\n"
+        "    }\n"
         "    applyRangeFilter();\n"
         "  }\n"
         "  const input = document.getElementById('group-size');\n"
@@ -667,9 +678,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "    btn.addEventListener('click', () => { const n = parseInt(input.value || '0', 10); applyGrouping(n); });\n"
         "    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { const n = parseInt(input.value || '0', 10); applyGrouping(n); } });\n"
         "  }\n"
-        "  // Default grouping to 1 timestep on load\n"
         "  if (input) { input.value = '1'; applyGrouping(1); }\n"
-        "  // Range filter controls\n"
         "  const rangeStart = document.getElementById('range-start');\n"
         "  const rangeEnd = document.getElementById('range-end');\n"
         "  const rangeBtn = document.getElementById('apply-range');\n"
@@ -685,14 +694,20 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "    rangeStart.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyRange(); });\n"
         "    rangeEnd.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyRange(); });\n"
         "  }\n"
-        "  // Strong hide toggle (off by default)\n"
         "  const strongHideBtn = document.getElementById('toggle-strong-hide');\n"
         "  const strongHideStateEl = document.getElementById('strong-hide-state');\n"
         "  if (strongHideBtn) {\n"
         "    const setLabel = () => { if (strongHideStateEl) { strongHideStateEl.textContent = strongHideOn ? 'On' : 'Off'; } };\n"
-        "    strongHideBtn.addEventListener('click', () => { strongHideOn = !strongHideOn; flow.classList.toggle('strong-hide', strongHideOn); setLabel(); });\n"
-        "    if (strongHideOn) { flow.classList.add('strong-hide'); }\n"
+        "    strongHideBtn.addEventListener('click', () => { strongHideOn = !strongHideOn; for (const f of activeFlows()) { f.classList.toggle('strong-hide', strongHideOn); } setLabel(); });\n"
+        "    if (strongHideOn) { for (const f of activeFlows()) { f.classList.add('strong-hide'); } }\n"
         "    setLabel();\n"
+        "  }\n"
+        "  const splitBtn = document.getElementById('toggle-split-view');\n"
+        "  const splitStateEl = document.getElementById('split-view-state');\n"
+        "  if (splitBtn && splitFlow && linearFlow) {\n"
+        "    const updateSplit = () => { if (splitStateEl) splitStateEl.textContent = splitViewOn ? 'On' : 'Off'; };\n"
+        "    splitBtn.addEventListener('click', () => { splitViewOn = !splitViewOn; linearFlow.style.display = splitViewOn ? 'none' : ''; splitFlow.style.display = splitViewOn ? '' : 'none'; applyGrouping(parseInt(input.value||'1',10)); updateSplit(); });\n"
+        "    updateSplit();\n"
         "  }\n"
         "});\n"
         "</script>",
@@ -711,10 +726,15 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "<span>to</span>",
         '<input id="range-end" type="number" step="1" />',
         '<button id="apply-range"><span class="emoji-bw">▶︎</span> Apply</button>',
-        '<button id="toggle-strong-hide"><span class="emoji-bw">🗜️</span> Strong Hide: <span id="strong-hide-state">On</span></button>',
+        '<button id="toggle-strong-hide"><span class="emoji-bw">🗜️</span> Strong Hide: <span id="strong-hide-state">Off</span></button>',
+        (
+            '<button id="toggle-split-view"><span class="emoji-bw">🪟</span> Split View: <span id="split-view-state">Off</span></button>'
+            if enable_split_view
+            else ""
+        ),
         "</div>",
         "</div>",
-        '<div class="messages-flow">',
+        '<div id="flow-linear" class="messages-flow">',
     ]
 
     last_time_step = None
@@ -768,7 +788,68 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             f"</div>"
         )
 
-    html_parts.extend(["</div>", "</body>", "</html>"])
+    html_parts.append("</div>")  # close linear flow
+    if enable_split_view:
+        import html as _html_mod
+
+        html_parts.append(
+            '<div id="flow-split" class="messages-flow" style="display:none">'
+        )
+        html_parts.append('<div class="split-wrapper">')
+        # Per-agent columns
+        per_agent_turns = {
+            aid: [t for t in chat_turns if t.agent_id == aid]
+            for aid in assistant_agents
+        }
+        for idx, aid in enumerate(assistant_agents):
+            turns_agent = per_agent_turns[aid]
+            html_parts.append(
+                f'<div class="split-col" data-agent="{_html_mod.escape(aid)}">'
+            )
+            last_ts_agent = None
+            for turn in turns_agent:
+                agent_class = (
+                    f"agent-{re.sub('[^a-z0-9_-]', '-', turn.agent_id.lower())}"
+                )
+                role_class = f"role-{turn.role}"
+                collapsed_class = " collapsed" if turn.role == "user" else ""
+                ts_badge_html = ""
+                if last_ts_agent is None or turn.time_step != last_ts_agent:
+                    ts_badge_html = f'<span class="ts-badge">⏱ {turn.time_step}</span>'
+                    last_ts_agent = turn.time_step
+                esc_content = _html_mod.escape(turn.content)
+                collapsed_text = re.sub(r"\s+", " ", esc_content).strip()
+                if turn.role == "assistant":
+                    name = _html_mod.escape(turn.agent_id)
+                    emoji = '<span class="emoji-bw">🤖</span>'
+                    raw_val = turn.reward
+                    if isinstance(raw_val, (int, float)):
+                        reward_val = f"{raw_val:.4f}".rstrip("0").rstrip(".")
+                        if len(reward_val) > 8:
+                            reward_val = reward_val[:8] + "…"
+                    else:
+                        reward_val = str(raw_val)
+                    badge_inner = (
+                        f'{emoji} <span class="agent-name">{name}</span>'
+                        f' <span class="sep"> • </span><span class="reward">Reward: {reward_val}</span>'
+                        f' <span class="sep"> • </span>💬 : '
+                    )
+                else:
+                    name = "User of " + _html_mod.escape(turn.agent_id)
+                    emoji = '<span class="emoji-bw">⚙️</span>'
+                    badge_inner = f'{emoji} <span class="agent-name">{name}</span> <span class="sep"> • </span>:'
+                badge = f'<span class="agent-badge">{badge_inner}</span>'
+                html_parts.append(
+                    f'<div class="chat-turn {agent_class} {role_class}{collapsed_class}" data-time-step="{turn.time_step}">'
+                    f'<div class="turn-content {agent_class} {role_class}">{ts_badge_html}{badge}'
+                    f'<span class="message-box">{collapsed_text}</span>'
+                    f'<span class="message-placeholder">(...)</span>'
+                    f"</div></div>"
+                )
+            html_parts.append("</div>")  # close split col
+        html_parts.append("</div>")  # split-wrapper
+        html_parts.append("</div>")  # flow-split
+    html_parts.extend(["</body>", "</html>"])
 
     return "\n".join(html_parts)
 
