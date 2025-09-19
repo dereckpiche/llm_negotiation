@@ -425,10 +425,9 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         /* In split view keep same inline density as linear view */
         .split-col .chat-turn { display: inline; }
         .split-wrapper.resizing { user-select: none; }
-        .split-resizer { width:6px; cursor: col-resize; background: linear-gradient(var(--accent-muted-2), var(--accent-muted-2)); border-radius:3px; flex:0 0 auto; align-self: stretch; position: relative; }
-        .split-resizer::after { content:""; position:absolute; inset:0; background:linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,0.06), rgba(0,0,0,0)); border-radius:3px; opacity:0.55; }
-        .split-resizer:hover::after { opacity:0.85; }
-        .split-resizer.dragging { background: var(--accent-muted); }
+    .split-resizer { width:4px; cursor: col-resize; flex:0 0 auto; align-self: stretch; position: relative; background: linear-gradient(90deg, rgba(224,230,235,0), var(--accent-muted-2) 30%, var(--accent-muted-2) 70%, rgba(224,230,235,0)); border-radius:2px; transition: background .15s ease, width .15s ease; }
+    .split-resizer:hover { background: linear-gradient(90deg, rgba(224,230,235,0), var(--accent-muted) 35%, var(--accent-muted) 65%, rgba(224,230,235,0)); }
+    .split-resizer.dragging { background: linear-gradient(90deg, rgba(224,230,235,0), var(--accent-muted) 25%, var(--accent-muted) 75%, rgba(224,230,235,0)); }
         /* tighten spacing */
         .split-col .group-divider { margin:4px 0 2px 0; }
         .toolbar {
