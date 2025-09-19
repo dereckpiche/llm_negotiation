@@ -592,7 +592,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "  // State for range filtering and strong hide\n"
         "  let currentRangeStart = null;\n"
         "  let currentRangeEnd = null;\n"
-        "  let strongHideOn = true;\n"
+        "  let strongHideOn = false;\n"
         "  // Toggle collapse per message\n"
         "  document.body.addEventListener('click', function(e){\n"
         "    if (e.target.closest('.ts-badge')) { return; }\n"
@@ -685,13 +685,13 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "    rangeStart.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyRange(); });\n"
         "    rangeEnd.addEventListener('keydown', (e) => { if (e.key === 'Enter') applyRange(); });\n"
         "  }\n"
-        "  // Strong hide toggle (on by default)\n"
+        "  // Strong hide toggle (off by default)\n"
         "  const strongHideBtn = document.getElementById('toggle-strong-hide');\n"
         "  const strongHideStateEl = document.getElementById('strong-hide-state');\n"
         "  if (strongHideBtn) {\n"
         "    const setLabel = () => { if (strongHideStateEl) { strongHideStateEl.textContent = strongHideOn ? 'On' : 'Off'; } };\n"
         "    strongHideBtn.addEventListener('click', () => { strongHideOn = !strongHideOn; flow.classList.toggle('strong-hide', strongHideOn); setLabel(); });\n"
-        "    flow.classList.add('strong-hide');\n"
+        "    if (strongHideOn) { flow.classList.add('strong-hide'); }\n"
         "    setLabel();\n"
         "  }\n"
         "});\n"
@@ -735,18 +735,18 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
                     reward_val = reward_val[:8] + "…"
             else:
                 reward_val = str(raw_val)
-            # Format: "🤖 Alice 💬 • Reward: 5.5556 • "
+            # Format: "🤖 Alice • Reward: 5.5556 • 💬 :"
             badge_inner = (
-                f'{emoji} <span class="agent-name">{name}</span> 💬'
+                f'{emoji} <span class="agent-name">{name}</span>'
                 f' <span class="sep"> • </span><span class="reward">Reward: {reward_val}</span>'
-                f' <span class="sep"> • </span>'
+                f' <span class="sep"> • </span>💬 : '
             )
         else:
             # For user messages, show "User of {Agent ID}" in the badge
             name = "User of " + html.escape(turn.agent_id)
             emoji = '<span class="emoji-bw">⚙️</span>'
-            # Format (no reward): "⚙️ User of Alice 💬 • "
-            badge_inner = f'{emoji} <span class="agent-name">{name}</span> 💬 <span class="sep"> • </span>'
+            # Format (no reward): "⚙️ User of Alice • "
+            badge_inner = f'{emoji} <span class="agent-name">{name}</span> <span class="sep"> • </span>:'
 
         badge = f'<span class="agent-badge">{badge_inner}</span>'
 
