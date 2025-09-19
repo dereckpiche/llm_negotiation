@@ -24,11 +24,17 @@ def split_greed(sl: SimulationStepLog) -> Dict[str, float] | None:
     for aid in sl.rewards.keys():
         if "buffer" in str(aid):
             return None
+    # get total items proposed for each category
+    totals = {item: 0 for item in item_keys}
+    for _, split in splits.items():
+        for item in item_keys:
+            totals[item] += float(split["items_given_to_self"][item])
+    # compute greed per agent
     for aid, split in splits.items():
         agent_greed = []
         for item in item_keys:
             if item in split["items_given_to_self"]:
-                denom = float(quantities[item])
+                denom = max(float(quantities[item]), float(totals[item]))
                 agent_greed.append(float(split["items_given_to_self"][item]) / denom)
         out[str(aid)] = sum(agent_greed) / len(agent_greed) if agent_greed else 0.0
     return out
