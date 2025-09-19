@@ -3,7 +3,7 @@ from typing import Optional
 
 import rstr
 from transformers import AutoTokenizer
-
+from mllm.models.inference_backend import LLMInferenceBackend, PolicyOutput
 from mllm.models.inference_backend import LLMInferenceBackend
 from mllm.utils.short_id_gen import generate_short_id
 
@@ -35,9 +35,9 @@ class DummyInferenceBackend(LLMInferenceBackend):
     def shutdown(self) -> None:
         pass
 
-    async def generate(self, prompt_text: str, regex: Optional[str] = None) -> str:
+    async def generate(self, prompt_text: str, regex: Optional[str] = None) -> PolicyOutput:
         if regex:
             # Create random string that respects the regex
-            return rstr.xeger(regex)
+            return PolicyOutput(content=rstr.xeger(regex), reasoning_content="I don't think, I am a dummy backend.")
         else:
-            return "I am a dummy backend without a regex."
+            return PolicyOutput(content="I am a dummy backend without a regex.", reasoning_content="I don't think, I am a dummy backend.")

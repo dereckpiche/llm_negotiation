@@ -182,11 +182,12 @@ class NegotiationAgent(Agent):
                 ChatTurn(
                     agent_id=self.agent_id,
                     role="assistant",
-                    content=policy_output,
+                    content=policy_output.content,
+                    reasoning_content=policy_output.reasoning_content,
                     is_state_end=False,
                 )
             )
-            action = Message(message=policy_output)
+            action = Message(message=policy_output.content)
             self.state.nb_messages_sent_this_round += 1
 
         elif must_send_split:
@@ -199,11 +200,12 @@ class NegotiationAgent(Agent):
                 ChatTurn(
                     agent_id=self.agent_id,
                     role="assistant",
-                    content=policy_output,
+                    content=policy_output.content,
+                    reasoning_content=policy_output.reasoning_content,
                     is_state_end=False,
                 )
             )
-            action = self.get_split_action(policy_output, observation)
+            action = self.get_split_action(policy_output.content, observation)
         else:
             action = None
 

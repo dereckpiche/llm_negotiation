@@ -59,6 +59,7 @@ class LeanLocalLLM:
         initial_buffer_paths: list[str] | None = None,
         enable_thinking: bool = None,
         regex_max_attempts: int = -1,
+        max_thinking_characters: int = 0,
     ):
         self.inference_backend_name = inference_backend
         self.output_directory = output_directory
@@ -70,6 +71,8 @@ class LeanLocalLLM:
         self.enable_thinking = enable_thinking
         self.regex_max_attempts = regex_max_attempts
         self.initial_buffer_paths = initial_buffer_paths
+        self.enable_thinking = max_thinking_characters > 0
+        self.max_thinking_characters = max_thinking_characters
 
         # Optional user-specified initial adapter weight locations (local or HF Hub)
         # Format: {adapter_id: path_or_repo_id}
@@ -268,18 +271,20 @@ class LeanLocalLLM:
         return prompt_text
 
     async def generate(self, prompt: list[dict], regex: str | None = None) -> str:
+
+
         if self.regex_max_attempts != -1 and regex is not None:
             prompt_text_beginning = self._make_prompt_text(prompt)
             pattern = re.compile(regex)
             for i in range(self.regex_max_attempts):
                 prompt_text = self._make_prompt_text(prompt)
-                response = await self.inference_backend.generate(
+                policy_output = await self.inference_backend.generate(
                     prompt_text=prompt_text
                 )
-                if pattern.fullmatch(response):
-                    return response
+                if pattern.fullmatch(policy_output.content):
+                    return policy_output  
                 logger.warning(
-                    f"Response {response} did not match regex: {regex}, retry {i + 1}/{self.regex_max_attempts}"
+                    f"Response {policy_output.content} did not match regex: {regex}, retry {i + 1}/{self.regex_max_attempts}"
                 )
                 prompt = [
                     *prompt,
