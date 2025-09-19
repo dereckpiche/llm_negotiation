@@ -401,7 +401,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             --accent-muted: #BDC3C7;
             --accent-muted-2: #D0D7DE;
             --panel-bg: #F8FAFC;
-            --reward-color: #a89206;
+            --reward-color: #3a2e00; /* dark text for reward pill */
             --font-size: 15px;
             --small-font-size: 13px;
             --group-label-font-size: 12px;
@@ -535,17 +535,34 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         .chat-turn.agent-alice.role-assistant .message-box { border-color: #0eb224; }
         .chat-turn.agent-bob.role-assistant .message-box { border-color: #ef8323; }
         /* Tie badge and seam to agent color for a cohesive capsule, assistants only */
-        .chat-turn.agent-alice.role-assistant .agent-badge { border-color: #0eb224; }
+    .chat-turn.agent-alice.role-assistant .agent-badge { border-color: #0eb224; background: linear-gradient(90deg, rgba(14,178,36,0.10), #ffffff 55%); }
         .chat-turn.agent-alice.role-assistant .agent-badge::after { border-right-color: #0eb224; }
         .chat-turn.agent-alice.role-assistant .turn-content::before { border-left-color: #0eb224; border-top-color: #0eb224; }
         .chat-turn.agent-alice.role-assistant .message-box { border-color: #0eb224; }
 
-        .chat-turn.agent-bob.role-assistant .agent-badge { border-color: #ef8323; }
+    .chat-turn.agent-bob.role-assistant .agent-badge { border-color: #ef8323; background: linear-gradient(90deg, rgba(239,131,35,0.12), #ffffff 55%); }
         .chat-turn.agent-bob.role-assistant .agent-badge::after { border-right-color: #ef8323; }
         .chat-turn.agent-bob.role-assistant .turn-content::before { border-left-color: #ef8323; border-top-color: #ef8323; }
         .chat-turn.agent-bob.role-assistant .message-box { border-color: #ef8323; }
         /* No colored agent-name; keep neutral */
-        .reward { color: var(--reward-color); font-weight: 600; } /* dark gold */
+        .reward {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #fff9c6; /* slightly brighter */
+            color: var(--reward-color);
+            font-weight: 600;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+            font-size: 11px;
+            line-height: 1; /* exact, so flex centers vertically */
+            padding: 0 4px; /* thinner capsule */
+            min-height: 14px; /* ensure consistent capsule height */
+            border-radius: 5px;
+            border: 1px solid #e3cb37;
+            margin: 0 4px; /* spacing from separators */
+            vertical-align: middle;
+            box-shadow: 0 1px 0 rgba(0,0,0,0.03) inset;
+        }
         .message-placeholder { display: none; color: #7f8c8d; font-style: italic; }
         .chat-turn.collapsed .message-box { color: transparent; font-size: 0; display: inline-block; }
         .chat-turn.collapsed .message-box::after { content: "(...)"; color: #7f8c8d; font-style: italic; font-size: var(--font-size); line-height: 1.2; }
@@ -834,7 +851,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         # Badge content
         if turn.role == "assistant":
             name = html.escape(turn.agent_id)
-            emoji = '<span class="emoji-bw">🤖</span>'
+            emoji = '<span class="emoji-bw">  🤖</span>'
             raw_val = turn.reward
             if isinstance(raw_val, (int, float)):
                 reward_val = f"{raw_val:.4f}".rstrip("0").rstrip(".")
@@ -846,7 +863,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             badge_inner = (
                 f'{emoji} <span class="agent-name">{name}</span>'
                 f' <span class="sep"> • </span><span class="reward">Reward: {reward_val}</span>'
-                f' <span class="sep"> • </span>💬 : '
+                f' <span class="sep"> • </span>💬  '
             )
         else:
             # For user messages, show "User of {Agent ID}" in the badge
@@ -918,7 +935,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
                         reward_val = str(raw_val)
                     badge_inner = (
                         f'{emoji} <span class="agent-name">{name}</span>'
-                        f' <span class="sep"> • </span><span class="reward">Reward: {reward_val}</span>'
+                        f' <span class="sep"> • </span><span class="reward"> ⚑ {reward_val}</span>'
                         f' <span class="sep"> • </span>💬 : '
                     )
                 else:
