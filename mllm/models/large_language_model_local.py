@@ -279,7 +279,7 @@ class LeanLocalLLM:
             for i in range(self.regex_max_attempts):
                 prompt_text = self._make_prompt_text(prompt)
                 policy_output = await self.inference_backend.generate(
-                    prompt_text=prompt_text
+                    prompt_text=prompt_text, extract_thinking=self.enable_thinking
                 )
                 if pattern.fullmatch(policy_output.content):
                     return policy_output  
@@ -297,12 +297,12 @@ class LeanLocalLLM:
                 ]
             logger.warning(f"Falling back to using regex")
             return await self.inference_backend.generate(
-                prompt_text=prompt_text_beginning, regex=regex
+                prompt_text=prompt_text_beginning, regex=regex, extract_thinking=self.enable_thinking
             )
         else:
             prompt_text = self._make_prompt_text(prompt)
             return await self.inference_backend.generate(
-                prompt_text=prompt_text, regex=regex
+                prompt_text=prompt_text, regex=regex, extract_thinking=self.enable_thinking
             )
 
     def export_adapters(self) -> None:
