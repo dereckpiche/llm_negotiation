@@ -51,6 +51,32 @@ custom_qwen_template = """
 {%- endif %}
 """
 
+custom_gemma_template = """ {# Accepts: user / human / system / assistant / model #}
+{%- set ns = namespace() -%}
+{%- for message in messages %}
+    {%- set role = (message.role or '') | lower -%}
+    {%- set content = (message.content or '') -%}
+
+    {# Map roles inside the template (no Python remapping needed) #}
+    {%- if role in ['assistant', 'model'] -%}
+        {%- set role_token = 'model' -%}
+    {%- elif role in ['user', 'human'] -%}
+        {%- set role_token = 'user' -%}
+    {%- elif role == 'system' -%}
+        {%- set role_token = 'user' -%}
+        {%- set content = '[system]\n' ~ content -%}
+    {%- else -%}
+        {# Fallback: treat unknown roles as user #}
+        {%- set role_token = 'user' -%}
+    {%- endif -%}
+
+    {{- '<start_of_turn>' ~ role_token ~ '\n' ~ content ~ '<end_of_turn>\n' -}}
+{%- endfor %}
+{%- if add_generation_prompt %}
+{{- '<start_of_turn>model\n' -}}
+{%- endif %}
+"""  # original chat template for gemma at https://huggingface.co/google/gemma-3-4b-it/raw/main/tokenizer_config.json
+
 
 def process_training_chat(
     tokenizer: AutoTokenizer,
@@ -106,12 +132,16 @@ def process_training_chat(
     for train_chat_turn in chat_history:
         is_state_end = train_chat_turn.is_state_end
         time_step = train_chat_turn.time_step
-        is_action = train_chat_turn.role == "assistant"
+        is_action = train_chat_turn.role == "assistant" and (
+            train_chat_turn.content != ""
+        )
 
         # Remove exploration prompts from training data
         for exploration_prompt in exploration_prompts_to_remove:
             if exploration_prompt in train_chat_turn.content:
-                train_chat_turn.content = train_chat_turn.content.replace(exploration_prompt, "")
+                train_chat_turn.content = train_chat_turn.content.replace(
+                    exploration_prompt, ""
+                )
 
         chat_turn = {
             "role": train_chat_turn.role,
@@ -123,7 +153,13 @@ def process_training_chat(
             )
         else:
             is_entropy_mask_true = True
-        if "qwen" in tokenizer.name_or_path.lower():
+
+        # Tokenize (perhaps using a custom chat template)
+        if "gemma" in tokenizer.name_or_path.lower():
+            chat_turn_ids = tokenizer.apply_chat_template(
+                [chat_turn], return_tensors="pt", chat_template=custom_gemma_template
+            ).flatten()
+        elif "qwen" in tokenizer.name_or_path.lower():
             chat_turn_ids = tokenizer.apply_chat_template(
                 [chat_turn], return_tensors="pt", chat_template=custom_qwen_template
             ).flatten()
@@ -131,6 +167,7 @@ def process_training_chat(
             chat_turn_ids = tokenizer.apply_chat_template(
                 [chat_turn], return_tensors="pt"
             ).flatten()
+
         nb_chat_turns_ids = chat_turn_ids.numel()
         state_ends_mask.append(torch.zeros(nb_chat_turns_ids, dtype=torch.bool))
         if is_state_end:
@@ -149,6 +186,5 @@ def process_training_chat(
     entropy_mask = torch.cat(entropy_mask)
     timesteps = torch.cat(timesteps)
     state_ends_mask = torch.cat(state_ends_mask)
-
 
     return (input_ids, action_mask, entropy_mask, timesteps, state_ends_mask)

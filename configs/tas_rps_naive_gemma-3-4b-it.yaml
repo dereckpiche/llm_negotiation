@@ -1,0 +1,20 @@
+defaults:
+    - tas_rps_naive.yaml
+
+experiment:
+    name: "tas_rps_naive_gemma-3-4b-it"
+
+# Disable the critic optimizer with Gemma. It is not used and creates bugs when we check hidden size.
+critics:
+    agent_critic: null
+optimizers:
+    critic_optimizer: null
+
+models:
+    base_llm:
+        init_args:
+            regex_max_attempts: -1
+            model_name: google/gemma-3-4b-it
+            enable_thinking: null
+            inference_backend_init_kwargs:
+                enforce_eager: True

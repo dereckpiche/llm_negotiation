@@ -217,6 +217,16 @@ class NegotiationAgent(Agent):
             )
             action = self.get_split_action(policy_output.content, observation)
         else:
+            # force empty assistant turn (because some tokenizers don't like two following user messages)
+            self.state.chat_history.append(
+                ChatTurn(
+                    agent_id=self.agent_id,
+                    role="assistant",
+                    content="",
+                    reasoning_content="",
+                    is_state_end=False,
+                )
+            )
             action = None
 
         agent_step_log = AgentActLog(

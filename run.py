@@ -103,6 +103,8 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
     # Init llms + llm adapters
     llms_dict = {}
     for llm_id, model_config in cfg["models"].items():
+        if model_config is None:
+            continue
         model_class: LeanLocalLLM | LargeLanguageModelOpenAI = globals()[
             model_config["class"]
         ]  # TODO: Add server llm
@@ -119,6 +121,8 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
     # Scalar Critics
     critics = {}
     for critic_id, critic_config in cfg["critics"].items():
+        if critic_config is None:
+            continue
         critic_module_pointer = critic_config["module_pointer"]
         critic_adapter = get_from_nested_dict(adapter_modules, critic_module_pointer)
         critics[critic_id] = ScalarCritic(critic_adapter)
@@ -128,6 +132,8 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
     # Init optimizers
     optimizers = {}
     for optimizer_id, optimizer_config in cfg["optimizers"].items():
+        if optimizer_config is None:
+            continue
         optimizer_module_pointer = optimizer_config["module_pointer"]
         module = get_from_nested_dict(trainable_modules, optimizer_module_pointer)
         optimizer_class: torch.optim.Adam | torch.optim.SGD = eval(
@@ -139,6 +145,8 @@ async def generate_and_train(cfg: dict, base_seed: int) -> None:
     # Init trainers
     trainers = {}
     for trainer_id, trainer_config in cfg["trainers"].items():
+        if trainer_config is None:
+            continue
         trainer_class = eval(trainer_config["class"])
         module_pointers = trainer_config["module_pointers"]
         tokenizer = llms_dict[module_pointers["policy"][0]].tokenizer
