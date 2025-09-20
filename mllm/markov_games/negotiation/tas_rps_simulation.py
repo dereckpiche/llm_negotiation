@@ -195,6 +195,7 @@ class TrustAndSplitRPSSimulation(NegotiationSimulation):
             hand=self.state.hands[agent_id],
             last_hand_coagent=last_hand_coagent,
             last_hand_agent=last_hand_agent,
+            last_quantities=self.state.previous_quantities,
         )
         return obs
 
@@ -226,5 +227,6 @@ class TrustAndSplitRPSSimulation(NegotiationSimulation):
             split_phase=False,
             hands=hands,
             previous_hands=None,
+            previous_quantities=None,
         )
         return self.get_obs()

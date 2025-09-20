@@ -48,9 +48,9 @@ class TrustAndSplitRPSAgent(NegotiationAgent):
             "7. The points are accumulated across rounds.\n"
             "Your goal: {goal}\n"
         )
-        self.new_round_prompt = "A new round begins\n" "Your hand is {hand}."
+        self.new_round_prompt = "A New Round Begins\n" "Your hand is {hand}."
         self.last_round_prompt = (
-            "Round summary:\n"
+            "Last Round Summary:\n"
             "   - Your hand: {last_hand_agent}\n"
             "   - {other_agent}'s hand: {last_hand_coagent}\n"
             "   - Your value per coin: {last_value_agent}\n"
@@ -59,7 +59,7 @@ class TrustAndSplitRPSAgent(NegotiationAgent):
             "   - You earned: {last_points_agent} points\n"
             "   - {other_agent} proposed: {last_split_coagent} coins\n"
             "   - {other_agent} earned: {last_points_coagent} points\n"
-            "   - Round complete.\n"
+            "   - Round Complete.\n"
         )
         self.send_split_prompt = (
             "Submit your proposal\n"
