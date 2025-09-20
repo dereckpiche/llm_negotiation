@@ -75,6 +75,9 @@ class NegotiationAgent(Agent):
 
     async def act(self, observation: NegotiationObs) -> Tuple[Any, AgentActLog]:
         def dict_to_str(d: dict) -> str:
+            return ", ".join(f"{v} {k}" for k, v in d.items())
+
+        def dict_to_eq_str(d: dict) -> str:
             return ", ".join(f"{k}={v}" for k, v in d.items())
 
         is_our_turn = observation.current_agent == self.agent_id
@@ -85,8 +88,10 @@ class NegotiationAgent(Agent):
         obs_ctx = vars(observation)
         obs_ctx_formmated = obs_ctx.copy()
         for key in obs_ctx_formmated:
-            if isinstance(obs_ctx_formmated[key], dict):
+            if isinstance(obs_ctx_formmated[key], dict) and "value" not in key:
                 obs_ctx_formmated[key] = dict_to_str(obs_ctx_formmated[key])
+            elif isinstance(obs_ctx_formmated[key], dict) and "value" in key:
+                obs_ctx_formmated[key] = dict_to_eq_str(obs_ctx_formmated[key])
 
         #######################################
         # build user prompt
@@ -145,14 +150,19 @@ class NegotiationAgent(Agent):
             )
             ranges_str = ", ".join(
                 [
-                    f"{var_names[i]}: 0-{obs_ctx['quantities'][item]}"
+                    f"{var_names[i]}: 0-{obs_ctx['quantities'][item]} (integer)"
                     for i, item in enumerate(obs_ctx["quantities"].keys())
                 ]
             )
             proposal_style = f"Proposal: {items_str} where {ranges_str}."
+            proposal_style2 = (
+                f"<items_to_self> {items_str} </items_to_self> where {ranges_str}."
+            )
             prompt_parts.append(
                 self.send_split_prompt.format(
-                    proposal_style=proposal_style, **obs_ctx_formmated
+                    proposal_style=proposal_style,
+                    proposal_style2=proposal_style2,
+                    **obs_ctx_formmated,
                 )
             )
 

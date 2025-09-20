@@ -43,18 +43,21 @@ class TrustAndSplitAgent(NegotiationAgent):
             "   - {other_agent} earned: {last_points_coagent} points\n"
             "   - Round Complete.\n"
         )
-        self.send_split_prompt = "Submit Your Proposal\n" "Respond as {proposal_style}"
+        self.send_split_prompt = (
+            "Submit Your Proposal\n" "Respond with {proposal_style2}"
+        )
         self.wait_for_message_prompt = "Wait for {other_agent} to send a message..."
         self.last_message_prompt = "{other_agent} said: {last_message}"
-        self.send_message_prompt = (
-            f"Send your message now (max {self.num_message_chars} chars)."
-        )
-
-    # def get_message_regex(self, observation: TrustAndSplitObs) -> str:
-    #     return rf"<message>[\s\S]{{0,{self.num_message_chars}}}</message>"
+        # self.send_message_prompt = (
+        #     f"Send your message now (max {self.num_message_chars} chars)."
+        # )
+        self.send_message_prompt = f"Send your message now in <message>...</message> (<={self.num_message_chars} chars)."
 
     def get_message_regex(self, observation: TrustAndSplitObs) -> str:
-        return rf"(?s).{{0,{self.num_message_chars}}}"
+        return rf"<message>[\s\S]{{0,{self.num_message_chars}}}</message>"
+
+    # def get_message_regex(self, observation: TrustAndSplitObs) -> str:
+    #     return rf"(?s).{{0,{self.num_message_chars}}}"
 
     def get_split_regex(self, observation: TrustAndSplitObs) -> str:
         items = list(observation.quantities.keys())
@@ -62,7 +65,7 @@ class TrustAndSplitAgent(NegotiationAgent):
         item_pattern = "|".join(
             [f"{item[:-1]}s?" if item.endswith("s") else f"{item}s?" for item in items]
         )
-        regex = rf"(?i)Proposal:\s*((?:\s*(?P<num>(10|[0-9]))\s*(?P<item>{item_pattern})\s*,?)+)"
+        regex = rf"(?i)<items_to_self> ?((?:\s*(?P<num>(10|[0-9]))\s*(?P<item>{item_pattern})\s*,?)+) ?</items_to_self>"
         return regex
 
     def get_split_action(
