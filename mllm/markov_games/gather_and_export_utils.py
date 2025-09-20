@@ -180,6 +180,7 @@ class ChatTurnLog(BaseModel):
     agent_id: str
     role: str
     content: str
+    reasoning_content: Optional[str] = None
     is_state_end: bool
     reward: float
 
@@ -199,6 +200,7 @@ def gather_agent_chat_turns_for_path(
                         agent_id=agent_id,
                         role=chat_turn.role,
                         content=chat_turn.content,
+                        reasoning_content=getattr(chat_turn, "reasoning_content", None),
                         is_state_end=chat_turn.is_state_end,
                         reward=node.step_log.simulation_step_log.rewards.get(
                             agent_id, 0
@@ -230,6 +232,7 @@ def gather_all_chat_turns_for_path(path: RolloutNodeList) -> List[ChatTurnLog]:
                         agent_id=agent_id,
                         role=chat_turn.role,
                         content=chat_turn.content,
+                        reasoning_content=getattr(chat_turn, "reasoning_content", None),
                         is_state_end=chat_turn.is_state_end,
                         reward=node.step_log.simulation_step_log.rewards.get(
                             agent_id, 0
@@ -428,6 +431,12 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
     .split-resizer { width:4px; cursor: col-resize; flex:0 0 auto; align-self: stretch; position: relative; background: linear-gradient(90deg, rgba(224,230,235,0), var(--accent-muted-2) 30%, var(--accent-muted-2) 70%, rgba(224,230,235,0)); border-radius:2px; transition: background .15s ease, width .15s ease; }
     .split-resizer:hover { background: linear-gradient(90deg, rgba(224,230,235,0), var(--accent-muted) 35%, var(--accent-muted) 65%, rgba(224,230,235,0)); }
     .split-resizer.dragging { background: linear-gradient(90deg, rgba(224,230,235,0), var(--accent-muted) 25%, var(--accent-muted) 75%, rgba(224,230,235,0)); }
+    /* Inline reasoning (removed toggle to prevent layout shift on click) */
+    .reasoning-inline { display:inline; font-size:0.8em; font-style:italic; color:#555; white-space:pre-wrap; margin-right:4px; cursor:pointer; position:relative; }
+    .reasoning-inline .reasoning-text { display:inline; }
+    .reasoning-inline.collapsed .reasoning-text { display:none; }
+    .reasoning-inline.collapsed::after { content:'(...)'; font-style:italic; color:#777; margin-left:4px; }
+    .message-box .main-content { white-space:normal; }
         /* tighten spacing */
         .split-col .group-divider { margin:4px 0 2px 0; }
         .toolbar {
@@ -499,10 +508,10 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             border: var(--border-width) solid var(--accent-muted-2); /* slightly thicker */
             border-radius: var(--corner-radius); /* not a pill */
             font-size: var(--font-size);
-            font-weight: 700;
+            # font-weight: 700;
             color: var(--muted-text);
             background: #F4F8FB; /* subtle tint */
-            padding: 1px 6px; /* slight padding for visibility */
+            # padding: 1px 6px; /* slight padding for visibility */
             margin-right: 8px; /* small gap from following content */
             pointer-events: auto; /* allow events so we can ignore them in JS */
         }
@@ -529,7 +538,6 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             padding-left: 0;
             border-left: 0;
         }
-        .message-box::before { content: none; display: none; margin-right: 0; line-height: 1; }
         .chat-turn.agent-alice.role-assistant .message-box::before { color: #0eb224; }
         .chat-turn.agent-bob.role-assistant .message-box::before { color: #ef8323; }
         .chat-turn.collapsed .message-box::before { display: none; }
@@ -537,12 +545,12 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         .chat-turn.agent-alice.role-assistant .message-box { border-color: #0eb224; }
         .chat-turn.agent-bob.role-assistant .message-box { border-color: #ef8323; }
         /* Tie badge and seam to agent color for a cohesive capsule, assistants only */
-    .chat-turn.agent-alice.role-assistant .agent-badge { border-color: #0eb224; background: linear-gradient(90deg, rgba(14,178,36,0.10), #ffffff 55%); }
+    .chat-turn.agent-alice.role-assistant .agent-badge { border-color: #0eb224; background: rgba(14,178,36,0.08); }
         .chat-turn.agent-alice.role-assistant .agent-badge::after { border-right-color: #0eb224; }
         .chat-turn.agent-alice.role-assistant .turn-content::before { border-left-color: #0eb224; border-top-color: #0eb224; }
         .chat-turn.agent-alice.role-assistant .message-box { border-color: #0eb224; }
 
-    .chat-turn.agent-bob.role-assistant .agent-badge { border-color: #ef8323; background: linear-gradient(90deg, rgba(239,131,35,0.12), #ffffff 55%); }
+    .chat-turn.agent-bob.role-assistant .agent-badge { border-color: #ef8323; background: rgba(239,131,35,0.10); }
         .chat-turn.agent-bob.role-assistant .agent-badge::after { border-right-color: #ef8323; }
         .chat-turn.agent-bob.role-assistant .turn-content::before { border-left-color: #ef8323; border-top-color: #ef8323; }
         .chat-turn.agent-bob.role-assistant .message-box { border-color: #ef8323; }
@@ -634,9 +642,11 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
         "  let strongHideOn = false;\n"
         "  document.body.addEventListener('click', function(e){\n"
         "    if (e.target.closest('.ts-badge')) { return; }\n"
+    "    const r = e.target.closest('.reasoning-inline'); if (r) { e.stopPropagation(); r.classList.toggle('collapsed'); return; }\n"
         "    const turn = e.target.closest('.chat-turn');\n"
         "    if (turn) { e.stopPropagation(); turn.classList.toggle('collapsed'); }\n"
         "  });\n"
+        "  // Reasoning handled via <details>, no JS required\n"
         "  function applyRangeFilter() {\n"
         "    for (const flow of activeFlows()) {\n"
         "      const turns = Array.from(flow.querySelectorAll('.chat-turn'));\n"
@@ -864,7 +874,6 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             badge_inner = (
                 f'{emoji} <span class="agent-name">{name}</span>'
                 f' <span class="sep"> • </span><span class="reward">Reward ⚑ = {reward_val}</span>'
-                f' <span class="sep"> • </span> 💬 '
             )
         else:
             # For user messages, show "User of {Agent ID}" in the badge
@@ -882,12 +891,16 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             last_time_step = turn.time_step
 
         escaped_content = html.escape(turn.content)
+        reasoning_html = ""
+        if turn.reasoning_content:
+            escaped_reasoning = html.escape(turn.reasoning_content)
+            reasoning_html = f'<span class="reasoning-inline"><span class="reasoning-icon">💭</span> <span class="reasoning-text">{escaped_reasoning}</span></span>'
         collapsed_text = re.sub(r"\s+", " ", escaped_content).strip()
 
         html_parts.append(
             f'<div class="chat-turn {agent_class} {role_class}{collapsed_class}" data-time-step="{turn.time_step}">'
             f'<div class="turn-content {agent_class} {role_class}">{ts_badge_html}{badge}'
-            f'<span class="message-box">{collapsed_text}</span>'
+            f'<span class="message-box">{reasoning_html}<span class="main-content">💬 {collapsed_text}</span></span>'
             f'<span class="message-placeholder">(...)</span>'
             f"</div>"
             f"</div>"
@@ -923,6 +936,10 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
                     ts_badge_html = f'<span class="ts-badge">⏱ {turn.time_step}</span>'
                     last_ts_agent = turn.time_step
                 esc_content = _html_mod.escape(turn.content)
+                reasoning_html = ""
+                if turn.reasoning_content:
+                    esc_reasoning = _html_mod.escape(turn.reasoning_content)
+                    reasoning_html = f'<span class=\"reasoning-inline\"><span class=\"reasoning-icon\">💭</span> <span class=\"reasoning-text\">{esc_reasoning}</span></span>'
                 collapsed_text = re.sub(r"\s+", " ", esc_content).strip()
                 if turn.role == "assistant":
                     name = _html_mod.escape(turn.agent_id)
@@ -937,7 +954,6 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
                     badge_inner = (
                         f'{emoji} <span class="agent-name">{name}</span>'
                         f' <span class="sep"> • </span><span class="reward">Reward ⚑ : {reward_val}</span>'
-                        f' <span class="sep"> • </span> 💬 '
                     )
                 else:
                     name = "User of " + _html_mod.escape(turn.agent_id)
@@ -947,7 +963,7 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
                 html_parts.append(
                     f'<div class="chat-turn {agent_class} {role_class}{collapsed_class}" data-time-step="{turn.time_step}">'
                     f'<div class="turn-content {agent_class} {role_class}">{ts_badge_html}{badge}'
-                    f'<span class="message-box">{collapsed_text}</span>'
+                    f'<span class="message-box">{reasoning_html}<span class="main-content">💬 {collapsed_text}</span></span>'
                     f'<span class="message-placeholder">(...)</span>'
                     f"</div></div>"
                 )

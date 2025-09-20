@@ -123,9 +123,14 @@ def process_training_chat(
             )
         else:
             is_entropy_mask_true = True
-        chat_turn_ids = tokenizer.apply_chat_template(
-            [chat_turn], return_tensors="pt", chat_template=custom_qwen_template
-        ).flatten()
+        if "qwen" in tokenizer.name_or_path.lower():
+            chat_turn_ids = tokenizer.apply_chat_template(
+                [chat_turn], return_tensors="pt", chat_template=custom_qwen_template
+            ).flatten()
+        else:
+            chat_turn_ids = tokenizer.apply_chat_template(
+                [chat_turn], return_tensors="pt"
+            ).flatten()
         nb_chat_turns_ids = chat_turn_ids.numel()
         state_ends_mask.append(torch.zeros(nb_chat_turns_ids, dtype=torch.bool))
         if is_state_end:

@@ -1,6 +1,12 @@
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 
+from dataclasses import dataclass
+
+@dataclass
+class PolicyOutput:
+    content: str
+    reasoning_content: str | None = None
 
 class LLMInferenceBackend(ABC):
     @abstractmethod

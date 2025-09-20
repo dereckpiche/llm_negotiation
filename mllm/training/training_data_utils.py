@@ -28,12 +28,13 @@ class TrainingChatTurn:
     """
 
     def __init__(
-        self, time_step: int, role: str, agent_id: str, content: str, is_state_end: bool
+        self, time_step: int, role: str, agent_id: str, content: str, reasoning_content: str, is_state_end: bool
     ) -> None:
         self.time_step = time_step
         self.role = role
         self.agent_id = agent_id
         self.content = content
+        self.reasoning_content = reasoning_content
         self.is_state_end = is_state_end
 
     def dict(self):
@@ -42,6 +43,7 @@ class TrainingChatTurn:
             "role": self.role,
             "agent_id": self.agent_id,
             "content": self.content,
+            "reasoning_content": self.reasoning_content,
             "is_state_end": self.is_state_end,
         }
 

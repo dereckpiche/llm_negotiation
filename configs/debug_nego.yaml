@@ -11,15 +11,13 @@ experiment:
     train: true
 
 
-
 models:
     base_llm:
         init_args:
             llm_id: base_llm
             enable_thinking: False
-            model_name: "Qwen/Qwen3-4B-Instruct-2507" # Qwen/Qwen3-4B-Instruct-2507
+            model_name: "Qwen/Qwen3-0.6B" # Qwen/Qwen3-4B-Instruct-2507
             inference_backend: vllm
-
 
 simulation_init_args:
     nb_of_rounds: 1
