@@ -2,7 +2,7 @@ defaults:
     - tas_rps_naive.yaml
 
 experiment:
-    name: "tas_classic_10_1_ties_naive_vs_open_ai"
+    name: "tas_rps_naive_vs_open_ai"
     nb_epochs: 300
     nb_matches_per_iteration: 32
     seed_group_size: 8
