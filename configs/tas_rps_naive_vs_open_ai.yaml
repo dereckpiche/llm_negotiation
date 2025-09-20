@@ -1,13 +1,12 @@
 defaults:
-    - tas_classic_10_1_ties_naive.yaml
+    - tas_rps_naive.yaml
 
 experiment:
-    name: "tas_classic_10_1_ties_naive_vs_open_ai_${now:%Y-%m-%d___%H-%M-%S}"
-    nb_epochs: 20
-    nb_matches_per_iteration: 1
-    seed_group_size: 1
+    name: "tas_classic_10_1_ties_naive_vs_open_ai"
+    nb_epochs: 300
+    nb_matches_per_iteration: 32
+    seed_group_size: 8
     train: true
-
 
 markov_games:
     simulation_init_args:
@@ -28,6 +27,6 @@ models:
             sampling_params:
                 temperature: 1.0
                 top_p: 1.0
-                
+
 train_on_which_data:
     agent_trainer: ["Alice"]
