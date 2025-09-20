@@ -7,6 +7,9 @@ experiment:
     agent_buffer: true
     checkpoint_every_n_iterations: 10
 
+markov_games:
+    buffer_prob: 0.9
+
 trainers:
     agent_trainer:
         class: TrainerAdAlign
