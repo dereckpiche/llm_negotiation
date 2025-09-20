@@ -1,0 +1,22 @@
+defaults:
+    - tas_rps_alt_naive.yaml
+
+
+experiment:
+    name: "tas_rps_naive"
+    description: "Trust-and-Split Rock Paper Scissors negotiation game"
+
+
+
+markov_games:
+    group_by_round: True # This will merge all timesteps of a round into a single timestep
+    simulation_init_args:
+        alternating_hands: False
+
+
+trainers:
+    agent_trainer:
+        kwargs:
+            kl_coeff: 0.0
+            mini_batch_size: 1
+            reward_normalizing_constant: 100.0
