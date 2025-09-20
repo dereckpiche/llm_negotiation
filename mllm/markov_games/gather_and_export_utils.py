@@ -508,10 +508,10 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             border: var(--border-width) solid var(--accent-muted-2); /* slightly thicker */
             border-radius: var(--corner-radius); /* not a pill */
             font-size: var(--font-size);
-            font-weight: 700;
+            # font-weight: 700;
             color: var(--muted-text);
             background: #F4F8FB; /* subtle tint */
-            padding: 1px 6px; /* slight padding for visibility */
+            # padding: 1px 6px; /* slight padding for visibility */
             margin-right: 8px; /* small gap from following content */
             pointer-events: auto; /* allow events so we can ignore them in JS */
         }
@@ -538,7 +538,6 @@ def html_from_chat_turns(chat_turns: List[ChatTurnLog]) -> str:
             padding-left: 0;
             border-left: 0;
         }
-        .message-box::before { content: none; display: none; margin-right: 0; line-height: 1; }
         .chat-turn.agent-alice.role-assistant .message-box::before { color: #0eb224; }
         .chat-turn.agent-bob.role-assistant .message-box::before { color: #ef8323; }
         .chat-turn.collapsed .message-box::before { display: none; }
