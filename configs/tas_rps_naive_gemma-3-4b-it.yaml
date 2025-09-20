@@ -16,5 +16,4 @@ models:
             regex_max_attempts: -1
             model_name: google/gemma-3-4b-it
             enable_thinking: null
-            inference_backend_init_kwargs:
-                enforce_eager: True
+
