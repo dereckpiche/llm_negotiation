@@ -3,17 +3,22 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
-import os
 import math
+import os
 import pickle
 import shutil
 import sys
+import textwrap
 import urllib.error
 import urllib.request
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-import textwrap
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
+
+try:
+    import numpy as np
+except ImportError:
+    np = None
 
 from mllm.markov_games.rollout_tree import RolloutTreeRootNode
 
@@ -155,6 +160,18 @@ def discover_metric_functions(module_name: str) -> Dict[str, Callable[[Any], Any
     """
     mod = importlib.import_module(module_name)
     metrics: Dict[str, Callable[[Any], Any]] = {}
+    # Prefer explicit exported list if present
+    export_list = getattr(mod, "stat_functs", None)
+    if isinstance(export_list, (list, tuple)) and export_list:
+        for name in export_list:
+            try:
+                attr = getattr(mod, name)
+            except Exception:
+                continue
+            if callable(attr):
+                metrics[name] = attr
+        return metrics
+    # Fallback: discover all public callables (legacy behavior)
     for attr_name in dir(mod):
         if attr_name.startswith("_"):
             continue
@@ -415,7 +432,7 @@ def compute_stats_and_stage(
     from_iteration: int,
     last_iteration: Optional[int],
 ) -> Path:
-    """Compute statistics.json at data_root and copy to 0_stats/statistics.json."""
+    """Compute statistics.json and stage into 0A_paperdata_for_<experiment>."""
     out_path = run_stats_functional(
         data_root,
         game_kind,
@@ -424,8 +441,12 @@ def compute_stats_and_stage(
         from_iteration=from_iteration,
         last_iteration=last_iteration,
     )
-
-    stats_dir = data_root / "0_stats"
+    experiment_name = (
+        data_root.name
+        if not data_root.name.startswith("seed_")
+        else data_root.parent.name
+    )
+    stats_dir = data_root / f"0A_paperdata_for_{_sanitize_filename(experiment_name)}"
     stats_dir.mkdir(parents=True, exist_ok=True)
     staged = stats_dir / "statistics.json"
     try:
@@ -446,14 +467,26 @@ STYLE_URL = "https://raw.githubusercontent.com/dereckpiche/DedeStyle/refs/heads/
 
 
 def plot_statistics_json(seed_root: Path) -> None:
-    """Generate plots from statistics.json into seed_root/0_stats/.render.
+    """Generate plots from statistics.json into seed_root/0B_plots.render.
 
     Expects statistics.json structure: {metric: {agent: [series...]}}.
+    Looks for statistics.json inside 0A_paperdata_for_<experiment> first.
     """
-    stats_json_path = seed_root / "statistics.json"
+    experiment_name = (
+        seed_root.name
+        if not seed_root.name.startswith("seed_")
+        else seed_root.parent.name
+    )
+    stats_dir = seed_root / f"0A_paperdata_for_{_sanitize_filename(experiment_name)}"
+    stats_json_path = stats_dir / "statistics.json"
     if not stats_json_path.exists():
-        print(f"No statistics.json found at {stats_json_path}")
-        return
+        legacy = seed_root / "statistics.json"
+        if legacy.exists():
+            stats_json_path = legacy
+            stats_dir = seed_root
+        else:
+            print(f"No statistics.json found (checked {stats_dir} and root)")
+            return
 
     try:
         # Use non-interactive backend for headless render
@@ -469,9 +502,38 @@ def plot_statistics_json(seed_root: Path) -> None:
     with open(stats_json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    stats_dir = seed_root / "0_stats"
-    render_dir = stats_dir / "plots.render."
+    render_dir = seed_root / "0B_plots"
     render_dir.mkdir(parents=True, exist_ok=True)
+    # Numpy tensor files now stored directly in stats_dir (no subdirectory)
+    tensors_dir = stats_dir
+    # Copy provenance folders if present into paperdata_origins
+    origins_dir = stats_dir / "paperdata_origins"
+    origins_dir.mkdir(parents=True, exist_ok=True)
+    for folder_name in [".hydra", "src_code_for_reproducibility"]:
+        # Prefer folder inside seed_root; if missing, fallback to parent of seed_root
+        candidates = [seed_root / folder_name, seed_root.parent / folder_name]
+        src_path = next((p for p in candidates if p.exists() and p.is_dir()), None)
+        if src_path is None:
+            continue
+        dest_path = origins_dir / folder_name
+        if dest_path.exists():
+            # Skip if already copied (assume unchanged)
+            continue
+        try:
+            shutil.copytree(src_path, dest_path)
+        except FileExistsError:
+            pass
+        except Exception as e:
+            print(f"Failed to copy {folder_name} provenance from {src_path}: {e}")
+    # Create experiment description placeholder if not already
+    desc_file = stats_dir / "experiment_description.txt"
+    if not desc_file.exists():
+        try:
+            desc_file.write_text(
+                "Description of the experiment here..\n", encoding="utf-8"
+            )
+        except Exception as e:
+            print(f"Failed to write experiment description: {e}")
 
     # Attempt to download and apply the custom style
     style_path = stats_dir / "dedestyle.mplstyle"
@@ -490,9 +552,15 @@ def plot_statistics_json(seed_root: Path) -> None:
     for metric_name, agent_to_series in sorted((data or {}).items()):
         if not isinstance(agent_to_series, dict):
             continue
+        # Determine which agents to plot: if all_agents present alongside others, drop it.
+        agent_keys = sorted(agent_to_series.keys())
+        if "all_agents" in agent_keys and len(agent_keys) > 1:
+            agent_keys = [k for k in agent_keys if k != "all_agents"]
         # Build x axis by series length (assume all agents same length; if not, use max)
         max_len = 0
-        for series in agent_to_series.values():
+        for k, series in agent_to_series.items():
+            if k not in agent_keys:
+                continue
             try:
                 max_len = max(max_len, len(series) if series is not None else 0)
             except Exception:
@@ -502,7 +570,7 @@ def plot_statistics_json(seed_root: Path) -> None:
         x = list(range(max_len))
 
         fig, ax = plt.subplots(figsize=(8, 4.5))
-        for agent_name in sorted(agent_to_series.keys()):
+        for agent_name in agent_keys:
             series = agent_to_series.get(agent_name)
             if not isinstance(series, list) or len(series) == 0:
                 continue
@@ -520,6 +588,7 @@ def plot_statistics_json(seed_root: Path) -> None:
         # Force integer ticks for discrete gradient steps
         try:
             from matplotlib.ticker import MaxNLocator  # type: ignore
+
             ax.xaxis.set_major_locator(MaxNLocator(integer=True))
         except Exception:
             pass
@@ -530,11 +599,37 @@ def plot_statistics_json(seed_root: Path) -> None:
         ax.grid(True, alpha=0.3)
         fig.tight_layout()
 
-        out_file = render_dir / f"{_sanitize_filename(metric_name)}.render.png"
+        out_file = render_dir / f"{_sanitize_filename(metric_name)}.png"
         try:
             fig.savefig(out_file, dpi=150)
         finally:
             plt.close(fig)
+
+        # Export per-agent numpy tensors for this metric (one file per agent)
+        if np is not None:
+            try:
+                for agent_name in sorted(agent_to_series.keys()):
+                    series = agent_to_series.get(agent_name)
+                    if not isinstance(series, list) or len(series) == 0:
+                        continue
+                    clean_series = []
+                    for val in series:
+                        if val is None or (isinstance(val, float) and math.isnan(val)):
+                            clean_series.append(np.nan)
+                        else:
+                            try:
+                                clean_series.append(float(val))
+                            except (ValueError, TypeError):
+                                clean_series.append(np.nan)
+                    if not clean_series:
+                        continue
+                    tensor_file = (
+                        tensors_dir
+                        / f"{_sanitize_filename(metric_name)}_{_sanitize_filename(str(agent_name))}.npy"
+                    )
+                    np.save(tensor_file, np.array(clean_series))
+            except Exception as e:
+                print(f"Failed to export tensors for metric {metric_name}: {e}")
 
 
 def clean_render_artifacts(base_path: Path) -> int:
@@ -703,8 +798,9 @@ def main():
             last_iteration=args.last_iteration,
         )
         print(f"Wrote: {stats_out}")
-
-        print("Generating plots in 0_stats/.render. ...")
+        print(
+            "Generating plots in 0B_plots and paper data in 0A_paperdata_for_<exp> ..."
+        )
         plot_statistics_json(seed_root)
 
         iteration_folders = find_iteration_folders(
