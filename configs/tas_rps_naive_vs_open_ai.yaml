@@ -15,12 +15,21 @@ markov_games:
         1:
             policy_id: openai_llm
 
+optimizers:
+    agent_optimizer:
+        module_pointer: ["base_llm", "agent_adapter"]
+        optimizer_class_name: torch.optim.Adam
+        init_args:
+            lr: 3e-6
+            weight_decay: 0.0
+
+
 models:
     openai_llm:
         class: LargeLanguageModelOpenAI
         init_args:
             llm_id: openai_llm
-            model: gpt-4.1-nano # https://platform.openai.com/docs/pricing
+            model: gpt-4.1 # https://platform.openai.com/docs/pricing
             base_url: https://api.openai.com/v1
             timeout_s: 6000.0
             regex_max_attempts: 3
