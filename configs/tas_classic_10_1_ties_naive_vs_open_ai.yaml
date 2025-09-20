@@ -1,0 +1,33 @@
+defaults:
+    - tas_classic_10_1_ties_naive.yaml
+
+experiment:
+    name: "tas_classic_10_1_ties_naive_vs_open_ai_${now:%Y-%m-%d___%H-%M-%S}"
+    nb_epochs: 20
+    nb_matches_per_iteration: 1
+    seed_group_size: 1
+    train: true
+
+
+markov_games:
+    simulation_init_args:
+        nb_of_rounds: 10
+    agents:
+        1:
+            policy_id: openai_llm
+
+models:
+    openai_llm:
+        class: LargeLanguageModelOpenAI
+        init_args:
+            llm_id: openai_llm
+            model: gpt-4.1-nano # https://platform.openai.com/docs/pricing
+            base_url: https://api.openai.com/v1
+            timeout_s: 6000.0
+            regex_max_attempts: 3
+            sampling_params:
+                temperature: 1.0
+                top_p: 1.0
+                
+train_on_which_data:
+    agent_trainer: ["Alice"]

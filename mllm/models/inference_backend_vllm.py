@@ -61,7 +61,7 @@ class VLLMAsyncBackend(LLMInferenceBackend):
         pass
 
     async def generate(
-            self, prompt_text: str, regex: Optional[str] = None
+            self, prompt_text: str, regex: Optional[str] = None, extract_thinking : bool = False
         ) -> PolicyOutput:
         # Build SamplingParams correctly
 
@@ -88,11 +88,12 @@ class VLLMAsyncBackend(LLMInferenceBackend):
         content = raw_text
         reasoning_content = None
 
-        m = re.match(
-            r"^\n<think>\n([\s\S]*?)</think>\n\n(.*)$", raw_text, flags=re.DOTALL
-        )
-        if m:
-            reasoning_content = m.group(1)
-            content = m.group(2)
+        if extract_thinking:
+            m = re.match(
+                r"^\n<think>\n([\s\S]*?)</think>\n\n(.*)$", raw_text, flags=re.DOTALL
+            )
+            if m:
+                reasoning_content = m.group(1)
+                content = m.group(2)
 
         return PolicyOutput(content=content, reasoning_content=reasoning_content)
